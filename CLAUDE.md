@@ -58,13 +58,13 @@ Currently only `gcal` is implemented.
 
 ## Filename Convention
 
-**Timed events:** `YYYY-MM-DDTHHMM__slug.ics`
-- Example: `2025-03-20T1500__client-call.ics`
+**Timed events:** `YYYY-MM-DDTHHMM__slug_eventid.ics`
+- Example: `2025-03-20T1500__client-call_abc12345.ics`
 
-**All-day events:** `YYYY-MM-DD__slug.ics`
-- Example: `2025-03-21__offsite.ics`
+**All-day events:** `YYYY-MM-DD__slug_eventid.ics`
+- Example: `2025-03-21__offsite_def67890.ics`
 
-The slug is derived from the event title: lowercased, spaces replaced with hyphens, special characters removed.
+The slug is derived from the event title: lowercased, spaces replaced with hyphens, special characters removed. The event ID suffix (first 8 chars) ensures uniqueness when multiple events have the same title and time.
 
 ## Configuration
 
@@ -87,10 +87,10 @@ Tokens (refresh token, access token) are stored separately at `~/.config/caldir/
 # Authenticate with Google Calendar
 caldir-sync auth
 
-# Sync events to local directory
-caldir-sync sync
+# Pull events from cloud to local directory
+caldir-sync pull
 
-# List configured providers
+# Show status of configured providers and auth
 caldir-sync status
 ```
 
@@ -102,5 +102,12 @@ cargo check
 
 # Run
 cargo run -- auth
-cargo run -- sync
+cargo run -- pull
 ```
+
+## Dependencies
+
+- **google-calendar** — Google Calendar API client (handles OAuth, types, requests)
+- **icalendar** — Generate .ics files
+- **tokio** — Async runtime
+- **clap** — CLI argument parsing

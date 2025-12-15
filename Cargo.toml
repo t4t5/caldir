@@ -8,8 +8,8 @@ description = "Sync cloud calendars to a local directory of .ics files"
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
-# HTTP client
-reqwest = { version = "0.12", features = ["json"] }
+# Google Calendar API client
+google-calendar = "0.7"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -19,24 +19,20 @@ toml = "0.8"
 # CLI
 clap = { version = "4", features = ["derive"] }
 
-# OAuth
-url = "2"
-base64 = "0.22"
-sha2 = "0.10"
-rand = "0.8"
-
 # .ics parsing/generation
 icalendar = "0.16"
 
 # Error handling
 anyhow = "1"
-thiserror = "1"
 
 # Filesystem paths
 dirs = "5"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
+
+# URL parsing
+url = "2"
 
 # Open URLs in browser
 open = "5"

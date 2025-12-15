@@ -28,7 +28,7 @@ fn default_calendar_dir() -> String {
     "~/calendar".to_string()
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Tokens {
     pub gcal: Option<GcalTokens>,
 }
@@ -37,6 +37,7 @@ pub struct Tokens {
 pub struct GcalTokens {
     pub access_token: String,
     pub refresh_token: String,
+    #[serde(default)]
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
