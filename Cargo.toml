@@ -1,0 +1,42 @@
+[package]
+name = "caldir-sync"
+version = "0.1.0"
+edition = "2021"
+description = "Sync cloud calendars to a local directory of .ics files"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# OAuth
+url = "2"
+base64 = "0.22"
+sha2 = "0.10"
+rand = "0.8"
+
+# .ics parsing/generation
+icalendar = "0.16"
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Filesystem paths
+dirs = "5"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Open URLs in browser
+open = "5"
