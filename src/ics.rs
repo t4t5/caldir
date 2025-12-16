@@ -103,7 +103,7 @@ pub fn generate_ics(event: &Event) -> Result<String> {
 
     // ORGANIZER
     if let Some(ref org) = event.organizer {
-        let organizer_value = format_attendee_value(org);
+        let organizer_value = format_organizer_value(org);
         ics_event.add_property("ORGANIZER", &organizer_value);
     }
 
@@ -161,7 +161,18 @@ pub fn is_instance_override(event: &Event) -> bool {
     event.recurring_event_id.is_some() && event.original_start.is_some()
 }
 
-/// Format an attendee for iCalendar ORGANIZER/ATTENDEE properties
+/// Format an organizer for iCalendar ORGANIZER property
+/// Format: CN=Name:mailto:email@example.com
+/// Note: ORGANIZER doesn't have PARTSTAT (only ATTENDEE does)
+fn format_organizer_value(organizer: &Attendee) -> String {
+    if let Some(ref name) = organizer.name {
+        format!("CN={}:mailto:{}", name, organizer.email)
+    } else {
+        format!("mailto:{}", organizer.email)
+    }
+}
+
+/// Format an attendee for iCalendar ATTENDEE property
 /// Format: CN=Name;PARTSTAT=ACCEPTED:mailto:email@example.com
 fn format_attendee_value(attendee: &Attendee) -> String {
     let mut parts = Vec::new();
@@ -187,7 +198,7 @@ fn format_attendee_value(attendee: &Attendee) -> String {
     if parts.is_empty() {
         format!("mailto:{}", attendee.email)
     } else {
-        format!("{};:mailto:{}", parts.join(";"), attendee.email)
+        format!("{}:mailto:{}", parts.join(";"), attendee.email)
     }
 }
 
@@ -228,4 +239,146 @@ pub fn parse_uid(content: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_organizer_with_name() {
+        let organizer = Attendee {
+            name: Some("John Doe".to_string()),
+            email: "john@example.com".to_string(),
+            response_status: None,
+        };
+        assert_eq!(
+            format_organizer_value(&organizer),
+            "CN=John Doe:mailto:john@example.com"
+        );
+    }
+
+    #[test]
+    fn test_format_organizer_without_name() {
+        let organizer = Attendee {
+            name: None,
+            email: "john@example.com".to_string(),
+            response_status: None,
+        };
+        assert_eq!(
+            format_organizer_value(&organizer),
+            "mailto:john@example.com"
+        );
+    }
+
+    #[test]
+    fn test_format_organizer_ignores_response_status() {
+        // ORGANIZER should NOT include PARTSTAT even if response_status is set
+        let organizer = Attendee {
+            name: Some("John Doe".to_string()),
+            email: "john@example.com".to_string(),
+            response_status: Some("accepted".to_string()),
+        };
+        let result = format_organizer_value(&organizer);
+        assert!(!result.contains("PARTSTAT"), "ORGANIZER should not have PARTSTAT");
+        assert_eq!(result, "CN=John Doe:mailto:john@example.com");
+    }
+
+    #[test]
+    fn test_format_attendee_with_name_and_status() {
+        let attendee = Attendee {
+            name: Some("Jane Doe".to_string()),
+            email: "jane@example.com".to_string(),
+            response_status: Some("accepted".to_string()),
+        };
+        assert_eq!(
+            format_attendee_value(&attendee),
+            "CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com"
+        );
+    }
+
+    #[test]
+    fn test_format_attendee_with_name_only() {
+        let attendee = Attendee {
+            name: Some("Jane Doe".to_string()),
+            email: "jane@example.com".to_string(),
+            response_status: None,
+        };
+        assert_eq!(
+            format_attendee_value(&attendee),
+            "CN=Jane Doe:mailto:jane@example.com"
+        );
+    }
+
+    #[test]
+    fn test_format_attendee_with_status_only() {
+        let attendee = Attendee {
+            name: None,
+            email: "jane@example.com".to_string(),
+            response_status: Some("declined".to_string()),
+        };
+        assert_eq!(
+            format_attendee_value(&attendee),
+            "PARTSTAT=DECLINED:mailto:jane@example.com"
+        );
+    }
+
+    #[test]
+    fn test_format_attendee_email_only() {
+        let attendee = Attendee {
+            name: None,
+            email: "jane@example.com".to_string(),
+            response_status: None,
+        };
+        assert_eq!(
+            format_attendee_value(&attendee),
+            "mailto:jane@example.com"
+        );
+    }
+
+    #[test]
+    fn test_format_attendee_partstat_values() {
+        let test_cases = vec![
+            ("accepted", "ACCEPTED"),
+            ("declined", "DECLINED"),
+            ("tentative", "TENTATIVE"),
+            ("needsAction", "NEEDS-ACTION"),
+            ("unknown", "NEEDS-ACTION"), // Unknown values default to NEEDS-ACTION
+        ];
+
+        for (input, expected) in test_cases {
+            let attendee = Attendee {
+                name: None,
+                email: "test@example.com".to_string(),
+                response_status: Some(input.to_string()),
+            };
+            let result = format_attendee_value(&attendee);
+            assert!(
+                result.contains(&format!("PARTSTAT={}", expected)),
+                "Input '{}' should produce PARTSTAT={}, got: {}",
+                input, expected, result
+            );
+        }
+    }
+
+    #[test]
+    fn test_slugify() {
+        assert_eq!(slugify("Team Standup"), "team-standup");
+        assert_eq!(slugify("Meeting: Q4 Review!"), "meeting-q4-review");
+        assert_eq!(slugify("  Lots   of   spaces  "), "lots-of-spaces");
+        assert_eq!(slugify("Special@#$%Characters"), "special-characters");
+    }
+
+    #[test]
+    fn test_slugify_truncates_long_titles() {
+        let long_title = "a".repeat(100);
+        assert_eq!(slugify(&long_title).len(), 50);
+    }
+
+    #[test]
+    fn test_short_id() {
+        assert_eq!(short_id("abc12345xyz"), "abc12345");
+        assert_eq!(short_id("short"), "short");
+        assert_eq!(short_id(""), "");
+    }
 }
