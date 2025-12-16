@@ -26,9 +26,9 @@ enum Commands {
     Pull,
     /// Show changes between local directory and cloud calendars
     Status {
-        /// Show detailed diff information for debugging
-        #[arg(long)]
-        debug: bool,
+        /// Show which properties changed for each modified event
+        #[arg(short, long)]
+        verbose: bool,
     },
 }
 
@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Auth { provider } => cmd_auth(&provider).await,
         Commands::Pull => cmd_pull().await,
-        Commands::Status { debug } => cmd_status(debug).await,
+        Commands::Status { verbose } => cmd_status(verbose).await,
     }
 }
 
@@ -169,7 +169,7 @@ async fn cmd_pull() -> Result<()> {
     Ok(())
 }
 
-async fn cmd_status(debug: bool) -> Result<()> {
+async fn cmd_status(verbose: bool) -> Result<()> {
     let cfg = config::load_config()?;
     let mut all_tokens = config::load_tokens()?;
 
@@ -234,7 +234,7 @@ async fn cmd_status(debug: bool) -> Result<()> {
         };
 
         // Compute diff without applying
-        let diff = sync::compute_sync_diff(&events, &calendar_dir, &metadata, debug)?;
+        let diff = sync::compute_sync_diff(&events, &calendar_dir, &metadata, verbose)?;
 
         all_to_create.extend(diff.to_create);
         all_to_update.extend(diff.to_update);
@@ -264,6 +264,23 @@ async fn cmd_status(debug: bool) -> Result<()> {
         println!("  Modified events ({}):", all_to_update.len());
         for change in &all_to_update {
             println!("    {}", change.filename);
+            // Show property-level changes in verbose mode
+            if verbose && !change.property_changes.is_empty() {
+                for prop_change in &change.property_changes {
+                    match (&prop_change.old_value, &prop_change.new_value) {
+                        (Some(old), Some(new)) => {
+                            println!("      {}: \"{}\" → \"{}\"", prop_change.property, old, new);
+                        }
+                        (Some(old), None) => {
+                            println!("      {}: \"{}\" → (removed)", prop_change.property, old);
+                        }
+                        (None, Some(new)) => {
+                            println!("      {}: (added) \"{}\"", prop_change.property, new);
+                        }
+                        (None, None) => {}
+                    }
+                }
+            }
         }
         println!();
     }

@@ -5,7 +5,7 @@ pull:
   cargo run -- pull
 
 status:
-  cargo run -- status
+  cargo run -- status --verbose
 
 # Cargo
 
