@@ -49,6 +49,25 @@ pub fn generate_ics(event: &Event) -> Result<String> {
     };
     ics_event.add_property("STATUS", status);
 
+    // Recurrence rules (for master events)
+    if let Some(ref recurrence) = event.recurrence {
+        for rule in recurrence {
+            // Each rule is like "RRULE:FREQ=WEEKLY;BYDAY=MO" or "EXDATE:20250320"
+            if let Some((key, value)) = rule.split_once(':') {
+                ics_event.add_property(key, value);
+            }
+        }
+    }
+
+    // RECURRENCE-ID (for instance overrides of recurring events)
+    if let Some(ref original_start) = event.original_start {
+        let recurrence_id = match original_start {
+            EventTime::DateTime(dt) => dt.format("%Y%m%dT%H%M%SZ").to_string(),
+            EventTime::Date(d) => d.format("%Y%m%d").to_string(),
+        };
+        ics_event.add_property("RECURRENCE-ID", &recurrence_id);
+    }
+
     let ics_event = ics_event.done();
     cal.push(ics_event);
     let cal = cal.done();
@@ -58,6 +77,14 @@ pub fn generate_ics(event: &Event) -> Result<String> {
 
 /// Generate the caldir filename for an event
 pub fn generate_filename(event: &Event) -> String {
+    let slug = slugify(&event.summary);
+
+    // Recurring master events (have RRULE) get a special prefix instead of date
+    if event.recurrence.is_some() {
+        return format!("_recurring__{}_{}.ics", slug, short_id(&event.id));
+    }
+
+    // Regular events and instance overrides get date-based filenames
     let date_part = match &event.start {
         EventTime::DateTime(dt) => {
             // Format: 2025-03-20T1500
@@ -69,9 +96,17 @@ pub fn generate_filename(event: &Event) -> String {
         }
     };
 
-    let slug = slugify(&event.summary);
-
     format!("{}__{}_{}.ics", date_part, slug, short_id(&event.id))
+}
+
+/// Check if an event is a recurring master (has RRULE)
+pub fn is_recurring_master(event: &Event) -> bool {
+    event.recurrence.is_some()
+}
+
+/// Check if an event is an instance override of a recurring event
+pub fn is_instance_override(event: &Event) -> bool {
+    event.recurring_event_id.is_some() && event.original_start.is_some()
 }
 
 /// Convert a string to a filename-safe slug

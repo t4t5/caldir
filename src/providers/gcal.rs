@@ -214,6 +214,14 @@ pub struct Event {
     pub start: EventTime,
     pub end: EventTime,
     pub status: EventStatus,
+
+    // Recurrence fields
+    /// RRULE, EXDATE lines for master events
+    pub recurrence: Option<Vec<String>>,
+    /// Links this instance to its master recurring event
+    pub recurring_event_id: Option<String>,
+    /// Original start time for this instance (used for RECURRENCE-ID)
+    pub original_start: Option<EventTime>,
 }
 
 #[derive(Debug, Clone)]
@@ -254,7 +262,7 @@ pub async fn fetch_events(
             &[],                    // shared_extended_property
             false,                  // show_deleted
             false,                  // show_hidden_invitations
-            true,                   // single_events (expand recurring)
+            false,                  // single_events: false to get master events with RRULE
             &time_max,              // time_max
             &time_min,              // time_min
             "",                     // time_zone
@@ -303,6 +311,32 @@ pub async fn fetch_events(
             _ => EventStatus::Confirmed,
         };
 
+        // Extract recurrence fields
+        let recurrence = if event.recurrence.is_empty() {
+            None
+        } else {
+            Some(event.recurrence)
+        };
+
+        let recurring_event_id = if event.recurring_event_id.is_empty() {
+            None
+        } else {
+            Some(event.recurring_event_id)
+        };
+
+        // Parse original start time (for recurring event instances)
+        let original_start = if let Some(ref orig) = event.original_start_time {
+            if let Some(dt) = orig.date_time {
+                Some(EventTime::DateTime(dt))
+            } else if let Some(d) = orig.date {
+                Some(EventTime::Date(d))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         result.push(Event {
             id: event.id,
             summary: if event.summary.is_empty() {
@@ -323,6 +357,9 @@ pub async fn fetch_events(
             start,
             end,
             status,
+            recurrence,
+            recurring_event_id,
+            original_start,
         });
     }
 
