@@ -285,6 +285,7 @@ async fn cmd_push() -> Result<()> {
 
     let calendar_dir = config::expand_path(&cfg.calendar_dir);
 
+    let mut total_created = 0;
     let mut total_updated = 0;
 
     let account_emails: Vec<String> = all_tokens.gcal.keys().cloned().collect();
@@ -338,9 +339,51 @@ async fn cmd_push() -> Result<()> {
         let sync_diff =
             diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, false)?;
 
-        if sync_diff.to_push_update.is_empty() {
+        if sync_diff.to_push_create.is_empty() && sync_diff.to_push_update.is_empty() {
             println!("  No changes to push");
             continue;
+        }
+
+        // Push new local events
+        for change in &sync_diff.to_push_create {
+            // Find the local event by matching filename
+            let local_event = local_events.values().find(|l| {
+                l.path
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    == Some(change.filename.clone())
+            });
+
+            if let Some(local) = local_event {
+                // Parse local ICS to Event
+                if let Some(event) = ics::parse_event(&local.content) {
+                    println!("  Creating: {}", event.summary);
+
+                    // Create event on Google Calendar and get back the full event
+                    // with Google-assigned ID and Google-added fields (organizer, reminders, etc.)
+                    let created_event = providers::gcal::create_event(
+                        gcal_config,
+                        &account_tokens,
+                        &primary_calendar.id,
+                        &event,
+                    )
+                    .await?;
+
+                    // Generate new ICS content and filename from the Google-returned event
+                    let new_content = ics::generate_ics(&created_event, &metadata)?;
+                    let new_filename = ics::generate_filename(&created_event);
+
+                    // Delete old file
+                    caldir::delete_event(&local.path)?;
+
+                    // Write new file with Google's event data
+                    caldir::write_event(&calendar_dir, &new_filename, &new_content)?;
+
+                    total_created += 1;
+                } else {
+                    eprintln!("  Warning: Could not parse {}", change.filename);
+                }
+            }
         }
 
         // Push updated events
@@ -372,8 +415,11 @@ async fn cmd_push() -> Result<()> {
         }
     }
 
-    if total_updated > 0 {
-        println!("\nPushed {} event(s)", total_updated);
+    if total_created > 0 || total_updated > 0 {
+        println!(
+            "\nPushed {} created, {} updated",
+            total_created, total_updated
+        );
     } else {
         println!("\nNo changes to push.");
     }

@@ -559,3 +559,186 @@ pub async fn update_event(
 
     Ok(())
 }
+
+/// Create a new event on Google Calendar
+/// Returns the created Event with Google-assigned ID and all Google-added fields
+pub async fn create_event(
+    config: &GcalConfig,
+    tokens: &AccountTokens,
+    calendar_id: &str,
+    event: &Event,
+) -> Result<Event> {
+    let client = create_client(config, tokens);
+
+    // Create a google event without the local ID (Google will assign one)
+    let mut google_event = to_google_event(event);
+    google_event.id = String::new(); // Let Google assign the ID
+
+    let response = client
+        .events()
+        .insert(
+            calendar_id,
+            0,                        // conference_data_version
+            0,                        // max_attendees
+            false,                    // send_notifications (deprecated)
+            SendUpdates::None,        // send_updates
+            false,                    // supports_attachments
+            &google_event,
+        )
+        .await
+        .with_context(|| format!("Failed to create event: {}", event.summary))?;
+
+    // Convert the response back to our Event type to capture Google-added fields
+    let created = response.body;
+    from_google_event(created)
+}
+
+/// Convert a Google Calendar API Event to our provider-neutral Event
+fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
+    // Parse start time
+    let start = if let Some(ref start) = event.start {
+        if let Some(dt) = start.date_time {
+            EventTime::DateTime(dt)
+        } else if let Some(d) = start.date {
+            EventTime::Date(d)
+        } else {
+            anyhow::bail!("Event has no start time");
+        }
+    } else {
+        anyhow::bail!("Event has no start time");
+    };
+
+    // Parse end time
+    let end = if let Some(ref end) = event.end {
+        if let Some(dt) = end.date_time {
+            EventTime::DateTime(dt)
+        } else if let Some(d) = end.date {
+            EventTime::Date(d)
+        } else {
+            anyhow::bail!("Event has no end time");
+        }
+    } else {
+        anyhow::bail!("Event has no end time");
+    };
+
+    let status = match event.status.as_str() {
+        "tentative" => EventStatus::Tentative,
+        "cancelled" => EventStatus::Cancelled,
+        _ => EventStatus::Confirmed,
+    };
+
+    // Extract recurrence fields
+    let recurrence = if event.recurrence.is_empty() {
+        None
+    } else {
+        Some(event.recurrence)
+    };
+
+    // Parse original start time (for recurring event instances)
+    let original_start = if let Some(ref orig) = event.original_start_time {
+        if let Some(dt) = orig.date_time {
+            Some(EventTime::DateTime(dt))
+        } else {
+            orig.date.map(EventTime::Date)
+        }
+    } else {
+        None
+    };
+
+    // Extract reminders
+    let reminders = if let Some(ref rem) = event.reminders {
+        rem.overrides
+            .iter()
+            .map(|r| Reminder { minutes: r.minutes })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // Extract transparency (busy/free status)
+    let transparency = if event.transparency == "transparent" {
+        Transparency::Transparent
+    } else {
+        Transparency::Opaque
+    };
+
+    // Extract organizer
+    let organizer = event.organizer.as_ref().map(|o| Attendee {
+        name: if o.display_name.is_empty() {
+            None
+        } else {
+            Some(o.display_name.clone())
+        },
+        email: o.email.clone(),
+        response_status: None,
+    });
+
+    // Extract attendees
+    let attendees: Vec<Attendee> = event
+        .attendees
+        .iter()
+        .map(|a| Attendee {
+            name: if a.display_name.is_empty() {
+                None
+            } else {
+                Some(a.display_name.clone())
+            },
+            email: a.email.clone(),
+            response_status: if a.response_status.is_empty() {
+                None
+            } else {
+                Some(a.response_status.clone())
+            },
+        })
+        .collect();
+
+    // Extract conference URL
+    let conference_url = event.conference_data.as_ref().and_then(|cd| {
+        cd.entry_points
+            .iter()
+            .find(|ep| ep.entry_point_type == "video")
+            .map(|ep| ep.uri.clone())
+    });
+
+    // Build custom properties
+    let mut custom_properties = Vec::new();
+    if let Some(ref url) = conference_url {
+        custom_properties.push(("X-GOOGLE-CONFERENCE".to_string(), url.clone()));
+    }
+
+    Ok(Event {
+        id: event.id,
+        summary: if event.summary.is_empty() {
+            "(No title)".to_string()
+        } else {
+            event.summary
+        },
+        description: if event.description.is_empty() {
+            None
+        } else {
+            Some(event.description)
+        },
+        location: if event.location.is_empty() {
+            None
+        } else {
+            Some(event.location)
+        },
+        start,
+        end,
+        status,
+        recurrence,
+        original_start,
+        reminders,
+        transparency,
+        organizer,
+        attendees,
+        conference_url,
+        updated: event.updated,
+        sequence: if event.sequence > 0 {
+            Some(event.sequence)
+        } else {
+            None
+        },
+        custom_properties,
+    })
+}

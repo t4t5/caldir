@@ -37,7 +37,7 @@ This is more friction (~10 minutes of setup), but it means:
 
 The tool supports bidirectional sync between cloud and local:
 - `pull` — Download changes from cloud to local
-- `push` — Upload local changes to cloud (updates only)
+- `push` — Upload local changes to cloud (creates and updates)
 - `status` — Shows pending changes in both directions
 
 **Sync direction detection** uses timestamp comparison:
@@ -111,6 +111,22 @@ Events created locally via `caldir-cli new` include `X-CALDIR-ORIGIN:local`. Thi
 - **Remotely-deleted events** (no origin marker, but missing from remote) → candidates for local deletion
 
 This keeps all sync state in the `.ics` files themselves, following the "filesystem as state" philosophy.
+
+### Push Flow for New Events
+
+When `push` creates a new event on Google Calendar:
+
+1. Parse local `.ics` file to get the Event
+2. Call Google Calendar API to create the event
+3. Google returns the created event with:
+   - Google-assigned event ID (replaces `local-{uuid}`)
+   - Google-added fields (organizer, default reminders, etc.)
+4. Write the Google-returned event back to local file:
+   - New filename with Google ID suffix
+   - All Google-added fields preserved (ORGANIZER, VALARM, etc.)
+   - `X-CALDIR-ORIGIN:local` is removed (no longer needed)
+
+This ensures the local file exactly matches the remote state after push, preventing false "modified" status on subsequent syncs.
 
 ## Filename Convention
 
