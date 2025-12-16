@@ -50,7 +50,7 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
 
     // SEQUENCE
     if let Some(seq) = event.sequence {
-        ics_event.add_property("SEQUENCE", &seq.to_string());
+        ics_event.add_property("SEQUENCE", seq.to_string());
     }
 
     // Set start/end times
@@ -232,8 +232,6 @@ fn slugify(s: &str) -> String {
         .map(|c| {
             if c.is_alphanumeric() {
                 c
-            } else if c.is_whitespace() || c == '-' || c == '_' {
-                '-'
             } else {
                 '-'
             }
@@ -257,8 +255,8 @@ fn short_id(id: &str) -> String {
 /// Parse the UID from an .ics file
 pub fn parse_uid(content: &str) -> Option<String> {
     for line in content.lines() {
-        if line.starts_with("UID:") {
-            return Some(line[4..].trim().to_string());
+        if let Some(stripped) = line.strip_prefix("UID:") {
+            return Some(stripped.trim().to_string());
         }
     }
     None
@@ -292,19 +290,17 @@ pub fn parse_properties(content: &str) -> HashMap<String, String> {
         }
 
         // Process the completed line
-        if !current_line.is_empty() {
-            if in_vevent {
-                if in_valarm {
-                    // Extract TRIGGER from alarms
-                    if let Some((key, value)) = parse_property_line(&current_line) {
-                        if key == "TRIGGER" {
-                            alarm_triggers.push(format_trigger_value(&value));
-                        }
+        if !current_line.is_empty() && in_vevent {
+            if in_valarm {
+                // Extract TRIGGER from alarms
+                if let Some((key, value)) = parse_property_line(&current_line) {
+                    if key == "TRIGGER" {
+                        alarm_triggers.push(format_trigger_value(&value));
                     }
-                } else if let Some((key, value)) = parse_property_line(&current_line) {
-                    if !SKIP_PROPERTIES.contains(&key.as_str()) {
-                        props.insert(key, value);
-                    }
+                }
+            } else if let Some((key, value)) = parse_property_line(&current_line) {
+                if !SKIP_PROPERTIES.contains(&key.as_str()) {
+                    props.insert(key, value);
                 }
             }
         }

@@ -299,10 +299,8 @@ pub async fn fetch_events(
         let original_start = if let Some(ref orig) = event.original_start_time {
             if let Some(dt) = orig.date_time {
                 Some(EventTime::DateTime(dt))
-            } else if let Some(d) = orig.date {
-                Some(EventTime::Date(d))
             } else {
-                None
+                orig.date.map(EventTime::Date)
             }
         } else {
             None

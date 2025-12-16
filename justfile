@@ -10,7 +10,7 @@ status:
 # Cargo
 
 check:
-  cargo check
+  cargo check && cargo clippy
 
 test:
   cargo test
