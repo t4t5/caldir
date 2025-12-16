@@ -210,9 +210,11 @@ pub fn compute(
                 .unwrap_or_default();
 
             // Distinguish between locally-created events and remotely-deleted events:
-            // - UIDs starting with "local-" were created locally → push candidate
-            // - Other UIDs came from remote and are now missing → delete candidate
-            if uid.starts_with("local-") {
+            // - Events with X-CALDIR-ORIGIN:local were created locally → push candidate
+            // - Other events came from remote and are now missing → delete candidate
+            let is_local_origin = local.content.contains("X-CALDIR-ORIGIN:local");
+
+            if is_local_origin {
                 diff.to_push_create.push(SyncChange {
                     filename,
                     property_changes: Vec::new(),

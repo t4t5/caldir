@@ -90,6 +90,8 @@ src/
 
 ## Event Properties
 
+See `specs/caldir.md` for the full ICS format specification with field-by-field documentation.
+
 Events include these properties (when available from the provider):
 
 - **Core**: summary, description, location, start/end time
@@ -100,6 +102,15 @@ Events include these properties (when available from the provider):
 - **Meeting data**: conference/video call URLs
 - **Sync metadata**: LAST-MODIFIED, SEQUENCE, DTSTAMP
 - **Custom properties**: provider-specific fields (e.g., X-GOOGLE-CONFERENCE) preserved for round-tripping
+- **Origin tracking**: X-CALDIR-ORIGIN property marks where an event was created
+
+### X-CALDIR-ORIGIN Property
+
+Events created locally via `caldir-cli new` include `X-CALDIR-ORIGIN:local`. This allows the diff logic to distinguish between:
+- **Locally-created events** (have `X-CALDIR-ORIGIN:local`) → candidates for pushing to cloud
+- **Remotely-deleted events** (no origin marker, but missing from remote) → candidates for local deletion
+
+This keeps all sync state in the `.ics` files themselves, following the "filesystem as state" philosophy.
 
 ## Filename Convention
 
@@ -151,10 +162,15 @@ This supports multiple accounts per provider. Run `caldir-cli auth` multiple tim
 # Authenticate with Google Calendar
 caldir-cli auth
 
+# Create a new local event
+caldir-cli new "Meeting with Alice" --start 2025-03-20T15:00
+caldir-cli new "Team standup" --start 2025-03-20T09:00 --duration 30m
+caldir-cli new "Vacation" --start 2025-03-25 --end 2025-03-28  # all-day event
+
 # Pull events from cloud to local directory
 caldir-cli pull
 
-# Push local changes to cloud (updates only, not new events)
+# Push local changes to cloud
 caldir-cli push
 
 # Show pending changes in both directions (like git status)
@@ -164,6 +180,17 @@ caldir-cli status
 # Show which properties changed for each modified event
 caldir-cli status --verbose
 ```
+
+### new command options
+
+- `TITLE` (positional) — Event title
+- `--start, -s` — Start date/time (`2025-03-20` for all-day, `2025-03-20T15:00` for timed)
+- `--end, -e` — End date/time (mutually exclusive with --duration)
+- `--duration, -d` — Duration (`30m`, `1h`, `2h30m`) (mutually exclusive with --end)
+- `--description` — Event description
+- `--location, -l` — Event location
+
+If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed events or 1 day for all-day events.
 
 ## Development
 
@@ -182,3 +209,4 @@ cargo run -- pull
 - **icalendar** — Generate .ics files
 - **tokio** — Async runtime
 - **clap** — CLI argument parsing
+- **uuid** — Generate unique event IDs for locally-created events

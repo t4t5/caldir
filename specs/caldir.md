@@ -269,3 +269,20 @@ caldir uses semantic filenames instead of UUIDs:
 ### Future: Outlook
 - `X-MICROSOFT-CDO-BUSYSTATUS` maps to TRANSP (FREE→TRANSPARENT, BUSY→OPAQUE)
 - Most `X-MICROSOFT-CDO-*` fields are compatibility cruft and can be ignored
+
+---
+
+## caldir-Specific Extensions
+
+### `X-CALDIR-ORIGIN`
+**What:** Marks where an event was created.
+**Values:** `local` (created via `caldir-cli new`)
+**Example:** `X-CALDIR-ORIGIN:local`
+
+**Why:** Enables the sync logic to distinguish between:
+- **Locally-created events** (have `X-CALDIR-ORIGIN:local`) → candidates for pushing to cloud
+- **Remotely-deleted events** (no origin marker, missing from remote) → candidates for local deletion
+
+Without this marker, a local-only event is ambiguous: was it created locally and needs to be pushed, or was it pulled from the cloud and then deleted remotely?
+
+**Philosophy:** This keeps all sync state in the `.ics` files themselves, following caldir's "filesystem as state" principle. No separate sync database needed.

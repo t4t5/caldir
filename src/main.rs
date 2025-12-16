@@ -617,7 +617,7 @@ async fn cmd_new(
         conference_url: None,
         updated: Some(chrono::Utc::now()),
         sequence: Some(0),
-        custom_properties: Vec::new(),
+        custom_properties: vec![("X-CALDIR-ORIGIN".to_string(), "local".to_string())],
     };
 
     // Generate ICS content and filename
