@@ -222,6 +222,30 @@ pub struct Event {
     pub recurring_event_id: Option<String>,
     /// Original start time for this instance (used for RECURRENCE-ID)
     pub original_start: Option<EventTime>,
+
+    // Alarms & Availability (Phase B)
+    /// Reminders/alarms for this event
+    pub reminders: Vec<Reminder>,
+    /// Whether event blocks time (OPAQUE) or is free (TRANSPARENT)
+    pub transparency: Transparency,
+}
+
+/// A reminder/alarm for an event
+#[derive(Debug, Clone)]
+pub struct Reminder {
+    /// Method: "popup", "email", etc.
+    pub method: String,
+    /// Minutes before the event to trigger
+    pub minutes: i64,
+}
+
+/// Event transparency (busy/free status)
+#[derive(Debug, Clone, PartialEq)]
+pub enum Transparency {
+    /// Event blocks time on calendar (default)
+    Opaque,
+    /// Event does not block time (shows as free)
+    Transparent,
 }
 
 #[derive(Debug, Clone)]
@@ -337,6 +361,26 @@ pub async fn fetch_events(
             None
         };
 
+        // Extract reminders
+        let reminders = if let Some(ref rem) = event.reminders {
+            rem.overrides
+                .iter()
+                .map(|r| Reminder {
+                    method: r.method.clone(),
+                    minutes: r.minutes,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        // Extract transparency (busy/free status)
+        let transparency = if event.transparency == "transparent" {
+            Transparency::Transparent
+        } else {
+            Transparency::Opaque // Default
+        };
+
         result.push(Event {
             id: event.id,
             summary: if event.summary.is_empty() {
@@ -360,6 +404,8 @@ pub async fn fetch_events(
             recurrence,
             recurring_event_id,
             original_start,
+            reminders,
+            transparency,
         });
     }
 

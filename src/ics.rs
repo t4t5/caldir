@@ -1,6 +1,6 @@
-use crate::providers::gcal::{Event, EventStatus, EventTime};
+use crate::providers::gcal::{Event, EventStatus, EventTime, Transparency};
 use anyhow::Result;
-use icalendar::{Calendar, Component, EventLike};
+use icalendar::{Alarm, Calendar, Component, EventLike, Trigger};
 
 /// Generate .ics content for an event
 pub fn generate_ics(event: &Event) -> Result<String> {
@@ -66,6 +66,20 @@ pub fn generate_ics(event: &Event) -> Result<String> {
             EventTime::Date(d) => d.format("%Y%m%d").to_string(),
         };
         ics_event.add_property("RECURRENCE-ID", &recurrence_id);
+    }
+
+    // TRANSP (transparency/busy-free status)
+    let transp = match event.transparency {
+        Transparency::Opaque => "OPAQUE",
+        Transparency::Transparent => "TRANSPARENT",
+    };
+    ics_event.add_property("TRANSP", transp);
+
+    // Add alarms (VALARM components)
+    for reminder in &event.reminders {
+        let trigger = Trigger::before_start(chrono::Duration::minutes(reminder.minutes));
+        let alarm = Alarm::display(&event.summary, trigger);
+        ics_event.alarm(alarm);
     }
 
     let ics_event = ics_event.done();
