@@ -1,7 +1,8 @@
+mod caldir;
 mod config;
+mod diff;
 mod ics;
 mod providers;
-mod sync;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -108,7 +109,7 @@ async fn cmd_pull() -> Result<()> {
     let calendar_dir = config::expand_path(&cfg.calendar_dir);
     std::fs::create_dir_all(&calendar_dir)?;
 
-    let mut total_stats = sync::SyncStats {
+    let mut total_stats = caldir::ApplyStats {
         created: 0,
         updated: 0,
         deleted: 0,
@@ -120,17 +121,25 @@ async fn cmd_pull() -> Result<()> {
         let mut account_tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
 
         // Check if token needs refresh
-        if account_tokens.expires_at.map(|exp| exp < chrono::Utc::now()).unwrap_or(false) {
+        if account_tokens
+            .expires_at
+            .map(|exp| exp < chrono::Utc::now())
+            .unwrap_or(false)
+        {
             println!("Access token expired for {}, refreshing...", account_email);
-            account_tokens = providers::gcal::refresh_token(gcal_config, &account_tokens).await?;
-            all_tokens.gcal.insert(account_email.clone(), account_tokens.clone());
+            account_tokens =
+                providers::gcal::refresh_token(gcal_config, &account_tokens).await?;
+            all_tokens
+                .gcal
+                .insert(account_email.clone(), account_tokens.clone());
             config::save_tokens(&all_tokens)?;
         }
 
         println!("\nPulling from account: {}", account_email);
 
         // Fetch calendars to find the primary one
-        let calendars = providers::gcal::fetch_calendars(gcal_config, &account_tokens).await?;
+        let calendars =
+            providers::gcal::fetch_calendars(gcal_config, &account_tokens).await?;
         let primary_calendar = calendars
             .iter()
             .find(|c| c.primary)
@@ -139,9 +148,14 @@ async fn cmd_pull() -> Result<()> {
 
         println!("  Syncing calendar: {}", primary_calendar.name);
 
-        // Fetch events
-        let events = providers::gcal::fetch_events(gcal_config, &account_tokens, &primary_calendar.id).await?;
-        println!("  Fetched {} events", events.len());
+        // Fetch remote events
+        let remote_events =
+            providers::gcal::fetch_events(gcal_config, &account_tokens, &primary_calendar.id)
+                .await?;
+        println!("  Fetched {} events", remote_events.len());
+
+        // Read local events
+        let local_events = caldir::read_all(&calendar_dir)?;
 
         // Build calendar metadata for ICS generation
         let metadata = ics::CalendarMetadata {
@@ -149,8 +163,55 @@ async fn cmd_pull() -> Result<()> {
             calendar_name: primary_calendar.name.clone(),
         };
 
-        // Sync to local directory
-        let stats = sync::sync_events_to_dir(&events, &calendar_dir, &metadata)?;
+        // Compute diff
+        let sync_diff =
+            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, false)?;
+
+        // Apply changes
+        let mut stats = caldir::ApplyStats {
+            created: 0,
+            updated: 0,
+            deleted: 0,
+        };
+
+        // Create new events
+        for change in &sync_diff.to_create {
+            // Find the event and generate ICS
+            if let Some(event) = remote_events.iter().find(|e| {
+                ics::generate_filename(e) == change.filename
+            }) {
+                let content = ics::generate_ics(event, &metadata)?;
+                caldir::write_event(&calendar_dir, &change.filename, &content)?;
+                stats.created += 1;
+            }
+        }
+
+        // Update modified events
+        for change in &sync_diff.to_update {
+            // Delete old file if it exists with different name
+            if let Some(local) = local_events.values().find(|l| {
+                l.path.file_name().map(|f| f.to_string_lossy().to_string())
+                    != Some(change.filename.clone())
+            }) {
+                let _ = caldir::delete_event(&local.path);
+            }
+            // Find the event and generate ICS
+            if let Some(event) = remote_events.iter().find(|e| {
+                ics::generate_filename(e) == change.filename
+            }) {
+                let content = ics::generate_ics(event, &metadata)?;
+                caldir::write_event(&calendar_dir, &change.filename, &content)?;
+                stats.updated += 1;
+            }
+        }
+
+        // Delete removed events
+        for change in &sync_diff.to_delete {
+            let path = calendar_dir.join(&change.filename);
+            caldir::delete_event(&path)?;
+            stats.deleted += 1;
+        }
+
         total_stats.created += stats.created;
         total_stats.updated += stats.updated;
         total_stats.deleted += stats.deleted;
@@ -187,9 +248,9 @@ async fn cmd_status(verbose: bool) -> Result<()> {
     let calendar_dir = config::expand_path(&cfg.calendar_dir);
 
     // Aggregate diffs from all accounts
-    let mut all_to_create: Vec<sync::SyncChange> = Vec::new();
-    let mut all_to_update: Vec<sync::SyncChange> = Vec::new();
-    let mut all_to_delete: Vec<sync::SyncChange> = Vec::new();
+    let mut all_to_create: Vec<diff::SyncChange> = Vec::new();
+    let mut all_to_update: Vec<diff::SyncChange> = Vec::new();
+    let mut all_to_delete: Vec<diff::SyncChange> = Vec::new();
 
     let account_emails: Vec<String> = all_tokens.gcal.keys().cloned().collect();
     for account_email in account_emails {
@@ -201,7 +262,8 @@ async fn cmd_status(verbose: bool) -> Result<()> {
             .map(|exp| exp < chrono::Utc::now())
             .unwrap_or(false)
         {
-            account_tokens = providers::gcal::refresh_token(gcal_config, &account_tokens).await?;
+            account_tokens =
+                providers::gcal::refresh_token(gcal_config, &account_tokens).await?;
             all_tokens
                 .gcal
                 .insert(account_email.clone(), account_tokens.clone());
@@ -222,10 +284,13 @@ async fn cmd_status(verbose: bool) -> Result<()> {
             account_email, primary_calendar.name
         );
 
-        // Fetch events
-        let events =
+        // Fetch remote events
+        let remote_events =
             providers::gcal::fetch_events(gcal_config, &account_tokens, &primary_calendar.id)
                 .await?;
+
+        // Read local events
+        let local_events = caldir::read_all(&calendar_dir)?;
 
         // Build calendar metadata
         let metadata = ics::CalendarMetadata {
@@ -234,11 +299,12 @@ async fn cmd_status(verbose: bool) -> Result<()> {
         };
 
         // Compute diff without applying
-        let diff = sync::compute_sync_diff(&events, &calendar_dir, &metadata, verbose)?;
+        let sync_diff =
+            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, verbose)?;
 
-        all_to_create.extend(diff.to_create);
-        all_to_update.extend(diff.to_update);
-        all_to_delete.extend(diff.to_delete);
+        all_to_create.extend(sync_diff.to_create);
+        all_to_update.extend(sync_diff.to_update);
+        all_to_delete.extend(sync_diff.to_delete);
     }
 
     // Display results
@@ -269,10 +335,16 @@ async fn cmd_status(verbose: bool) -> Result<()> {
                 for prop_change in &change.property_changes {
                     match (&prop_change.old_value, &prop_change.new_value) {
                         (Some(old), Some(new)) => {
-                            println!("      {}: \"{}\" → \"{}\"", prop_change.property, old, new);
+                            println!(
+                                "      {}: \"{}\" → \"{}\"",
+                                prop_change.property, old, new
+                            );
                         }
                         (Some(old), None) => {
-                            println!("      {}: \"{}\" → (removed)", prop_change.property, old);
+                            println!(
+                                "      {}: \"{}\" → (removed)",
+                                prop_change.property, old
+                            );
                         }
                         (None, Some(new)) => {
                             println!("      {}: (added) \"{}\"", prop_change.property, new);

@@ -218,8 +218,6 @@ pub struct Event {
     // Recurrence fields
     /// RRULE, EXDATE lines for master events
     pub recurrence: Option<Vec<String>>,
-    /// Links this instance to its master recurring event
-    pub recurring_event_id: Option<String>,
     /// Original start time for this instance (used for RECURRENCE-ID)
     pub original_start: Option<EventTime>,
 
@@ -258,8 +256,6 @@ pub struct Attendee {
 /// A reminder/alarm for an event
 #[derive(Debug, Clone)]
 pub struct Reminder {
-    /// Method: "popup", "email", etc.
-    pub method: String,
     /// Minutes before the event to trigger
     pub minutes: i64,
 }
@@ -367,12 +363,6 @@ pub async fn fetch_events(
             Some(event.recurrence)
         };
 
-        let recurring_event_id = if event.recurring_event_id.is_empty() {
-            None
-        } else {
-            Some(event.recurring_event_id)
-        };
-
         // Parse original start time (for recurring event instances)
         let original_start = if let Some(ref orig) = event.original_start_time {
             if let Some(dt) = orig.date_time {
@@ -391,7 +381,6 @@ pub async fn fetch_events(
             rem.overrides
                 .iter()
                 .map(|r| Reminder {
-                    method: r.method.clone(),
                     minutes: r.minutes,
                 })
                 .collect()
@@ -474,7 +463,6 @@ pub async fn fetch_events(
             end,
             status,
             recurrence,
-            recurring_event_id,
             original_start,
             reminders,
             transparency,

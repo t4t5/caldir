@@ -181,16 +181,6 @@ pub fn generate_filename(event: &Event) -> String {
     format!("{}__{}_{}.ics", date_part, slug, short_id(&event.id))
 }
 
-/// Check if an event is a recurring master (has RRULE)
-pub fn is_recurring_master(event: &Event) -> bool {
-    event.recurrence.is_some()
-}
-
-/// Check if an event is an instance override of a recurring event
-pub fn is_instance_override(event: &Event) -> bool {
-    event.recurring_event_id.is_some() && event.original_start.is_some()
-}
-
 /// Format an organizer for iCalendar ORGANIZER property
 /// Format: CN=Name:mailto:email@example.com
 /// Note: ORGANIZER doesn't have PARTSTAT (only ATTENDEE does)
@@ -271,14 +261,227 @@ pub fn parse_uid(content: &str) -> Option<String> {
     None
 }
 
-/// Parse the SUMMARY (event title) from an .ics file
-pub fn parse_summary(content: &str) -> Option<String> {
+// ============================================================================
+// ICS Parsing (for property-level diff)
+// ============================================================================
+
+use std::collections::HashMap;
+
+/// Properties to skip when computing property-level diffs
+const SKIP_PROPERTIES: &[&str] = &[
+    "DTSTAMP", "BEGIN", "END", "VERSION", "PRODID", "CALSCALE",
+];
+
+/// Parse ICS content into property key-value pairs (for the VEVENT component).
+/// Also extracts alarm triggers as a special "ALARMS" property.
+pub fn parse_properties(content: &str) -> HashMap<String, String> {
+    let mut props = HashMap::new();
+    let mut in_vevent = false;
+    let mut in_valarm = false;
+    let mut current_line = String::new();
+    let mut alarm_triggers: Vec<String> = Vec::new();
+
     for line in content.lines() {
-        if line.starts_with("SUMMARY:") {
-            return Some(line[8..].trim().to_string());
+        // Handle line folding (lines starting with space are continuations)
+        if line.starts_with(' ') || line.starts_with('\t') {
+            current_line.push_str(line.trim_start());
+            continue;
+        }
+
+        // Process the completed line
+        if !current_line.is_empty() {
+            if in_vevent {
+                if in_valarm {
+                    // Extract TRIGGER from alarms
+                    if let Some((key, value)) = parse_property_line(&current_line) {
+                        if key == "TRIGGER" {
+                            alarm_triggers.push(format_trigger_value(&value));
+                        }
+                    }
+                } else if let Some((key, value)) = parse_property_line(&current_line) {
+                    if !SKIP_PROPERTIES.contains(&key.as_str()) {
+                        props.insert(key, value);
+                    }
+                }
+            }
+        }
+
+        current_line = line.to_string();
+
+        // Track which component we're in
+        if line == "BEGIN:VEVENT" {
+            in_vevent = true;
+        } else if line == "END:VEVENT" {
+            in_vevent = false;
+        } else if line == "BEGIN:VALARM" {
+            in_valarm = true;
+        } else if line == "END:VALARM" {
+            in_valarm = false;
         }
     }
-    None
+
+    // Process last line
+    if !current_line.is_empty() && in_vevent && !in_valarm {
+        if let Some((key, value)) = parse_property_line(&current_line) {
+            if !SKIP_PROPERTIES.contains(&key.as_str()) {
+                props.insert(key, value);
+            }
+        }
+    }
+
+    // Add alarms as a combined property if present
+    if !alarm_triggers.is_empty() {
+        alarm_triggers.sort();
+        props.insert("ALARMS".to_string(), alarm_triggers.join(", "));
+    }
+
+    props
+}
+
+/// Parse a single ICS property line into key and value
+fn parse_property_line(line: &str) -> Option<(String, String)> {
+    // Properties can be "KEY:VALUE" or "KEY;PARAM=X:VALUE"
+    let colon_pos = line.find(':')?;
+    let key_part = &line[..colon_pos];
+    let value = &line[colon_pos + 1..];
+
+    // Extract just the property name (before any parameters)
+    let key = key_part.split(';').next()?.to_string();
+
+    Some((key, value.to_string()))
+}
+
+// ============================================================================
+// ICS Formatting (for human-readable display)
+// ============================================================================
+
+/// Human-readable names for ICS properties
+pub fn property_display_name(prop: &str) -> &str {
+    match prop {
+        "SUMMARY" => "Title",
+        "DESCRIPTION" => "Description",
+        "LOCATION" => "Location",
+        "DTSTART" => "Start",
+        "DTEND" => "End",
+        "STATUS" => "Status",
+        "TRANSP" => "Show as",
+        "RRULE" => "Recurrence",
+        "EXDATE" => "Excluded dates",
+        "RECURRENCE-ID" => "Instance",
+        "ORGANIZER" => "Organizer",
+        "ATTENDEE" => "Attendee",
+        "URL" => "URL",
+        "SEQUENCE" => "Version",
+        "LAST-MODIFIED" => "Last modified",
+        "ALARMS" => "Reminders",
+        _ => prop,
+    }
+}
+
+/// Format a property value for display (truncate long values, format dates)
+pub fn format_property_value(prop: &str, value: &str) -> String {
+    // Format datetime values
+    if prop == "DTSTART" || prop == "DTEND" || prop == "LAST-MODIFIED" || prop == "RECURRENCE-ID" {
+        return format_datetime_value(value);
+    }
+
+    // Format transparency
+    if prop == "TRANSP" {
+        return match value {
+            "OPAQUE" => "Busy".to_string(),
+            "TRANSPARENT" => "Free".to_string(),
+            _ => value.to_string(),
+        };
+    }
+
+    // Truncate long values
+    if value.len() > 60 {
+        format!("{}...", &value[..57])
+    } else {
+        value.to_string()
+    }
+}
+
+/// Format an ICS datetime value for display
+fn format_datetime_value(value: &str) -> String {
+    // Handle VALUE=DATE format (all-day): 20250320
+    if value.len() == 8 && value.chars().all(|c| c.is_ascii_digit()) {
+        if let (Ok(y), Ok(m), Ok(d)) = (
+            value[0..4].parse::<i32>(),
+            value[4..6].parse::<u32>(),
+            value[6..8].parse::<u32>(),
+        ) {
+            return format!("{}-{:02}-{:02}", y, m, d);
+        }
+    }
+
+    // Handle datetime format: 20250320T150000Z
+    if value.len() >= 15 && value.contains('T') {
+        let date_part = &value[0..8];
+        let time_part = &value[9..15];
+        if let (Ok(y), Ok(mo), Ok(d), Ok(h), Ok(mi)) = (
+            date_part[0..4].parse::<i32>(),
+            date_part[4..6].parse::<u32>(),
+            date_part[6..8].parse::<u32>(),
+            time_part[0..2].parse::<u32>(),
+            time_part[2..4].parse::<u32>(),
+        ) {
+            return format!("{}-{:02}-{:02} {:02}:{:02}", y, mo, d, h, mi);
+        }
+    }
+
+    value.to_string()
+}
+
+/// Format a TRIGGER value for display (e.g., "-PT86400S" -> "1 day before")
+fn format_trigger_value(value: &str) -> String {
+    // Parse ISO 8601 duration format: -PT{n}S, -PT{n}M, -PT{n}H, -P{n}D, etc.
+    let is_before = value.starts_with('-');
+    let duration_part = value
+        .trim_start_matches('-')
+        .trim_start_matches('P')
+        .trim_start_matches('T');
+
+    // Try to parse common formats
+    if let Some(seconds) = duration_part.strip_suffix('S') {
+        if let Ok(s) = seconds.parse::<i64>() {
+            let minutes = s / 60;
+            if minutes >= 60 && minutes % 60 == 0 {
+                let hours = minutes / 60;
+                if hours >= 24 && hours % 24 == 0 {
+                    let days = hours / 24;
+                    return format_duration(days, "day", is_before);
+                }
+                return format_duration(hours, "hour", is_before);
+            }
+            return format_duration(minutes, "min", is_before);
+        }
+    }
+    if let Some(minutes) = duration_part.strip_suffix('M') {
+        if let Ok(m) = minutes.parse::<i64>() {
+            if m >= 60 && m % 60 == 0 {
+                return format_duration(m / 60, "hour", is_before);
+            }
+            return format_duration(m, "min", is_before);
+        }
+    }
+    if let Some(hours) = duration_part.strip_suffix('H') {
+        if let Ok(h) = hours.parse::<i64>() {
+            if h >= 24 && h % 24 == 0 {
+                return format_duration(h / 24, "day", is_before);
+            }
+            return format_duration(h, "hour", is_before);
+        }
+    }
+
+    // Fallback to raw value
+    value.to_string()
+}
+
+fn format_duration(value: i64, unit: &str, is_before: bool) -> String {
+    let plural = if value == 1 { "" } else { "s" };
+    let direction = if is_before { "before" } else { "after" };
+    format!("{} {}{} {}", value, unit, plural, direction)
 }
 
 #[cfg(test)]

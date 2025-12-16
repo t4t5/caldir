@@ -56,6 +56,40 @@ The codebase is structured for multiple providers:
 
 Currently only `gcal` is implemented.
 
+## Module Architecture
+
+```
+src/
+  main.rs        - CLI entry point and command implementations
+  config.rs      - Configuration and token storage
+  diff.rs        - Pure diff computation between local and remote
+  caldir.rs      - Local directory operations (read/write .ics files)
+  ics.rs         - ICS format: generation, parsing, formatting
+  providers/
+    mod.rs
+    gcal.rs      - Google Calendar provider
+```
+
+### Key Abstractions
+
+**diff.rs** — Direction-agnostic diff computation. Compares remote events against local files and returns `SyncDiff` (lists of changes to create/update/delete). Used by both `status` (preview) and `pull` (apply). Designed to also support a future `push` command.
+
+**caldir.rs** — The local calendar directory as a first-class abstraction. Reads all `.ics` files into a UID → LocalEvent map, writes events, deletes events. The filesystem is the source of truth.
+
+**ics.rs** — Everything ICS format. Generates compliant `.ics` files from provider events, parses properties from existing files, formats values for human-readable output (e.g., alarm triggers like "1 day before").
+
+## Event Properties
+
+Events include these properties (when available from the provider):
+
+- **Core**: summary, description, location, start/end time
+- **Recurrence**: RRULE, EXDATE, RECURRENCE-ID for recurring events
+- **Attendees**: organizer and participants with response status
+- **Reminders**: VALARM components with trigger times
+- **Availability**: TRANSP (opaque/transparent for busy/free)
+- **Meeting data**: conference/video call URLs
+- **Sync metadata**: LAST-MODIFIED, SEQUENCE, DTSTAMP
+
 ## Filename Convention
 
 **Timed events:** `YYYY-MM-DDTHHMM__slug_eventid.ics`
@@ -109,8 +143,11 @@ caldir-sync auth
 # Pull events from cloud to local directory
 caldir-sync pull
 
-# Show status of configured providers and auth
+# Show pending changes (like git status)
 caldir-sync status
+
+# Show which properties changed for each modified event
+caldir-sync status --verbose
 ```
 
 ## Development
