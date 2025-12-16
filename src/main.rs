@@ -24,8 +24,12 @@ enum Commands {
     },
     /// Pull events from cloud to local directory
     Pull,
-    /// Show status of configured providers
-    Status,
+    /// Show changes between local directory and cloud calendars
+    Status {
+        /// Show detailed diff information for debugging
+        #[arg(long)]
+        debug: bool,
+    },
 }
 
 #[tokio::main]
@@ -35,7 +39,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Auth { provider } => cmd_auth(&provider).await,
         Commands::Pull => cmd_pull().await,
-        Commands::Status => cmd_status().await,
+        Commands::Status { debug } => cmd_status(debug).await,
     }
 }
 
@@ -165,57 +169,114 @@ async fn cmd_pull() -> Result<()> {
     Ok(())
 }
 
-async fn cmd_status() -> Result<()> {
-    let config_path = config::config_path()?;
-    let tokens_path = config::tokens_path()?;
+async fn cmd_status(debug: bool) -> Result<()> {
+    let cfg = config::load_config()?;
+    let mut all_tokens = config::load_tokens()?;
 
-    println!("caldir-sync status\n");
+    let gcal_config = cfg.providers.gcal.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("Google Calendar not configured in config.toml")
+    })?;
 
-    // Config file
-    if config_path.exists() {
-        println!("Config: {}", config_path.display());
-        match config::load_config() {
-            Ok(cfg) => {
-                if cfg.providers.gcal.is_some() {
-                    println!("  - gcal: configured");
-                }
-            }
-            Err(e) => {
-                println!("  - Error loading config: {}", e);
-            }
-        }
-    } else {
-        println!("Config: not found (expected at {})", config_path.display());
+    if all_tokens.gcal.is_empty() {
+        anyhow::bail!(
+            "Not authenticated with Google Calendar.\n\
+            Run `caldir-sync auth` first."
+        );
     }
 
-    println!();
+    let calendar_dir = config::expand_path(&cfg.calendar_dir);
 
-    // Tokens / Connected accounts
-    if tokens_path.exists() {
-        println!("Tokens: {}", tokens_path.display());
-        match config::load_tokens() {
-            Ok(tokens) => {
-                if tokens.gcal.is_empty() {
-                    println!("  - gcal: no accounts connected");
-                } else {
-                    println!("  - gcal accounts:");
-                    for (email, account_tokens) in &tokens.gcal {
-                        let expired = account_tokens
-                            .expires_at
-                            .map(|exp| exp < chrono::Utc::now())
-                            .unwrap_or(false);
-                        let status = if expired { "expired" } else { "valid" };
-                        println!("      {} ({})", email, status);
-                    }
-                }
-            }
-            Err(e) => {
-                println!("  - Error loading tokens: {}", e);
-            }
+    // Aggregate diffs from all accounts
+    let mut all_to_create: Vec<sync::SyncChange> = Vec::new();
+    let mut all_to_update: Vec<sync::SyncChange> = Vec::new();
+    let mut all_to_delete: Vec<sync::SyncChange> = Vec::new();
+
+    let account_emails: Vec<String> = all_tokens.gcal.keys().cloned().collect();
+    for account_email in account_emails {
+        let mut account_tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
+
+        // Refresh token if needed
+        if account_tokens
+            .expires_at
+            .map(|exp| exp < chrono::Utc::now())
+            .unwrap_or(false)
+        {
+            account_tokens = providers::gcal::refresh_token(gcal_config, &account_tokens).await?;
+            all_tokens
+                .gcal
+                .insert(account_email.clone(), account_tokens.clone());
+            config::save_tokens(&all_tokens)?;
         }
-    } else {
-        println!("Tokens: no accounts connected");
+
+        // Fetch calendars to find the primary one
+        let calendars =
+            providers::gcal::fetch_calendars(gcal_config, &account_tokens).await?;
+        let primary_calendar = calendars
+            .iter()
+            .find(|c| c.primary)
+            .or_else(|| calendars.first())
+            .ok_or_else(|| anyhow::anyhow!("No calendars found for {}", account_email))?;
+
+        println!(
+            "Fetching from: {} ({})...",
+            account_email, primary_calendar.name
+        );
+
+        // Fetch events
+        let events =
+            providers::gcal::fetch_events(gcal_config, &account_tokens, &primary_calendar.id)
+                .await?;
+
+        // Build calendar metadata
+        let metadata = ics::CalendarMetadata {
+            calendar_id: primary_calendar.id.clone(),
+            calendar_name: primary_calendar.name.clone(),
+        };
+
+        // Compute diff without applying
+        let diff = sync::compute_sync_diff(&events, &calendar_dir, &metadata, debug)?;
+
+        all_to_create.extend(diff.to_create);
+        all_to_update.extend(diff.to_update);
+        all_to_delete.extend(diff.to_delete);
     }
+
+    // Display results
+    let has_changes =
+        !all_to_create.is_empty() || !all_to_update.is_empty() || !all_to_delete.is_empty();
+
+    if !has_changes {
+        println!("\nEverything up to date.");
+        return Ok(());
+    }
+
+    println!("\nChanges to be pulled:\n");
+
+    if !all_to_create.is_empty() {
+        println!("  New events ({}):", all_to_create.len());
+        for change in &all_to_create {
+            println!("    {}", change.filename);
+        }
+        println!();
+    }
+
+    if !all_to_update.is_empty() {
+        println!("  Modified events ({}):", all_to_update.len());
+        for change in &all_to_update {
+            println!("    {}", change.filename);
+        }
+        println!();
+    }
+
+    if !all_to_delete.is_empty() {
+        println!("  Deleted events ({}):", all_to_delete.len());
+        for change in &all_to_delete {
+            println!("    {}", change.filename);
+        }
+        println!();
+    }
+
+    println!("Run `caldir-sync pull` to apply these changes.");
 
     Ok(())
 }

@@ -33,7 +33,8 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
     ics_event.uid(&event.id);
     ics_event.summary(&event.summary);
 
-    // DTSTAMP - required by RFC 5545, use current time or updated time
+    // DTSTAMP - required by RFC 5545, use updated timestamp or current time
+    // Note: comparison logic filters this out since it's non-deterministic
     let dtstamp = event
         .updated
         .unwrap_or_else(chrono::Utc::now)
@@ -118,9 +119,15 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
     ics_event.add_property("TRANSP", transp);
 
     // Add alarms (VALARM components)
+    // We set deterministic UIDs and DSTAMPs to avoid random generation by the icalendar crate
     for reminder in &event.reminders {
         let trigger = Trigger::before_start(chrono::Duration::minutes(reminder.minutes));
-        let alarm = Alarm::display(&event.summary, trigger);
+        let mut alarm = Alarm::display(&event.summary, trigger);
+        // Deterministic alarm UID from event ID and reminder minutes
+        let alarm_uid = format!("{}_alarm_{}", event.id, reminder.minutes);
+        alarm.add_property("UID", &alarm_uid);
+        // Use same DTSTAMP as the event (or a fixed timestamp) for determinism
+        alarm.add_property("DTSTAMP", &dtstamp);
         ics_event.alarm(alarm);
     }
 
@@ -259,6 +266,16 @@ pub fn parse_uid(content: &str) -> Option<String> {
     for line in content.lines() {
         if line.starts_with("UID:") {
             return Some(line[4..].trim().to_string());
+        }
+    }
+    None
+}
+
+/// Parse the SUMMARY (event title) from an .ics file
+pub fn parse_summary(content: &str) -> Option<String> {
+    for line in content.lines() {
+        if line.starts_with("SUMMARY:") {
+            return Some(line[8..].trim().to_string());
         }
     }
     None

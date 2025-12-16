@@ -44,8 +44,9 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 
 #### `DTSTAMP`
 **What:** Timestamp of when the ICS was created/modified.
-**How caldir uses it:** We use the event's `updated` timestamp from the provider. If unavailable, we use current time.
+**How caldir uses it:** We use the event's `updated` timestamp from the provider. If unavailable (e.g., birthday events), we fall back to current time.
 **Why:** Required by RFC 5545. Some calendar apps validate this.
+**Sync note:** Since the fallback uses current time, DTSTAMP can vary between ICS generations for events without an `updated` timestamp. Our sync comparison logic filters out DTSTAMP lines to avoid false positives—only actual content changes trigger updates.
 
 #### `DTSTART`
 **What:** When the event starts.
@@ -154,6 +155,8 @@ BEGIN:VALARM
 ACTION:DISPLAY
 TRIGGER:-PT10M
 DESCRIPTION:Event title
+UID:{event_id}_alarm_{minutes}
+DTSTAMP:{same as event}
 END:VALARM
 ```
 
@@ -161,6 +164,10 @@ END:VALARM
 - `ACTION:DISPLAY` - Always display type (not email/audio)
 - `TRIGGER` - Minutes before event (e.g., `-PT10M` = 10 min before)
 - `DESCRIPTION` - Uses event summary
+- `UID` - Deterministic ID based on event ID + reminder offset (see below)
+- `DTSTAMP` - Same timestamp as the parent event
+
+**Deterministic alarm UIDs:** The icalendar crate generates random UUIDs for VALARM components by default. This would cause every ICS regeneration to differ, breaking sync comparison. We explicitly set deterministic UIDs using the pattern `{event_id}_alarm_{minutes}` (e.g., `abc123_alarm_10`). This ensures the same alarm always gets the same UID.
 
 **Tradeoff:** Google has both "default reminders" (calendar-level) and "override reminders" (event-level). We only sync override reminders. If an event uses default reminders, it won't have any VALARM in the ICS file.
 
@@ -176,6 +183,35 @@ END:VALARM
 **What:** Google-specific extension for conference links.
 **How caldir uses it:** We output the same URL as both `URL` and `X-GOOGLE-CONFERENCE` for compatibility.
 **Tradeoff:** This is redundant, but ensures Google Calendar recognizes the conference link if you ever push back.
+
+---
+
+## Deterministic Generation
+
+ICS files must be generated deterministically for sync to work correctly. If the same event data produces different ICS output on each generation, the sync logic would see false positives (detecting "changes" when nothing actually changed).
+
+### Sources of Non-Determinism
+
+The icalendar crate can introduce non-determinism in two ways:
+
+1. **Auto-generated DTSTAMP** - If no DTSTAMP is set, the crate uses `Utc::now()`
+2. **Auto-generated UID** - If no UID is set, the crate generates a random UUID
+
+### How We Handle It
+
+**At generation time:**
+- Event UID: Set from provider's event ID (deterministic)
+- Event DTSTAMP: Set from provider's `updated` timestamp when available
+- Alarm UID: Set to `{event_id}_alarm_{minutes}` (deterministic)
+- Alarm DTSTAMP: Set to same value as event DTSTAMP
+
+**At comparison time:**
+- Filter out DTSTAMP lines before comparing content
+- This handles the edge case where DTSTAMP falls back to `Utc::now()`
+
+This two-layer approach ensures:
+- Most fields are deterministic at generation time
+- The few remaining non-deterministic fields are ignored during comparison
 
 ---
 
