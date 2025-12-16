@@ -1,6 +1,7 @@
 mod caldir;
 mod config;
 mod diff;
+mod event;
 mod ics;
 mod providers;
 
@@ -161,6 +162,7 @@ async fn cmd_pull() -> Result<()> {
         let metadata = ics::CalendarMetadata {
             calendar_id: primary_calendar.id.clone(),
             calendar_name: primary_calendar.name.clone(),
+            source_url: Some(primary_calendar.source_url.clone()),
         };
 
         // Compute diff
@@ -296,6 +298,7 @@ async fn cmd_status(verbose: bool) -> Result<()> {
         let metadata = ics::CalendarMetadata {
             calendar_id: primary_calendar.id.clone(),
             calendar_name: primary_calendar.name.clone(),
+            source_url: Some(primary_calendar.source_url.clone()),
         };
 
         // Compute diff without applying

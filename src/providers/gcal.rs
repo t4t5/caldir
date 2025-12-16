@@ -5,6 +5,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
 use crate::config::{AccountTokens, GcalConfig};
+use crate::event::{Attendee, Event, EventStatus, EventTime, Reminder, Transparency};
 
 const REDIRECT_PORT: u16 = 8085;
 const REDIRECT_URI: &str = "http://localhost:8085/callback";
@@ -176,6 +177,8 @@ pub struct Calendar {
     pub id: String,
     pub name: String,
     pub primary: bool,
+    /// API URL for this calendar (for ICS SOURCE property)
+    pub source_url: String,
 }
 
 /// Fetch the list of calendars for the authenticated user
@@ -192,94 +195,23 @@ pub async fn fetch_calendars(config: &GcalConfig, tokens: &AccountTokens) -> Res
         .body
         .into_iter()
         .filter(|c| !c.id.is_empty())
-        .map(|c| Calendar {
-            id: c.id,
-            name: if c.summary.is_empty() {
-                "(unnamed)".to_string()
-            } else {
-                c.summary
-            },
-            primary: c.primary,
+        .map(|c| {
+            let source_url = format!(
+                "https://www.googleapis.com/calendar/v3/calendars/{}",
+                urlencoding::encode(&c.id)
+            );
+            Calendar {
+                id: c.id,
+                name: if c.summary.is_empty() {
+                    "(unnamed)".to_string()
+                } else {
+                    c.summary
+                },
+                primary: c.primary,
+                source_url,
+            }
         })
         .collect())
-}
-
-/// A calendar event
-#[derive(Debug, Clone)]
-pub struct Event {
-    pub id: String,
-    pub summary: String,
-    pub description: Option<String>,
-    pub location: Option<String>,
-    pub start: EventTime,
-    pub end: EventTime,
-    pub status: EventStatus,
-
-    // Recurrence fields
-    /// RRULE, EXDATE lines for master events
-    pub recurrence: Option<Vec<String>>,
-    /// Original start time for this instance (used for RECURRENCE-ID)
-    pub original_start: Option<EventTime>,
-
-    // Alarms & Availability (Phase B)
-    /// Reminders/alarms for this event
-    pub reminders: Vec<Reminder>,
-    /// Whether event blocks time (OPAQUE) or is free (TRANSPARENT)
-    pub transparency: Transparency,
-
-    // Meeting Data (Phase C)
-    /// Event organizer
-    pub organizer: Option<Attendee>,
-    /// Event attendees/participants
-    pub attendees: Vec<Attendee>,
-    /// Conference/video call URL (Google Meet, Zoom, etc.)
-    pub conference_url: Option<String>,
-
-    // Sync Infrastructure (Phase D)
-    /// Last modification timestamp (LAST-MODIFIED)
-    pub updated: Option<chrono::DateTime<chrono::Utc>>,
-    /// Revision sequence number (SEQUENCE)
-    pub sequence: Option<i64>,
-}
-
-/// An event attendee (also used for organizer)
-#[derive(Debug, Clone)]
-pub struct Attendee {
-    /// Display name
-    pub name: Option<String>,
-    /// Email address
-    pub email: String,
-    /// Response status: "accepted", "declined", "tentative", "needsAction"
-    pub response_status: Option<String>,
-}
-
-/// A reminder/alarm for an event
-#[derive(Debug, Clone)]
-pub struct Reminder {
-    /// Minutes before the event to trigger
-    pub minutes: i64,
-}
-
-/// Event transparency (busy/free status)
-#[derive(Debug, Clone, PartialEq)]
-pub enum Transparency {
-    /// Event blocks time on calendar (default)
-    Opaque,
-    /// Event does not block time (shows as free)
-    Transparent,
-}
-
-#[derive(Debug, Clone)]
-pub enum EventTime {
-    DateTime(chrono::DateTime<chrono::Utc>),
-    Date(chrono::NaiveDate),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum EventStatus {
-    Confirmed,
-    Tentative,
-    Cancelled,
 }
 
 /// Fetch events from a specific calendar
@@ -434,6 +366,12 @@ pub async fn fetch_events(
                 .map(|ep| ep.uri.clone())
         });
 
+        // Build custom properties for Google-specific fields
+        let mut custom_properties = Vec::new();
+        if let Some(ref url) = conference_url {
+            custom_properties.push(("X-GOOGLE-CONFERENCE".to_string(), url.clone()));
+        }
+
         // Extract sync infrastructure fields
         let updated = event.updated;
         let sequence = if event.sequence > 0 {
@@ -471,6 +409,7 @@ pub async fn fetch_events(
             conference_url,
             updated,
             sequence,
+            custom_properties,
         });
     }
 

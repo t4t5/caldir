@@ -5,7 +5,7 @@
 
 use crate::caldir::LocalEvent;
 use crate::ics::{self, CalendarMetadata};
-use crate::providers::gcal::Event;
+use crate::event::Event;
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;

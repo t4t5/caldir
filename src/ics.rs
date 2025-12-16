@@ -1,4 +1,4 @@
-use crate::providers::gcal::{Attendee, Event, EventStatus, EventTime, Transparency};
+use crate::event::{Attendee, Event, EventStatus, EventTime, Transparency};
 use anyhow::Result;
 use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger};
 
@@ -9,6 +9,8 @@ pub struct CalendarMetadata {
     pub calendar_id: String,
     /// Human-readable calendar name (e.g., "Personal Calendar")
     pub calendar_name: String,
+    /// Source URL for this calendar (provider-specific)
+    pub source_url: Option<String>,
 }
 
 /// Generate .ics content for an event with calendar metadata
@@ -17,11 +19,9 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
 
     // Add calendar-level metadata properties
     // SOURCE (RFC 7986) - URL identifying the calendar source
-    let source_url = format!(
-        "https://www.googleapis.com/calendar/v3/calendars/{}",
-        urlencoding::encode(&metadata.calendar_id)
-    );
-    cal.append_property(Property::new("SOURCE", source_url));
+    if let Some(ref source_url) = metadata.source_url {
+        cal.append_property(Property::new("SOURCE", source_url));
+    }
 
     // X-WR-CALNAME - Human-readable calendar name (de facto standard)
     cal.append_property(Property::new("X-WR-CALNAME", &metadata.calendar_name));
@@ -143,11 +143,14 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
         ics_event.add_property("ATTENDEE", &attendee_value);
     }
 
-    // Conference URL (preserve as X-GOOGLE-CONFERENCE or standard URL)
+    // Conference URL
     if let Some(ref url) = event.conference_url {
-        // Add as both standard URL and vendor extension for compatibility
         ics_event.add_property("URL", url);
-        ics_event.add_property("X-GOOGLE-CONFERENCE", url);
+    }
+
+    // Custom properties (provider-specific, preserved for round-tripping)
+    for (key, value) in &event.custom_properties {
+        ics_event.add_property(key, value);
     }
 
     let ics_event = ics_event.done();
