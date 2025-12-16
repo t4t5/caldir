@@ -1,4 +1,4 @@
-use crate::providers::gcal::{Event, EventStatus, EventTime, Transparency};
+use crate::providers::gcal::{Attendee, Event, EventStatus, EventTime, Transparency};
 use anyhow::Result;
 use icalendar::{Alarm, Calendar, Component, EventLike, Trigger};
 
@@ -82,6 +82,25 @@ pub fn generate_ics(event: &Event) -> Result<String> {
         ics_event.alarm(alarm);
     }
 
+    // ORGANIZER
+    if let Some(ref org) = event.organizer {
+        let organizer_value = format_attendee_value(org);
+        ics_event.add_property("ORGANIZER", &organizer_value);
+    }
+
+    // ATTENDEE
+    for attendee in &event.attendees {
+        let attendee_value = format_attendee_value(attendee);
+        ics_event.add_property("ATTENDEE", &attendee_value);
+    }
+
+    // Conference URL (preserve as X-GOOGLE-CONFERENCE or standard URL)
+    if let Some(ref url) = event.conference_url {
+        // Add as both standard URL and vendor extension for compatibility
+        ics_event.add_property("URL", url);
+        ics_event.add_property("X-GOOGLE-CONFERENCE", url);
+    }
+
     let ics_event = ics_event.done();
     cal.push(ics_event);
     let cal = cal.done();
@@ -121,6 +140,36 @@ pub fn is_recurring_master(event: &Event) -> bool {
 /// Check if an event is an instance override of a recurring event
 pub fn is_instance_override(event: &Event) -> bool {
     event.recurring_event_id.is_some() && event.original_start.is_some()
+}
+
+/// Format an attendee for iCalendar ORGANIZER/ATTENDEE properties
+/// Format: CN=Name;PARTSTAT=ACCEPTED:mailto:email@example.com
+fn format_attendee_value(attendee: &Attendee) -> String {
+    let mut parts = Vec::new();
+
+    // Add CN (common name) parameter if available
+    if let Some(ref name) = attendee.name {
+        parts.push(format!("CN={}", name));
+    }
+
+    // Add PARTSTAT (participation status) parameter if available
+    if let Some(ref status) = attendee.response_status {
+        let partstat = match status.as_str() {
+            "accepted" => "ACCEPTED",
+            "declined" => "DECLINED",
+            "tentative" => "TENTATIVE",
+            "needsAction" => "NEEDS-ACTION",
+            _ => "NEEDS-ACTION",
+        };
+        parts.push(format!("PARTSTAT={}", partstat));
+    }
+
+    // Build the value
+    if parts.is_empty() {
+        format!("mailto:{}", attendee.email)
+    } else {
+        format!("{};:mailto:{}", parts.join(";"), attendee.email)
+    }
 }
 
 /// Convert a string to a filename-safe slug

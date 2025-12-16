@@ -228,6 +228,25 @@ pub struct Event {
     pub reminders: Vec<Reminder>,
     /// Whether event blocks time (OPAQUE) or is free (TRANSPARENT)
     pub transparency: Transparency,
+
+    // Meeting Data (Phase C)
+    /// Event organizer
+    pub organizer: Option<Attendee>,
+    /// Event attendees/participants
+    pub attendees: Vec<Attendee>,
+    /// Conference/video call URL (Google Meet, Zoom, etc.)
+    pub conference_url: Option<String>,
+}
+
+/// An event attendee (also used for organizer)
+#[derive(Debug, Clone)]
+pub struct Attendee {
+    /// Display name
+    pub name: Option<String>,
+    /// Email address
+    pub email: String,
+    /// Response status: "accepted", "declined", "tentative", "needsAction"
+    pub response_status: Option<String>,
 }
 
 /// A reminder/alarm for an event
@@ -381,6 +400,45 @@ pub async fn fetch_events(
             Transparency::Opaque // Default
         };
 
+        // Extract organizer
+        let organizer = event.organizer.as_ref().map(|o| Attendee {
+            name: if o.display_name.is_empty() {
+                None
+            } else {
+                Some(o.display_name.clone())
+            },
+            email: o.email.clone(),
+            response_status: None, // Organizer doesn't have response status
+        });
+
+        // Extract attendees
+        let attendees: Vec<Attendee> = event
+            .attendees
+            .iter()
+            .map(|a| Attendee {
+                name: if a.display_name.is_empty() {
+                    None
+                } else {
+                    Some(a.display_name.clone())
+                },
+                email: a.email.clone(),
+                response_status: if a.response_status.is_empty() {
+                    None
+                } else {
+                    Some(a.response_status.clone())
+                },
+            })
+            .collect();
+
+        // Extract conference URL (video call link)
+        let conference_url = event.conference_data.as_ref().and_then(|cd| {
+            // Find the first video entry point
+            cd.entry_points
+                .iter()
+                .find(|ep| ep.entry_point_type == "video")
+                .map(|ep| ep.uri.clone())
+        });
+
         result.push(Event {
             id: event.id,
             summary: if event.summary.is_empty() {
@@ -406,6 +464,9 @@ pub async fn fetch_events(
             original_start,
             reminders,
             transparency,
+            organizer,
+            attendees,
+            conference_url,
         });
     }
 
