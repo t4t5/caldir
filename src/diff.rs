@@ -209,18 +209,20 @@ pub fn compute(
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Check if this is a local-only event (to push) or a deleted remote event (to delete locally)
-            // For now, we treat local-only events as push candidates
-            // TODO: Add a way to distinguish between "created locally" and "deleted on remote"
-            // For MVP, we'll show them as both options
-            diff.to_push_create.push(SyncChange {
-                filename: filename.clone(),
-                property_changes: Vec::new(),
-            });
-            diff.to_pull_delete.push(SyncChange {
-                filename,
-                property_changes: Vec::new(),
-            });
+            // Distinguish between locally-created events and remotely-deleted events:
+            // - UIDs starting with "local-" were created locally → push candidate
+            // - Other UIDs came from remote and are now missing → delete candidate
+            if uid.starts_with("local-") {
+                diff.to_push_create.push(SyncChange {
+                    filename,
+                    property_changes: Vec::new(),
+                });
+            } else {
+                diff.to_pull_delete.push(SyncChange {
+                    filename,
+                    property_changes: Vec::new(),
+                });
+            }
         }
     }
 

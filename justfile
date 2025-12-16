@@ -1,3 +1,6 @@
+cli +args:
+  cargo run -- {{ args }}
+
 auth:
   cargo run -- auth
 

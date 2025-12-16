@@ -34,6 +34,31 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
+    /// Create a new local event
+    New {
+        /// Event title
+        title: String,
+
+        /// Start date/time (e.g., "2025-03-20" or "2025-03-20T15:00")
+        #[arg(short, long)]
+        start: String,
+
+        /// End date/time
+        #[arg(short, long, conflicts_with = "duration")]
+        end: Option<String>,
+
+        /// Duration (e.g., "30m", "1h", "2h30m")
+        #[arg(short, long, conflicts_with = "end")]
+        duration: Option<String>,
+
+        /// Event description
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Event location
+        #[arg(short, long)]
+        location: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -45,6 +70,14 @@ async fn main() -> Result<()> {
         Commands::Pull => cmd_pull().await,
         Commands::Push => cmd_push().await,
         Commands::Status { verbose } => cmd_status(verbose).await,
+        Commands::New {
+            title,
+            start,
+            end,
+            duration,
+            description,
+            location,
+        } => cmd_new(title, start, end, duration, description, location).await,
     }
 }
 
@@ -521,6 +554,86 @@ async fn cmd_status(verbose: bool) -> Result<()> {
     } else {
         println!("Run `caldir-cli push` to push these changes.");
     }
+
+    Ok(())
+}
+
+async fn cmd_new(
+    title: String,
+    start: String,
+    end: Option<String>,
+    duration: Option<String>,
+    description: Option<String>,
+    location: Option<String>,
+) -> Result<()> {
+    use event::{Event, EventStatus, EventTime, Transparency};
+
+    let cfg = config::load_config()?;
+    let calendar_dir = config::expand_path(&cfg.calendar_dir);
+    std::fs::create_dir_all(&calendar_dir)?;
+
+    // Parse start time
+    let start_time = ics::parse_cli_datetime(&start)?;
+
+    // Calculate end time from --end, --duration, or default
+    let end_time = if let Some(end_str) = end {
+        ics::parse_cli_datetime(&end_str)?
+    } else if let Some(dur_str) = duration {
+        let dur = ics::parse_cli_duration(&dur_str)?;
+        match &start_time {
+            EventTime::DateTime(dt) => EventTime::DateTime(*dt + dur),
+            EventTime::Date(d) => {
+                // For all-day events with duration, add days
+                let days = dur.num_days().max(1) as i64;
+                EventTime::Date(*d + chrono::Duration::days(days))
+            }
+        }
+    } else {
+        // Default: 1 hour for timed events, same day for all-day
+        match &start_time {
+            EventTime::DateTime(dt) => EventTime::DateTime(*dt + chrono::Duration::hours(1)),
+            EventTime::Date(d) => EventTime::Date(*d + chrono::Duration::days(1)),
+        }
+    };
+
+    // Generate a unique local ID
+    let event_id = format!("local-{}", uuid::Uuid::new_v4());
+
+    // Create the event
+    let event = Event {
+        id: event_id,
+        summary: title,
+        description,
+        location,
+        start: start_time,
+        end: end_time,
+        status: EventStatus::Confirmed,
+        recurrence: None,
+        original_start: None,
+        reminders: Vec::new(),
+        transparency: Transparency::Opaque,
+        organizer: None,
+        attendees: Vec::new(),
+        conference_url: None,
+        updated: Some(chrono::Utc::now()),
+        sequence: Some(0),
+        custom_properties: Vec::new(),
+    };
+
+    // Generate ICS content and filename
+    let metadata = ics::CalendarMetadata {
+        calendar_id: "local".to_string(),
+        calendar_name: "Local Calendar".to_string(),
+        source_url: None,
+    };
+
+    let ics_content = ics::generate_ics(&event, &metadata)?;
+    let filename = ics::generate_filename(&event);
+
+    // Write to disk
+    caldir::write_event(&calendar_dir, &filename, &ics_content)?;
+
+    println!("Created: {}", filename);
 
     Ok(())
 }
