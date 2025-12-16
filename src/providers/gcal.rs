@@ -236,6 +236,12 @@ pub struct Event {
     pub attendees: Vec<Attendee>,
     /// Conference/video call URL (Google Meet, Zoom, etc.)
     pub conference_url: Option<String>,
+
+    // Sync Infrastructure (Phase D)
+    /// Last modification timestamp (LAST-MODIFIED)
+    pub updated: Option<chrono::DateTime<chrono::Utc>>,
+    /// Revision sequence number (SEQUENCE)
+    pub sequence: Option<i64>,
 }
 
 /// An event attendee (also used for organizer)
@@ -439,6 +445,14 @@ pub async fn fetch_events(
                 .map(|ep| ep.uri.clone())
         });
 
+        // Extract sync infrastructure fields
+        let updated = event.updated;
+        let sequence = if event.sequence > 0 {
+            Some(event.sequence)
+        } else {
+            None
+        };
+
         result.push(Event {
             id: event.id,
             summary: if event.summary.is_empty() {
@@ -467,6 +481,8 @@ pub async fn fetch_events(
             organizer,
             attendees,
             conference_url,
+            updated,
+            sequence,
         });
     }
 

@@ -10,6 +10,25 @@ pub fn generate_ics(event: &Event) -> Result<String> {
     ics_event.uid(&event.id);
     ics_event.summary(&event.summary);
 
+    // DTSTAMP - required by RFC 5545, use current time or updated time
+    let dtstamp = event
+        .updated
+        .unwrap_or_else(chrono::Utc::now)
+        .format("%Y%m%dT%H%M%SZ")
+        .to_string();
+    ics_event.add_property("DTSTAMP", &dtstamp);
+
+    // LAST-MODIFIED
+    if let Some(updated) = event.updated {
+        let last_modified = updated.format("%Y%m%dT%H%M%SZ").to_string();
+        ics_event.add_property("LAST-MODIFIED", &last_modified);
+    }
+
+    // SEQUENCE
+    if let Some(seq) = event.sequence {
+        ics_event.add_property("SEQUENCE", &seq.to_string());
+    }
+
     // Set start/end times
     match (&event.start, &event.end) {
         (EventTime::Date(start_date), EventTime::Date(_end_date)) => {
