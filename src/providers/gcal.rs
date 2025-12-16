@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
-use google_calendar::types::{MinAccessRole, OrderBy};
+use google_calendar::types::{
+    EventAttendee, EventDateTime, EventReminder, MinAccessRole, OrderBy, Reminders, SendUpdates,
+};
 use google_calendar::Client;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
@@ -10,7 +12,7 @@ use crate::event::{Attendee, Event, EventStatus, EventTime, Reminder, Transparen
 const REDIRECT_PORT: u16 = 8085;
 const REDIRECT_URI: &str = "http://localhost:8085/callback";
 
-const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar.readonly"];
+const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
 
 /// Create a Google Calendar client from stored tokens
 pub fn create_client(config: &GcalConfig, tokens: &AccountTokens) -> Client {
@@ -412,4 +414,148 @@ pub async fn fetch_events(
     }
 
     Ok(result)
+}
+
+/// Convert our provider-neutral Event to a Google Calendar API Event
+fn to_google_event(event: &Event) -> google_calendar::types::Event {
+    // Convert start time
+    let start = match &event.start {
+        EventTime::DateTime(dt) => EventDateTime {
+            date: None,
+            date_time: Some(*dt),
+            time_zone: String::new(),
+        },
+        EventTime::Date(d) => EventDateTime {
+            date: Some(*d),
+            date_time: None,
+            time_zone: String::new(),
+        },
+    };
+
+    // Convert end time
+    let end = match &event.end {
+        EventTime::DateTime(dt) => EventDateTime {
+            date: None,
+            date_time: Some(*dt),
+            time_zone: String::new(),
+        },
+        EventTime::Date(d) => EventDateTime {
+            date: Some(*d),
+            date_time: None,
+            time_zone: String::new(),
+        },
+    };
+
+    // Convert status
+    let status = match event.status {
+        EventStatus::Confirmed => "confirmed".to_string(),
+        EventStatus::Tentative => "tentative".to_string(),
+        EventStatus::Cancelled => "cancelled".to_string(),
+    };
+
+    // Convert transparency
+    let transparency = match event.transparency {
+        Transparency::Opaque => "opaque".to_string(),
+        Transparency::Transparent => "transparent".to_string(),
+    };
+
+    // Convert reminders
+    let reminders = if event.reminders.is_empty() {
+        None
+    } else {
+        Some(Reminders {
+            overrides: event
+                .reminders
+                .iter()
+                .map(|r| EventReminder {
+                    method: "popup".to_string(), // Default to popup notifications
+                    minutes: r.minutes,
+                })
+                .collect(),
+            use_default: false,
+        })
+    };
+
+    // Convert attendees (skip organizer since it's read-only)
+    let attendees: Vec<EventAttendee> = event
+        .attendees
+        .iter()
+        .map(|a| EventAttendee {
+            email: a.email.clone(),
+            display_name: a.name.clone().unwrap_or_default(),
+            response_status: a.response_status.clone().unwrap_or_default(),
+            // Fill required fields with defaults
+            additional_guests: 0,
+            comment: String::new(),
+            id: String::new(),
+            optional: false,
+            organizer: false,
+            resource: false,
+            self_: false,
+        })
+        .collect();
+
+    // Convert recurrence rules
+    let recurrence = event.recurrence.clone().unwrap_or_default();
+
+    // Convert original start time for recurring event instances
+    let original_start_time = event.original_start.as_ref().map(|os| match os {
+        EventTime::DateTime(dt) => EventDateTime {
+            date: None,
+            date_time: Some(*dt),
+            time_zone: String::new(),
+        },
+        EventTime::Date(d) => EventDateTime {
+            date: Some(*d),
+            date_time: None,
+            time_zone: String::new(),
+        },
+    });
+
+    google_calendar::types::Event {
+        id: event.id.clone(),
+        summary: event.summary.clone(),
+        description: event.description.clone().unwrap_or_default(),
+        location: event.location.clone().unwrap_or_default(),
+        start: Some(start),
+        end: Some(end),
+        status,
+        transparency,
+        reminders,
+        attendees,
+        recurrence,
+        original_start_time,
+        sequence: event.sequence.unwrap_or(0),
+        // Leave read-only fields at defaults
+        ..Default::default()
+    }
+}
+
+/// Update an existing event on Google Calendar
+pub async fn update_event(
+    config: &GcalConfig,
+    tokens: &AccountTokens,
+    calendar_id: &str,
+    event: &Event,
+) -> Result<()> {
+    let client = create_client(config, tokens);
+
+    let google_event = to_google_event(event);
+
+    client
+        .events()
+        .update(
+            calendar_id,
+            &event.id,
+            0,                        // conference_data_version
+            0,                        // max_attendees
+            false,                    // send_notifications (deprecated)
+            SendUpdates::None,        // send_updates
+            false,                    // supports_attachments
+            &google_event,
+        )
+        .await
+        .with_context(|| format!("Failed to update event: {}", event.summary))?;
+
+    Ok(())
 }

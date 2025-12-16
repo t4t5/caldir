@@ -37,18 +37,33 @@ pub struct SyncDiff {
     pub to_push_update: Vec<SyncChange>,
 }
 
-/// Normalize ICS content for comparison by removing non-deterministic fields.
-/// This ensures we only detect real content changes, not timestamp variations.
-fn normalize_for_comparison(content: &str) -> String {
-    content
-        .lines()
-        .filter(|line| {
-            // Skip DTSTAMP lines - these can vary between generations when
-            // the event has no 'updated' timestamp from the provider
-            !line.starts_with("DTSTAMP:")
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+/// Check if two ICS contents have meaningful property differences.
+/// Uses the same property parsing as compute_property_diff to ensure consistency.
+fn has_property_changes(local_content: &str, new_content: &str) -> bool {
+    let local_props = ics::parse_properties(local_content);
+    let new_props = ics::parse_properties(new_content);
+
+    // Check for any difference in properties
+    if local_props.len() != new_props.len() {
+        return true;
+    }
+
+    for (key, local_value) in &local_props {
+        match new_props.get(key) {
+            Some(new_value) if local_value != new_value => return true,
+            None => return true,
+            _ => {}
+        }
+    }
+
+    // Check for properties in new that aren't in local
+    for key in new_props.keys() {
+        if !local_props.contains_key(key) {
+            return true;
+        }
+    }
+
+    false
 }
 
 /// Compute property-level differences between local and new ICS content
@@ -130,9 +145,7 @@ pub fn compute(
 
         if let Some(local) = local_events.get(&event.id) {
             // Event exists locally - check if it changed
-            let local_normalized = normalize_for_comparison(&local.content);
-            let new_normalized = normalize_for_comparison(&new_content);
-            let content_changed = local_normalized.trim() != new_normalized.trim();
+            let content_changed = has_property_changes(&local.content, &new_content);
             let filename_changed = local.path != new_path;
 
             if content_changed || filename_changed {

@@ -7,6 +7,9 @@ pull:
 status:
   cargo run -- status --verbose
 
+push:
+  cargo run -- push
+
 # Cargo
 
 check:

@@ -37,7 +37,7 @@ This is more friction (~10 minutes of setup), but it means:
 
 The tool supports bidirectional sync between cloud and local:
 - `pull` — Download changes from cloud to local
-- `push` — Upload local changes to cloud (planned)
+- `push` — Upload local changes to cloud (updates only)
 - `status` — Shows pending changes in both directions
 
 **Sync direction detection** uses timestamp comparison:
@@ -153,6 +153,9 @@ caldir-sync auth
 
 # Pull events from cloud to local directory
 caldir-sync pull
+
+# Push local changes to cloud (updates only, not new events)
+caldir-sync push
 
 # Show pending changes in both directions (like git status)
 # Displays "Changes to be pulled" and "Changes to be pushed"

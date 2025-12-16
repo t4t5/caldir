@@ -26,6 +26,8 @@ enum Commands {
     },
     /// Pull events from cloud to local directory
     Pull,
+    /// Push local changes to cloud calendars
+    Push,
     /// Show changes between local directory and cloud calendars
     Status {
         /// Show which properties changed for each modified event
@@ -41,6 +43,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Auth { provider } => cmd_auth(&provider).await,
         Commands::Pull => cmd_pull().await,
+        Commands::Push => cmd_push().await,
         Commands::Status { verbose } => cmd_status(verbose).await,
     }
 }
@@ -228,6 +231,119 @@ async fn cmd_pull() -> Result<()> {
         "\nTotal: {} created, {} updated, {} deleted",
         total_stats.created, total_stats.updated, total_stats.deleted
     );
+
+    Ok(())
+}
+
+async fn cmd_push() -> Result<()> {
+    let cfg = config::load_config()?;
+    let mut all_tokens = config::load_tokens()?;
+
+    let gcal_config = cfg.providers.gcal.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("Google Calendar not configured in config.toml")
+    })?;
+
+    if all_tokens.gcal.is_empty() {
+        anyhow::bail!(
+            "Not authenticated with Google Calendar.\n\
+            Run `caldir-sync auth` first."
+        );
+    }
+
+    let calendar_dir = config::expand_path(&cfg.calendar_dir);
+
+    let mut total_updated = 0;
+
+    let account_emails: Vec<String> = all_tokens.gcal.keys().cloned().collect();
+    for account_email in account_emails {
+        let mut account_tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
+
+        // Check if token needs refresh
+        if account_tokens
+            .expires_at
+            .map(|exp| exp < chrono::Utc::now())
+            .unwrap_or(false)
+        {
+            println!("Access token expired for {}, refreshing...", account_email);
+            account_tokens =
+                providers::gcal::refresh_token(gcal_config, &account_tokens).await?;
+            all_tokens
+                .gcal
+                .insert(account_email.clone(), account_tokens.clone());
+            config::save_tokens(&all_tokens)?;
+        }
+
+        println!("\nPushing to account: {}", account_email);
+
+        // Fetch calendars to find the primary one
+        let calendars =
+            providers::gcal::fetch_calendars(gcal_config, &account_tokens).await?;
+        let primary_calendar = calendars
+            .iter()
+            .find(|c| c.primary)
+            .or_else(|| calendars.first())
+            .ok_or_else(|| anyhow::anyhow!("No calendars found for {}", account_email))?;
+
+        println!("  Syncing calendar: {}", primary_calendar.name);
+
+        // Fetch remote events
+        let remote_events =
+            providers::gcal::fetch_events(gcal_config, &account_tokens, &primary_calendar.id)
+                .await?;
+
+        // Read local events
+        let local_events = caldir::read_all(&calendar_dir)?;
+
+        // Build calendar metadata
+        let metadata = ics::CalendarMetadata {
+            calendar_id: primary_calendar.id.clone(),
+            calendar_name: primary_calendar.name.clone(),
+            source_url: Some(primary_calendar.source_url.clone()),
+        };
+
+        // Compute diff
+        let sync_diff =
+            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, false)?;
+
+        if sync_diff.to_push_update.is_empty() {
+            println!("  No changes to push");
+            continue;
+        }
+
+        // Push updated events
+        for change in &sync_diff.to_push_update {
+            // Find the local event by matching filename
+            let local_event = local_events.values().find(|l| {
+                l.path
+                    .file_name()
+                    .map(|f| f.to_string_lossy().to_string())
+                    == Some(change.filename.clone())
+            });
+
+            if let Some(local) = local_event {
+                // Parse local ICS to Event
+                if let Some(event) = ics::parse_event(&local.content) {
+                    println!("  Updating: {}", event.summary);
+                    providers::gcal::update_event(
+                        gcal_config,
+                        &account_tokens,
+                        &primary_calendar.id,
+                        &event,
+                    )
+                    .await?;
+                    total_updated += 1;
+                } else {
+                    eprintln!("  Warning: Could not parse {}", change.filename);
+                }
+            }
+        }
+    }
+
+    if total_updated > 0 {
+        println!("\nPushed {} event(s)", total_updated);
+    } else {
+        println!("\nNo changes to push.");
+    }
 
     Ok(())
 }
