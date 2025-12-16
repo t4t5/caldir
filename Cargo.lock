@@ -144,7 +144,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "caldir-sync"
+name = "caldir-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",

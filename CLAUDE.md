@@ -1,6 +1,6 @@
-# caldir-sync
+# caldir-cli
 
-A tool for syncing cloud calendars to a local directory of `.ics` files.
+A CLI for interacting with your local caldir directory and syncing with external calendar providers (Google, Apple, etc.).
 
 ## Philosophy
 
@@ -19,7 +19,7 @@ Calendars should work the same way. Instead of living behind APIs and OAuth flow
   2025-03-25T0900__dentist.ics
 ```
 
-**caldir-sync** is a tool that syncs cloud calendars (Google, Outlook, etc.) to this local format.
+**caldir-cli** is the command-line tool for working with caldir directories — syncing with cloud providers, viewing events, and managing your calendar locally.
 
 ## Design Decisions
 
@@ -143,26 +143,26 @@ Tokens are stored separately at `~/.config/caldir/tokens.json`, keyed by provide
 }
 ```
 
-This supports multiple accounts per provider. Run `caldir-sync auth` multiple times with different Google accounts to connect them all.
+This supports multiple accounts per provider. Run `caldir-cli auth` multiple times with different Google accounts to connect them all.
 
 ## Commands
 
 ```bash
 # Authenticate with Google Calendar
-caldir-sync auth
+caldir-cli auth
 
 # Pull events from cloud to local directory
-caldir-sync pull
+caldir-cli pull
 
 # Push local changes to cloud (updates only, not new events)
-caldir-sync push
+caldir-cli push
 
 # Show pending changes in both directions (like git status)
 # Displays "Changes to be pulled" and "Changes to be pushed"
-caldir-sync status
+caldir-cli status
 
 # Show which properties changed for each modified event
-caldir-sync status --verbose
+caldir-cli status --verbose
 ```
 
 ## Development

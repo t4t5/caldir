@@ -9,8 +9,8 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "caldir-sync")]
-#[command(about = "Sync cloud calendars to a local directory of .ics files")]
+#[command(name = "caldir-cli")]
+#[command(about = "Interact with your local caldir directory and sync with external calendar providers")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -84,7 +84,7 @@ async fn cmd_auth(provider: &str) -> Result<()> {
             config::save_tokens(&all_tokens)?;
 
             println!("\nTokens saved for account: {}", email);
-            println!("You can now run `caldir-sync pull` to sync your calendar.");
+            println!("You can now run `caldir-cli pull` to sync your calendar.");
 
             Ok(())
         }
@@ -105,7 +105,7 @@ async fn cmd_pull() -> Result<()> {
     if all_tokens.gcal.is_empty() {
         anyhow::bail!(
             "Not authenticated with Google Calendar.\n\
-            Run `caldir-sync auth` first."
+            Run `caldir-cli auth` first."
         );
     }
 
@@ -246,7 +246,7 @@ async fn cmd_push() -> Result<()> {
     if all_tokens.gcal.is_empty() {
         anyhow::bail!(
             "Not authenticated with Google Calendar.\n\
-            Run `caldir-sync auth` first."
+            Run `caldir-cli auth` first."
         );
     }
 
@@ -359,7 +359,7 @@ async fn cmd_status(verbose: bool) -> Result<()> {
     if all_tokens.gcal.is_empty() {
         anyhow::bail!(
             "Not authenticated with Google Calendar.\n\
-            Run `caldir-sync auth` first."
+            Run `caldir-cli auth` first."
         );
     }
 
@@ -515,11 +515,11 @@ async fn cmd_status(verbose: bool) -> Result<()> {
 
     // Show appropriate action message
     if has_pull_changes && has_push_changes {
-        println!("Run `caldir-sync pull` to pull changes, or `caldir-sync push` to push changes.");
+        println!("Run `caldir-cli pull` to pull changes, or `caldir-cli push` to push changes.");
     } else if has_pull_changes {
-        println!("Run `caldir-sync pull` to apply these changes.");
+        println!("Run `caldir-cli pull` to apply these changes.");
     } else {
-        println!("Run `caldir-sync push` to push these changes.");
+        println!("Run `caldir-cli push` to push these changes.");
     }
 
     Ok(())

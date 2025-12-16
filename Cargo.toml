@@ -1,8 +1,8 @@
 [package]
-name = "caldir-sync"
+name = "caldir-cli"
 version = "0.1.0"
 edition = "2021"
-description = "Sync cloud calendars to a local directory of .ics files"
+description = "CLI for interacting with your local caldir directory and syncing with external calendar providers"
 
 [dependencies]
 # Async runtime
