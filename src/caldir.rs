@@ -5,6 +5,7 @@
 
 use crate::ics;
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -14,6 +15,8 @@ pub struct LocalEvent {
     pub path: PathBuf,
     /// Raw ICS content
     pub content: String,
+    /// File modification time (for push detection)
+    pub modified: Option<DateTime<Utc>>,
 }
 
 /// Read all .ics files from the calendar directory.
@@ -32,7 +35,13 @@ pub fn read_all(dir: &Path) -> Result<HashMap<String, LocalEvent>> {
         if path.extension().map(|e| e == "ics").unwrap_or(false) {
             if let Ok(content) = std::fs::read_to_string(&path) {
                 if let Some(uid) = ics::parse_uid(&content) {
-                    events.insert(uid, LocalEvent { path, content });
+                    // Get file modification time for push detection
+                    let modified = std::fs::metadata(&path)
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .map(DateTime::<Utc>::from);
+
+                    events.insert(uid, LocalEvent { path, content, modified });
                 }
             }
         }

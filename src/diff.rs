@@ -27,9 +27,14 @@ pub struct SyncChange {
 
 /// Result of comparing local directory against remote state
 pub struct SyncDiff {
-    pub to_create: Vec<SyncChange>,
-    pub to_update: Vec<SyncChange>,
-    pub to_delete: Vec<SyncChange>,
+    // Pull changes (remote → local)
+    pub to_pull_create: Vec<SyncChange>,
+    pub to_pull_update: Vec<SyncChange>,
+    pub to_pull_delete: Vec<SyncChange>,
+
+    // Push changes (local → remote)
+    pub to_push_create: Vec<SyncChange>,
+    pub to_push_update: Vec<SyncChange>,
 }
 
 /// Normalize ICS content for comparison by removing non-deterministic fields.
@@ -93,8 +98,11 @@ fn compute_property_diff(local_content: &str, new_content: &str) -> Vec<Property
 
 /// Compute the diff between remote events and local directory.
 ///
-/// Returns a SyncDiff describing what needs to be created, updated, or deleted
-/// locally to match the remote state.
+/// Returns a SyncDiff describing:
+/// - Pull changes: what needs to be created/updated/deleted locally to match remote
+/// - Push changes: what needs to be created/updated on remote to match local
+///
+/// Uses timestamp comparison: if local file mtime > remote updated, it's a push candidate.
 pub fn compute(
     remote_events: &[Event],
     local_events: &HashMap<String, LocalEvent>,
@@ -103,9 +111,11 @@ pub fn compute(
     verbose: bool,
 ) -> Result<SyncDiff> {
     let mut diff = SyncDiff {
-        to_create: Vec::new(),
-        to_update: Vec::new(),
-        to_delete: Vec::new(),
+        to_pull_create: Vec::new(),
+        to_pull_update: Vec::new(),
+        to_pull_delete: Vec::new(),
+        to_push_create: Vec::new(),
+        to_push_update: Vec::new(),
     };
 
     let mut seen_uids: HashSet<String> = HashSet::new();
@@ -126,40 +136,58 @@ pub fn compute(
             let filename_changed = local.path != new_path;
 
             if content_changed || filename_changed {
+                // Determine direction based on timestamps
+                let is_push = match (local.modified, event.updated) {
+                    (Some(local_mtime), Some(remote_updated)) => local_mtime > remote_updated,
+                    // If we can't compare timestamps, default to pull (safer)
+                    _ => false,
+                };
+
                 // Compute property-level changes if verbose mode is enabled
+                // For pull: local (old) → remote (new)
+                // For push: remote (old) → local (new)
                 let property_changes = if verbose && content_changed {
-                    compute_property_diff(&local.content, &new_content)
+                    if is_push {
+                        compute_property_diff(&new_content, &local.content)
+                    } else {
+                        compute_property_diff(&local.content, &new_content)
+                    }
                 } else if verbose && filename_changed {
+                    let (old_name, new_name) = if is_push {
+                        (new_filename.clone(), local.path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default())
+                    } else {
+                        (local.path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(), new_filename.clone())
+                    };
                     vec![PropertyChange {
                         property: "Filename".to_string(),
-                        old_value: Some(
-                            local
-                                .path
-                                .file_name()
-                                .map(|s| s.to_string_lossy().to_string())
-                                .unwrap_or_default(),
-                        ),
-                        new_value: Some(new_filename.clone()),
+                        old_value: Some(old_name),
+                        new_value: Some(new_name),
                     }]
                 } else {
                     Vec::new()
                 };
 
-                diff.to_update.push(SyncChange {
+                let change = SyncChange {
                     filename: new_filename,
                     property_changes,
-                });
+                };
+
+                if is_push {
+                    diff.to_push_update.push(change);
+                } else {
+                    diff.to_pull_update.push(change);
+                }
             }
         } else {
-            // New event
-            diff.to_create.push(SyncChange {
+            // New remote event - pull it
+            diff.to_pull_create.push(SyncChange {
                 filename: new_filename,
                 property_changes: Vec::new(),
             });
         }
     }
 
-    // Find local files that no longer exist in the remote
+    // Find local files that don't exist in the remote
     for (uid, local) in local_events {
         if !seen_uids.contains(uid) {
             let filename = local
@@ -168,7 +196,15 @@ pub fn compute(
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            diff.to_delete.push(SyncChange {
+            // Check if this is a local-only event (to push) or a deleted remote event (to delete locally)
+            // For now, we treat local-only events as push candidates
+            // TODO: Add a way to distinguish between "created locally" and "deleted on remote"
+            // For MVP, we'll show them as both options
+            diff.to_push_create.push(SyncChange {
+                filename: filename.clone(),
+                property_changes: Vec::new(),
+            });
+            diff.to_pull_delete.push(SyncChange {
                 filename,
                 property_changes: Vec::new(),
             });

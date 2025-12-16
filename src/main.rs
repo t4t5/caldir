@@ -177,7 +177,7 @@ async fn cmd_pull() -> Result<()> {
         };
 
         // Create new events
-        for change in &sync_diff.to_create {
+        for change in &sync_diff.to_pull_create {
             // Find the event and generate ICS
             if let Some(event) = remote_events.iter().find(|e| {
                 ics::generate_filename(e) == change.filename
@@ -189,7 +189,7 @@ async fn cmd_pull() -> Result<()> {
         }
 
         // Update modified events
-        for change in &sync_diff.to_update {
+        for change in &sync_diff.to_pull_update {
             // Delete old file if it exists with different name
             if let Some(local) = local_events.values().find(|l| {
                 l.path.file_name().map(|f| f.to_string_lossy().to_string())
@@ -208,7 +208,7 @@ async fn cmd_pull() -> Result<()> {
         }
 
         // Delete removed events
-        for change in &sync_diff.to_delete {
+        for change in &sync_diff.to_pull_delete {
             let path = calendar_dir.join(&change.filename);
             caldir::delete_event(&path)?;
             stats.deleted += 1;
@@ -250,9 +250,11 @@ async fn cmd_status(verbose: bool) -> Result<()> {
     let calendar_dir = config::expand_path(&cfg.calendar_dir);
 
     // Aggregate diffs from all accounts
-    let mut all_to_create: Vec<diff::SyncChange> = Vec::new();
-    let mut all_to_update: Vec<diff::SyncChange> = Vec::new();
-    let mut all_to_delete: Vec<diff::SyncChange> = Vec::new();
+    let mut all_to_pull_create: Vec<diff::SyncChange> = Vec::new();
+    let mut all_to_pull_update: Vec<diff::SyncChange> = Vec::new();
+    let mut all_to_pull_delete: Vec<diff::SyncChange> = Vec::new();
+    let mut all_to_push_create: Vec<diff::SyncChange> = Vec::new();
+    let mut all_to_push_update: Vec<diff::SyncChange> = Vec::new();
 
     let account_emails: Vec<String> = all_tokens.gcal.keys().cloned().collect();
     for account_email in account_emails {
@@ -305,70 +307,104 @@ async fn cmd_status(verbose: bool) -> Result<()> {
         let sync_diff =
             diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, verbose)?;
 
-        all_to_create.extend(sync_diff.to_create);
-        all_to_update.extend(sync_diff.to_update);
-        all_to_delete.extend(sync_diff.to_delete);
+        all_to_pull_create.extend(sync_diff.to_pull_create);
+        all_to_pull_update.extend(sync_diff.to_pull_update);
+        all_to_pull_delete.extend(sync_diff.to_pull_delete);
+        all_to_push_create.extend(sync_diff.to_push_create);
+        all_to_push_update.extend(sync_diff.to_push_update);
     }
 
     // Display results
-    let has_changes =
-        !all_to_create.is_empty() || !all_to_update.is_empty() || !all_to_delete.is_empty();
+    let has_pull_changes = !all_to_pull_create.is_empty()
+        || !all_to_pull_update.is_empty()
+        || !all_to_pull_delete.is_empty();
+    let has_push_changes = !all_to_push_create.is_empty() || !all_to_push_update.is_empty();
 
-    if !has_changes {
+    if !has_pull_changes && !has_push_changes {
         println!("\nEverything up to date.");
         return Ok(());
     }
 
-    println!("\nChanges to be pulled:\n");
-
-    if !all_to_create.is_empty() {
-        println!("  New events ({}):", all_to_create.len());
-        for change in &all_to_create {
-            println!("    {}", change.filename);
-        }
-        println!();
-    }
-
-    if !all_to_update.is_empty() {
-        println!("  Modified events ({}):", all_to_update.len());
-        for change in &all_to_update {
-            println!("    {}", change.filename);
-            // Show property-level changes in verbose mode
-            if verbose && !change.property_changes.is_empty() {
-                for prop_change in &change.property_changes {
-                    match (&prop_change.old_value, &prop_change.new_value) {
-                        (Some(old), Some(new)) => {
-                            println!(
-                                "      {}: \"{}\" → \"{}\"",
-                                prop_change.property, old, new
-                            );
-                        }
-                        (Some(old), None) => {
-                            println!(
-                                "      {}: \"{}\" → (removed)",
-                                prop_change.property, old
-                            );
-                        }
-                        (None, Some(new)) => {
-                            println!("      {}: (added) \"{}\"", prop_change.property, new);
-                        }
-                        (None, None) => {}
+    // Helper to print property changes
+    let print_property_changes = |change: &diff::SyncChange| {
+        if verbose && !change.property_changes.is_empty() {
+            for prop_change in &change.property_changes {
+                match (&prop_change.old_value, &prop_change.new_value) {
+                    (Some(old), Some(new)) => {
+                        println!("      {}: \"{}\" → \"{}\"", prop_change.property, old, new);
                     }
+                    (Some(old), None) => {
+                        println!("      {}: \"{}\" → (removed)", prop_change.property, old);
+                    }
+                    (None, Some(new)) => {
+                        println!("      {}: (added) \"{}\"", prop_change.property, new);
+                    }
+                    (None, None) => {}
                 }
             }
         }
-        println!();
-    }
+    };
 
-    if !all_to_delete.is_empty() {
-        println!("  Deleted events ({}):", all_to_delete.len());
-        for change in &all_to_delete {
-            println!("    {}", change.filename);
+    // Display pull changes
+    if has_pull_changes {
+        println!("\nChanges to be pulled:\n");
+
+        if !all_to_pull_create.is_empty() {
+            println!("  New events ({}):", all_to_pull_create.len());
+            for change in &all_to_pull_create {
+                println!("    {}", change.filename);
+            }
+            println!();
         }
-        println!();
+
+        if !all_to_pull_update.is_empty() {
+            println!("  Modified events ({}):", all_to_pull_update.len());
+            for change in &all_to_pull_update {
+                println!("    {}", change.filename);
+                print_property_changes(change);
+            }
+            println!();
+        }
+
+        if !all_to_pull_delete.is_empty() {
+            println!("  Deleted events ({}):", all_to_pull_delete.len());
+            for change in &all_to_pull_delete {
+                println!("    {}", change.filename);
+            }
+            println!();
+        }
     }
 
-    println!("Run `caldir-sync pull` to apply these changes.");
+    // Display push changes
+    if has_push_changes {
+        println!("\nChanges to be pushed:\n");
+
+        if !all_to_push_create.is_empty() {
+            println!("  New events ({}):", all_to_push_create.len());
+            for change in &all_to_push_create {
+                println!("    {}", change.filename);
+            }
+            println!();
+        }
+
+        if !all_to_push_update.is_empty() {
+            println!("  Modified events ({}):", all_to_push_update.len());
+            for change in &all_to_push_update {
+                println!("    {}", change.filename);
+                print_property_changes(change);
+            }
+            println!();
+        }
+    }
+
+    // Show appropriate action message
+    if has_pull_changes && has_push_changes {
+        println!("Run `caldir-sync pull` to pull changes, or `caldir-sync push` to push changes.");
+    } else if has_pull_changes {
+        println!("Run `caldir-sync pull` to apply these changes.");
+    } else {
+        println!("Run `caldir-sync push` to push these changes.");
+    }
 
     Ok(())
 }

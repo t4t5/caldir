@@ -33,11 +33,18 @@ This is more friction (~10 minutes of setup), but it means:
 - No single point of failure if a developer's project gets banned
 - True independence — the caldir philosophy is about owning your data
 
-### One-Way Sync (Cloud → Local)
+### Bidirectional Sync
 
-The MVP only syncs from cloud to local. The local directory is a read-only mirror.
+The tool supports bidirectional sync between cloud and local:
+- `pull` — Download changes from cloud to local
+- `push` — Upload local changes to cloud (planned)
+- `status` — Shows pending changes in both directions
 
-Two-way sync requires conflict resolution, which is hard. For LLM use cases (AI reasoning about your calendar), read-only is sufficient. If you want to modify events, use the cloud calendar's UI.
+**Sync direction detection** uses timestamp comparison:
+- If local file mtime > remote `updated` → push candidate (local was modified)
+- If remote `updated` > local file mtime → pull candidate (remote was modified)
+- Local-only events → new events to push
+- Remote-only events → new events to pull
 
 ### Filesystem as State
 
@@ -75,9 +82,9 @@ src/
 
 **event.rs** — Provider-neutral event types (`Event`, `Attendee`, `Reminder`, etc.). Providers convert their API responses into these types, and the rest of the codebase works exclusively with them. This keeps provider-specific logic contained.
 
-**diff.rs** — Direction-agnostic diff computation. Compares remote events against local files and returns `SyncDiff` (lists of changes to create/update/delete). Used by both `status` (preview) and `pull` (apply). Designed to also support a future `push` command.
+**diff.rs** — Bidirectional diff computation. Compares remote events against local files and returns `SyncDiff` with separate lists for pull changes (`to_pull_create/update/delete`) and push changes (`to_push_create/update`). Uses timestamp comparison to determine sync direction.
 
-**caldir.rs** — The local calendar directory as a first-class abstraction. Reads all `.ics` files into a UID → LocalEvent map, writes events, deletes events. The filesystem is the source of truth.
+**caldir.rs** — The local calendar directory as a first-class abstraction. Reads all `.ics` files into a UID → LocalEvent map (including file modification times for sync direction detection), writes events, deletes events. The filesystem is the source of truth.
 
 **ics.rs** — Everything ICS format. Generates compliant `.ics` files from `Event` structs, parses properties from existing files, formats values for human-readable output (e.g., alarm triggers like "1 day before"). Provider-neutral — no Google-specific code.
 
@@ -147,7 +154,8 @@ caldir-sync auth
 # Pull events from cloud to local directory
 caldir-sync pull
 
-# Show pending changes (like git status)
+# Show pending changes in both directions (like git status)
+# Displays "Changes to be pulled" and "Changes to be pushed"
 caldir-sync status
 
 # Show which properties changed for each modified event
