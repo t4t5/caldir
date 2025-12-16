@@ -4,7 +4,7 @@ use google_calendar::Client;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
-use crate::config::{GcalConfig, GcalTokens};
+use crate::config::{AccountTokens, GcalConfig};
 
 const REDIRECT_PORT: u16 = 8085;
 const REDIRECT_URI: &str = "http://localhost:8085/callback";
@@ -12,7 +12,7 @@ const REDIRECT_URI: &str = "http://localhost:8085/callback";
 const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar.readonly"];
 
 /// Create a Google Calendar client from stored tokens
-pub fn create_client(config: &GcalConfig, tokens: &GcalTokens) -> Client {
+pub fn create_client(config: &GcalConfig, tokens: &AccountTokens) -> Client {
     Client::new(
         config.client_id.clone(),
         config.client_secret.clone(),
@@ -85,7 +85,7 @@ fn wait_for_callback() -> Result<(String, String)> {
 }
 
 /// Run the full OAuth authentication flow
-pub async fn authenticate(config: &GcalConfig) -> Result<GcalTokens> {
+pub async fn authenticate(config: &GcalConfig) -> Result<AccountTokens> {
     let mut client = create_auth_client(config);
 
     // Get the authorization URL
@@ -120,7 +120,7 @@ pub async fn authenticate(config: &GcalConfig) -> Result<GcalTokens> {
         None
     };
 
-    Ok(GcalTokens {
+    Ok(AccountTokens {
         access_token: access_token.access_token,
         refresh_token: access_token.refresh_token,
         expires_at,
@@ -128,7 +128,7 @@ pub async fn authenticate(config: &GcalConfig) -> Result<GcalTokens> {
 }
 
 /// Refresh an expired access token
-pub async fn refresh_token(config: &GcalConfig, tokens: &GcalTokens) -> Result<GcalTokens> {
+pub async fn refresh_token(config: &GcalConfig, tokens: &AccountTokens) -> Result<AccountTokens> {
     let client = create_client(config, tokens);
 
     let access_token = client
@@ -143,7 +143,7 @@ pub async fn refresh_token(config: &GcalConfig, tokens: &GcalTokens) -> Result<G
         None
     };
 
-    Ok(GcalTokens {
+    Ok(AccountTokens {
         access_token: access_token.access_token,
         refresh_token: access_token.refresh_token,
         expires_at,
@@ -151,7 +151,7 @@ pub async fn refresh_token(config: &GcalConfig, tokens: &GcalTokens) -> Result<G
 }
 
 /// Fetch the user's email to verify authentication
-pub async fn fetch_user_email(config: &GcalConfig, tokens: &GcalTokens) -> Result<String> {
+pub async fn fetch_user_email(config: &GcalConfig, tokens: &AccountTokens) -> Result<String> {
     let client = create_client(config, tokens);
 
     // Get calendar list and find primary calendar (its ID is typically the user's email)
@@ -179,7 +179,7 @@ pub struct Calendar {
 }
 
 /// Fetch the list of calendars for the authenticated user
-pub async fn fetch_calendars(config: &GcalConfig, tokens: &GcalTokens) -> Result<Vec<Calendar>> {
+pub async fn fetch_calendars(config: &GcalConfig, tokens: &AccountTokens) -> Result<Vec<Calendar>> {
     let client = create_client(config, tokens);
 
     let response = client
@@ -289,7 +289,7 @@ pub enum EventStatus {
 /// Fetch events from a specific calendar
 pub async fn fetch_events(
     config: &GcalConfig,
-    tokens: &GcalTokens,
+    tokens: &AccountTokens,
     calendar_id: &str,
 ) -> Result<Vec<Event>> {
     let client = create_client(config, tokens);

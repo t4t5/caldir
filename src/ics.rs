@@ -1,10 +1,33 @@
 use crate::providers::gcal::{Attendee, Event, EventStatus, EventTime, Transparency};
 use anyhow::Result;
-use icalendar::{Alarm, Calendar, Component, EventLike, Trigger};
+use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger};
 
-/// Generate .ics content for an event
-pub fn generate_ics(event: &Event) -> Result<String> {
+/// Metadata about the calendar source (for sync tracking)
+#[derive(Debug, Clone)]
+pub struct CalendarMetadata {
+    /// Calendar ID (e.g., "user@gmail.com")
+    pub calendar_id: String,
+    /// Human-readable calendar name (e.g., "Personal Calendar")
+    pub calendar_name: String,
+}
+
+/// Generate .ics content for an event with calendar metadata
+pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String> {
     let mut cal = Calendar::new();
+
+    // Add calendar-level metadata properties
+    // SOURCE (RFC 7986) - URL identifying the calendar source
+    let source_url = format!(
+        "https://www.googleapis.com/calendar/v3/calendars/{}",
+        urlencoding::encode(&metadata.calendar_id)
+    );
+    cal.append_property(Property::new("SOURCE", source_url));
+
+    // X-WR-CALNAME - Human-readable calendar name (de facto standard)
+    cal.append_property(Property::new("X-WR-CALNAME", &metadata.calendar_name));
+
+    // X-WR-RELCALID - Calendar identifier (de facto standard)
+    cal.append_property(Property::new("X-WR-RELCALID", &metadata.calendar_id));
 
     let mut ics_event = icalendar::Event::new();
     ics_event.uid(&event.id);

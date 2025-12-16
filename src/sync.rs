@@ -1,4 +1,4 @@
-use crate::ics;
+use crate::ics::{self, CalendarMetadata};
 use crate::providers::gcal::Event;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -12,7 +12,11 @@ pub struct SyncStats {
 }
 
 /// Sync events to a directory
-pub fn sync_events_to_dir(events: &[Event], dir: &Path) -> Result<SyncStats> {
+pub fn sync_events_to_dir(
+    events: &[Event],
+    dir: &Path,
+    metadata: &CalendarMetadata,
+) -> Result<SyncStats> {
     let mut stats = SyncStats {
         created: 0,
         updated: 0,
@@ -46,7 +50,7 @@ pub fn sync_events_to_dir(events: &[Event], dir: &Path) -> Result<SyncStats> {
 
         let new_filename = ics::generate_filename(event);
         let new_path = dir.join(&new_filename);
-        let new_content = ics::generate_ics(event)?;
+        let new_content = ics::generate_ics(event, metadata)?;
 
         if let Some(existing_path) = existing_files.get(&event.id) {
             // Event exists locally

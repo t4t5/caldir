@@ -79,7 +79,26 @@ client_id = "your-client-id.apps.googleusercontent.com"
 client_secret = "your-client-secret"
 ```
 
-Tokens (refresh token, access token) are stored separately at `~/.config/caldir/tokens.json`.
+Tokens are stored separately at `~/.config/caldir/tokens.json`, keyed by provider and account email (discovered during auth):
+
+```json
+{
+  "gcal": {
+    "personal@gmail.com": {
+      "access_token": "...",
+      "refresh_token": "...",
+      "expires_at": "2025-03-20T15:00:00Z"
+    },
+    "work@company.com": {
+      "access_token": "...",
+      "refresh_token": "...",
+      "expires_at": "2025-03-20T15:00:00Z"
+    }
+  }
+}
+```
+
+This supports multiple accounts per provider. Run `caldir-sync auth` multiple times with different Google accounts to connect them all.
 
 ## Commands
 

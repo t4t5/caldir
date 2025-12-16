@@ -36,3 +36,6 @@ url = "2"
 
 # Open URLs in browser
 open = "5"
+
+# URL encoding
+urlencoding = "2"

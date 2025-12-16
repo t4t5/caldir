@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
@@ -8,7 +9,7 @@ pub struct Config {
     #[serde(default = "default_calendar_dir")]
     pub calendar_dir: String,
 
-    /// Provider configurations
+    /// Provider configurations (OAuth credentials)
     #[serde(default)]
     pub providers: Providers,
 }
@@ -18,6 +19,7 @@ pub struct Providers {
     pub gcal: Option<GcalConfig>,
 }
 
+/// OAuth credentials for Google Calendar
 #[derive(Debug, Deserialize)]
 pub struct GcalConfig {
     pub client_id: String,
@@ -28,13 +30,17 @@ fn default_calendar_dir() -> String {
     "~/calendar".to_string()
 }
 
+/// Tokens storage: provider -> account email -> tokens
+/// Example: { "gcal": { "user@gmail.com": { ... }, "work@company.com": { ... } } }
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Tokens {
-    pub gcal: Option<GcalTokens>,
+    #[serde(default)]
+    pub gcal: HashMap<String, AccountTokens>,
 }
 
+/// Tokens for a single authenticated account
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GcalTokens {
+pub struct AccountTokens {
     pub access_token: String,
     pub refresh_token: String,
     #[serde(default)]

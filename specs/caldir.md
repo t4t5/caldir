@@ -16,6 +16,21 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 **Value:** Set by icalendar crate (something like `-//icalendar-rs//EN`)
 **Why:** Required by spec. Identifies the product that created the file. We let the library handle this.
 
+### `SOURCE`
+**Standard:** RFC 7986
+**Value:** `https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}`
+**Why:** URL identifying the calendar source. The provider can be inferred from the domain. Used by push to know where to send updates.
+
+### `X-WR-CALNAME`
+**Standard:** De facto (Google/Apple/Microsoft)
+**Value:** Human-readable calendar name (e.g., "Personal Calendar")
+**Why:** Useful metadata for display. Widely supported across calendar apps.
+
+### `X-WR-RELCALID`
+**Standard:** De facto (Google/Apple/Microsoft)
+**Value:** Calendar identifier (e.g., "user@gmail.com")
+**Why:** Used by push to identify which calendar to update. Combined with tokens.json account mapping, this enables multi-calendar sync.
+
 ---
 
 ## VEVENT (Event)
