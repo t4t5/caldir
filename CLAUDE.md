@@ -46,6 +46,8 @@ The tool supports bidirectional sync between cloud and local:
 - Local-only events → new events to push
 - Remote-only events → new events to pull
 
+**Sync time window**: Only events within ±365 days of today are synced. Events outside this window are left untouched locally (not flagged for deletion just because they weren't fetched from the remote).
+
 ### Filesystem as State
 
 There's no separate state file tracking which events have been synced. Instead:
@@ -82,7 +84,7 @@ src/
 
 **event.rs** — Provider-neutral event types (`Event`, `Attendee`, `Reminder`, etc.). Providers convert their API responses into these types, and the rest of the codebase works exclusively with them. This keeps provider-specific logic contained.
 
-**diff.rs** — Bidirectional diff computation. Compares remote events against local files and returns `SyncDiff` with separate lists for pull changes (`to_pull_create/update/delete`) and push changes (`to_push_create/update`). Uses timestamp comparison to determine sync direction.
+**diff.rs** — Bidirectional diff computation. Compares remote events against local files and returns `SyncDiff` with separate lists for pull changes (`to_pull_create/update/delete`) and push changes (`to_push_create/update`). Uses timestamp comparison to determine sync direction. Accepts an optional time range to avoid flagging old events for deletion when they fall outside the queried window.
 
 **caldir.rs** — The local calendar directory as a first-class abstraction. Reads all `.ics` files into a UID → LocalEvent map (including file modification times for sync direction detection), writes events, deletes events. The filesystem is the source of truth.
 
@@ -222,7 +224,7 @@ cargo run -- pull
 ## Dependencies
 
 - **google-calendar** — Google Calendar API client (handles OAuth, types, requests)
-- **icalendar** — Generate .ics files
+- **icalendar** — Generate and parse .ics files
 - **tokio** — Async runtime
 - **clap** — CLI argument parsing
 - **uuid** — Generate unique event IDs for locally-created events

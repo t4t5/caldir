@@ -6,7 +6,11 @@ mod ics;
 mod providers;
 
 use anyhow::Result;
+use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
+
+/// Number of days to sync in each direction (past and future)
+const SYNC_DAYS: i64 = 365;
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
@@ -201,9 +205,11 @@ async fn cmd_pull() -> Result<()> {
             source_url: Some(primary_calendar.source_url.clone()),
         };
 
-        // Compute diff
+        // Compute diff with time range awareness
+        let now = Utc::now();
+        let time_range = Some((now - Duration::days(SYNC_DAYS), now + Duration::days(SYNC_DAYS)));
         let sync_diff =
-            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, false)?;
+            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, false, time_range)?;
 
         // Apply changes
         let mut stats = caldir::ApplyStats {
@@ -335,9 +341,11 @@ async fn cmd_push() -> Result<()> {
             source_url: Some(primary_calendar.source_url.clone()),
         };
 
-        // Compute diff
+        // Compute diff with time range awareness
+        let now = Utc::now();
+        let time_range = Some((now - Duration::days(SYNC_DAYS), now + Duration::days(SYNC_DAYS)));
         let sync_diff =
-            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, false)?;
+            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, false, time_range)?;
 
         if sync_diff.to_push_create.is_empty() && sync_diff.to_push_update.is_empty() {
             println!("  No changes to push");
@@ -498,9 +506,11 @@ async fn cmd_status(verbose: bool) -> Result<()> {
             source_url: Some(primary_calendar.source_url.clone()),
         };
 
-        // Compute diff without applying
+        // Compute diff without applying (with time range awareness)
+        let now = Utc::now();
+        let time_range = Some((now - Duration::days(SYNC_DAYS), now + Duration::days(SYNC_DAYS)));
         let sync_diff =
-            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, verbose)?;
+            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, verbose, time_range)?;
 
         all_to_pull_create.extend(sync_diff.to_pull_create);
         all_to_pull_update.extend(sync_diff.to_pull_update);

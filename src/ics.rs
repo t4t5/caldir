@@ -263,6 +263,37 @@ pub fn parse_uid(content: &str) -> Option<String> {
     None
 }
 
+/// Parse the DTSTART from an .ics file content, returning it as DateTime<Utc>.
+/// All-day events are converted to midnight UTC of that date.
+pub fn parse_dtstart_utc(content: &str) -> Option<chrono::DateTime<Utc>> {
+    use icalendar::{CalendarComponent, DatePerhapsTime, CalendarDateTime};
+    use std::str::FromStr;
+
+    let calendar = Calendar::from_str(content).ok()?;
+
+    for component in calendar.iter() {
+        if let CalendarComponent::Event(event) = component {
+            match event.get_start()? {
+                DatePerhapsTime::DateTime(cal_dt) => {
+                    // Try to convert to UTC; for Floating/WithTimezone, fall back to naive conversion
+                    match cal_dt {
+                        CalendarDateTime::Utc(dt) => return Some(dt),
+                        CalendarDateTime::Floating(naive) => return Some(naive.and_utc()),
+                        CalendarDateTime::WithTimezone { date_time, .. } => {
+                            return Some(date_time.and_utc())
+                        }
+                    }
+                }
+                DatePerhapsTime::Date(date) => {
+                    // All-day event: use midnight UTC
+                    return Some(date.and_hms_opt(0, 0, 0)?.and_utc());
+                }
+            }
+        }
+    }
+    None
+}
+
 // ============================================================================
 // CLI Input Parsing
 // ============================================================================

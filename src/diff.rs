@@ -7,6 +7,7 @@ use crate::caldir::LocalEvent;
 use crate::ics::{self, CalendarMetadata};
 use crate::event::Event;
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
@@ -118,12 +119,17 @@ fn compute_property_diff(local_content: &str, new_content: &str) -> Vec<Property
 /// - Push changes: what needs to be created/updated on remote to match local
 ///
 /// Uses timestamp comparison: if local file mtime > remote updated, it's a push candidate.
+///
+/// The `time_range` parameter specifies the window of events that were queried from
+/// the remote. Events outside this range won't be flagged for deletion since we
+/// don't know their remote status.
 pub fn compute(
     remote_events: &[Event],
     local_events: &HashMap<String, LocalEvent>,
     dir: &Path,
     metadata: &CalendarMetadata,
     verbose: bool,
+    time_range: Option<(DateTime<Utc>, DateTime<Utc>)>,
 ) -> Result<SyncDiff> {
     let mut diff = SyncDiff {
         to_pull_create: Vec::new(),
@@ -220,10 +226,23 @@ pub fn compute(
                     property_changes: Vec::new(),
                 });
             } else {
-                diff.to_pull_delete.push(SyncChange {
-                    filename,
-                    property_changes: Vec::new(),
-                });
+                // Only consider deletion if the event falls within the queried time range.
+                // Events outside the range weren't fetched, so we can't know if they
+                // still exist on the remote.
+                let in_range = match (time_range, ics::parse_dtstart_utc(&local.content)) {
+                    (Some((time_min, time_max)), Some(event_start)) => {
+                        event_start >= time_min && event_start <= time_max
+                    }
+                    // No time range specified, or couldn't parse date - assume in range
+                    _ => true,
+                };
+
+                if in_range {
+                    diff.to_pull_delete.push(SyncChange {
+                        filename,
+                        property_changes: Vec::new(),
+                    });
+                }
             }
         }
     }
