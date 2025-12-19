@@ -868,6 +868,7 @@ fn format_duration(value: i64, unit: &str, is_before: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Datelike, Timelike};
 
     #[test]
     fn test_format_organizer_with_name() {
@@ -1004,5 +1005,63 @@ mod tests {
         assert_eq!(short_id("abc12345xyz"), "abc12345");
         assert_eq!(short_id("short"), "short");
         assert_eq!(short_id(""), "");
+    }
+
+    #[test]
+    fn test_parse_dtstart_utc_datetime_with_z() {
+        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:20241217T180000Z\nEND:VEVENT\nEND:VCALENDAR";
+        let result = parse_dtstart_utc(ics);
+        assert!(result.is_some());
+        let dt = result.unwrap();
+        assert_eq!(dt.year(), 2024);
+        assert_eq!(dt.month(), 12);
+        assert_eq!(dt.day(), 17);
+        assert_eq!(dt.hour(), 18);
+        assert_eq!(dt.minute(), 0);
+    }
+
+    #[test]
+    fn test_parse_dtstart_utc_all_day_event() {
+        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART;VALUE=DATE:20241217\nEND:VEVENT\nEND:VCALENDAR";
+        let result = parse_dtstart_utc(ics);
+        assert!(result.is_some());
+        let dt = result.unwrap();
+        assert_eq!(dt.year(), 2024);
+        assert_eq!(dt.month(), 12);
+        assert_eq!(dt.day(), 17);
+        assert_eq!(dt.hour(), 0); // All-day events become midnight UTC
+    }
+
+    #[test]
+    fn test_parse_dtstart_utc_floating_datetime() {
+        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:20241217T140000\nEND:VEVENT\nEND:VCALENDAR";
+        let result = parse_dtstart_utc(ics);
+        assert!(result.is_some());
+        let dt = result.unwrap();
+        assert_eq!(dt.hour(), 14); // Floating treated as UTC
+    }
+
+    #[test]
+    fn test_parse_dtstart_utc_with_timezone() {
+        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART;TZID=America/New_York:20241217T100000\nEND:VEVENT\nEND:VCALENDAR";
+        let result = parse_dtstart_utc(ics);
+        assert!(result.is_some());
+        // Note: timezone is ignored, naive datetime treated as UTC
+        let dt = result.unwrap();
+        assert_eq!(dt.hour(), 10);
+    }
+
+    #[test]
+    fn test_parse_dtstart_utc_missing_dtstart() {
+        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:No start time\nEND:VEVENT\nEND:VCALENDAR";
+        let result = parse_dtstart_utc(ics);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_parse_dtstart_utc_invalid_ics() {
+        let ics = "not valid ics content";
+        let result = parse_dtstart_utc(ics);
+        assert!(result.is_none());
     }
 }
