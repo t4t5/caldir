@@ -5,7 +5,7 @@ mod event;
 mod ics;
 mod providers;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 
@@ -85,6 +85,31 @@ async fn main() -> Result<()> {
     }
 }
 
+/// Refresh the access token if expired, saving the updated tokens.
+/// Returns the (possibly refreshed) tokens.
+async fn refresh_credentials_if_needed(
+    gcal_config: &config::GcalConfig,
+    account_email: &str,
+    tokens: config::AccountTokens,
+    all_tokens: &mut config::Tokens,
+) -> Result<config::AccountTokens> {
+    if tokens
+        .expires_at
+        .map(|exp| exp < chrono::Utc::now())
+        .unwrap_or(false)
+    {
+        println!("Access token expired for {}, refreshing...", account_email);
+        let refreshed = providers::gcal::refresh_token(gcal_config, &tokens)
+            .await
+            .context("Failed to refresh token. Run 'caldir-cli auth' to re-authenticate.")?;
+        all_tokens.gcal.insert(account_email.to_string(), refreshed.clone());
+        config::save_tokens(all_tokens)?;
+        Ok(refreshed)
+    } else {
+        Ok(tokens)
+    }
+}
+
 async fn cmd_auth(provider: &str) -> Result<()> {
     match provider {
         "gcal" => {
@@ -159,22 +184,13 @@ async fn cmd_pull() -> Result<()> {
     // Pull from all connected accounts
     let account_emails: Vec<String> = all_tokens.gcal.keys().cloned().collect();
     for account_email in account_emails {
-        let mut account_tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
-
-        // Check if token needs refresh
-        if account_tokens
-            .expires_at
-            .map(|exp| exp < chrono::Utc::now())
-            .unwrap_or(false)
-        {
-            println!("Access token expired for {}, refreshing...", account_email);
-            account_tokens =
-                providers::gcal::refresh_token(gcal_config, &account_tokens).await?;
-            all_tokens
-                .gcal
-                .insert(account_email.clone(), account_tokens.clone());
-            config::save_tokens(&all_tokens)?;
-        }
+        let tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
+        let account_tokens = refresh_credentials_if_needed(
+            gcal_config,
+            &account_email,
+            tokens,
+            &mut all_tokens,
+        ).await?;
 
         println!("\nPulling from account: {}", account_email);
 
@@ -296,22 +312,13 @@ async fn cmd_push() -> Result<()> {
 
     let account_emails: Vec<String> = all_tokens.gcal.keys().cloned().collect();
     for account_email in account_emails {
-        let mut account_tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
-
-        // Check if token needs refresh
-        if account_tokens
-            .expires_at
-            .map(|exp| exp < chrono::Utc::now())
-            .unwrap_or(false)
-        {
-            println!("Access token expired for {}, refreshing...", account_email);
-            account_tokens =
-                providers::gcal::refresh_token(gcal_config, &account_tokens).await?;
-            all_tokens
-                .gcal
-                .insert(account_email.clone(), account_tokens.clone());
-            config::save_tokens(&all_tokens)?;
-        }
+        let tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
+        let account_tokens = refresh_credentials_if_needed(
+            gcal_config,
+            &account_email,
+            tokens,
+            &mut all_tokens,
+        ).await?;
 
         println!("\nPushing to account: {}", account_email);
 
@@ -461,21 +468,13 @@ async fn cmd_status(verbose: bool) -> Result<()> {
 
     let account_emails: Vec<String> = all_tokens.gcal.keys().cloned().collect();
     for account_email in account_emails {
-        let mut account_tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
-
-        // Refresh token if needed
-        if account_tokens
-            .expires_at
-            .map(|exp| exp < chrono::Utc::now())
-            .unwrap_or(false)
-        {
-            account_tokens =
-                providers::gcal::refresh_token(gcal_config, &account_tokens).await?;
-            all_tokens
-                .gcal
-                .insert(account_email.clone(), account_tokens.clone());
-            config::save_tokens(&all_tokens)?;
-        }
+        let tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
+        let account_tokens = refresh_credentials_if_needed(
+            gcal_config,
+            &account_email,
+            tokens,
+            &mut all_tokens,
+        ).await?;
 
         // Fetch calendars to find the primary one
         let calendars =

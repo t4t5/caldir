@@ -146,9 +146,17 @@ pub async fn refresh_token(config: &GcalConfig, tokens: &AccountTokens) -> Resul
         None
     };
 
+    // Google typically doesn't return a new refresh_token on refresh responses,
+    // so preserve the original one if the response is empty
+    let refresh_token = if access_token.refresh_token.is_empty() {
+        tokens.refresh_token.clone()
+    } else {
+        access_token.refresh_token
+    };
+
     Ok(AccountTokens {
         access_token: access_token.access_token,
-        refresh_token: access_token.refresh_token,
+        refresh_token,
         expires_at,
     })
 }
