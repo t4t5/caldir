@@ -6,7 +6,7 @@ use google_calendar::Client;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
-use crate::config::{AccountTokens, GcalConfig};
+use crate::config::{AccountTokens, GoogleConfig};
 use crate::event::{Attendee, Event, EventStatus, EventTime, Reminder, Transparency};
 
 const REDIRECT_PORT: u16 = 8085;
@@ -15,7 +15,7 @@ const REDIRECT_URI: &str = "http://localhost:8085/callback";
 const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
 
 /// Create a Google Calendar client from stored tokens
-pub fn create_client(config: &GcalConfig, tokens: &AccountTokens) -> Client {
+pub fn create_client(config: &GoogleConfig, tokens: &AccountTokens) -> Client {
     Client::new(
         config.client_id.clone(),
         config.client_secret.clone(),
@@ -26,7 +26,7 @@ pub fn create_client(config: &GcalConfig, tokens: &AccountTokens) -> Client {
 }
 
 /// Create a new client for initial authentication (no tokens yet)
-fn create_auth_client(config: &GcalConfig) -> Client {
+fn create_auth_client(config: &GoogleConfig) -> Client {
     Client::new(
         config.client_id.clone(),
         config.client_secret.clone(),
@@ -88,7 +88,7 @@ fn wait_for_callback() -> Result<(String, String)> {
 }
 
 /// Run the full OAuth authentication flow
-pub async fn authenticate(config: &GcalConfig) -> Result<AccountTokens> {
+pub async fn authenticate(config: &GoogleConfig) -> Result<AccountTokens> {
     let mut client = create_auth_client(config);
 
     // Get the authorization URL
@@ -131,7 +131,7 @@ pub async fn authenticate(config: &GcalConfig) -> Result<AccountTokens> {
 }
 
 /// Refresh an expired access token
-pub async fn refresh_token(config: &GcalConfig, tokens: &AccountTokens) -> Result<AccountTokens> {
+pub async fn refresh_token(config: &GoogleConfig, tokens: &AccountTokens) -> Result<AccountTokens> {
     let client = create_client(config, tokens);
 
     let access_token = client
@@ -162,7 +162,7 @@ pub async fn refresh_token(config: &GcalConfig, tokens: &AccountTokens) -> Resul
 }
 
 /// Fetch the user's email to verify authentication
-pub async fn fetch_user_email(config: &GcalConfig, tokens: &AccountTokens) -> Result<String> {
+pub async fn fetch_user_email(config: &GoogleConfig, tokens: &AccountTokens) -> Result<String> {
     let client = create_client(config, tokens);
 
     // Get calendar list and find primary calendar (its ID is typically the user's email)
@@ -192,7 +192,7 @@ pub struct Calendar {
 }
 
 /// Fetch the list of calendars for the authenticated user
-pub async fn fetch_calendars(config: &GcalConfig, tokens: &AccountTokens) -> Result<Vec<Calendar>> {
+pub async fn fetch_calendars(config: &GoogleConfig, tokens: &AccountTokens) -> Result<Vec<Calendar>> {
     let client = create_client(config, tokens);
 
     let response = client
@@ -226,7 +226,7 @@ pub async fn fetch_calendars(config: &GcalConfig, tokens: &AccountTokens) -> Res
 
 /// Fetch events from a specific calendar
 pub async fn fetch_events(
-    config: &GcalConfig,
+    config: &GoogleConfig,
     tokens: &AccountTokens,
     calendar_id: &str,
 ) -> Result<Vec<Event>> {
@@ -541,7 +541,7 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
 
 /// Update an existing event on Google Calendar
 pub async fn update_event(
-    config: &GcalConfig,
+    config: &GoogleConfig,
     tokens: &AccountTokens,
     calendar_id: &str,
     event: &Event,
@@ -571,7 +571,7 @@ pub async fn update_event(
 /// Create a new event on Google Calendar
 /// Returns the created Event with Google-assigned ID and all Google-added fields
 pub async fn create_event(
-    config: &GcalConfig,
+    config: &GoogleConfig,
     tokens: &AccountTokens,
     calendar_id: &str,
     event: &Event,

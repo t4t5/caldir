@@ -1,1 +1,1 @@
-pub mod gcal;
+pub mod google;

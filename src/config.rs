@@ -16,12 +16,12 @@ pub struct Config {
 
 #[derive(Debug, Default, Deserialize)]
 pub struct Providers {
-    pub gcal: Option<GcalConfig>,
+    pub google: Option<GoogleConfig>,
 }
 
 /// OAuth credentials for Google Calendar
 #[derive(Debug, Deserialize)]
-pub struct GcalConfig {
+pub struct GoogleConfig {
     pub client_id: String,
     pub client_secret: String,
 }
@@ -31,11 +31,11 @@ fn default_calendar_dir() -> String {
 }
 
 /// Tokens storage: provider -> account email -> tokens
-/// Example: { "gcal": { "user@gmail.com": { ... }, "work@company.com": { ... } } }
+/// Example: { "google": { "user@gmail.com": { ... }, "work@company.com": { ... } } }
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Tokens {
     #[serde(default)]
-    pub gcal: HashMap<String, AccountTokens>,
+    pub google: HashMap<String, AccountTokens>,
 }
 
 /// Tokens for a single authenticated account
@@ -73,7 +73,7 @@ pub fn load_config() -> Result<Config> {
         anyhow::bail!(
             "Config file not found at {}\n\n\
             Create it with your Google OAuth credentials:\n\n\
-            [providers.gcal]\n\
+            [providers.google]\n\
             client_id = \"your-client-id.apps.googleusercontent.com\"\n\
             client_secret = \"your-client-secret\"\n\n\
             See CLAUDE.md for setup instructions.",

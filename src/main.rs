@@ -24,8 +24,8 @@ struct Cli {
 enum Commands {
     /// Authenticate with a calendar provider
     Auth {
-        /// Provider to authenticate with (default: gcal)
-        #[arg(default_value = "gcal")]
+        /// Provider to authenticate with (default: google)
+        #[arg(default_value = "google")]
         provider: String,
     },
     /// Pull events from cloud to local directory
@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
 /// Refresh the access token if expired, saving the updated tokens.
 /// Returns the (possibly refreshed) tokens.
 async fn refresh_credentials_if_needed(
-    gcal_config: &config::GcalConfig,
+    google_config: &config::GoogleConfig,
     account_email: &str,
     tokens: config::AccountTokens,
     all_tokens: &mut config::Tokens,
@@ -99,10 +99,10 @@ async fn refresh_credentials_if_needed(
         .unwrap_or(false)
     {
         println!("Access token expired for {}, refreshing...", account_email);
-        let refreshed = providers::gcal::refresh_token(gcal_config, &tokens)
+        let refreshed = providers::google::refresh_token(google_config, &tokens)
             .await
             .context("Failed to refresh token. Run 'caldir-cli auth' to re-authenticate.")?;
-        all_tokens.gcal.insert(account_email.to_string(), refreshed.clone());
+        all_tokens.google.insert(account_email.to_string(), refreshed.clone());
         config::save_tokens(all_tokens)?;
         Ok(refreshed)
     } else {
@@ -112,28 +112,28 @@ async fn refresh_credentials_if_needed(
 
 async fn cmd_auth(provider: &str) -> Result<()> {
     match provider {
-        "gcal" => {
+        "google" => {
             let cfg = config::load_config()?;
-            let gcal_config = cfg
+            let google_config = cfg
                 .providers
-                .gcal
+                .google
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!(
                     "Google Calendar not configured.\n\n\
                     Add to ~/.config/caldir/config.toml:\n\n\
-                    [providers.gcal]\n\
+                    [providers.google]\n\
                     client_id = \"your-client-id.apps.googleusercontent.com\"\n\
                     client_secret = \"your-client-secret\""
                 ))?;
 
-            let tokens = providers::gcal::authenticate(gcal_config).await?;
+            let tokens = providers::google::authenticate(google_config).await?;
 
             // Discover the user's email from the authenticated account
-            let email = providers::gcal::fetch_user_email(gcal_config, &tokens).await?;
+            let email = providers::google::fetch_user_email(google_config, &tokens).await?;
             println!("\nAuthenticated as: {}", email);
 
             // Fetch and display calendars
-            let calendars = providers::gcal::fetch_calendars(gcal_config, &tokens).await?;
+            let calendars = providers::google::fetch_calendars(google_config, &tokens).await?;
             println!("\nAvailable calendars:");
             for cal in &calendars {
                 let primary_marker = if cal.primary { " (primary)" } else { "" };
@@ -142,7 +142,7 @@ async fn cmd_auth(provider: &str) -> Result<()> {
 
             // Save tokens keyed by the discovered email
             let mut all_tokens = config::load_tokens()?;
-            all_tokens.gcal.insert(email.clone(), tokens);
+            all_tokens.google.insert(email.clone(), tokens);
             config::save_tokens(&all_tokens)?;
 
             println!("\nTokens saved for account: {}", email);
@@ -151,7 +151,7 @@ async fn cmd_auth(provider: &str) -> Result<()> {
             Ok(())
         }
         _ => {
-            anyhow::bail!("Unknown provider: {}. Supported: gcal", provider);
+            anyhow::bail!("Unknown provider: {}. Supported: google", provider);
         }
     }
 }
@@ -160,11 +160,11 @@ async fn cmd_pull() -> Result<()> {
     let cfg = config::load_config()?;
     let mut all_tokens = config::load_tokens()?;
 
-    let gcal_config = cfg.providers.gcal.as_ref().ok_or_else(|| {
+    let google_config = cfg.providers.google.as_ref().ok_or_else(|| {
         anyhow::anyhow!("Google Calendar not configured in config.toml")
     })?;
 
-    if all_tokens.gcal.is_empty() {
+    if all_tokens.google.is_empty() {
         anyhow::bail!(
             "Not authenticated with Google Calendar.\n\
             Run `caldir-cli auth` first."
@@ -182,11 +182,11 @@ async fn cmd_pull() -> Result<()> {
     };
 
     // Pull from all connected accounts
-    let account_emails: Vec<String> = all_tokens.gcal.keys().cloned().collect();
+    let account_emails: Vec<String> = all_tokens.google.keys().cloned().collect();
     for account_email in account_emails {
-        let tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
+        let tokens = all_tokens.google.get(&account_email).unwrap().clone();
         let account_tokens = refresh_credentials_if_needed(
-            gcal_config,
+            google_config,
             &account_email,
             tokens,
             &mut all_tokens,
@@ -196,7 +196,7 @@ async fn cmd_pull() -> Result<()> {
 
         // Fetch calendars to find the primary one
         let calendars =
-            providers::gcal::fetch_calendars(gcal_config, &account_tokens).await?;
+            providers::google::fetch_calendars(google_config, &account_tokens).await?;
         let primary_calendar = calendars
             .iter()
             .find(|c| c.primary)
@@ -207,7 +207,7 @@ async fn cmd_pull() -> Result<()> {
 
         // Fetch remote events
         let remote_events =
-            providers::gcal::fetch_events(gcal_config, &account_tokens, &primary_calendar.id)
+            providers::google::fetch_events(google_config, &account_tokens, &primary_calendar.id)
                 .await?;
         println!("  Fetched {} events", remote_events.len());
 
@@ -294,11 +294,11 @@ async fn cmd_push() -> Result<()> {
     let cfg = config::load_config()?;
     let mut all_tokens = config::load_tokens()?;
 
-    let gcal_config = cfg.providers.gcal.as_ref().ok_or_else(|| {
+    let google_config = cfg.providers.google.as_ref().ok_or_else(|| {
         anyhow::anyhow!("Google Calendar not configured in config.toml")
     })?;
 
-    if all_tokens.gcal.is_empty() {
+    if all_tokens.google.is_empty() {
         anyhow::bail!(
             "Not authenticated with Google Calendar.\n\
             Run `caldir-cli auth` first."
@@ -310,11 +310,11 @@ async fn cmd_push() -> Result<()> {
     let mut total_created = 0;
     let mut total_updated = 0;
 
-    let account_emails: Vec<String> = all_tokens.gcal.keys().cloned().collect();
+    let account_emails: Vec<String> = all_tokens.google.keys().cloned().collect();
     for account_email in account_emails {
-        let tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
+        let tokens = all_tokens.google.get(&account_email).unwrap().clone();
         let account_tokens = refresh_credentials_if_needed(
-            gcal_config,
+            google_config,
             &account_email,
             tokens,
             &mut all_tokens,
@@ -324,7 +324,7 @@ async fn cmd_push() -> Result<()> {
 
         // Fetch calendars to find the primary one
         let calendars =
-            providers::gcal::fetch_calendars(gcal_config, &account_tokens).await?;
+            providers::google::fetch_calendars(google_config, &account_tokens).await?;
         let primary_calendar = calendars
             .iter()
             .find(|c| c.primary)
@@ -335,7 +335,7 @@ async fn cmd_push() -> Result<()> {
 
         // Fetch remote events
         let remote_events =
-            providers::gcal::fetch_events(gcal_config, &account_tokens, &primary_calendar.id)
+            providers::google::fetch_events(google_config, &account_tokens, &primary_calendar.id)
                 .await?;
 
         // Read local events
@@ -376,8 +376,8 @@ async fn cmd_push() -> Result<()> {
 
                     // Create event on Google Calendar and get back the full event
                     // with Google-assigned ID and Google-added fields (organizer, reminders, etc.)
-                    let created_event = providers::gcal::create_event(
-                        gcal_config,
+                    let created_event = providers::google::create_event(
+                        google_config,
                         &account_tokens,
                         &primary_calendar.id,
                         &event,
@@ -415,8 +415,8 @@ async fn cmd_push() -> Result<()> {
                 // Parse local ICS to Event
                 if let Some(event) = ics::parse_event(&local.content) {
                     println!("  Updating: {}", event.summary);
-                    providers::gcal::update_event(
-                        gcal_config,
+                    providers::google::update_event(
+                        google_config,
                         &account_tokens,
                         &primary_calendar.id,
                         &event,
@@ -446,11 +446,11 @@ async fn cmd_status(verbose: bool) -> Result<()> {
     let cfg = config::load_config()?;
     let mut all_tokens = config::load_tokens()?;
 
-    let gcal_config = cfg.providers.gcal.as_ref().ok_or_else(|| {
+    let google_config = cfg.providers.google.as_ref().ok_or_else(|| {
         anyhow::anyhow!("Google Calendar not configured in config.toml")
     })?;
 
-    if all_tokens.gcal.is_empty() {
+    if all_tokens.google.is_empty() {
         anyhow::bail!(
             "Not authenticated with Google Calendar.\n\
             Run `caldir-cli auth` first."
@@ -466,11 +466,11 @@ async fn cmd_status(verbose: bool) -> Result<()> {
     let mut all_to_push_create: Vec<diff::SyncChange> = Vec::new();
     let mut all_to_push_update: Vec<diff::SyncChange> = Vec::new();
 
-    let account_emails: Vec<String> = all_tokens.gcal.keys().cloned().collect();
+    let account_emails: Vec<String> = all_tokens.google.keys().cloned().collect();
     for account_email in account_emails {
-        let tokens = all_tokens.gcal.get(&account_email).unwrap().clone();
+        let tokens = all_tokens.google.get(&account_email).unwrap().clone();
         let account_tokens = refresh_credentials_if_needed(
-            gcal_config,
+            google_config,
             &account_email,
             tokens,
             &mut all_tokens,
@@ -478,7 +478,7 @@ async fn cmd_status(verbose: bool) -> Result<()> {
 
         // Fetch calendars to find the primary one
         let calendars =
-            providers::gcal::fetch_calendars(gcal_config, &account_tokens).await?;
+            providers::google::fetch_calendars(google_config, &account_tokens).await?;
         let primary_calendar = calendars
             .iter()
             .find(|c| c.primary)
@@ -492,7 +492,7 @@ async fn cmd_status(verbose: bool) -> Result<()> {
 
         // Fetch remote events
         let remote_events =
-            providers::gcal::fetch_events(gcal_config, &account_tokens, &primary_calendar.id)
+            providers::google::fetch_events(google_config, &account_tokens, &primary_calendar.id)
                 .await?;
 
         // Read local events
