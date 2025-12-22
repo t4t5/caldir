@@ -21,6 +21,41 @@ Calendars should work the same way. Instead of living behind APIs and OAuth flow
 
 **caldir-cli** is the command-line tool for working with caldir directories — syncing with cloud providers, viewing events, and managing your calendar locally.
 
+## Why caldir over vdir/pimsync?
+
+**vdir** is the existing standard for local calendar directories (used by vdirsyncer, pimsync). It specifies:
+- Subdirectories = collections (calendars)
+- Filenames should be URL-safe and NOT parsed for metadata
+- One `.ics` file per event with UID
+
+caldir takes a different approach to filenames:
+
+```
+# vdir filenames (opaque IDs)
+5a3c9b7e-1234-5678-abcd-ef1234567890.ics
+
+# caldir filenames (human/LLM readable)
+2025-03-20T1500__meeting-with-alice_5a3c9b7e.ics
+```
+
+**Why human-readable filenames matter:**
+
+1. **`ls` shows your schedule** — No need for a special viewer to see what's on your calendar
+2. **grep works** — `ls ~/calendar/work/ | grep 2025-03` shows March events
+3. **LLM-friendly** — AI assistants can read your calendar directory and understand it immediately
+4. **Sorting works** — Files sort chronologically by default
+5. **Tab completion** — Start typing the date to find events
+
+**Why not pimsync/vdirsyncer for Google Calendar?**
+
+| Tool | Google Calendar | Status |
+|------|-----------------|--------|
+| caldir-cli | Native REST API | Works now |
+| vdirsyncer | CalDAV | Works but unmaintained |
+| pimsync | CalDAV | Google OAuth not yet implemented |
+
+Google's CalDAV API is a second-class citizen — slower, quirkier, requires separate API enablement. caldir-cli uses Google's native REST API, which is what Google actually supports and maintains.
+
 ## Design Decisions
 
 ### User-Provided OAuth Credentials
