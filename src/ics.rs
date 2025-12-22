@@ -227,7 +227,7 @@ fn format_attendee_value(attendee: &Attendee) -> String {
 }
 
 /// Convert a string to a filename-safe slug
-fn slugify(s: &str) -> String {
+pub fn slugify(s: &str) -> String {
     s.to_lowercase()
         .chars()
         .map(|c| {

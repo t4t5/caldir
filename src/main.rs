@@ -113,7 +113,7 @@ async fn refresh_credentials_if_needed(
 async fn cmd_auth(provider: &str) -> Result<()> {
     match provider {
         "google" => {
-            let cfg = config::load_config()?;
+            let mut cfg = config::load_config()?;
             let google_config = cfg
                 .providers
                 .google
@@ -124,29 +124,54 @@ async fn cmd_auth(provider: &str) -> Result<()> {
                     [providers.google]\n\
                     client_id = \"your-client-id.apps.googleusercontent.com\"\n\
                     client_secret = \"your-client-secret\""
-                ))?;
+                ))?
+                .clone();
 
-            let tokens = providers::google::authenticate(google_config).await?;
+            let tokens = providers::google::authenticate(&google_config).await?;
 
             // Discover the user's email from the authenticated account
-            let email = providers::google::fetch_user_email(google_config, &tokens).await?;
+            let email = providers::google::fetch_user_email(&google_config, &tokens).await?;
             println!("\nAuthenticated as: {}", email);
 
-            // Fetch and display calendars
-            let calendars = providers::google::fetch_calendars(google_config, &tokens).await?;
-            println!("\nAvailable calendars:");
+            // Fetch calendars and auto-add to config
+            let calendars = providers::google::fetch_calendars(&google_config, &tokens).await?;
+            println!("\nFound {} calendar(s):", calendars.len());
+
             for cal in &calendars {
+                // Generate a slug name from calendar name
+                let calendar_name = ics::slugify(&cal.name);
                 let primary_marker = if cal.primary { " (primary)" } else { "" };
-                println!("  - {}{}", cal.name, primary_marker);
+                println!("  Adding: {} ({}){}", calendar_name, cal.name, primary_marker);
+
+                // Create calendar config
+                let calendar_config = config::CalendarConfig {
+                    provider: config::Provider::Google,
+                    account: config::AccountEmail::from_string(email.clone()),
+                    calendar_id: if cal.primary {
+                        None // Primary calendar doesn't need explicit ID
+                    } else {
+                        Some(config::CalendarId::from_string(cal.id.clone()))
+                    },
+                };
+
+                cfg.calendars.insert(calendar_name.clone(), calendar_config);
+
+                // Set primary calendar as default
+                if cal.primary && cfg.default_calendar.is_none() {
+                    cfg.default_calendar = Some(calendar_name);
+                }
             }
+
+            // Save updated config
+            config::save_config(&cfg)?;
 
             // Save tokens keyed by the discovered email
             let mut all_tokens = config::load_tokens()?;
             all_tokens.google.insert(email.clone(), tokens);
             config::save_tokens(&all_tokens)?;
 
-            println!("\nTokens saved for account: {}", email);
-            println!("You can now run `caldir-cli pull` to sync your calendar.");
+            println!("\nCalendars added to config.toml.");
+            println!("Run `caldir-cli pull` to sync your calendars.");
 
             Ok(())
         }

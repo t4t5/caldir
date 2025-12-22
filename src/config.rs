@@ -1,26 +1,127 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+// =============================================================================
+// Wrapper Types for Type Safety
+// =============================================================================
+
+/// Provider enum - exhaustive list of supported providers
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Provider {
+    Google,
+    Caldav,
+    Ical,
+}
+
+/// Newtype for account email addresses
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct AccountEmail(String);
+
+impl AccountEmail {
+    pub fn new(email: impl Into<String>) -> Result<Self> {
+        let email = email.into();
+        if !email.contains('@') {
+            anyhow::bail!("Invalid email address: {}", email);
+        }
+        Ok(Self(email))
+    }
+
+    /// Create without validation (for deserialization)
+    pub fn from_string(email: String) -> Self {
+        Self(email)
+    }
+}
+
+impl Deref for AccountEmail {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for AccountEmail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Newtype for calendar IDs (provider-specific identifiers)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CalendarId(String);
+
+impl CalendarId {
+    pub fn new(id: impl Into<String>) -> Result<Self> {
+        let id = id.into();
+        if id.is_empty() {
+            anyhow::bail!("Calendar ID cannot be empty");
+        }
+        Ok(Self(id))
+    }
+
+    /// Create without validation (for deserialization)
+    pub fn from_string(id: String) -> Self {
+        Self(id)
+    }
+}
+
+impl Deref for CalendarId {
+    type Target = str;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for CalendarId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+// =============================================================================
+// Configuration Structures
+// =============================================================================
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     /// Directory to sync calendar events to
     #[serde(default = "default_calendar_dir")]
     pub calendar_dir: String,
+
+    /// Default calendar for new events
+    #[serde(default)]
+    pub default_calendar: Option<String>,
+
+    /// Calendar configurations (maps directory name to provider/account/calendar)
+    #[serde(default)]
+    pub calendars: HashMap<String, CalendarConfig>,
 
     /// Provider configurations (OAuth credentials)
     #[serde(default)]
     pub providers: Providers,
 }
 
-#[derive(Debug, Default, Deserialize)]
+/// Configuration for a single calendar
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarConfig {
+    pub provider: Provider,
+    pub account: AccountEmail,
+    #[serde(default)]
+    pub calendar_id: Option<CalendarId>, // None = primary
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Providers {
     pub google: Option<GoogleConfig>,
 }
 
 /// OAuth credentials for Google Calendar
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoogleConfig {
     pub client_id: String,
     pub client_secret: String,
@@ -134,4 +235,28 @@ pub fn expand_path(path: &str) -> PathBuf {
         }
     }
     PathBuf::from(path)
+}
+
+/// Get the full path for a calendar directory
+pub fn calendar_path(config: &Config, calendar_name: &str) -> PathBuf {
+    expand_path(&config.calendar_dir).join(calendar_name)
+}
+
+/// Save config to ~/.config/caldir/config.toml
+pub fn save_config(config: &Config) -> Result<()> {
+    let path = config_path()?;
+
+    // Ensure config directory exists
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create config directory at {}", parent.display()))?;
+    }
+
+    let contents = toml::to_string_pretty(config)
+        .context("Failed to serialize config")?;
+
+    std::fs::write(&path, contents)
+        .with_context(|| format!("Failed to write config file at {}", path.display()))?;
+
+    Ok(())
 }
