@@ -10,13 +10,16 @@ Modern AI assistants are surprisingly good at understanding your computer — yo
 
 Calendars should work the same way. Instead of living behind APIs and OAuth flows, your calendar should be something you can `ls`, `grep`, and reason about locally.
 
-**caldir** is a convention: your calendar is a directory of `.ics` files, one event per file, with human-readable filenames:
+**caldir** is a convention: your calendar is a directory of `.ics` files, one event per file, with human-readable filenames. Each calendar is a subdirectory:
 
 ```
 ~/calendar/
-  2025-03-20T1500__client-call.ics
-  2025-03-21__offsite.ics
-  2025-03-25T0900__dentist.ics
+  personal/
+    2025-03-20T1500__client-call.ics
+    2025-03-21__offsite.ics
+  work/
+    2025-03-25T0900__dentist.ics
+    2025-03-26T1400__sprint-planning.ics
 ```
 
 **caldir-cli** is the command-line tool for working with caldir directories — syncing with cloud providers, viewing events, and managing your calendar locally.
@@ -93,12 +96,12 @@ There's no separate state file tracking which events have been synced. Instead:
 ### Provider Architecture
 
 The codebase is structured for multiple providers:
-- `gcal` — Google Calendar (OAuth + API)
+- `google` — Google Calendar (OAuth + REST API)
 - `ical` — Any iCal URL (read-only, no OAuth)
 - `caldav` — Generic CalDAV servers
 - `outlook` — Microsoft Graph API
 
-Currently only `gcal` is implemented.
+Currently only `google` is implemented.
 
 ## Module Architecture
 
@@ -112,7 +115,7 @@ src/
   ics.rs         - ICS format: generation, parsing, formatting
   providers/
     mod.rs
-    gcal.rs      - Google Calendar provider
+    google.rs    - Google Calendar provider
 ```
 
 ### Key Abstractions
@@ -173,32 +176,44 @@ This ensures the local file exactly matches the remote state after push, prevent
 **All-day events:** `YYYY-MM-DD__slug_eventid.ics`
 - Example: `2025-03-21__offsite_def67890.ics`
 
-The slug is derived from the event title: lowercased, spaces replaced with hyphens, special characters removed. The event ID suffix (first 8 chars) ensures uniqueness when multiple events have the same title and time.
+The slug is derived from the event title: lowercased, spaces replaced with hyphens, special characters removed. The event ID suffix (8-char hash) ensures uniqueness when multiple events have the same title and time.
 
 ## Configuration
 
 Config lives at `~/.config/caldir/config.toml`:
 
 ```toml
-# Where to sync events to
+# Where calendar subdirectories live
 calendar_dir = "~/calendar"
 
-[providers.gcal]
+# Default calendar for new events (used when --calendar not specified)
+default_calendar = "personal"
+
+# Calendar configurations (auto-populated by 'caldir auth')
+[calendars.personal]
+provider = "google"
+account = "me@gmail.com"
+# calendar_id is omitted for primary calendar
+
+[calendars.work]
+provider = "google"
+account = "me@gmail.com"
+calendar_id = "work@group.calendar.google.com"
+
+# Provider credentials
+[providers.google]
 client_id = "your-client-id.apps.googleusercontent.com"
 client_secret = "your-client-secret"
 ```
 
-Tokens are stored separately at `~/.config/caldir/tokens.json`, keyed by provider and account email (discovered during auth):
+Running `caldir auth` automatically discovers all calendars for the authenticated account and adds them to `config.toml`.
+
+Tokens are stored separately at `~/.config/caldir/tokens.json`, keyed by provider and account email:
 
 ```json
 {
-  "gcal": {
-    "personal@gmail.com": {
-      "access_token": "...",
-      "refresh_token": "...",
-      "expires_at": "2025-03-20T15:00:00Z"
-    },
-    "work@company.com": {
+  "google": {
+    "me@gmail.com": {
       "access_token": "...",
       "refresh_token": "...",
       "expires_at": "2025-03-20T15:00:00Z"
@@ -212,22 +227,24 @@ This supports multiple accounts per provider. Run `caldir-cli auth` multiple tim
 ## Commands
 
 ```bash
-# Authenticate with Google Calendar
+# Authenticate with Google Calendar (auto-adds calendars to config)
 caldir-cli auth
 
-# Create a new local event
+# Create a new local event (uses default_calendar from config)
 caldir-cli new "Meeting with Alice" --start 2025-03-20T15:00
 caldir-cli new "Team standup" --start 2025-03-20T09:00 --duration 30m
 caldir-cli new "Vacation" --start 2025-03-25 --end 2025-03-28  # all-day event
 
-# Pull events from cloud to local directory
+# Create event in a specific calendar
+caldir-cli new "Sprint planning" --start 2025-03-22T10:00 --calendar work
+
+# Pull events from all configured calendars
 caldir-cli pull
 
 # Push local changes to cloud
 caldir-cli push
 
-# Show pending changes in both directions (like git status)
-# Displays "Changes to be pulled" and "Changes to be pushed"
+# Show pending changes per calendar (like git status)
 caldir-cli status
 
 # Show which properties changed for each modified event
@@ -242,6 +259,7 @@ caldir-cli status --verbose
 - `--duration, -d` — Duration (`30m`, `1h`, `2h30m`) (mutually exclusive with --end)
 - `--description` — Event description
 - `--location, -l` — Event location
+- `--calendar, -c` — Calendar to create the event in (defaults to `default_calendar` from config)
 
 If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed events or 1 day for all-day events.
 

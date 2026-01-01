@@ -187,8 +187,6 @@ pub struct Calendar {
     pub id: String,
     pub name: String,
     pub primary: bool,
-    /// API URL for this calendar (for ICS SOURCE property)
-    pub source_url: String,
 }
 
 /// Fetch the list of calendars for the authenticated user
@@ -205,21 +203,14 @@ pub async fn fetch_calendars(config: &GoogleConfig, tokens: &AccountTokens) -> R
         .body
         .into_iter()
         .filter(|c| !c.id.is_empty())
-        .map(|c| {
-            let source_url = format!(
-                "https://www.googleapis.com/calendar/v3/calendars/{}",
-                urlencoding::encode(&c.id)
-            );
-            Calendar {
-                id: c.id,
-                name: if c.summary.is_empty() {
-                    "(unnamed)".to_string()
-                } else {
-                    c.summary
-                },
-                primary: c.primary,
-                source_url,
-            }
+        .map(|c| Calendar {
+            id: c.id,
+            name: if c.summary.is_empty() {
+                "(unnamed)".to_string()
+            } else {
+                c.summary
+            },
+            primary: c.primary,
         })
         .collect())
 }

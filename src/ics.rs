@@ -249,8 +249,18 @@ pub fn slugify(s: &str) -> String {
 
 /// Get a short version of the event ID for uniqueness
 fn short_id(id: &str) -> String {
-    // Take first 8 chars of the ID
-    id.chars().take(8).collect()
+    // Use a hash to ensure uniqueness regardless of where the differentiating
+    // characters are in the ID (Google recurring instance IDs share prefixes
+    // but differ in suffixes like _R20240920T153000)
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    id.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    // Format as 8-char hex string
+    format!("{:08x}", hash as u32)
 }
 
 /// Parse the UID from an .ics file

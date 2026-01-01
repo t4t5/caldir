@@ -23,15 +23,6 @@ pub enum Provider {
 pub struct AccountEmail(String);
 
 impl AccountEmail {
-    pub fn new(email: impl Into<String>) -> Result<Self> {
-        let email = email.into();
-        if !email.contains('@') {
-            anyhow::bail!("Invalid email address: {}", email);
-        }
-        Ok(Self(email))
-    }
-
-    /// Create without validation (for deserialization)
     pub fn from_string(email: String) -> Self {
         Self(email)
     }
@@ -56,15 +47,6 @@ impl std::fmt::Display for AccountEmail {
 pub struct CalendarId(String);
 
 impl CalendarId {
-    pub fn new(id: impl Into<String>) -> Result<Self> {
-        let id = id.into();
-        if id.is_empty() {
-            anyhow::bail!("Calendar ID cannot be empty");
-        }
-        Ok(Self(id))
-    }
-
-    /// Create without validation (for deserialization)
     pub fn from_string(id: String) -> Self {
         Self(id)
     }
