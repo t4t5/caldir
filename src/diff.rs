@@ -235,12 +235,13 @@ pub fn compute(
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_default();
 
-            // Distinguish between locally-created events and remotely-deleted events:
-            // - Events with X-CALDIR-ORIGIN:local were created locally → push candidate
-            // - Other events came from remote and are now missing → delete candidate
-            let is_local_origin = local.content.contains("X-CALDIR-ORIGIN:local");
+            // Distinguish between locally-created events and remotely-deleted events
+            // using the sync state:
+            // - If UID was never synced → locally created → push candidate
+            // - If UID was synced before → remote deleted it → pull delete candidate
+            let was_synced = synced_uids.contains(uid);
 
-            if is_local_origin {
+            if !was_synced {
                 diff.to_push_create.push(SyncChange {
                     uid: uid.clone(),
                     filename,

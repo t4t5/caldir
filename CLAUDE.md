@@ -78,12 +78,13 @@ The tool supports bidirectional sync between cloud and local:
 - `push` — Upload local changes to cloud (creates, updates, and deletes)
 - `status` — Shows pending changes in both directions
 
-**Sync direction detection** uses timestamp comparison:
+**Sync direction detection** uses timestamp comparison and sync state:
 - If local file mtime > remote `updated` → push candidate (local was modified)
 - If remote `updated` > local file mtime → pull candidate (remote was modified)
-- Local-only events with `X-CALDIR-ORIGIN:local` → new events to push
-- Remote-only events → new events to pull
+- Local-only events not in sync state → new events to push
+- Remote-only events not in sync state → new events to pull
 - Events in sync state but missing locally → deleted locally, delete from remote on push
+- Events in sync state but missing remotely → deleted remotely, delete locally on pull
 
 **Sync time window**: Only events within ±365 days of today are synced. Events outside this window are left untouched locally (not flagged for deletion just because they weren't fetched from the remote).
 
@@ -154,15 +155,6 @@ Events include these properties (when available from the provider):
 - **Meeting data**: conference/video call URLs
 - **Sync metadata**: LAST-MODIFIED, SEQUENCE, DTSTAMP
 - **Custom properties**: provider-specific fields (e.g., X-GOOGLE-CONFERENCE) preserved for round-tripping
-- **Origin tracking**: X-CALDIR-ORIGIN property marks where an event was created
-
-### X-CALDIR-ORIGIN Property
-
-Events created locally via `caldir-cli new` include `X-CALDIR-ORIGIN:local`. This allows the diff logic to distinguish between:
-- **Locally-created events** (have `X-CALDIR-ORIGIN:local`) → candidates for pushing to cloud
-- **Remotely-deleted events** (no origin marker, but missing from remote) → candidates for local deletion
-
-This keeps all sync state in the `.ics` files themselves, following the "filesystem as state" philosophy.
 
 ### Push Flow for New Events
 
@@ -176,7 +168,7 @@ When `push` creates a new event on Google Calendar:
 4. Write the Google-returned event back to local file:
    - New filename with Google ID suffix
    - All Google-added fields preserved (ORGANIZER, VALARM, etc.)
-   - `X-CALDIR-ORIGIN:local` is removed (no longer needed)
+5. Update sync state with the new Google-assigned event ID
 
 This ensures the local file exactly matches the remote state after push, preventing false "modified" status on subsequent syncs.
 
