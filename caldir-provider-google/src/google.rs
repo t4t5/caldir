@@ -1,7 +1,8 @@
 //! Google Calendar API implementation.
 
+use crate::config;
 use crate::types::{
-    AccountTokens, Attendee, Calendar, Event, EventStatus, EventTime, GoogleConfig, Reminder,
+    AccountTokens, Attendee, Calendar, Event, EventStatus, EventTime, GoogleCredentials, Reminder,
     Transparency,
 };
 use anyhow::{Context, Result};
@@ -17,10 +18,10 @@ const REDIRECT_URI: &str = "http://localhost:8085/callback";
 const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
 
 /// Create a Google Calendar client from stored tokens
-fn create_client(config: &GoogleConfig, tokens: &AccountTokens) -> Client {
+fn create_client(creds: &GoogleCredentials, tokens: &AccountTokens) -> Client {
     Client::new(
-        config.client_id.clone(),
-        config.client_secret.clone(),
+        creds.client_id.clone(),
+        creds.client_secret.clone(),
         REDIRECT_URI.to_string(),
         tokens.access_token.clone(),
         tokens.refresh_token.clone(),
@@ -28,10 +29,10 @@ fn create_client(config: &GoogleConfig, tokens: &AccountTokens) -> Client {
 }
 
 /// Create a new client for initial authentication (no tokens yet)
-fn create_auth_client(config: &GoogleConfig) -> Client {
+fn create_auth_client(creds: &GoogleCredentials) -> Client {
     Client::new(
-        config.client_id.clone(),
-        config.client_secret.clone(),
+        creds.client_id.clone(),
+        creds.client_secret.clone(),
         REDIRECT_URI.to_string(),
         String::new(),
         String::new(),
@@ -87,9 +88,11 @@ fn wait_for_callback() -> Result<(String, String)> {
     Ok((code, state))
 }
 
-/// Run the full OAuth authentication flow
-pub async fn authenticate(config: &GoogleConfig) -> Result<AccountTokens> {
-    let mut client = create_auth_client(config);
+/// Run the full OAuth authentication flow.
+/// Returns the account email/identifier.
+pub async fn authenticate() -> Result<String> {
+    let creds = config::load_credentials()?;
+    let mut client = create_auth_client(&creds);
 
     let scopes: Vec<String> = SCOPES.iter().map(|s| s.to_string()).collect();
     let auth_url = client.user_consent_url(&scopes);
@@ -111,24 +114,57 @@ pub async fn authenticate(config: &GoogleConfig) -> Result<AccountTokens> {
         .await
         .context("Failed to exchange code for tokens")?;
 
-    eprintln!("Authentication successful!");
-
     let expires_at = if access_token.expires_in > 0 {
         Some(chrono::Utc::now() + chrono::Duration::seconds(access_token.expires_in))
     } else {
         None
     };
 
-    Ok(AccountTokens {
+    let tokens = AccountTokens {
         access_token: access_token.access_token,
         refresh_token: access_token.refresh_token,
         expires_at,
-    })
+    };
+
+    // Discover the user's email
+    let client = create_client(&creds, &tokens);
+    let response = client
+        .calendar_list()
+        .list_all(MinAccessRole::default(), false, false)
+        .await?;
+
+    let email = response
+        .body
+        .iter()
+        .find(|cal| cal.primary)
+        .map(|cal| cal.id.clone())
+        .unwrap_or_else(|| "(unknown)".to_string());
+
+    // Save tokens for this account
+    config::save_tokens(&email, &tokens)?;
+
+    eprintln!("Authentication successful!");
+
+    Ok(email)
 }
 
-/// Refresh an expired access token
-pub async fn refresh_token(config: &GoogleConfig, tokens: &AccountTokens) -> Result<AccountTokens> {
-    let client = create_client(config, tokens);
+/// Get tokens for an account, refreshing if needed
+async fn get_valid_tokens(account: &str) -> Result<AccountTokens> {
+    let creds = config::load_credentials()?;
+    let mut tokens = config::load_tokens(account)?;
+
+    if config::tokens_need_refresh(&tokens) {
+        eprintln!("Access token expired, refreshing...");
+        tokens = refresh_token_internal(&creds, &tokens).await?;
+        config::save_tokens(account, &tokens)?;
+    }
+
+    Ok(tokens)
+}
+
+/// Internal token refresh
+async fn refresh_token_internal(creds: &GoogleCredentials, tokens: &AccountTokens) -> Result<AccountTokens> {
+    let client = create_client(creds, tokens);
 
     let access_token = client
         .refresh_access_token()
@@ -155,27 +191,11 @@ pub async fn refresh_token(config: &GoogleConfig, tokens: &AccountTokens) -> Res
     })
 }
 
-/// Fetch the user's email
-pub async fn fetch_user_email(config: &GoogleConfig, tokens: &AccountTokens) -> Result<String> {
-    let client = create_client(config, tokens);
-
-    let response = client
-        .calendar_list()
-        .list_all(MinAccessRole::default(), false, false)
-        .await?;
-
-    for cal in response.body {
-        if cal.primary && !cal.id.is_empty() {
-            return Ok(cal.id);
-        }
-    }
-
-    Ok("(unknown email)".to_string())
-}
-
 /// Fetch the list of calendars
-pub async fn fetch_calendars(config: &GoogleConfig, tokens: &AccountTokens) -> Result<Vec<Calendar>> {
-    let client = create_client(config, tokens);
+pub async fn fetch_calendars(account: &str) -> Result<Vec<Calendar>> {
+    let creds = config::load_credentials()?;
+    let tokens = get_valid_tokens(account).await?;
+    let client = create_client(&creds, &tokens);
 
     let response = client
         .calendar_list()
@@ -201,13 +221,14 @@ pub async fn fetch_calendars(config: &GoogleConfig, tokens: &AccountTokens) -> R
 
 /// Fetch events from a specific calendar
 pub async fn fetch_events(
-    config: &GoogleConfig,
-    tokens: &AccountTokens,
+    account: &str,
     calendar_id: &str,
     time_min: Option<&str>,
     time_max: Option<&str>,
 ) -> Result<Vec<Event>> {
-    let client = create_client(config, tokens);
+    let creds = config::load_credentials()?;
+    let tokens = get_valid_tokens(account).await?;
+    let client = create_client(&creds, &tokens);
 
     // Default to ±1 year if not specified
     let now = chrono::Utc::now();
@@ -493,12 +514,13 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
 
 /// Create a new event on Google Calendar
 pub async fn create_event(
-    config: &GoogleConfig,
-    tokens: &AccountTokens,
+    account: &str,
     calendar_id: &str,
     event: &Event,
 ) -> Result<Event> {
-    let client = create_client(config, tokens);
+    let creds = config::load_credentials()?;
+    let tokens = get_valid_tokens(account).await?;
+    let client = create_client(&creds, &tokens);
 
     let mut google_event = to_google_event(event);
     google_event.id = String::new(); // Let Google assign the ID
@@ -522,12 +544,13 @@ pub async fn create_event(
 
 /// Update an existing event
 pub async fn update_event(
-    config: &GoogleConfig,
-    tokens: &AccountTokens,
+    account: &str,
     calendar_id: &str,
     event: &Event,
 ) -> Result<()> {
-    let client = create_client(config, tokens);
+    let creds = config::load_credentials()?;
+    let tokens = get_valid_tokens(account).await?;
+    let client = create_client(&creds, &tokens);
 
     let google_event = to_google_event(event);
 
@@ -551,12 +574,13 @@ pub async fn update_event(
 
 /// Delete an event
 pub async fn delete_event(
-    config: &GoogleConfig,
-    tokens: &AccountTokens,
+    account: &str,
     calendar_id: &str,
     event_id: &str,
 ) -> Result<()> {
-    let client = create_client(config, tokens);
+    let creds = config::load_credentials()?;
+    let tokens = get_valid_tokens(account).await?;
+    let client = create_client(&creds, &tokens);
 
     let result = client
         .events()

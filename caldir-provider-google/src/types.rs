@@ -1,23 +1,22 @@
-//! Shared types for the provider protocol.
-//!
-//! These types mirror the ones in caldir-cli but are defined locally
-//! to keep the provider self-contained.
+//! Shared types for the provider.
 
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 
 // =============================================================================
-// Config Types
+// Config Types (stored by provider)
 // =============================================================================
 
-/// OAuth credentials for Google Calendar
+/// OAuth credentials for Google Calendar.
+/// Stored in ~/.config/caldir/providers/google/credentials.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GoogleConfig {
+pub struct GoogleCredentials {
     pub client_id: String,
     pub client_secret: String,
 }
 
-/// Tokens for a single authenticated account
+/// Tokens for a single authenticated account.
+/// Stored in ~/.config/caldir/providers/google/tokens/{account}.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountTokens {
     pub access_token: String,

@@ -5,10 +5,10 @@ mod event;
 mod ics;
 mod provider;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
-use provider::Provider;
+use provider::{build_params, Provider};
 
 /// Number of days to sync in each direction (past and future)
 const SYNC_DAYS: i64 = 365;
@@ -25,8 +25,7 @@ struct Cli {
 enum Commands {
     /// Authenticate with a calendar provider
     Auth {
-        /// Provider to authenticate with (default: google)
-        #[arg(default_value = "google")]
+        /// Provider to authenticate with (e.g., "google")
         provider: String,
     },
     /// Pull events from cloud to local directory
@@ -95,113 +94,34 @@ async fn main() -> Result<()> {
     }
 }
 
-/// Refresh the access token if expired, saving the updated tokens.
-/// Returns the (possibly refreshed) tokens.
-async fn refresh_credentials_if_needed(
-    provider: &Provider,
-    account_email: &str,
-    tokens: config::AccountTokens,
-    all_tokens: &mut config::Tokens,
-) -> Result<config::AccountTokens> {
-    if tokens
-        .expires_at
-        .map(|exp| exp < chrono::Utc::now())
-        .unwrap_or(false)
-    {
-        println!("Access token expired for {}, refreshing...", account_email);
-        let refreshed = provider
-            .refresh_token(&tokens)
-            .await
-            .context("Failed to refresh token. Run 'caldir-cli auth' to re-authenticate.")?;
-        all_tokens.google.insert(account_email.to_string(), refreshed.clone());
-        config::save_tokens(all_tokens)?;
-        Ok(refreshed)
-    } else {
-        Ok(tokens)
-    }
-}
-
 async fn cmd_auth(provider_name: &str) -> Result<()> {
-    match provider_name {
-        "google" => {
-            let mut cfg = config::load_config()?;
-            let google_config = cfg
-                .providers
-                .google
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!(
-                    "Google Calendar not configured.\n\n\
-                    Add to ~/.config/caldir/config.toml:\n\n\
-                    [providers.google]\n\
-                    client_id = \"your-client-id.apps.googleusercontent.com\"\n\
-                    client_secret = \"your-client-secret\""
-                ))?
-                .clone();
+    let provider = Provider::new(provider_name)?;
 
-            let provider = Provider::new("google", serde_json::to_value(&google_config)?)?;
+    println!("Authenticating with {}...", provider_name);
 
-            let tokens = provider.authenticate().await?;
+    // Provider handles the full OAuth flow and stores credentials/tokens
+    let account = provider.authenticate().await?;
 
-            // Discover the user's email from the authenticated account
-            let (email, _) = provider.fetch_user_email(&tokens).await?;
-            println!("\nAuthenticated as: {}", email);
+    println!("\nAuthenticated as: {}", account);
+    println!("\nNow add a calendar to your config.toml:");
+    println!();
+    println!("[calendars.personal]");
+    println!("provider = \"{}\"", provider_name);
+    println!("{}_account = \"{}\"", provider_name, account);
+    println!("{}_calendar_id = \"primary\"", provider_name);
+    println!();
+    println!("Then run `caldir-cli pull` to sync your calendar.");
 
-            // Fetch calendars and auto-add to config
-            let (calendars, _) = provider.fetch_calendars(&tokens).await?;
-            println!("\nFound {} calendar(s):", calendars.len());
-
-            for cal in &calendars {
-                // Generate a slug name from calendar name
-                let calendar_name = ics::slugify(&cal.name);
-                let primary_marker = if cal.primary { " (primary)" } else { "" };
-                println!("  Adding: {} ({}){}", calendar_name, cal.name, primary_marker);
-
-                // Create calendar config
-                let calendar_config = config::CalendarConfig {
-                    provider: config::Provider::Google,
-                    account: config::AccountEmail::from_string(email.clone()),
-                    calendar_id: if cal.primary {
-                        None // Primary calendar doesn't need explicit ID
-                    } else {
-                        Some(config::CalendarId::from_string(cal.id.clone()))
-                    },
-                };
-
-                cfg.calendars.insert(calendar_name.clone(), calendar_config);
-
-                // Set primary calendar as default
-                if cal.primary && cfg.default_calendar.is_none() {
-                    cfg.default_calendar = Some(calendar_name);
-                }
-            }
-
-            // Save updated config
-            config::save_config(&cfg)?;
-
-            // Save tokens keyed by the discovered email
-            let mut all_tokens = config::load_tokens()?;
-            all_tokens.google.insert(email.clone(), tokens);
-            config::save_tokens(&all_tokens)?;
-
-            println!("\nCalendars added to config.toml.");
-            println!("Run `caldir-cli pull` to sync your calendars.");
-
-            Ok(())
-        }
-        _ => {
-            anyhow::bail!("Unknown provider: {}. Supported: google", provider_name);
-        }
-    }
+    Ok(())
 }
 
 async fn cmd_pull() -> Result<()> {
     let cfg = config::load_config()?;
-    let mut all_tokens = config::load_tokens()?;
 
     if cfg.calendars.is_empty() {
         anyhow::bail!(
             "No calendars configured.\n\
-            Run `caldir-cli auth` to authenticate and add calendars."
+            Run `caldir-cli auth <provider>` first, then add calendars to config.toml"
         );
     }
 
@@ -213,47 +133,13 @@ async fn cmd_pull() -> Result<()> {
 
     // Pull from each configured calendar
     for (calendar_name, calendar_config) in &cfg.calendars {
-        // Currently only Google is supported
-        if calendar_config.provider != config::Provider::Google {
-            println!("\nSkipping {}: provider {:?} not yet supported", calendar_name, calendar_config.provider);
-            continue;
-        }
-
-        let google_config = cfg.providers.google.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Google Calendar not configured in config.toml")
-        })?;
-
-        let provider = Provider::new("google", serde_json::to_value(google_config)?)?;
-
-        // Get tokens for this calendar's account
-        let account_email = calendar_config.account.to_string();
-        let tokens = all_tokens.google.get(&account_email).ok_or_else(|| {
-            anyhow::anyhow!(
-                "No tokens for account: {}. Run `caldir-cli auth` first.",
-                account_email
-            )
-        })?.clone();
-
-        let account_tokens = refresh_credentials_if_needed(
-            &provider,
-            &account_email,
-            tokens,
-            &mut all_tokens,
-        ).await?;
+        let provider = Provider::new(&calendar_config.provider)?;
 
         println!("\n📅 Pulling: {}", calendar_name);
 
-        // Get calendar ID (default to "primary" if not specified)
-        let calendar_id = calendar_config
-            .calendar_id
-            .as_ref()
-            .map(|id| id.to_string())
-            .unwrap_or_else(|| "primary".to_string());
-
-        // Fetch remote events
-        let (remote_events, _) = provider
-            .fetch_events(&account_tokens, &calendar_id, None, None)
-            .await?;
+        // Build params for fetch_events
+        let params = build_params(&calendar_config.params, &[]);
+        let remote_events = provider.fetch_events(params).await?;
         println!("  Fetched {} events", remote_events.len());
 
         // Get calendar-specific directory
@@ -268,7 +154,7 @@ async fn cmd_pull() -> Result<()> {
 
         // Build calendar metadata for ICS generation
         let metadata = ics::CalendarMetadata {
-            calendar_id: calendar_id.clone(),
+            calendar_id: get_calendar_id(&calendar_config.params),
             calendar_name: calendar_name.clone(),
             source_url: None,
         };
@@ -288,7 +174,6 @@ async fn cmd_pull() -> Result<()> {
 
         // Create new events
         for change in &sync_diff.to_pull_create {
-            // Find the event and generate ICS
             if let Some(event) = remote_events.iter().find(|e| {
                 ics::generate_filename(e) == change.filename
             }) {
@@ -300,14 +185,12 @@ async fn cmd_pull() -> Result<()> {
 
         // Update modified events
         for change in &sync_diff.to_pull_update {
-            // Delete old file if it exists with different name
             if let Some(local) = local_events.values().find(|l| {
                 l.path.file_name().map(|f| f.to_string_lossy().to_string())
                     != Some(change.filename.clone())
             }) {
                 let _ = caldir::delete_event(&local.path);
             }
-            // Find the event and generate ICS
             if let Some(event) = remote_events.iter().find(|e| {
                 ics::generate_filename(e) == change.filename
             }) {
@@ -325,25 +208,17 @@ async fn cmd_pull() -> Result<()> {
         }
 
         // Update sync state with current local UIDs
-        // This includes existing events + newly pulled events - deleted events
         let mut new_sync_state = config::SyncState::default();
 
-        // Add all existing local UIDs
         for uid in local_events.keys() {
             new_sync_state.synced_uids.insert(uid.clone());
         }
-
-        // Add newly created events
         for change in &sync_diff.to_pull_create {
             new_sync_state.synced_uids.insert(change.uid.clone());
         }
-
-        // Remove deleted events
         for change in &sync_diff.to_pull_delete {
             new_sync_state.synced_uids.remove(&change.uid);
         }
-
-        // Remove locally-deleted events that will be pushed (don't re-add them to state)
         for change in &sync_diff.to_push_delete {
             new_sync_state.synced_uids.remove(&change.uid);
         }
@@ -370,12 +245,11 @@ async fn cmd_pull() -> Result<()> {
 
 async fn cmd_push(force: bool) -> Result<()> {
     let cfg = config::load_config()?;
-    let mut all_tokens = config::load_tokens()?;
 
     if cfg.calendars.is_empty() {
         anyhow::bail!(
             "No calendars configured.\n\
-            Run `caldir-cli auth` to authenticate and add calendars."
+            Run `caldir-cli auth <provider>` first, then add calendars to config.toml"
         );
     }
 
@@ -385,47 +259,13 @@ async fn cmd_push(force: bool) -> Result<()> {
 
     // Push to each configured calendar
     for (calendar_name, calendar_config) in &cfg.calendars {
-        // Currently only Google is supported
-        if calendar_config.provider != config::Provider::Google {
-            println!("\nSkipping {}: provider {:?} not yet supported", calendar_name, calendar_config.provider);
-            continue;
-        }
-
-        let google_config = cfg.providers.google.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Google Calendar not configured in config.toml")
-        })?;
-
-        let provider = Provider::new("google", serde_json::to_value(google_config)?)?;
-
-        // Get tokens for this calendar's account
-        let account_email = calendar_config.account.to_string();
-        let tokens = all_tokens.google.get(&account_email).ok_or_else(|| {
-            anyhow::anyhow!(
-                "No tokens for account: {}. Run `caldir-cli auth` first.",
-                account_email
-            )
-        })?.clone();
-
-        let account_tokens = refresh_credentials_if_needed(
-            &provider,
-            &account_email,
-            tokens,
-            &mut all_tokens,
-        ).await?;
+        let provider = Provider::new(&calendar_config.provider)?;
 
         // Get calendar-specific directory
         let calendar_dir = config::calendar_path(&cfg, calendar_name);
         if !calendar_dir.exists() {
-            // No local directory for this calendar yet, skip
             continue;
         }
-
-        // Get calendar ID (default to "primary" if not specified)
-        let calendar_id = calendar_config
-            .calendar_id
-            .as_ref()
-            .map(|id| id.to_string())
-            .unwrap_or_else(|| "primary".to_string());
 
         // Read local events from this calendar's directory
         let local_events = caldir::read_all(&calendar_dir)?;
@@ -434,13 +274,12 @@ async fn cmd_push(force: bool) -> Result<()> {
         let sync_state = config::load_sync_state(&calendar_dir)?;
 
         // Fetch remote events
-        let (remote_events, _) = provider
-            .fetch_events(&account_tokens, &calendar_id, None, None)
-            .await?;
+        let params = build_params(&calendar_config.params, &[]);
+        let remote_events = provider.fetch_events(params).await?;
 
         // Build calendar metadata
         let metadata = ics::CalendarMetadata {
-            calendar_id: calendar_id.clone(),
+            calendar_id: get_calendar_id(&calendar_config.params),
             calendar_name: calendar_name.clone(),
             source_url: None,
         };
@@ -470,15 +309,16 @@ async fn cmd_push(force: bool) -> Result<()> {
         // Delete events from remote that were deleted locally
         for change in &sync_diff.to_push_delete {
             println!("  Deleting: {}", change.uid);
-            provider
-                .delete_event(&account_tokens, &calendar_id, &change.uid)
-                .await?;
+            let params = build_params(
+                &calendar_config.params,
+                &[("event_id", serde_json::json!(change.uid))],
+            );
+            provider.delete_event(params).await?;
             total_deleted += 1;
         }
 
         // Push new local events
         for change in &sync_diff.to_push_create {
-            // Find the local event by matching filename
             let local_event = local_events.values().find(|l| {
                 l.path
                     .file_name()
@@ -487,24 +327,20 @@ async fn cmd_push(force: bool) -> Result<()> {
             });
 
             if let Some(local) = local_event {
-                // Parse local ICS to Event
                 if let Some(event) = ics::parse_event(&local.content) {
                     println!("  Creating: {}", event.summary);
 
-                    // Create event on Google Calendar and get back the full event
-                    // with Google-assigned ID and Google-added fields (organizer, reminders, etc.)
-                    let (created_event, _) = provider
-                        .create_event(&account_tokens, &calendar_id, &event)
-                        .await?;
+                    let params = build_params(
+                        &calendar_config.params,
+                        &[("event", serde_json::to_value(&event)?)],
+                    );
+                    let created_event = provider.create_event(params).await?;
 
-                    // Generate new ICS content and filename from the Google-returned event
+                    // Write back with provider-assigned ID
                     let new_content = ics::generate_ics(&created_event, &metadata)?;
                     let new_filename = ics::generate_filename(&created_event);
 
-                    // Delete old file
                     caldir::delete_event(&local.path)?;
-
-                    // Write new file with Google's event data
                     caldir::write_event(&calendar_dir, &new_filename, &new_content)?;
 
                     total_created += 1;
@@ -516,7 +352,6 @@ async fn cmd_push(force: bool) -> Result<()> {
 
         // Push updated events
         for change in &sync_diff.to_push_update {
-            // Find the local event by matching filename
             let local_event = local_events.values().find(|l| {
                 l.path
                     .file_name()
@@ -525,12 +360,13 @@ async fn cmd_push(force: bool) -> Result<()> {
             });
 
             if let Some(local) = local_event {
-                // Parse local ICS to Event
                 if let Some(event) = ics::parse_event(&local.content) {
                     println!("  Updating: {}", event.summary);
-                    provider
-                        .update_event(&account_tokens, &calendar_id, &event)
-                        .await?;
+                    let params = build_params(
+                        &calendar_config.params,
+                        &[("event", serde_json::to_value(&event)?)],
+                    );
+                    provider.update_event(params).await?;
                     total_updated += 1;
                 } else {
                     eprintln!("  Warning: Could not parse {}", change.filename);
@@ -538,7 +374,7 @@ async fn cmd_push(force: bool) -> Result<()> {
             }
         }
 
-        // Update sync state: current local UIDs (minus deleted ones)
+        // Update sync state
         let mut new_sync_state = config::SyncState::default();
         let updated_local_events = caldir::read_all(&calendar_dir)?;
         for uid in updated_local_events.keys() {
@@ -561,12 +397,11 @@ async fn cmd_push(force: bool) -> Result<()> {
 
 async fn cmd_status(verbose: bool) -> Result<()> {
     let cfg = config::load_config()?;
-    let mut all_tokens = config::load_tokens()?;
 
     if cfg.calendars.is_empty() {
         anyhow::bail!(
             "No calendars configured.\n\
-            Run `caldir-cli auth` to authenticate and add calendars."
+            Run `caldir-cli auth <provider>` first, then add calendars to config.toml"
         );
     }
 
@@ -594,48 +429,14 @@ async fn cmd_status(verbose: bool) -> Result<()> {
 
     // Check status for each configured calendar
     for (calendar_name, calendar_config) in &cfg.calendars {
-        // Currently only Google is supported
-        if calendar_config.provider != config::Provider::Google {
-            continue;
-        }
-
-        let google_config = cfg.providers.google.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Google Calendar not configured in config.toml")
-        })?;
-
-        let provider = Provider::new("google", serde_json::to_value(google_config)?)?;
-
-        // Get tokens for this calendar's account
-        let account_email = calendar_config.account.to_string();
-        let tokens = match all_tokens.google.get(&account_email) {
-            Some(t) => t.clone(),
-            None => {
-                println!("\n📅 {}: No tokens for account {}", calendar_name, account_email);
-                continue;
-            }
-        };
-
-        let account_tokens = refresh_credentials_if_needed(
-            &provider,
-            &account_email,
-            tokens,
-            &mut all_tokens,
-        ).await?;
-
-        // Get calendar ID (default to "primary" if not specified)
-        let calendar_id = calendar_config
-            .calendar_id
-            .as_ref()
-            .map(|id| id.to_string())
-            .unwrap_or_else(|| "primary".to_string());
+        let provider = Provider::new(&calendar_config.provider)?;
 
         // Get calendar-specific directory
         let calendar_dir = config::calendar_path(&cfg, calendar_name);
 
         // Fetch remote events
-        let (remote_events, _) = provider
-            .fetch_events(&account_tokens, &calendar_id, None, None)
-            .await?;
+        let params = build_params(&calendar_config.params, &[]);
+        let remote_events = provider.fetch_events(params).await?;
 
         // Read local events (empty if directory doesn't exist)
         let local_events = if calendar_dir.exists() {
@@ -649,7 +450,7 @@ async fn cmd_status(verbose: bool) -> Result<()> {
 
         // Build calendar metadata
         let metadata = ics::CalendarMetadata {
-            calendar_id: calendar_id.clone(),
+            calendar_id: get_calendar_id(&calendar_config.params),
             calendar_name: calendar_name.clone(),
             source_url: None,
         };
@@ -760,13 +561,11 @@ async fn cmd_new(
         match &start_time {
             EventTime::DateTime(dt) => EventTime::DateTime(*dt + dur),
             EventTime::Date(d) => {
-                // For all-day events with duration, add days
                 let days = dur.num_days().max(1) as i64;
                 EventTime::Date(*d + chrono::Duration::days(days))
             }
         }
     } else {
-        // Default: 1 hour for timed events, same day for all-day
         match &start_time {
             EventTime::DateTime(dt) => EventTime::DateTime(*dt + chrono::Duration::hours(1)),
             EventTime::Date(d) => EventTime::Date(*d + chrono::Duration::days(1)),
@@ -813,4 +612,18 @@ async fn cmd_new(
     println!("Created in {}: {}", calendar_name, filename);
 
     Ok(())
+}
+
+/// Extract calendar_id from provider params, looking for {provider}_calendar_id
+fn get_calendar_id(params: &std::collections::HashMap<String, toml::Value>) -> String {
+    // Look for any key ending in _calendar_id
+    for (key, value) in params {
+        if key.ends_with("_calendar_id") {
+            if let toml::Value::String(s) = value {
+                return s.clone();
+            }
+        }
+    }
+    // Fallback to "primary"
+    "primary".to_string()
 }

@@ -33,3 +33,6 @@ urlencoding = "2"
 
 # URL parsing
 url = "2"
+
+# Platform-native config directories
+dirs = "5"

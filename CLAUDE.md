@@ -114,8 +114,15 @@ Providers are separate binaries that communicate with caldir-cli via JSON over s
 - **Language-agnostic** — Providers can be written in any language
 - **Independent versioning** — Providers update separately from core
 - **Smaller core binary** — Provider-specific deps stay in provider crates
+- **Full autonomy** — Providers manage their own credentials, tokens, and refresh logic
 
 **Discovery**: caldir-cli looks for executables named `caldir-provider-{name}` in PATH.
+
+**Provider autonomy**: Each provider manages its own state in `~/.config/caldir/providers/{name}/`. For example, the Google provider stores:
+- `credentials.json` — OAuth client_id/secret (user creates via Google Cloud Console)
+- `tokens/{account}.json` — Access/refresh tokens per authenticated account
+
+The core CLI is completely provider-agnostic — it just passes provider-prefixed config fields (like `google_account`) to the provider binary.
 
 **Current providers**:
 - `caldir-provider-google` — Google Calendar (OAuth + REST API)
@@ -132,7 +139,7 @@ Providers are separate binaries that communicate with caldir-cli via JSON over s
 caldir-cli/                    # Core CLI (this crate)
   src/
     main.rs      - CLI entry point and command implementations
-    config.rs    - Configuration, token storage, sync state
+    config.rs    - Configuration and sync state (no token storage - providers handle that)
     event.rs     - Provider-neutral event types (with JSON serialization)
     diff.rs      - Pure diff computation between local and remote
     caldir.rs    - Local directory operations (read/write .ics files)
@@ -142,15 +149,16 @@ caldir-cli/                    # Core CLI (this crate)
 caldir-provider-google/        # Google Calendar provider (separate crate)
   src/
     main.rs      - JSON protocol handler (reads stdin, writes stdout)
+    config.rs    - Credential and token storage (~/.config/caldir/providers/google/)
     google.rs    - Google Calendar API implementation
-    types.rs     - Protocol types (Event, AccountTokens, etc.)
+    types.rs     - Protocol types (Event, Calendar, etc.)
 ```
 
 ### Key Abstractions
 
 **event.rs** — Provider-neutral event types (`Event`, `Attendee`, `Reminder`, etc.) with JSON serialization for the provider protocol. Providers convert their API responses into these types, and the rest of the codebase works exclusively with them.
 
-**provider.rs** — Provider subprocess protocol. Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. Handles the 8 provider commands: `authenticate`, `refresh_token`, `fetch_user_email`, `fetch_calendars`, `fetch_events`, `create_event`, `update_event`, `delete_event`.
+**provider.rs** — Provider subprocess protocol. Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `authenticate`, `fetch_events`, `create_event`, `update_event`, `delete_event`.
 
 **diff.rs** — Bidirectional diff computation. Compares remote events against local files and returns `SyncDiff` with separate lists for pull changes (`to_pull_create/update/delete`) and push changes (`to_push_create/update/delete`). Uses timestamp comparison to determine sync direction. Accepts sync state (set of previously synced UIDs) to detect local deletions. Accepts an optional time range to avoid flagging old events for deletion when they fall outside the queried window.
 
@@ -210,40 +218,39 @@ calendar_dir = "~/calendar"
 # Default calendar for new events (used when --calendar not specified)
 default_calendar = "personal"
 
-# Calendar configurations (auto-populated by 'caldir auth')
+# Calendar configurations
 [calendars.personal]
 provider = "google"
-account = "me@gmail.com"
-# calendar_id is omitted for primary calendar
+google_account = "me@gmail.com"
+# google_calendar_id is omitted for primary calendar
 
 [calendars.work]
 provider = "google"
-account = "me@gmail.com"
-calendar_id = "work@group.calendar.google.com"
-
-# Provider credentials
-[providers.google]
-client_id = "your-client-id.apps.googleusercontent.com"
-client_secret = "your-client-secret"
+google_account = "me@gmail.com"
+google_calendar_id = "work@group.calendar.google.com"
 ```
 
-Running `caldir auth` automatically discovers all calendars for the authenticated account and adds them to `config.toml`.
+Provider-specific fields are prefixed with the provider name (e.g., `google_account`, `google_calendar_id`). This keeps the config provider-agnostic while making it clear which fields belong to which provider.
 
-Tokens are stored separately at `~/.config/caldir/tokens.json`, keyed by provider and account email:
+**Provider credentials and tokens** are managed by each provider in its own directory:
+
+```
+~/.config/caldir/providers/google/
+  credentials.json              # OAuth client_id/secret
+  tokens/
+    me@gmail.com.json          # Access/refresh tokens (auto-refreshed)
+```
+
+To set up Google Calendar, create `~/.config/caldir/providers/google/credentials.json`:
 
 ```json
 {
-  "google": {
-    "me@gmail.com": {
-      "access_token": "...",
-      "refresh_token": "...",
-      "expires_at": "2025-03-20T15:00:00Z"
-    }
-  }
+  "client_id": "your-client-id.apps.googleusercontent.com",
+  "client_secret": "your-client-secret"
 }
 ```
 
-This supports multiple accounts per provider. Run `caldir-cli auth` multiple times with different Google accounts to connect them all.
+Then run `caldir-cli auth google` to authenticate. This supports multiple accounts — run auth multiple times with different Google accounts.
 
 ## Commands
 
@@ -300,8 +307,14 @@ cargo run -- pull
 
 ## Dependencies
 
-- **google-calendar** — Google Calendar API client (handles OAuth, types, requests)
+**caldir-cli (core)**:
 - **icalendar** — Generate and parse .ics files
 - **tokio** — Async runtime
 - **clap** — CLI argument parsing
 - **uuid** — Generate unique event IDs for locally-created events
+- **which** — Find provider binaries in PATH
+
+**caldir-provider-google**:
+- **google-calendar** — Google Calendar API client
+- **tokio** — Async runtime
+- **dirs** — Platform-native config directories

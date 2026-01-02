@@ -5,11 +5,14 @@
 //!
 //! The protocol is designed to be language-agnostic: any executable
 //! that speaks the JSON protocol can be a provider.
+//!
+//! Providers manage their own credentials and tokens. Core just passes
+//! provider-specific parameters from the calendar config.
 
-use crate::config::AccountTokens;
 use crate::event::Event;
 use anyhow::{Context, Result};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
@@ -18,21 +21,10 @@ use tokio::process::Command;
 // Protocol Types
 // =============================================================================
 
-/// A calendar from a provider
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Calendar {
-    pub id: String,
-    pub name: String,
-    pub primary: bool,
-}
-
 /// Request sent to a provider subprocess
 #[derive(Debug, Serialize)]
 struct ProviderRequest<'a, P: Serialize> {
     command: &'a str,
-    config: &'a serde_json::Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tokens: Option<&'a AccountTokens>,
     params: P,
 }
 
@@ -44,61 +36,29 @@ enum ProviderResponse<T> {
     Success { data: T },
     #[serde(rename = "error")]
     Error { error: String },
-    #[serde(rename = "tokens_updated")]
-    TokensUpdated { tokens: AccountTokens, data: T },
 }
 
 /// Empty params for commands that don't need parameters
 #[derive(Debug, Serialize)]
 struct EmptyParams {}
 
-/// Parameters for fetch_events command
-#[derive(Debug, Serialize)]
-struct FetchEventsParams<'a> {
-    calendar_id: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    time_min: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    time_max: Option<String>,
-}
-
-/// Parameters for create_event command
-#[derive(Debug, Serialize)]
-struct CreateEventParams<'a> {
-    calendar_id: &'a str,
-    event: &'a Event,
-}
-
-/// Parameters for update_event command
-#[derive(Debug, Serialize)]
-struct UpdateEventParams<'a> {
-    calendar_id: &'a str,
-    event: &'a Event,
-}
-
-/// Parameters for delete_event command
-#[derive(Debug, Serialize)]
-struct DeleteEventParams<'a> {
-    calendar_id: &'a str,
-    event_id: &'a str,
-}
-
 // =============================================================================
 // Provider Client
 // =============================================================================
 
-/// A client for communicating with a provider subprocess
+/// A client for communicating with a provider subprocess.
+///
+/// Providers are discovered by looking for executables named
+/// `caldir-provider-{name}` in PATH.
 pub struct Provider {
     binary_path: PathBuf,
-    config: serde_json::Value,
 }
 
 impl Provider {
     /// Create a new provider client.
     ///
     /// Looks for an executable named `caldir-provider-{name}` in PATH.
-    /// The config is passed to every request (e.g., OAuth credentials).
-    pub fn new(name: &str, config: serde_json::Value) -> Result<Self> {
+    pub fn new(name: &str) -> Result<Self> {
         let binary_name = format!("caldir-provider-{}", name);
         let binary_path = which::which(&binary_name).with_context(|| {
             format!(
@@ -107,28 +67,16 @@ impl Provider {
             )
         })?;
 
-        Ok(Self {
-            binary_path,
-            config,
-        })
+        Ok(Self { binary_path })
     }
 
     /// Call a provider command and return the result.
-    ///
-    /// Returns (data, Option<updated_tokens>). If tokens were refreshed
-    /// during the request, the new tokens are returned.
     async fn call<P: Serialize, R: DeserializeOwned>(
         &self,
         command: &str,
-        tokens: Option<&AccountTokens>,
         params: P,
-    ) -> Result<(R, Option<AccountTokens>)> {
-        let request = ProviderRequest {
-            command,
-            config: &self.config,
-            tokens,
-            params,
-        };
+    ) -> Result<R> {
+        let request = ProviderRequest { command, params };
 
         let request_json =
             serde_json::to_string(&request).context("Failed to serialize provider request")?;
@@ -190,8 +138,7 @@ impl Provider {
             })?;
 
         match response {
-            ProviderResponse::Success { data } => Ok((data, None)),
-            ProviderResponse::TokensUpdated { tokens, data } => Ok((data, Some(tokens))),
+            ProviderResponse::Success { data } => Ok(data),
             ProviderResponse::Error { error } => Err(anyhow::anyhow!("{}", error)),
         }
     }
@@ -200,52 +147,25 @@ impl Provider {
     // Provider Commands
     // =========================================================================
 
-    /// Authenticate with the provider (OAuth flow).
+    /// Authenticate with the provider.
     ///
-    /// Opens browser, waits for callback, returns tokens.
-    pub async fn authenticate(&self) -> Result<AccountTokens> {
-        let (tokens, _): (AccountTokens, _) =
-            self.call("authenticate", None, EmptyParams {}).await?;
-        Ok(tokens)
-    }
-
-    /// Refresh expired access token.
-    pub async fn refresh_token(&self, tokens: &AccountTokens) -> Result<AccountTokens> {
-        let (new_tokens, _): (AccountTokens, _) =
-            self.call("refresh_token", Some(tokens), EmptyParams {}).await?;
-        Ok(new_tokens)
-    }
-
-    /// Get the authenticated user's email address.
-    pub async fn fetch_user_email(&self, tokens: &AccountTokens) -> Result<(String, Option<AccountTokens>)> {
-        self.call("fetch_user_email", Some(tokens), EmptyParams {}).await
-    }
-
-    /// List all calendars for the authenticated account.
-    pub async fn fetch_calendars(&self, tokens: &AccountTokens) -> Result<(Vec<Calendar>, Option<AccountTokens>)> {
-        self.call("fetch_calendars", Some(tokens), EmptyParams {}).await
+    /// Provider handles the full auth flow (OAuth, etc.) and stores
+    /// credentials/tokens in its own config directory.
+    ///
+    /// Returns the account identifier (e.g., email for Google).
+    pub async fn authenticate(&self) -> Result<String> {
+        self.call("authenticate", EmptyParams {}).await
     }
 
     /// Fetch events from a calendar.
     ///
-    /// The time_min and time_max parameters are optional ISO 8601 timestamps.
+    /// The params should include account and calendar identifiers.
+    /// Additional params (time_min, time_max) can be merged in.
     pub async fn fetch_events(
         &self,
-        tokens: &AccountTokens,
-        calendar_id: &str,
-        time_min: Option<&str>,
-        time_max: Option<&str>,
-    ) -> Result<(Vec<Event>, Option<AccountTokens>)> {
-        self.call(
-            "fetch_events",
-            Some(tokens),
-            FetchEventsParams {
-                calendar_id,
-                time_min: time_min.map(String::from),
-                time_max: time_max.map(String::from),
-            },
-        )
-        .await
+        params: serde_json::Value,
+    ) -> Result<Vec<Event>> {
+        self.call("fetch_events", params).await
     }
 
     /// Create a new event on a calendar.
@@ -253,48 +173,72 @@ impl Provider {
     /// Returns the created event with provider-assigned ID.
     pub async fn create_event(
         &self,
-        tokens: &AccountTokens,
-        calendar_id: &str,
-        event: &Event,
-    ) -> Result<(Event, Option<AccountTokens>)> {
-        self.call(
-            "create_event",
-            Some(tokens),
-            CreateEventParams { calendar_id, event },
-        )
-        .await
+        params: serde_json::Value,
+    ) -> Result<Event> {
+        self.call("create_event", params).await
     }
 
     /// Update an existing event.
     pub async fn update_event(
         &self,
-        tokens: &AccountTokens,
-        calendar_id: &str,
-        event: &Event,
-    ) -> Result<((), Option<AccountTokens>)> {
-        self.call(
-            "update_event",
-            Some(tokens),
-            UpdateEventParams { calendar_id, event },
-        )
-        .await
+        params: serde_json::Value,
+    ) -> Result<()> {
+        self.call("update_event", params).await
     }
 
     /// Delete an event.
     pub async fn delete_event(
         &self,
-        tokens: &AccountTokens,
-        calendar_id: &str,
-        event_id: &str,
-    ) -> Result<((), Option<AccountTokens>)> {
-        self.call(
-            "delete_event",
-            Some(tokens),
-            DeleteEventParams {
-                calendar_id,
-                event_id,
-            },
-        )
-        .await
+        params: serde_json::Value,
+    ) -> Result<()> {
+        self.call("delete_event", params).await
+    }
+}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+/// Convert calendar config params (toml::Value) to JSON and merge with additional params.
+pub fn build_params(
+    config_params: &HashMap<String, toml::Value>,
+    additional: &[(&str, serde_json::Value)],
+) -> serde_json::Value {
+    let mut params = serde_json::Map::new();
+
+    // Add config params
+    for (key, value) in config_params {
+        if let Ok(json_value) = toml_to_json(value) {
+            params.insert(key.clone(), json_value);
+        }
+    }
+
+    // Add additional params
+    for (key, value) in additional {
+        params.insert((*key).to_string(), value.clone());
+    }
+
+    serde_json::Value::Object(params)
+}
+
+/// Convert a toml::Value to serde_json::Value
+fn toml_to_json(value: &toml::Value) -> Result<serde_json::Value> {
+    match value {
+        toml::Value::String(s) => Ok(serde_json::Value::String(s.clone())),
+        toml::Value::Integer(i) => Ok(serde_json::Value::Number((*i).into())),
+        toml::Value::Float(f) => Ok(serde_json::json!(*f)),
+        toml::Value::Boolean(b) => Ok(serde_json::Value::Bool(*b)),
+        toml::Value::Array(arr) => {
+            let json_arr: Result<Vec<_>> = arr.iter().map(toml_to_json).collect();
+            Ok(serde_json::Value::Array(json_arr?))
+        }
+        toml::Value::Table(table) => {
+            let mut map = serde_json::Map::new();
+            for (k, v) in table {
+                map.insert(k.clone(), toml_to_json(v)?);
+            }
+            Ok(serde_json::Value::Object(map))
+        }
+        toml::Value::Datetime(dt) => Ok(serde_json::Value::String(dt.to_string())),
     }
 }
