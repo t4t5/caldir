@@ -263,9 +263,24 @@ fn short_id(id: &str) -> String {
     format!("{:08x}", hash as u32)
 }
 
-/// Parse the UID from an .ics file
+/// Parse the UID from an .ics file, handling ICS line folding
 pub fn parse_uid(content: &str) -> Option<String> {
+    // First unfold lines (ICS wraps long lines with CRLF + space/tab)
+    let mut unfolded = String::new();
     for line in content.lines() {
+        if line.starts_with(' ') || line.starts_with('\t') {
+            // Continuation line - append without the leading whitespace
+            unfolded.push_str(line.trim_start());
+        } else {
+            if !unfolded.is_empty() {
+                unfolded.push('\n');
+            }
+            unfolded.push_str(line);
+        }
+    }
+
+    // Now find UID in unfolded content
+    for line in unfolded.lines() {
         if let Some(stripped) = line.strip_prefix("UID:") {
             return Some(stripped.trim().to_string());
         }
