@@ -592,6 +592,42 @@ pub async fn create_event(
     from_google_event(created)
 }
 
+/// Delete an event from Google Calendar
+pub async fn delete_event(
+    config: &GoogleConfig,
+    tokens: &AccountTokens,
+    calendar_id: &str,
+    event_id: &str,
+) -> Result<()> {
+    let client = create_client(config, tokens);
+
+    // Note: The Google Calendar API returns 410 Gone if the event was already deleted.
+    // We treat this as success since the end state is what we want.
+    let result = client
+        .events()
+        .delete(
+            calendar_id,
+            event_id,
+            false,                    // send_notifications (deprecated)
+            SendUpdates::None,        // send_updates
+        )
+        .await;
+
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            // Check if it's a 410 Gone (already deleted)
+            let error_str = e.to_string();
+            if error_str.contains("410") || error_str.contains("Gone") {
+                // Already deleted - that's fine
+                Ok(())
+            } else {
+                Err(e).with_context(|| format!("Failed to delete event: {}", event_id))
+            }
+        }
+    }
+}
+
 /// Convert a Google Calendar API Event to our provider-neutral Event
 fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
     // Parse start time

@@ -75,23 +75,35 @@ This is more friction (~10 minutes of setup), but it means:
 
 The tool supports bidirectional sync between cloud and local:
 - `pull` — Download changes from cloud to local
-- `push` — Upload local changes to cloud (creates and updates)
+- `push` — Upload local changes to cloud (creates, updates, and deletes)
 - `status` — Shows pending changes in both directions
 
 **Sync direction detection** uses timestamp comparison:
 - If local file mtime > remote `updated` → push candidate (local was modified)
 - If remote `updated` > local file mtime → pull candidate (remote was modified)
-- Local-only events → new events to push
+- Local-only events with `X-CALDIR-ORIGIN:local` → new events to push
 - Remote-only events → new events to pull
+- Events in sync state but missing locally → deleted locally, delete from remote on push
 
 **Sync time window**: Only events within ±365 days of today are synced. Events outside this window are left untouched locally (not flagged for deletion just because they weren't fetched from the remote).
 
-### Filesystem as State
+**Delete sync**: When you delete a local `.ics` file and run `push`, the event is also deleted from the remote. This is tracked via the sync state file (see below).
 
-There's no separate state file tracking which events have been synced. Instead:
-- Each `.ics` file contains a `UID` field with the cloud provider's event ID
-- On sync, we parse all local `.ics` files to build a UID → filepath map
-- This is slightly slower but means the filesystem is the single source of truth
+### Sync State
+
+Each calendar directory contains a `.caldir-sync` file that tracks which event UIDs have been synced:
+
+```json
+{
+  "synced_uids": ["abc123", "def456", "ghi789"]
+}
+```
+
+This is used for **delete detection**: if a UID is in `synced_uids` but has no corresponding local file, the event was deleted locally and should be deleted from the remote on the next `push`.
+
+The sync state is updated automatically after each `pull` or `push` operation. If the file is deleted, the next `pull` will re-download all events and recreate it.
+
+**Safety feature**: If you accidentally delete all local files (empty calendar) and run `push`, caldir-cli will refuse to delete all remote events unless you use `--force`.
 
 ### Provider Architecture
 
@@ -122,7 +134,7 @@ src/
 
 **event.rs** — Provider-neutral event types (`Event`, `Attendee`, `Reminder`, etc.). Providers convert their API responses into these types, and the rest of the codebase works exclusively with them. This keeps provider-specific logic contained.
 
-**diff.rs** — Bidirectional diff computation. Compares remote events against local files and returns `SyncDiff` with separate lists for pull changes (`to_pull_create/update/delete`) and push changes (`to_push_create/update`). Uses timestamp comparison to determine sync direction. Accepts an optional time range to avoid flagging old events for deletion when they fall outside the queried window.
+**diff.rs** — Bidirectional diff computation. Compares remote events against local files and returns `SyncDiff` with separate lists for pull changes (`to_pull_create/update/delete`) and push changes (`to_push_create/update/delete`). Uses timestamp comparison to determine sync direction. Accepts sync state (set of previously synced UIDs) to detect local deletions. Accepts an optional time range to avoid flagging old events for deletion when they fall outside the queried window.
 
 **caldir.rs** — The local calendar directory as a first-class abstraction. Reads all `.ics` files into a UID → LocalEvent map (including file modification times for sync direction detection), writes events, deletes events. The filesystem is the source of truth.
 
@@ -241,8 +253,11 @@ caldir-cli new "Sprint planning" --start 2025-03-22T10:00 --calendar work
 # Pull events from all configured calendars
 caldir-cli pull
 
-# Push local changes to cloud
+# Push local changes to cloud (including deletions)
 caldir-cli push
+
+# Force push even when local calendar is empty (dangerous - will delete all remote events)
+caldir-cli push --force
 
 # Show pending changes per calendar (like git status)
 caldir-cli status

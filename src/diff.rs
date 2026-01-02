@@ -21,6 +21,7 @@ pub struct PropertyChange {
 
 /// A single change detected between local and remote
 pub struct SyncChange {
+    pub uid: String,
     pub filename: String,
     /// Property-level changes (populated when verbose mode is enabled)
     pub property_changes: Vec<PropertyChange>,
@@ -36,6 +37,7 @@ pub struct SyncDiff {
     // Push changes (local → remote)
     pub to_push_create: Vec<SyncChange>,
     pub to_push_update: Vec<SyncChange>,
+    pub to_push_delete: Vec<SyncChange>,
 }
 
 /// Check if two ICS contents have meaningful property differences.
@@ -116,13 +118,17 @@ fn compute_property_diff(local_content: &str, new_content: &str) -> Vec<Property
 ///
 /// Returns a SyncDiff describing:
 /// - Pull changes: what needs to be created/updated/deleted locally to match remote
-/// - Push changes: what needs to be created/updated on remote to match local
+/// - Push changes: what needs to be created/updated/deleted on remote to match local
 ///
 /// Uses timestamp comparison: if local file mtime > remote updated, it's a push candidate.
 ///
 /// The `time_range` parameter specifies the window of events that were queried from
 /// the remote. Events outside this range won't be flagged for deletion since we
 /// don't know their remote status.
+///
+/// The `synced_uids` parameter contains UIDs that have been previously synced.
+/// If a UID is in synced_uids but has no local file, it means the user deleted
+/// it locally → push delete candidate.
 pub fn compute(
     remote_events: &[Event],
     local_events: &HashMap<String, LocalEvent>,
@@ -130,6 +136,7 @@ pub fn compute(
     metadata: &CalendarMetadata,
     verbose: bool,
     time_range: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    synced_uids: &HashSet<String>,
 ) -> Result<SyncDiff> {
     let mut diff = SyncDiff {
         to_pull_create: Vec::new(),
@@ -137,6 +144,7 @@ pub fn compute(
         to_pull_delete: Vec::new(),
         to_push_create: Vec::new(),
         to_push_update: Vec::new(),
+        to_push_delete: Vec::new(),
     };
 
     let mut seen_uids: HashSet<String> = HashSet::new();
@@ -187,6 +195,7 @@ pub fn compute(
                 };
 
                 let change = SyncChange {
+                    uid: event.id.clone(),
                     filename: new_filename,
                     property_changes,
                 };
@@ -198,11 +207,22 @@ pub fn compute(
                 }
             }
         } else {
-            // New remote event - pull it
-            diff.to_pull_create.push(SyncChange {
-                filename: new_filename,
-                property_changes: Vec::new(),
-            });
+            // Check if this remote event was previously synced but deleted locally
+            if synced_uids.contains(&event.id) {
+                // User deleted this locally → push delete
+                diff.to_push_delete.push(SyncChange {
+                    uid: event.id.clone(),
+                    filename: new_filename,
+                    property_changes: Vec::new(),
+                });
+            } else {
+                // New remote event - pull it
+                diff.to_pull_create.push(SyncChange {
+                    uid: event.id.clone(),
+                    filename: new_filename,
+                    property_changes: Vec::new(),
+                });
+            }
         }
     }
 
@@ -222,6 +242,7 @@ pub fn compute(
 
             if is_local_origin {
                 diff.to_push_create.push(SyncChange {
+                    uid: uid.clone(),
                     filename,
                     property_changes: Vec::new(),
                 });
@@ -239,6 +260,7 @@ pub fn compute(
 
                 if in_range {
                     diff.to_pull_delete.push(SyncChange {
+                        uid: uid.clone(),
                         filename,
                         property_changes: Vec::new(),
                     });

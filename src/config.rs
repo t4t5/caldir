@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // =============================================================================
 // Wrapper Types for Type Safety
@@ -240,5 +240,44 @@ pub fn save_config(config: &Config) -> Result<()> {
     std::fs::write(&path, contents)
         .with_context(|| format!("Failed to write config file at {}", path.display()))?;
 
+    Ok(())
+}
+
+// =============================================================================
+// Sync State (for tracking which events have been synced)
+// =============================================================================
+
+/// Tracks which event UIDs have been synced for a calendar.
+/// Used to detect local deletions (UID in state but no local file).
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct SyncState {
+    pub synced_uids: HashSet<String>,
+}
+
+/// Get sync state file path for a calendar directory
+pub fn sync_state_path(calendar_dir: &Path) -> PathBuf {
+    calendar_dir.join(".caldir-sync")
+}
+
+/// Load sync state from calendar directory
+pub fn load_sync_state(calendar_dir: &Path) -> Result<SyncState> {
+    let path = sync_state_path(calendar_dir);
+    if !path.exists() {
+        return Ok(SyncState::default());
+    }
+    let contents = std::fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read sync state at {}", path.display()))?;
+    let state: SyncState = serde_json::from_str(&contents)
+        .with_context(|| format!("Failed to parse sync state at {}", path.display()))?;
+    Ok(state)
+}
+
+/// Save sync state to calendar directory
+pub fn save_sync_state(calendar_dir: &Path, state: &SyncState) -> Result<()> {
+    let path = sync_state_path(calendar_dir);
+    let contents = serde_json::to_string_pretty(state)
+        .context("Failed to serialize sync state")?;
+    std::fs::write(&path, contents)
+        .with_context(|| format!("Failed to write sync state at {}", path.display()))?;
     Ok(())
 }
