@@ -4,12 +4,12 @@ version = "0.1.0"
 edition = "2021"
 description = "CLI for interacting with your local caldir directory and syncing with external calendar providers"
 
+[workspace]
+members = [".", "caldir-provider-google"]
+
 [dependencies]
 # Async runtime
 tokio = { version = "1", features = ["full"] }
-
-# Google Calendar API client
-google-calendar = "0.7"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -31,14 +31,8 @@ dirs = "5"
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
-# URL parsing
-url = "2"
-
-# Open URLs in browser
-open = "5"
-
-# URL encoding
-urlencoding = "2"
-
 # UUID generation
 uuid = { version = "1", features = ["v4"] }
+
+# Provider discovery (finding binaries in PATH)
+which = "7"

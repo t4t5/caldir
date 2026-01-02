@@ -272,17 +272,27 @@ caldir uses semantic filenames instead of UUIDs:
 
 ---
 
-## caldir-Specific Extensions
+## Sync State File
 
-### `X-CALDIR-ORIGIN`
-**What:** Marks where an event was created.
-**Values:** `local` (created via `caldir-cli new`)
-**Example:** `X-CALDIR-ORIGIN:local`
+### `.caldir-sync`
+
+Each calendar directory contains a `.caldir-sync` file that tracks which event UIDs have been synced with the remote provider.
+
+**Format:** JSON file with a `synced_uids` array:
+```json
+{
+  "synced_uids": ["abc123", "def456", "ghi789"]
+}
+```
 
 **Why:** Enables the sync logic to distinguish between:
-- **Locally-created events** (have `X-CALDIR-ORIGIN:local`) → candidates for pushing to cloud
-- **Remotely-deleted events** (no origin marker, missing from remote) → candidates for local deletion
+- **Locally-created events** (UID not in synced_uids) → candidates for pushing to cloud
+- **Remotely-deleted events** (UID in synced_uids, but missing from remote) → candidates for local deletion
 
-Without this marker, a local-only event is ambiguous: was it created locally and needs to be pushed, or was it pulled from the cloud and then deleted remotely?
+Without this state, a local-only event is ambiguous: was it created locally and needs to be pushed, or was it pulled from the cloud and then deleted remotely?
 
-**Philosophy:** This keeps all sync state in the `.ics` files themselves, following caldir's "filesystem as state" principle. No separate sync database needed.
+**Lifecycle:**
+- After `pull`: UIDs of all fetched events are added to synced_uids
+- After `push` (create): Newly created event UIDs are added to synced_uids
+- After `pull` (delete): Removed UIDs are deleted from synced_uids
+

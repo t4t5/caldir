@@ -3,11 +3,12 @@ mod config;
 mod diff;
 mod event;
 mod ics;
-mod providers;
+mod provider;
 
 use anyhow::{Context, Result};
 use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
+use provider::Provider;
 
 /// Number of days to sync in each direction (past and future)
 const SYNC_DAYS: i64 = 365;
@@ -97,7 +98,7 @@ async fn main() -> Result<()> {
 /// Refresh the access token if expired, saving the updated tokens.
 /// Returns the (possibly refreshed) tokens.
 async fn refresh_credentials_if_needed(
-    google_config: &config::GoogleConfig,
+    provider: &Provider,
     account_email: &str,
     tokens: config::AccountTokens,
     all_tokens: &mut config::Tokens,
@@ -108,7 +109,8 @@ async fn refresh_credentials_if_needed(
         .unwrap_or(false)
     {
         println!("Access token expired for {}, refreshing...", account_email);
-        let refreshed = providers::google::refresh_token(google_config, &tokens)
+        let refreshed = provider
+            .refresh_token(&tokens)
             .await
             .context("Failed to refresh token. Run 'caldir-cli auth' to re-authenticate.")?;
         all_tokens.google.insert(account_email.to_string(), refreshed.clone());
@@ -119,8 +121,8 @@ async fn refresh_credentials_if_needed(
     }
 }
 
-async fn cmd_auth(provider: &str) -> Result<()> {
-    match provider {
+async fn cmd_auth(provider_name: &str) -> Result<()> {
+    match provider_name {
         "google" => {
             let mut cfg = config::load_config()?;
             let google_config = cfg
@@ -136,14 +138,16 @@ async fn cmd_auth(provider: &str) -> Result<()> {
                 ))?
                 .clone();
 
-            let tokens = providers::google::authenticate(&google_config).await?;
+            let provider = Provider::new("google", serde_json::to_value(&google_config)?)?;
+
+            let tokens = provider.authenticate().await?;
 
             // Discover the user's email from the authenticated account
-            let email = providers::google::fetch_user_email(&google_config, &tokens).await?;
+            let (email, _) = provider.fetch_user_email(&tokens).await?;
             println!("\nAuthenticated as: {}", email);
 
             // Fetch calendars and auto-add to config
-            let calendars = providers::google::fetch_calendars(&google_config, &tokens).await?;
+            let (calendars, _) = provider.fetch_calendars(&tokens).await?;
             println!("\nFound {} calendar(s):", calendars.len());
 
             for cal in &calendars {
@@ -185,7 +189,7 @@ async fn cmd_auth(provider: &str) -> Result<()> {
             Ok(())
         }
         _ => {
-            anyhow::bail!("Unknown provider: {}. Supported: google", provider);
+            anyhow::bail!("Unknown provider: {}. Supported: google", provider_name);
         }
     }
 }
@@ -219,6 +223,8 @@ async fn cmd_pull() -> Result<()> {
             anyhow::anyhow!("Google Calendar not configured in config.toml")
         })?;
 
+        let provider = Provider::new("google", serde_json::to_value(google_config)?)?;
+
         // Get tokens for this calendar's account
         let account_email = calendar_config.account.to_string();
         let tokens = all_tokens.google.get(&account_email).ok_or_else(|| {
@@ -229,7 +235,7 @@ async fn cmd_pull() -> Result<()> {
         })?.clone();
 
         let account_tokens = refresh_credentials_if_needed(
-            google_config,
+            &provider,
             &account_email,
             tokens,
             &mut all_tokens,
@@ -245,9 +251,9 @@ async fn cmd_pull() -> Result<()> {
             .unwrap_or_else(|| "primary".to_string());
 
         // Fetch remote events
-        let remote_events =
-            providers::google::fetch_events(google_config, &account_tokens, &calendar_id)
-                .await?;
+        let (remote_events, _) = provider
+            .fetch_events(&account_tokens, &calendar_id, None, None)
+            .await?;
         println!("  Fetched {} events", remote_events.len());
 
         // Get calendar-specific directory
@@ -389,6 +395,8 @@ async fn cmd_push(force: bool) -> Result<()> {
             anyhow::anyhow!("Google Calendar not configured in config.toml")
         })?;
 
+        let provider = Provider::new("google", serde_json::to_value(google_config)?)?;
+
         // Get tokens for this calendar's account
         let account_email = calendar_config.account.to_string();
         let tokens = all_tokens.google.get(&account_email).ok_or_else(|| {
@@ -399,7 +407,7 @@ async fn cmd_push(force: bool) -> Result<()> {
         })?.clone();
 
         let account_tokens = refresh_credentials_if_needed(
-            google_config,
+            &provider,
             &account_email,
             tokens,
             &mut all_tokens,
@@ -426,9 +434,9 @@ async fn cmd_push(force: bool) -> Result<()> {
         let sync_state = config::load_sync_state(&calendar_dir)?;
 
         // Fetch remote events
-        let remote_events =
-            providers::google::fetch_events(google_config, &account_tokens, &calendar_id)
-                .await?;
+        let (remote_events, _) = provider
+            .fetch_events(&account_tokens, &calendar_id, None, None)
+            .await?;
 
         // Build calendar metadata
         let metadata = ics::CalendarMetadata {
@@ -462,13 +470,9 @@ async fn cmd_push(force: bool) -> Result<()> {
         // Delete events from remote that were deleted locally
         for change in &sync_diff.to_push_delete {
             println!("  Deleting: {}", change.uid);
-            providers::google::delete_event(
-                google_config,
-                &account_tokens,
-                &calendar_id,
-                &change.uid,
-            )
-            .await?;
+            provider
+                .delete_event(&account_tokens, &calendar_id, &change.uid)
+                .await?;
             total_deleted += 1;
         }
 
@@ -489,13 +493,9 @@ async fn cmd_push(force: bool) -> Result<()> {
 
                     // Create event on Google Calendar and get back the full event
                     // with Google-assigned ID and Google-added fields (organizer, reminders, etc.)
-                    let created_event = providers::google::create_event(
-                        google_config,
-                        &account_tokens,
-                        &calendar_id,
-                        &event,
-                    )
-                    .await?;
+                    let (created_event, _) = provider
+                        .create_event(&account_tokens, &calendar_id, &event)
+                        .await?;
 
                     // Generate new ICS content and filename from the Google-returned event
                     let new_content = ics::generate_ics(&created_event, &metadata)?;
@@ -528,13 +528,9 @@ async fn cmd_push(force: bool) -> Result<()> {
                 // Parse local ICS to Event
                 if let Some(event) = ics::parse_event(&local.content) {
                     println!("  Updating: {}", event.summary);
-                    providers::google::update_event(
-                        google_config,
-                        &account_tokens,
-                        &calendar_id,
-                        &event,
-                    )
-                    .await?;
+                    provider
+                        .update_event(&account_tokens, &calendar_id, &event)
+                        .await?;
                     total_updated += 1;
                 } else {
                     eprintln!("  Warning: Could not parse {}", change.filename);
@@ -607,6 +603,8 @@ async fn cmd_status(verbose: bool) -> Result<()> {
             anyhow::anyhow!("Google Calendar not configured in config.toml")
         })?;
 
+        let provider = Provider::new("google", serde_json::to_value(google_config)?)?;
+
         // Get tokens for this calendar's account
         let account_email = calendar_config.account.to_string();
         let tokens = match all_tokens.google.get(&account_email) {
@@ -618,7 +616,7 @@ async fn cmd_status(verbose: bool) -> Result<()> {
         };
 
         let account_tokens = refresh_credentials_if_needed(
-            google_config,
+            &provider,
             &account_email,
             tokens,
             &mut all_tokens,
@@ -635,9 +633,9 @@ async fn cmd_status(verbose: bool) -> Result<()> {
         let calendar_dir = config::calendar_path(&cfg, calendar_name);
 
         // Fetch remote events
-        let remote_events =
-            providers::google::fetch_events(google_config, &account_tokens, &calendar_id)
-                .await?;
+        let (remote_events, _) = provider
+            .fetch_events(&account_tokens, &calendar_id, None, None)
+            .await?;
 
         // Read local events (empty if directory doesn't exist)
         let local_events = if calendar_dir.exists() {

@@ -1,11 +1,46 @@
-//! Provider-neutral event types.
+//! Shared types for the provider protocol.
 //!
-//! These types represent calendar events in a provider-agnostic way.
-//! Providers convert their API responses into these types, and the rest
-//! of the codebase (ics.rs, diff.rs) works exclusively with them.
+//! These types mirror the ones in caldir-cli but are defined locally
+//! to keep the provider self-contained.
 
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+
+// =============================================================================
+// Config Types
+// =============================================================================
+
+/// OAuth credentials for Google Calendar
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoogleConfig {
+    pub client_id: String,
+    pub client_secret: String,
+}
+
+/// Tokens for a single authenticated account
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountTokens {
+    pub access_token: String,
+    pub refresh_token: String,
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+// =============================================================================
+// Calendar Types
+// =============================================================================
+
+/// A calendar from the provider
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Calendar {
+    pub id: String,
+    pub name: String,
+    pub primary: bool,
+}
+
+// =============================================================================
+// Event Types
+// =============================================================================
 
 /// A calendar event (provider-neutral)
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -18,19 +53,16 @@ pub struct Event {
     pub end: EventTime,
     pub status: EventStatus,
 
-    // Recurrence fields
     /// RRULE, EXDATE lines for master events
     pub recurrence: Option<Vec<String>>,
     /// Original start time for this instance (used for RECURRENCE-ID)
     pub original_start: Option<EventTime>,
 
-    // Alarms & Availability
     /// Reminders/alarms for this event
     pub reminders: Vec<Reminder>,
     /// Whether event blocks time (OPAQUE) or is free (TRANSPARENT)
     pub transparency: Transparency,
 
-    // Meeting Data
     /// Event organizer
     pub organizer: Option<Attendee>,
     /// Event attendees/participants
@@ -38,15 +70,12 @@ pub struct Event {
     /// Conference/video call URL
     pub conference_url: Option<String>,
 
-    // Sync Infrastructure
     /// Last modification timestamp (LAST-MODIFIED)
     pub updated: Option<DateTime<Utc>>,
     /// Revision sequence number (SEQUENCE)
     pub sequence: Option<i64>,
 
-    // Provider-specific
     /// Custom properties from the provider (e.g., X-GOOGLE-CONFERENCE)
-    /// These are preserved for round-tripping back to the provider
     pub custom_properties: Vec<(String, String)>,
 }
 

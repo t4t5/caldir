@@ -106,40 +106,57 @@ The sync state is updated automatically after each `pull` or `push` operation. I
 
 **Safety feature**: If you accidentally delete all local files (empty calendar) and run `push`, caldir-cli will refuse to delete all remote events unless you use `--force`.
 
-### Provider Architecture
+### Provider Plugin Architecture
 
-The codebase is structured for multiple providers:
-- `google` — Google Calendar (OAuth + REST API)
-- `ical` — Any iCal URL (read-only, no OAuth)
-- `caldav` — Generic CalDAV servers
-- `outlook` — Microsoft Graph API
+Providers are separate binaries that communicate with caldir-cli via JSON over stdin/stdout, similar to git's remote helpers (`git-remote-*`). This enables:
 
-Currently only `google` is implemented.
+- **Permissionless ecosystem** — Anyone can create `caldir-provider-outlook`
+- **Language-agnostic** — Providers can be written in any language
+- **Independent versioning** — Providers update separately from core
+- **Smaller core binary** — Provider-specific deps stay in provider crates
+
+**Discovery**: caldir-cli looks for executables named `caldir-provider-{name}` in PATH.
+
+**Current providers**:
+- `caldir-provider-google` — Google Calendar (OAuth + REST API)
+
+**Future providers** (not yet implemented):
+- `caldir-provider-google-cloud` — Hosted OAuth (zero-friction auth via `auth.caldir.dev`)
+- `caldir-provider-outlook` — Microsoft Graph API
+- `caldir-provider-caldav` — Generic CalDAV servers
+- `caldir-provider-ical` — Read-only iCal URLs
 
 ## Module Architecture
 
 ```
-src/
-  main.rs        - CLI entry point and command implementations
-  config.rs      - Configuration and token storage
-  event.rs       - Provider-neutral event types
-  diff.rs        - Pure diff computation between local and remote
-  caldir.rs      - Local directory operations (read/write .ics files)
-  ics.rs         - ICS format: generation, parsing, formatting
-  providers/
-    mod.rs
-    google.rs    - Google Calendar provider
+caldir-cli/                    # Core CLI (this crate)
+  src/
+    main.rs      - CLI entry point and command implementations
+    config.rs    - Configuration, token storage, sync state
+    event.rs     - Provider-neutral event types (with JSON serialization)
+    diff.rs      - Pure diff computation between local and remote
+    caldir.rs    - Local directory operations (read/write .ics files)
+    ics.rs       - ICS format: generation, parsing, formatting
+    provider.rs  - Provider subprocess protocol (JSON over stdin/stdout)
+
+caldir-provider-google/        # Google Calendar provider (separate crate)
+  src/
+    main.rs      - JSON protocol handler (reads stdin, writes stdout)
+    google.rs    - Google Calendar API implementation
+    types.rs     - Protocol types (Event, AccountTokens, etc.)
 ```
 
 ### Key Abstractions
 
-**event.rs** — Provider-neutral event types (`Event`, `Attendee`, `Reminder`, etc.). Providers convert their API responses into these types, and the rest of the codebase works exclusively with them. This keeps provider-specific logic contained.
+**event.rs** — Provider-neutral event types (`Event`, `Attendee`, `Reminder`, etc.) with JSON serialization for the provider protocol. Providers convert their API responses into these types, and the rest of the codebase works exclusively with them.
+
+**provider.rs** — Provider subprocess protocol. Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. Handles the 8 provider commands: `authenticate`, `refresh_token`, `fetch_user_email`, `fetch_calendars`, `fetch_events`, `create_event`, `update_event`, `delete_event`.
 
 **diff.rs** — Bidirectional diff computation. Compares remote events against local files and returns `SyncDiff` with separate lists for pull changes (`to_pull_create/update/delete`) and push changes (`to_push_create/update/delete`). Uses timestamp comparison to determine sync direction. Accepts sync state (set of previously synced UIDs) to detect local deletions. Accepts an optional time range to avoid flagging old events for deletion when they fall outside the queried window.
 
 **caldir.rs** — The local calendar directory as a first-class abstraction. Reads all `.ics` files into a UID → LocalEvent map (including file modification times for sync direction detection), writes events, deletes events. The filesystem is the source of truth.
 
-**ics.rs** — Everything ICS format. Generates compliant `.ics` files from `Event` structs, parses properties from existing files, formats values for human-readable output (e.g., alarm triggers like "1 day before"). Provider-neutral — no Google-specific code.
+**ics.rs** — Everything ICS format. Generates compliant `.ics` files from `Event` structs, parses properties from existing files, formats values for human-readable output (e.g., alarm triggers like "1 day before"). Provider-neutral — no provider-specific code.
 
 ## Event Properties
 

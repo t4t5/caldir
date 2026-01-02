@@ -1,22 +1,26 @@
+# List all available tasks
+default:
+  @just --list
+
 cli +args:
   cargo run -- {{ args }}
 
 auth:
-  cargo run -- auth
+  @just cli auth
 
 pull:
-  cargo run -- pull
+  @just cli pull
 
 status:
-  cargo run -- status --verbose
+  @just cli status --verbose
 
 push:
-  cargo run -- push
+  @just cli push
 
 # Cargo
 
 check:
-  cargo check && cargo clippy
+  cargo check --workspace && cargo clippy --workspace
 
 test:
   cargo test

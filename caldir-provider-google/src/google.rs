@@ -1,3 +1,9 @@
+//! Google Calendar API implementation.
+
+use crate::types::{
+    AccountTokens, Attendee, Calendar, Event, EventStatus, EventTime, GoogleConfig, Reminder,
+    Transparency,
+};
 use anyhow::{Context, Result};
 use google_calendar::types::{
     EventAttendee, EventDateTime, EventReminder, MinAccessRole, OrderBy, Reminders, SendUpdates,
@@ -6,16 +12,12 @@ use google_calendar::Client;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
-use crate::config::{AccountTokens, GoogleConfig};
-use crate::event::{Attendee, Event, EventStatus, EventTime, Reminder, Transparency};
-
 const REDIRECT_PORT: u16 = 8085;
 const REDIRECT_URI: &str = "http://localhost:8085/callback";
-
 const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
 
 /// Create a Google Calendar client from stored tokens
-pub fn create_client(config: &GoogleConfig, tokens: &AccountTokens) -> Client {
+fn create_client(config: &GoogleConfig, tokens: &AccountTokens) -> Client {
     Client::new(
         config.client_id.clone(),
         config.client_secret.clone(),
@@ -37,12 +39,11 @@ fn create_auth_client(config: &GoogleConfig) -> Client {
 }
 
 /// Start a local HTTP server to receive the OAuth callback
-/// Returns (code, state)
 fn wait_for_callback() -> Result<(String, String)> {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", REDIRECT_PORT))
         .with_context(|| format!("Failed to bind to port {}", REDIRECT_PORT))?;
 
-    println!("Waiting for OAuth callback on port {}...", REDIRECT_PORT);
+    eprintln!("Waiting for OAuth callback on port {}...", REDIRECT_PORT);
 
     let (mut stream, _) = listener.accept().context("Failed to accept connection")?;
 
@@ -51,7 +52,6 @@ fn wait_for_callback() -> Result<(String, String)> {
     reader.read_line(&mut request_line)?;
 
     // Parse the request to get the code and state
-    // Request line looks like: GET /callback?code=xxx&state=yyy HTTP/1.1
     let url_part = request_line
         .split_whitespace()
         .nth(1)
@@ -91,32 +91,28 @@ fn wait_for_callback() -> Result<(String, String)> {
 pub async fn authenticate(config: &GoogleConfig) -> Result<AccountTokens> {
     let mut client = create_auth_client(config);
 
-    // Get the authorization URL
     let scopes: Vec<String> = SCOPES.iter().map(|s| s.to_string()).collect();
     let auth_url = client.user_consent_url(&scopes);
 
-    println!("\nOpen this URL in your browser to authenticate:\n");
-    println!("{}\n", auth_url);
+    eprintln!("\nOpen this URL in your browser to authenticate:\n");
+    eprintln!("{}\n", auth_url);
 
     // Try to open the browser automatically
     if open::that(&auth_url).is_err() {
-        println!("(Could not open browser automatically, please copy the URL above)");
+        eprintln!("(Could not open browser automatically, please copy the URL above)");
     }
 
-    // Wait for the callback
     let (code, state) = wait_for_callback()?;
 
-    println!("\nReceived authorization code, exchanging for tokens...");
+    eprintln!("\nReceived authorization code, exchanging for tokens...");
 
-    // Exchange code for tokens
     let access_token = client
         .get_access_token(&code, &state)
         .await
         .context("Failed to exchange code for tokens")?;
 
-    println!("Authentication successful!");
+    eprintln!("Authentication successful!");
 
-    // Calculate expires_at from expires_in
     let expires_at = if access_token.expires_in > 0 {
         Some(chrono::Utc::now() + chrono::Duration::seconds(access_token.expires_in))
     } else {
@@ -139,15 +135,13 @@ pub async fn refresh_token(config: &GoogleConfig, tokens: &AccountTokens) -> Res
         .await
         .context("Failed to refresh token")?;
 
-    // Calculate expires_at from expires_in
     let expires_at = if access_token.expires_in > 0 {
         Some(chrono::Utc::now() + chrono::Duration::seconds(access_token.expires_in))
     } else {
         None
     };
 
-    // Google typically doesn't return a new refresh_token on refresh responses,
-    // so preserve the original one if the response is empty
+    // Google typically doesn't return a new refresh_token on refresh
     let refresh_token = if access_token.refresh_token.is_empty() {
         tokens.refresh_token.clone()
     } else {
@@ -161,17 +155,15 @@ pub async fn refresh_token(config: &GoogleConfig, tokens: &AccountTokens) -> Res
     })
 }
 
-/// Fetch the user's email to verify authentication
+/// Fetch the user's email
 pub async fn fetch_user_email(config: &GoogleConfig, tokens: &AccountTokens) -> Result<String> {
     let client = create_client(config, tokens);
 
-    // Get calendar list and find primary calendar (its ID is typically the user's email)
     let response = client
         .calendar_list()
         .list_all(MinAccessRole::default(), false, false)
         .await?;
 
-    // Find the primary calendar which typically has the user's email as ID
     for cal in response.body {
         if cal.primary && !cal.id.is_empty() {
             return Ok(cal.id);
@@ -181,15 +173,7 @@ pub async fn fetch_user_email(config: &GoogleConfig, tokens: &AccountTokens) -> 
     Ok("(unknown email)".to_string())
 }
 
-/// A calendar from the user's calendar list
-#[derive(Debug)]
-pub struct Calendar {
-    pub id: String,
-    pub name: String,
-    pub primary: bool,
-}
-
-/// Fetch the list of calendars for the authenticated user
+/// Fetch the list of calendars
 pub async fn fetch_calendars(config: &GoogleConfig, tokens: &AccountTokens) -> Result<Vec<Calendar>> {
     let client = create_client(config, tokens);
 
@@ -220,13 +204,18 @@ pub async fn fetch_events(
     config: &GoogleConfig,
     tokens: &AccountTokens,
     calendar_id: &str,
+    time_min: Option<&str>,
+    time_max: Option<&str>,
 ) -> Result<Vec<Event>> {
     let client = create_client(config, tokens);
 
-    // Fetch events from 1 year ago to 1 year ahead
+    // Default to ±1 year if not specified
     let now = chrono::Utc::now();
-    let time_min = (now - chrono::Duration::days(365)).to_rfc3339();
-    let time_max = (now + chrono::Duration::days(365)).to_rfc3339();
+    let default_time_min = (now - chrono::Duration::days(365)).to_rfc3339();
+    let default_time_max = (now + chrono::Duration::days(365)).to_rfc3339();
+
+    let time_min = time_min.unwrap_or(&default_time_min);
+    let time_max = time_max.unwrap_or(&default_time_max);
 
     let response = client
         .events()
@@ -240,9 +229,9 @@ pub async fn fetch_events(
             &[],                    // shared_extended_property
             false,                  // show_deleted
             false,                  // show_hidden_invitations
-            false,                  // single_events: false to get master events with RRULE
-            &time_max,              // time_max
-            &time_min,              // time_min
+            false,                  // single_events
+            time_max,
+            time_min,
             "",                     // time_zone
             "",                     // updated_min
         )
@@ -252,12 +241,10 @@ pub async fn fetch_events(
     let mut result = Vec::new();
 
     for event in response.body {
-        // Skip cancelled events or events without an ID
         if event.status == "cancelled" || event.id.is_empty() {
             continue;
         }
 
-        // Parse start time
         let start = if let Some(ref start) = event.start {
             if let Some(dt) = start.date_time {
                 EventTime::DateTime(dt)
@@ -270,7 +257,6 @@ pub async fn fetch_events(
             continue;
         };
 
-        // Parse end time
         let end = if let Some(ref end) = event.end {
             if let Some(dt) = end.date_time {
                 EventTime::DateTime(dt)
@@ -289,14 +275,12 @@ pub async fn fetch_events(
             _ => EventStatus::Confirmed,
         };
 
-        // Extract recurrence fields
         let recurrence = if event.recurrence.is_empty() {
             None
         } else {
             Some(event.recurrence)
         };
 
-        // Parse original start time (for recurring event instances)
         let original_start = if let Some(ref orig) = event.original_start_time {
             if let Some(dt) = orig.date_time {
                 Some(EventTime::DateTime(dt))
@@ -307,26 +291,21 @@ pub async fn fetch_events(
             None
         };
 
-        // Extract reminders
         let reminders = if let Some(ref rem) = event.reminders {
             rem.overrides
                 .iter()
-                .map(|r| Reminder {
-                    minutes: r.minutes,
-                })
+                .map(|r| Reminder { minutes: r.minutes })
                 .collect()
         } else {
             Vec::new()
         };
 
-        // Extract transparency (busy/free status)
         let transparency = if event.transparency == "transparent" {
             Transparency::Transparent
         } else {
-            Transparency::Opaque // Default
+            Transparency::Opaque
         };
 
-        // Extract organizer
         let organizer = event.organizer.as_ref().map(|o| Attendee {
             name: if o.display_name.is_empty() {
                 None
@@ -334,10 +313,9 @@ pub async fn fetch_events(
                 Some(o.display_name.clone())
             },
             email: o.email.clone(),
-            response_status: None, // Organizer doesn't have response status
+            response_status: None,
         });
 
-        // Extract attendees
         let attendees: Vec<Attendee> = event
             .attendees
             .iter()
@@ -356,28 +334,17 @@ pub async fn fetch_events(
             })
             .collect();
 
-        // Extract conference URL (video call link)
         let conference_url = event.conference_data.as_ref().and_then(|cd| {
-            // Find the first video entry point
             cd.entry_points
                 .iter()
                 .find(|ep| ep.entry_point_type == "video")
                 .map(|ep| ep.uri.clone())
         });
 
-        // Build custom properties for Google-specific fields
         let mut custom_properties = Vec::new();
         if let Some(ref url) = conference_url {
             custom_properties.push(("X-GOOGLE-CONFERENCE".to_string(), url.clone()));
         }
-
-        // Extract sync infrastructure fields
-        let updated = event.updated;
-        let sequence = if event.sequence > 0 {
-            Some(event.sequence)
-        } else {
-            None
-        };
 
         result.push(Event {
             id: event.id,
@@ -406,8 +373,12 @@ pub async fn fetch_events(
             organizer,
             attendees,
             conference_url,
-            updated,
-            sequence,
+            updated: event.updated,
+            sequence: if event.sequence > 0 {
+                Some(event.sequence)
+            } else {
+                None
+            },
             custom_properties,
         });
     }
@@ -415,9 +386,8 @@ pub async fn fetch_events(
     Ok(result)
 }
 
-/// Convert our provider-neutral Event to a Google Calendar API Event
+/// Convert our Event to a Google Calendar API Event
 fn to_google_event(event: &Event) -> google_calendar::types::Event {
-    // Convert start time
     let start = match &event.start {
         EventTime::DateTime(dt) => EventDateTime {
             date: None,
@@ -431,7 +401,6 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
         },
     };
 
-    // Convert end time
     let end = match &event.end {
         EventTime::DateTime(dt) => EventDateTime {
             date: None,
@@ -445,20 +414,17 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
         },
     };
 
-    // Convert status
     let status = match event.status {
         EventStatus::Confirmed => "confirmed".to_string(),
         EventStatus::Tentative => "tentative".to_string(),
         EventStatus::Cancelled => "cancelled".to_string(),
     };
 
-    // Convert transparency
     let transparency = match event.transparency {
         Transparency::Opaque => "opaque".to_string(),
         Transparency::Transparent => "transparent".to_string(),
     };
 
-    // Convert reminders
     let reminders = if event.reminders.is_empty() {
         None
     } else {
@@ -467,7 +433,7 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
                 .reminders
                 .iter()
                 .map(|r| EventReminder {
-                    method: "popup".to_string(), // Default to popup notifications
+                    method: "popup".to_string(),
                     minutes: r.minutes,
                 })
                 .collect(),
@@ -475,7 +441,6 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
         })
     };
 
-    // Convert attendees (skip organizer since it's read-only)
     let attendees: Vec<EventAttendee> = event
         .attendees
         .iter()
@@ -483,7 +448,6 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
             email: a.email.clone(),
             display_name: a.name.clone().unwrap_or_default(),
             response_status: a.response_status.clone().unwrap_or_default(),
-            // Fill required fields with defaults
             additional_guests: 0,
             comment: String::new(),
             id: String::new(),
@@ -494,10 +458,8 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
         })
         .collect();
 
-    // Convert recurrence rules
     let recurrence = event.recurrence.clone().unwrap_or_default();
 
-    // Convert original start time for recurring event instances
     let original_start_time = event.original_start.as_ref().map(|os| match os {
         EventTime::DateTime(dt) => EventDateTime {
             date: None,
@@ -525,12 +487,40 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
         recurrence,
         original_start_time,
         sequence: event.sequence.unwrap_or(0),
-        // Leave read-only fields at defaults
         ..Default::default()
     }
 }
 
-/// Update an existing event on Google Calendar
+/// Create a new event on Google Calendar
+pub async fn create_event(
+    config: &GoogleConfig,
+    tokens: &AccountTokens,
+    calendar_id: &str,
+    event: &Event,
+) -> Result<Event> {
+    let client = create_client(config, tokens);
+
+    let mut google_event = to_google_event(event);
+    google_event.id = String::new(); // Let Google assign the ID
+
+    let response = client
+        .events()
+        .insert(
+            calendar_id,
+            0,
+            0,
+            false,
+            SendUpdates::None,
+            false,
+            &google_event,
+        )
+        .await
+        .with_context(|| format!("Failed to create event: {}", event.summary))?;
+
+    from_google_event(response.body)
+}
+
+/// Update an existing event
 pub async fn update_event(
     config: &GoogleConfig,
     tokens: &AccountTokens,
@@ -546,11 +536,11 @@ pub async fn update_event(
         .update(
             calendar_id,
             &event.id,
-            0,                        // conference_data_version
-            0,                        // max_attendees
-            false,                    // send_notifications (deprecated)
-            SendUpdates::None,        // send_updates
-            false,                    // supports_attachments
+            0,
+            0,
+            false,
+            SendUpdates::None,
+            false,
             &google_event,
         )
         .await
@@ -559,40 +549,7 @@ pub async fn update_event(
     Ok(())
 }
 
-/// Create a new event on Google Calendar
-/// Returns the created Event with Google-assigned ID and all Google-added fields
-pub async fn create_event(
-    config: &GoogleConfig,
-    tokens: &AccountTokens,
-    calendar_id: &str,
-    event: &Event,
-) -> Result<Event> {
-    let client = create_client(config, tokens);
-
-    // Create a google event without the local ID (Google will assign one)
-    let mut google_event = to_google_event(event);
-    google_event.id = String::new(); // Let Google assign the ID
-
-    let response = client
-        .events()
-        .insert(
-            calendar_id,
-            0,                        // conference_data_version
-            0,                        // max_attendees
-            false,                    // send_notifications (deprecated)
-            SendUpdates::None,        // send_updates
-            false,                    // supports_attachments
-            &google_event,
-        )
-        .await
-        .with_context(|| format!("Failed to create event: {}", event.summary))?;
-
-    // Convert the response back to our Event type to capture Google-added fields
-    let created = response.body;
-    from_google_event(created)
-}
-
-/// Delete an event from Google Calendar
+/// Delete an event
 pub async fn delete_event(
     config: &GoogleConfig,
     tokens: &AccountTokens,
@@ -601,25 +558,16 @@ pub async fn delete_event(
 ) -> Result<()> {
     let client = create_client(config, tokens);
 
-    // Note: The Google Calendar API returns 410 Gone if the event was already deleted.
-    // We treat this as success since the end state is what we want.
     let result = client
         .events()
-        .delete(
-            calendar_id,
-            event_id,
-            false,                    // send_notifications (deprecated)
-            SendUpdates::None,        // send_updates
-        )
+        .delete(calendar_id, event_id, false, SendUpdates::None)
         .await;
 
     match result {
         Ok(_) => Ok(()),
         Err(e) => {
-            // Check if it's a 410 Gone (already deleted)
             let error_str = e.to_string();
             if error_str.contains("410") || error_str.contains("Gone") {
-                // Already deleted - that's fine
                 Ok(())
             } else {
                 Err(e).with_context(|| format!("Failed to delete event: {}", event_id))
@@ -628,9 +576,8 @@ pub async fn delete_event(
     }
 }
 
-/// Convert a Google Calendar API Event to our provider-neutral Event
+/// Convert a Google Calendar API Event to our Event
 fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
-    // Parse start time
     let start = if let Some(ref start) = event.start {
         if let Some(dt) = start.date_time {
             EventTime::DateTime(dt)
@@ -643,7 +590,6 @@ fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
         anyhow::bail!("Event has no start time");
     };
 
-    // Parse end time
     let end = if let Some(ref end) = event.end {
         if let Some(dt) = end.date_time {
             EventTime::DateTime(dt)
@@ -662,14 +608,12 @@ fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
         _ => EventStatus::Confirmed,
     };
 
-    // Extract recurrence fields
     let recurrence = if event.recurrence.is_empty() {
         None
     } else {
         Some(event.recurrence)
     };
 
-    // Parse original start time (for recurring event instances)
     let original_start = if let Some(ref orig) = event.original_start_time {
         if let Some(dt) = orig.date_time {
             Some(EventTime::DateTime(dt))
@@ -680,7 +624,6 @@ fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
         None
     };
 
-    // Extract reminders
     let reminders = if let Some(ref rem) = event.reminders {
         rem.overrides
             .iter()
@@ -690,14 +633,12 @@ fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
         Vec::new()
     };
 
-    // Extract transparency (busy/free status)
     let transparency = if event.transparency == "transparent" {
         Transparency::Transparent
     } else {
         Transparency::Opaque
     };
 
-    // Extract organizer
     let organizer = event.organizer.as_ref().map(|o| Attendee {
         name: if o.display_name.is_empty() {
             None
@@ -708,7 +649,6 @@ fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
         response_status: None,
     });
 
-    // Extract attendees
     let attendees: Vec<Attendee> = event
         .attendees
         .iter()
@@ -727,7 +667,6 @@ fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
         })
         .collect();
 
-    // Extract conference URL
     let conference_url = event.conference_data.as_ref().and_then(|cd| {
         cd.entry_points
             .iter()
@@ -735,7 +674,6 @@ fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
             .map(|ep| ep.uri.clone())
     });
 
-    // Build custom properties
     let mut custom_properties = Vec::new();
     if let Some(ref url) = conference_url {
         custom_properties.push(("X-GOOGLE-CONFERENCE".to_string(), url.clone()));
