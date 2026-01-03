@@ -3,7 +3,6 @@
 use crate::event::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
 };
-use chrono::{DateTime, Utc};
 use icalendar::{
     parser::{read_calendar, unfold, Property},
     DatePerhapsTime,
@@ -121,19 +120,20 @@ pub fn parse_event(content: &str) -> Option<Event> {
     })
 }
 
-/// Convert icalendar's DatePerhapsTime to our EventTime
+/// Convert icalendar's DatePerhapsTime to our EventTime, preserving timezone info
 fn to_event_time(dpt: DatePerhapsTime) -> EventTime {
     match dpt {
         DatePerhapsTime::Date(d) => EventTime::Date(d),
-        DatePerhapsTime::DateTime(cal_dt) => {
-            // Convert to UTC, falling back to treating floating times as UTC
-            let utc: DateTime<Utc> = match cal_dt {
-                icalendar::CalendarDateTime::Utc(dt) => dt,
-                icalendar::CalendarDateTime::Floating(naive) => naive.and_utc(),
-                icalendar::CalendarDateTime::WithTimezone { date_time, .. } => date_time.and_utc(),
-            };
-            EventTime::DateTime(utc)
-        }
+        DatePerhapsTime::DateTime(cal_dt) => match cal_dt {
+            icalendar::CalendarDateTime::Utc(dt) => EventTime::DateTimeUtc(dt),
+            icalendar::CalendarDateTime::Floating(naive) => EventTime::DateTimeFloating(naive),
+            icalendar::CalendarDateTime::WithTimezone { date_time, tzid } => {
+                EventTime::DateTimeZoned {
+                    datetime: date_time,
+                    tzid,
+                }
+            }
+        },
     }
 }
 
@@ -202,7 +202,7 @@ mod tests {
     use super::*;
     use crate::event::ParticipationStatus;
     use crate::ics::{generate_ics, CalendarMetadata};
-    use chrono::TimeZone;
+    use chrono::{TimeZone, Utc};
 
     fn make_test_metadata() -> CalendarMetadata {
         CalendarMetadata {
@@ -218,8 +218,8 @@ mod tests {
             summary: "Test Event".to_string(),
             description: None,
             location: None,
-            start: EventTime::DateTime(Utc.with_ymd_and_hms(2025, 3, 20, 15, 0, 0).unwrap()),
-            end: EventTime::DateTime(Utc.with_ymd_and_hms(2025, 3, 20, 16, 0, 0).unwrap()),
+            start: EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2025, 3, 20, 15, 0, 0).unwrap()),
+            end: EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2025, 3, 20, 16, 0, 0).unwrap()),
             status: EventStatus::Confirmed,
             recurrence: None,
             original_start: None,

@@ -50,16 +50,29 @@ pub async fn run(
     } else if let Some(dur_str) = duration {
         let dur = parse_duration(&dur_str)?;
         match &start_time {
-            EventTime::DateTime(dt) => EventTime::DateTime(*dt + dur),
+            EventTime::DateTimeFloating(dt) => EventTime::DateTimeFloating(*dt + dur),
             EventTime::Date(d) => {
                 let days = dur.num_days().max(1) as i64;
                 EventTime::Date(*d + chrono::Duration::days(days))
             }
+            // These won't be created by parse_datetime in new command, but handle them
+            EventTime::DateTimeUtc(dt) => EventTime::DateTimeUtc(*dt + dur),
+            EventTime::DateTimeZoned { datetime, tzid } => EventTime::DateTimeZoned {
+                datetime: *datetime + dur,
+                tzid: tzid.clone(),
+            },
         }
     } else {
         match &start_time {
-            EventTime::DateTime(dt) => EventTime::DateTime(*dt + chrono::Duration::hours(1)),
+            EventTime::DateTimeFloating(dt) => {
+                EventTime::DateTimeFloating(*dt + chrono::Duration::hours(1))
+            }
             EventTime::Date(d) => EventTime::Date(*d + chrono::Duration::days(1)),
+            EventTime::DateTimeUtc(dt) => EventTime::DateTimeUtc(*dt + chrono::Duration::hours(1)),
+            EventTime::DateTimeZoned { datetime, tzid } => EventTime::DateTimeZoned {
+                datetime: *datetime + chrono::Duration::hours(1),
+                tzid: tzid.clone(),
+            },
         }
     };
 
@@ -112,6 +125,9 @@ pub async fn run(
 /// Supports:
 /// - Date only: "2025-03-20" (all-day event)
 /// - Date with time: "2025-03-20T15:00" or "2025-03-20T15:00:00"
+///
+/// Returns DateTimeFloating for timed events since locally-created events
+/// are in local time (the user's current timezone, not explicitly UTC).
 fn parse_datetime(s: &str) -> Result<EventTime> {
     // Try date-only format first: YYYY-MM-DD
     if s.len() == 10 && s.chars().filter(|&c| c == '-').count() == 2 {
@@ -126,8 +142,8 @@ fn parse_datetime(s: &str) -> Result<EventTime> {
         let formats = ["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"];
         for fmt in formats {
             if let Ok(naive) = chrono::NaiveDateTime::parse_from_str(s, fmt) {
-                let dt = naive.and_utc();
-                return Ok(EventTime::DateTime(dt));
+                // Use floating time for locally-created events
+                return Ok(EventTime::DateTimeFloating(naive));
             }
         }
         anyhow::bail!(

@@ -74,8 +74,12 @@ fn events_differ(local: &Event, remote: &Event) -> bool {
 /// Format an EventTime for display
 fn format_event_time(time: &EventTime) -> String {
     match time {
-        EventTime::DateTime(dt) => dt.format("%Y-%m-%d %H:%M").to_string(),
         EventTime::Date(d) => d.format("%Y-%m-%d").to_string(),
+        EventTime::DateTimeUtc(dt) => format!("{} UTC", dt.format("%Y-%m-%d %H:%M")),
+        EventTime::DateTimeFloating(dt) => dt.format("%Y-%m-%d %H:%M").to_string(),
+        EventTime::DateTimeZoned { datetime, tzid } => {
+            format!("{} ({})", datetime.format("%Y-%m-%d %H:%M"), tzid)
+        }
     }
 }
 
@@ -209,10 +213,7 @@ fn compute_event_diff(old: &Event, new: &Event) -> Vec<PropertyChange> {
 
 /// Get the start time as UTC DateTime for time range checking
 fn event_start_utc(event: &Event) -> Option<DateTime<Utc>> {
-    match &event.start {
-        EventTime::DateTime(dt) => Some(*dt),
-        EventTime::Date(d) => d.and_hms_opt(0, 0, 0).map(|dt| dt.and_utc()),
-    }
+    event.start.to_utc()
 }
 
 /// Compute the diff between remote events and local directory.

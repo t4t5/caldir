@@ -289,7 +289,7 @@ pub async fn fetch_events(
 
         let start = if let Some(ref start) = event.start {
             if let Some(dt) = start.date_time {
-                EventTime::DateTime(dt)
+                EventTime::DateTimeUtc(dt)
             } else if let Some(d) = start.date {
                 EventTime::Date(d)
             } else {
@@ -301,7 +301,7 @@ pub async fn fetch_events(
 
         let end = if let Some(ref end) = event.end {
             if let Some(dt) = end.date_time {
-                EventTime::DateTime(dt)
+                EventTime::DateTimeUtc(dt)
             } else if let Some(d) = end.date {
                 EventTime::Date(d)
             } else {
@@ -325,7 +325,7 @@ pub async fn fetch_events(
 
         let original_start = if let Some(ref orig) = event.original_start_time {
             if let Some(dt) = orig.date_time {
-                Some(EventTime::DateTime(dt))
+                Some(EventTime::DateTimeUtc(dt))
             } else {
                 orig.date.map(EventTime::Date)
             }
@@ -424,33 +424,36 @@ pub async fn fetch_events(
     Ok(result)
 }
 
+/// Convert EventTime to Google's EventDateTime
+fn event_time_to_google(time: &EventTime) -> EventDateTime {
+    match time {
+        EventTime::Date(d) => EventDateTime {
+            date: Some(*d),
+            date_time: None,
+            time_zone: String::new(),
+        },
+        EventTime::DateTimeUtc(dt) => EventDateTime {
+            date: None,
+            date_time: Some(*dt),
+            time_zone: String::new(),
+        },
+        EventTime::DateTimeFloating(dt) => EventDateTime {
+            date: None,
+            date_time: Some(dt.and_utc()),
+            time_zone: String::new(),
+        },
+        EventTime::DateTimeZoned { datetime, tzid } => EventDateTime {
+            date: None,
+            date_time: Some(datetime.and_utc()),
+            time_zone: tzid.clone(),
+        },
+    }
+}
+
 /// Convert our Event to a Google Calendar API Event
 fn to_google_event(event: &Event) -> google_calendar::types::Event {
-    let start = match &event.start {
-        EventTime::DateTime(dt) => EventDateTime {
-            date: None,
-            date_time: Some(*dt),
-            time_zone: String::new(),
-        },
-        EventTime::Date(d) => EventDateTime {
-            date: Some(*d),
-            date_time: None,
-            time_zone: String::new(),
-        },
-    };
-
-    let end = match &event.end {
-        EventTime::DateTime(dt) => EventDateTime {
-            date: None,
-            date_time: Some(*dt),
-            time_zone: String::new(),
-        },
-        EventTime::Date(d) => EventDateTime {
-            date: Some(*d),
-            date_time: None,
-            time_zone: String::new(),
-        },
-    };
+    let start = event_time_to_google(&event.start);
+    let end = event_time_to_google(&event.end);
 
     let status = match event.status {
         EventStatus::Confirmed => "confirmed".to_string(),
@@ -502,18 +505,7 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
 
     let recurrence = event.recurrence.clone().unwrap_or_default();
 
-    let original_start_time = event.original_start.as_ref().map(|os| match os {
-        EventTime::DateTime(dt) => EventDateTime {
-            date: None,
-            date_time: Some(*dt),
-            time_zone: String::new(),
-        },
-        EventTime::Date(d) => EventDateTime {
-            date: Some(*d),
-            date_time: None,
-            time_zone: String::new(),
-        },
-    });
+    let original_start_time = event.original_start.as_ref().map(event_time_to_google);
 
     google_calendar::types::Event {
         id: event.id.clone(),
@@ -625,7 +617,7 @@ pub async fn delete_event(
 fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
     let start = if let Some(ref start) = event.start {
         if let Some(dt) = start.date_time {
-            EventTime::DateTime(dt)
+            EventTime::DateTimeUtc(dt)
         } else if let Some(d) = start.date {
             EventTime::Date(d)
         } else {
@@ -637,7 +629,7 @@ fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
 
     let end = if let Some(ref end) = event.end {
         if let Some(dt) = end.date_time {
-            EventTime::DateTime(dt)
+            EventTime::DateTimeUtc(dt)
         } else if let Some(d) = end.date {
             EventTime::Date(d)
         } else {
@@ -661,7 +653,7 @@ fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
 
     let original_start = if let Some(ref orig) = event.original_start_time {
         if let Some(dt) = orig.date_time {
-            Some(EventTime::DateTime(dt))
+            Some(EventTime::DateTimeUtc(dt))
         } else {
             orig.date.map(EventTime::Date)
         }

@@ -4,7 +4,7 @@
 //! Providers convert their API responses into these types, and caldir-cli
 //! works exclusively with them for sync, diff, and ICS generation.
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// A calendar event (provider-neutral)
@@ -114,10 +114,44 @@ pub enum Transparency {
     Transparent,
 }
 
+/// Event start/end time with timezone support
+///
+/// Supports three datetime forms (matching RFC 5545 / ICS format):
+/// - UTC: explicit UTC time (DTSTART:20250320T150000Z)
+/// - Floating: local time without timezone (DTSTART:20250320T150000)
+/// - Zoned: time with explicit timezone (DTSTART;TZID=America/New_York:20250320T150000)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EventTime {
-    DateTime(DateTime<Utc>),
+    /// All-day event date (VALUE=DATE)
     Date(NaiveDate),
+    /// UTC datetime (suffix Z)
+    DateTimeUtc(DateTime<Utc>),
+    /// Floating datetime - local time, no timezone
+    /// Used for events that should happen at "9am wherever you are"
+    DateTimeFloating(NaiveDateTime),
+    /// Datetime with specific timezone (TZID parameter)
+    DateTimeZoned {
+        datetime: NaiveDateTime,
+        tzid: String,
+    },
+}
+
+impl EventTime {
+    /// Get the start time as UTC DateTime (for comparison/sorting)
+    /// Note: For floating and zoned times, this converts to UTC using naive interpretation
+    pub fn to_utc(&self) -> Option<DateTime<Utc>> {
+        match self {
+            EventTime::Date(d) => d.and_hms_opt(0, 0, 0).map(|dt| dt.and_utc()),
+            EventTime::DateTimeUtc(dt) => Some(*dt),
+            EventTime::DateTimeFloating(dt) => Some(dt.and_utc()),
+            EventTime::DateTimeZoned { datetime, .. } => Some(datetime.and_utc()),
+        }
+    }
+
+    /// Check if this is an all-day date (not a datetime)
+    pub fn is_date(&self) -> bool {
+        matches!(self, EventTime::Date(_))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

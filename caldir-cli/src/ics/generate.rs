@@ -5,6 +5,31 @@ use crate::event::{Event, EventTime, Transparency};
 use anyhow::Result;
 use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger, ValueType};
 
+/// Add a datetime property with proper formatting based on EventTime variant
+fn add_datetime_property(ics_event: &mut icalendar::Event, name: &str, time: &EventTime) {
+    match time {
+        EventTime::Date(d) => {
+            let mut prop = Property::new(name, d.format("%Y%m%d").to_string());
+            prop.append_parameter(ValueType::Date);
+            ics_event.append_property(prop);
+        }
+        EventTime::DateTimeUtc(dt) => {
+            // UTC datetime with Z suffix
+            ics_event.add_property(name, dt.format("%Y%m%dT%H%M%SZ").to_string());
+        }
+        EventTime::DateTimeFloating(dt) => {
+            // Floating datetime (no Z, no TZID)
+            ics_event.add_property(name, dt.format("%Y%m%dT%H%M%S").to_string());
+        }
+        EventTime::DateTimeZoned { datetime, tzid } => {
+            // Datetime with TZID parameter
+            let mut prop = Property::new(name, datetime.format("%Y%m%dT%H%M%S").to_string());
+            prop.add_parameter("TZID", tzid);
+            ics_event.append_property(prop);
+        }
+    }
+}
+
 /// Generate .ics content for an event with calendar metadata
 pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String> {
     let mut cal = Calendar::new();
@@ -41,33 +66,8 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
     }
 
     // Set start/end times
-    match (&event.start, &event.end) {
-        (EventTime::Date(start_date), EventTime::Date(end_date)) => {
-            // All-day event - set both DTSTART and DTEND with VALUE=DATE parameter
-            // DTEND is exclusive (day after last day of event)
-            let mut dtstart = Property::new("DTSTART", start_date.format("%Y%m%d").to_string());
-            dtstart.append_parameter(ValueType::Date);
-            ics_event.append_property(dtstart);
-
-            let mut dtend = Property::new("DTEND", end_date.format("%Y%m%d").to_string());
-            dtend.append_parameter(ValueType::Date);
-            ics_event.append_property(dtend);
-        }
-        (EventTime::DateTime(start_dt), EventTime::DateTime(end_dt)) => {
-            // Timed event
-            ics_event.starts(*start_dt);
-            ics_event.ends(*end_dt);
-        }
-        // Mixed cases - treat as timed event with date at midnight
-        (EventTime::Date(d), EventTime::DateTime(end_dt)) => {
-            ics_event.starts(d.and_hms_opt(0, 0, 0).unwrap().and_utc());
-            ics_event.ends(*end_dt);
-        }
-        (EventTime::DateTime(start_dt), EventTime::Date(d)) => {
-            ics_event.starts(*start_dt);
-            ics_event.ends(d.and_hms_opt(0, 0, 0).unwrap().and_utc());
-        }
-    }
+    add_datetime_property(&mut ics_event, "DTSTART", &event.start);
+    add_datetime_property(&mut ics_event, "DTEND", &event.end);
 
     // Optional fields
     if let Some(ref desc) = event.description {
@@ -98,11 +98,7 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
 
     // RECURRENCE-ID (for instance overrides of recurring events)
     if let Some(ref original_start) = event.original_start {
-        let recurrence_id = match original_start {
-            EventTime::DateTime(dt) => dt.format("%Y%m%dT%H%M%SZ").to_string(),
-            EventTime::Date(d) => d.format("%Y%m%d").to_string(),
-        };
-        ics_event.add_property("RECURRENCE-ID", &recurrence_id);
+        add_datetime_property(&mut ics_event, "RECURRENCE-ID", original_start);
     }
 
     // TRANSP (transparency/busy-free status)
@@ -174,13 +170,21 @@ pub fn generate_filename(event: &Event) -> String {
 
     // Regular events and instance overrides get date-based filenames
     let date_part = match &event.start {
-        EventTime::DateTime(dt) => {
-            // Format: 2025-03-20T1500
-            dt.format("%Y-%m-%dT%H%M").to_string()
-        }
         EventTime::Date(d) => {
             // Format: 2025-03-20
             d.format("%Y-%m-%d").to_string()
+        }
+        EventTime::DateTimeUtc(dt) => {
+            // Format: 2025-03-20T1500
+            dt.format("%Y-%m-%dT%H%M").to_string()
+        }
+        EventTime::DateTimeFloating(dt) => {
+            // Format: 2025-03-20T1500
+            dt.format("%Y-%m-%dT%H%M").to_string()
+        }
+        EventTime::DateTimeZoned { datetime, .. } => {
+            // Format: 2025-03-20T1500 (use local time for filename)
+            datetime.format("%Y-%m-%dT%H%M").to_string()
         }
     };
 
@@ -237,8 +241,8 @@ mod tests {
             summary: "Test Event".to_string(),
             description: None,
             location: None,
-            start: EventTime::DateTime(Utc.with_ymd_and_hms(2025, 3, 20, 15, 0, 0).unwrap()),
-            end: EventTime::DateTime(Utc.with_ymd_and_hms(2025, 3, 20, 16, 0, 0).unwrap()),
+            start: EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2025, 3, 20, 15, 0, 0).unwrap()),
+            end: EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2025, 3, 20, 16, 0, 0).unwrap()),
             status: EventStatus::Confirmed,
             recurrence: None,
             original_start: None,
