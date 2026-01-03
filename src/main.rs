@@ -139,9 +139,9 @@ async fn cmd_pull() -> Result<()> {
 
         println!("\n📅 Pulling: {}", calendar_name);
 
-        // Build params for fetch_events
+        // List remote events
         let params = build_params(&calendar_config.params, &[]);
-        let remote_events = provider.fetch_events(params).await?;
+        let remote_events = provider.list_events(params).await?;
         println!("  Fetched {} events", remote_events.len());
 
         // Get calendar-specific directory
@@ -276,7 +276,7 @@ async fn cmd_push(force: bool) -> Result<()> {
 
         // Fetch remote events
         let params = build_params(&calendar_config.params, &[]);
-        let remote_events = provider.fetch_events(params).await?;
+        let remote_events = provider.list_events(params).await?;
 
         // Build calendar metadata
         let metadata = ics::CalendarMetadata {
@@ -430,7 +430,7 @@ async fn cmd_status(verbose: bool) -> Result<()> {
 
         // Fetch remote events
         let params = build_params(&calendar_config.params, &[]);
-        let remote_events = provider.fetch_events(params).await?;
+        let remote_events = provider.list_events(params).await?;
 
         // Read local events (empty if directory doesn't exist)
         let local_events = if calendar_dir.exists() {

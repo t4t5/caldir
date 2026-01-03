@@ -11,32 +11,12 @@
 
 use crate::event::Event;
 use anyhow::{Context, Result};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use caldir_core::protocol::{Command as ProviderCommand, Request, Response};
+use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
-
-// =============================================================================
-// Protocol Types
-// =============================================================================
-
-/// Request sent to a provider subprocess
-#[derive(Debug, Serialize)]
-struct ProviderRequest<'a, P: Serialize> {
-    command: &'a str,
-    params: P,
-}
-
-/// Response from a provider subprocess
-#[derive(Debug, Deserialize)]
-#[serde(tag = "status")]
-enum ProviderResponse<T> {
-    #[serde(rename = "success")]
-    Success { data: T },
-    #[serde(rename = "error")]
-    Error { error: String },
-}
 
 // =============================================================================
 // Provider Client
@@ -67,12 +47,12 @@ impl Provider {
     }
 
     /// Call a provider command and return the result.
-    async fn call<P: Serialize, R: DeserializeOwned>(
+    async fn call<R: DeserializeOwned>(
         &self,
-        command: &str,
-        params: P,
+        command: ProviderCommand,
+        params: serde_json::Value,
     ) -> Result<R> {
-        let request = ProviderRequest { command, params };
+        let request = Request { command, params };
 
         let request_json =
             serde_json::to_string(&request).context("Failed to serialize provider request")?;
@@ -128,14 +108,14 @@ impl Provider {
         }
 
         // Parse response
-        let response: ProviderResponse<R> =
+        let response: Response<R> =
             serde_json::from_str(&line).with_context(|| {
                 format!("Failed to parse provider response: {}", line)
             })?;
 
         match response {
-            ProviderResponse::Success { data } => Ok(data),
-            ProviderResponse::Error { error } => Err(anyhow::anyhow!("{}", error)),
+            Response::Success { data } => Ok(data),
+            Response::Error { error } => Err(anyhow::anyhow!("{}", error)),
         }
     }
 
@@ -150,44 +130,30 @@ impl Provider {
     ///
     /// Returns the account identifier (e.g., email for Google).
     pub async fn authenticate(&self) -> Result<String> {
-        self.call("authenticate", ()).await
+        self.call(ProviderCommand::Authenticate, serde_json::json!(null))
+            .await
     }
 
-    /// Fetch events from a calendar.
-    ///
-    /// The params should include account and calendar identifiers.
-    /// Additional params (time_min, time_max) can be merged in.
-    pub async fn fetch_events(
-        &self,
-        params: serde_json::Value,
-    ) -> Result<Vec<Event>> {
-        self.call("fetch_events", params).await
+    /// List events from a calendar.
+    pub async fn list_events(&self, params: serde_json::Value) -> Result<Vec<Event>> {
+        self.call(ProviderCommand::ListEvents, params).await
     }
 
     /// Create a new event on a calendar.
     ///
     /// Returns the created event with provider-assigned ID.
-    pub async fn create_event(
-        &self,
-        params: serde_json::Value,
-    ) -> Result<Event> {
-        self.call("create_event", params).await
+    pub async fn create_event(&self, params: serde_json::Value) -> Result<Event> {
+        self.call(ProviderCommand::CreateEvent, params).await
     }
 
     /// Update an existing event.
-    pub async fn update_event(
-        &self,
-        params: serde_json::Value,
-    ) -> Result<()> {
-        self.call("update_event", params).await
+    pub async fn update_event(&self, params: serde_json::Value) -> Result<()> {
+        self.call(ProviderCommand::UpdateEvent, params).await
     }
 
     /// Delete an event.
-    pub async fn delete_event(
-        &self,
-        params: serde_json::Value,
-    ) -> Result<()> {
-        self.call("delete_event", params).await
+    pub async fn delete_event(&self, params: serde_json::Value) -> Result<()> {
+        self.call(ProviderCommand::DeleteEvent, params).await
     }
 }
 

@@ -11,46 +11,9 @@ mod config;
 mod google;
 mod types;
 
-use serde::{Deserialize, Serialize};
+use caldir_core::protocol::{Command, Request, Response};
+use serde::Deserialize;
 use std::io::{self, BufRead, Write};
-
-/// Request from caldir-cli
-#[derive(Debug, Deserialize)]
-struct Request {
-    command: String,
-    #[serde(default)]
-    params: serde_json::Value,
-}
-
-/// Success response
-#[derive(Debug, Serialize)]
-struct SuccessResponse<T: Serialize> {
-    status: &'static str,
-    data: T,
-}
-
-/// Error response
-#[derive(Debug, Serialize)]
-struct ErrorResponse {
-    status: &'static str,
-    error: String,
-}
-
-fn success<T: Serialize>(data: T) -> String {
-    serde_json::to_string(&SuccessResponse {
-        status: "success",
-        data,
-    })
-    .unwrap()
-}
-
-fn error(msg: &str) -> String {
-    serde_json::to_string(&ErrorResponse {
-        status: "error",
-        error: msg.to_string(),
-    })
-    .unwrap()
-}
 
 #[tokio::main]
 async fn main() {
@@ -74,7 +37,7 @@ async fn main() {
         let request: Request = match serde_json::from_str(&line) {
             Ok(r) => r,
             Err(e) => {
-                let response = error(&format!("Failed to parse request: {}", e));
+                let response = Response::error(&format!("Failed to parse request: {}", e));
                 writeln!(stdout, "{}", response).unwrap();
                 stdout.flush().unwrap();
                 continue;
@@ -89,21 +52,20 @@ async fn main() {
 }
 
 async fn handle_request(request: Request) -> String {
-    match request.command.as_str() {
-        "authenticate" => handle_authenticate().await,
-        "fetch_calendars" => handle_fetch_calendars(&request.params).await,
-        "fetch_events" => handle_fetch_events(&request.params).await,
-        "create_event" => handle_create_event(&request.params).await,
-        "update_event" => handle_update_event(&request.params).await,
-        "delete_event" => handle_delete_event(&request.params).await,
-        _ => error(&format!("Unknown command: {}", request.command)),
+    match request.command {
+        Command::Authenticate => handle_authenticate().await,
+        Command::ListCalendars => handle_list_calendars(&request.params).await,
+        Command::ListEvents => handle_list_events(&request.params).await,
+        Command::CreateEvent => handle_create_event(&request.params).await,
+        Command::UpdateEvent => handle_update_event(&request.params).await,
+        Command::DeleteEvent => handle_delete_event(&request.params).await,
     }
 }
 
 async fn handle_authenticate() -> String {
     match google::authenticate().await {
-        Ok(account) => success(account),
-        Err(e) => error(&format!("{:#}", e)),
+        Ok(account) => Response::success(account),
+        Err(e) => Response::error(&format!("{:#}", e)),
     }
 }
 
@@ -112,15 +74,15 @@ struct FetchCalendarsParams {
     google_account: String,
 }
 
-async fn handle_fetch_calendars(params: &serde_json::Value) -> String {
+async fn handle_list_calendars(params: &serde_json::Value) -> String {
     let params: FetchCalendarsParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
-        Err(e) => return error(&format!("Invalid params: {}", e)),
+        Err(e) => return Response::error(&format!("Invalid params: {}", e)),
     };
 
     match google::fetch_calendars(&params.google_account).await {
-        Ok(calendars) => success(calendars),
-        Err(e) => error(&format!("{:#}", e)),
+        Ok(calendars) => Response::success(calendars),
+        Err(e) => Response::error(&format!("{:#}", e)),
     }
 }
 
@@ -134,10 +96,10 @@ struct FetchEventsParams {
     time_max: Option<String>,
 }
 
-async fn handle_fetch_events(params: &serde_json::Value) -> String {
+async fn handle_list_events(params: &serde_json::Value) -> String {
     let params: FetchEventsParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
-        Err(e) => return error(&format!("Invalid params: {}", e)),
+        Err(e) => return Response::error(&format!("Invalid params: {}", e)),
     };
 
     // Default to primary calendar if not specified
@@ -151,8 +113,8 @@ async fn handle_fetch_events(params: &serde_json::Value) -> String {
     )
     .await
     {
-        Ok(events) => success(events),
-        Err(e) => error(&format!("{:#}", e)),
+        Ok(events) => Response::success(events),
+        Err(e) => Response::error(&format!("{:#}", e)),
     }
 }
 
@@ -166,14 +128,14 @@ struct CreateEventParams {
 async fn handle_create_event(params: &serde_json::Value) -> String {
     let params: CreateEventParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
-        Err(e) => return error(&format!("Invalid params: {}", e)),
+        Err(e) => return Response::error(&format!("Invalid params: {}", e)),
     };
 
     let calendar_id = params.google_calendar_id.as_deref().unwrap_or("primary");
 
     match google::create_event(&params.google_account, calendar_id, &params.event).await {
-        Ok(event) => success(event),
-        Err(e) => error(&format!("{:#}", e)),
+        Ok(event) => Response::success(event),
+        Err(e) => Response::error(&format!("{:#}", e)),
     }
 }
 
@@ -187,14 +149,14 @@ struct UpdateEventParams {
 async fn handle_update_event(params: &serde_json::Value) -> String {
     let params: UpdateEventParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
-        Err(e) => return error(&format!("Invalid params: {}", e)),
+        Err(e) => return Response::error(&format!("Invalid params: {}", e)),
     };
 
     let calendar_id = params.google_calendar_id.as_deref().unwrap_or("primary");
 
     match google::update_event(&params.google_account, calendar_id, &params.event).await {
-        Ok(()) => success(()),
-        Err(e) => error(&format!("{:#}", e)),
+        Ok(()) => Response::success(()),
+        Err(e) => Response::error(&format!("{:#}", e)),
     }
 }
 
@@ -208,13 +170,13 @@ struct DeleteEventParams {
 async fn handle_delete_event(params: &serde_json::Value) -> String {
     let params: DeleteEventParams = match serde_json::from_value(params.clone()) {
         Ok(p) => p,
-        Err(e) => return error(&format!("Invalid params: {}", e)),
+        Err(e) => return Response::error(&format!("Invalid params: {}", e)),
     };
 
     let calendar_id = params.google_calendar_id.as_deref().unwrap_or("primary");
 
     match google::delete_event(&params.google_account, calendar_id, &params.event_id).await {
-        Ok(()) => success(()),
-        Err(e) => error(&format!("{:#}", e)),
+        Ok(()) => Response::success(()),
+        Err(e) => Response::error(&format!("{:#}", e)),
     }
 }
