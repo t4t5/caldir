@@ -3,30 +3,34 @@
 use crate::event::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
 };
-use chrono::{NaiveDate, NaiveDateTime};
-use icalendar::parser::{read_calendar, unfold, Property};
+use chrono::{DateTime, Utc};
+use icalendar::{
+    parser::{read_calendar, unfold, Property},
+    DatePerhapsTime,
+};
 
 /// Parse ICS content into an Event struct
 pub fn parse_event(content: &str) -> Option<Event> {
     let unfolded = unfold(content);
     let calendar = read_calendar(&unfolded).ok()?;
-
-    // Find the VEVENT component
     let vevent = calendar.components.iter().find(|c| c.name == "VEVENT")?;
 
-    // Extract required fields
+    // Required fields
     let uid = vevent.find_prop("UID")?.val.to_string();
     let summary = vevent
         .find_prop("SUMMARY")
         .map(|p| p.val.to_string())
         .unwrap_or_else(|| "(No title)".to_string());
+    let start = to_event_time(DatePerhapsTime::try_from(vevent.find_prop("DTSTART")?).ok()?);
+    let end = to_event_time(DatePerhapsTime::try_from(vevent.find_prop("DTEND")?).ok()?);
 
-    let start = parse_datetime_prop(vevent.find_prop("DTSTART")?)?;
-    let end = parse_datetime_prop(vevent.find_prop("DTEND")?)?;
-
-    // Extract optional fields
+    // Optional simple fields
     let description = vevent.find_prop("DESCRIPTION").map(|p| p.val.to_string());
     let location = vevent.find_prop("LOCATION").map(|p| p.val.to_string());
+    let conference_url = vevent.find_prop("URL").map(|p| p.val.to_string());
+    let sequence = vevent
+        .find_prop("SEQUENCE")
+        .and_then(|p| p.val.as_ref().parse().ok());
 
     let status = vevent
         .find_prop("STATUS")
@@ -48,18 +52,12 @@ pub fn parse_event(content: &str) -> Option<Event> {
         })
         .unwrap_or(Transparency::Opaque);
 
-    let sequence = vevent
-        .find_prop("SEQUENCE")
-        .and_then(|p| p.val.as_ref().parse().ok());
-
-    let conference_url = vevent.find_prop("URL").map(|p| p.val.to_string());
-
-    // Recurrence rules (RRULE, EXDATE)
+    // Recurrence (RRULE, EXDATE)
     let recurrence: Vec<String> = vevent
         .properties
         .iter()
         .filter(|p| p.name == "RRULE" || p.name == "EXDATE")
-        .map(|p| format_property_with_params(p))
+        .map(format_property)
         .collect();
     let recurrence = if recurrence.is_empty() {
         None
@@ -70,29 +68,27 @@ pub fn parse_event(content: &str) -> Option<Event> {
     // RECURRENCE-ID for instance overrides
     let original_start = vevent
         .find_prop("RECURRENCE-ID")
-        .and_then(parse_datetime_prop);
+        .and_then(|p| DatePerhapsTime::try_from(p).ok())
+        .map(to_event_time);
 
-    // ORGANIZER
-    let organizer = vevent.find_prop("ORGANIZER").map(parse_attendee_prop);
-
-    // ATTENDEE (can appear multiple times)
+    // Attendees
+    let organizer = vevent.find_prop("ORGANIZER").map(parse_attendee);
     let attendees: Vec<Attendee> = vevent
         .properties
         .iter()
         .filter(|p| p.name == "ATTENDEE")
-        .map(parse_attendee_prop)
+        .map(parse_attendee)
         .collect();
 
-    // VALARM components for reminders
+    // Reminders from VALARM components
     let reminders: Vec<Reminder> = vevent
         .components
         .iter()
         .filter(|c| c.name == "VALARM")
         .filter_map(|alarm| {
-            alarm
-                .find_prop("TRIGGER")
-                .and_then(|p| parse_trigger_minutes(p.val.as_ref()))
-                .map(|minutes| Reminder { minutes })
+            let trigger = alarm.find_prop("TRIGGER")?.val.as_ref();
+            let minutes = parse_trigger_minutes(trigger)?;
+            Some(Reminder { minutes })
         })
         .collect();
 
@@ -125,8 +121,24 @@ pub fn parse_event(content: &str) -> Option<Event> {
     })
 }
 
-/// Format a property with its parameters back to ICS format (e.g., "RRULE:FREQ=WEEKLY")
-fn format_property_with_params(prop: &Property) -> String {
+/// Convert icalendar's DatePerhapsTime to our EventTime
+fn to_event_time(dpt: DatePerhapsTime) -> EventTime {
+    match dpt {
+        DatePerhapsTime::Date(d) => EventTime::Date(d),
+        DatePerhapsTime::DateTime(cal_dt) => {
+            // Convert to UTC, falling back to treating floating times as UTC
+            let utc: DateTime<Utc> = match cal_dt {
+                icalendar::CalendarDateTime::Utc(dt) => dt,
+                icalendar::CalendarDateTime::Floating(naive) => naive.and_utc(),
+                icalendar::CalendarDateTime::WithTimezone { date_time, .. } => date_time.and_utc(),
+            };
+            EventTime::DateTime(utc)
+        }
+    }
+}
+
+/// Format a property back to ICS format with params (e.g., "EXDATE;TZID=America/New_York:...")
+fn format_property(prop: &Property) -> String {
     if prop.params.is_empty() {
         format!("{}:{}", prop.name, prop.val)
     } else {
@@ -142,28 +154,8 @@ fn format_property_with_params(prop: &Property) -> String {
     }
 }
 
-/// Parse a DTSTART/DTEND property into EventTime
-fn parse_datetime_prop(prop: &Property) -> Option<EventTime> {
-    let value = prop.val.as_ref();
-    let is_date_only = prop
-        .params
-        .iter()
-        .any(|p| p.key == "VALUE" && p.val.as_ref().map(|v| v.as_ref()) == Some("DATE"));
-
-    if is_date_only || value.len() == 8 {
-        // Date format: YYYYMMDD
-        let date = NaiveDate::parse_from_str(value, "%Y%m%d").ok()?;
-        Some(EventTime::Date(date))
-    } else {
-        // DateTime format: YYYYMMDDTHHMMSS or YYYYMMDDTHHMMSSZ
-        let value = value.trim_end_matches('Z');
-        let naive = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S").ok()?;
-        Some(EventTime::DateTime(naive.and_utc()))
-    }
-}
-
-/// Parse ATTENDEE/ORGANIZER property into Attendee struct
-fn parse_attendee_prop(prop: &Property) -> Attendee {
+/// Parse ATTENDEE/ORGANIZER property
+fn parse_attendee(prop: &Property) -> Attendee {
     let email = prop
         .val
         .as_ref()
@@ -191,26 +183,16 @@ fn parse_attendee_prop(prop: &Property) -> Attendee {
     }
 }
 
-/// Parse TRIGGER value to minutes before event
-/// Format: -PT30M, -PT1H, -P1D, etc.
+/// Parse TRIGGER value to minutes before event (-PT30M, -P1D, etc.)
 fn parse_trigger_minutes(value: &str) -> Option<i64> {
     let is_before = value.starts_with('-');
-    let duration_part = value
-        .trim_start_matches('-')
-        .trim_start_matches('P')
-        .trim_start_matches('T');
+    let duration_str = value.trim_start_matches('-');
 
-    let minutes = if let Some(s) = duration_part.strip_suffix('S') {
-        s.parse::<i64>().ok()? / 60
-    } else if let Some(m) = duration_part.strip_suffix('M') {
-        m.parse::<i64>().ok()?
-    } else if let Some(h) = duration_part.strip_suffix('H') {
-        h.parse::<i64>().ok()? * 60
-    } else if let Some(d) = duration_part.strip_suffix('D') {
-        d.parse::<i64>().ok()? * 24 * 60
-    } else {
-        return None;
-    };
+    // Use iso8601 crate via icalendar's internal helper if available,
+    // otherwise parse manually
+    let duration = iso8601::duration(duration_str).ok()?;
+    let std_duration: std::time::Duration = duration.into();
+    let minutes = (std_duration.as_secs() / 60) as i64;
 
     Some(if is_before { minutes } else { -minutes })
 }
@@ -236,10 +218,8 @@ mod tests {
             summary: "Test Event".to_string(),
             description: None,
             location: None,
-            start: EventTime::DateTime(
-                chrono::Utc.with_ymd_and_hms(2025, 3, 20, 15, 0, 0).unwrap(),
-            ),
-            end: EventTime::DateTime(chrono::Utc.with_ymd_and_hms(2025, 3, 20, 16, 0, 0).unwrap()),
+            start: EventTime::DateTime(Utc.with_ymd_and_hms(2025, 3, 20, 15, 0, 0).unwrap()),
+            end: EventTime::DateTime(Utc.with_ymd_and_hms(2025, 3, 20, 16, 0, 0).unwrap()),
             status: EventStatus::Confirmed,
             recurrence: None,
             original_start: None,
@@ -303,7 +283,6 @@ END:VCALENDAR"#;
 
     #[test]
     fn test_parse_line_folding_preserves_whitespace() {
-        // The icalendar parser handles line folding via unfold()
         let ics = "BEGIN:VCALENDAR\r\n\
 VERSION:2.0\r\n\
 PRODID:TEST\r\n\

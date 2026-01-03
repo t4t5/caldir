@@ -159,6 +159,7 @@ dependencies = [
  "clap",
  "dirs",
  "icalendar",
+ "iso8601",
  "serde",
  "serde_json",
  "tokio",

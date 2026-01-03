@@ -18,6 +18,7 @@ clap = { version = "4", features = ["derive"] }
 
 # .ics parsing/generation
 icalendar = "0.17"
+iso8601 = "0.6"
 
 # Error handling
 anyhow = "1"
