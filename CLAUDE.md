@@ -136,12 +136,16 @@ The core CLI is completely provider-agnostic — it just passes provider-prefixe
 ## Module Architecture
 
 ```
-caldir-cli/                    # Core CLI (this crate)
+caldir-core/                   # Shared types (used by CLI and providers)
+  src/
+    lib.rs       - Re-exports
+    event.rs     - Provider-neutral event types (Event, Attendee, Reminder, etc.)
+
+caldir-cli/                    # Core CLI
   src/
     main.rs      - CLI entry point and command implementations
     config.rs    - Configuration and sync state (no token storage - providers handle that)
-    event.rs     - Provider-neutral event types (with JSON serialization)
-    diff.rs      - Pure diff computation between local and remote
+    diff.rs      - Pure diff computation between local and remote (compares Event structs)
     caldir.rs    - Local directory operations (read/write .ics files)
     ics.rs       - ICS format: generation, parsing, formatting
     provider.rs  - Provider subprocess protocol (JSON over stdin/stdout)
@@ -151,12 +155,12 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
     main.rs      - JSON protocol handler (reads stdin, writes stdout)
     config.rs    - Credential and token storage (~/.config/caldir/providers/google/)
     google.rs    - Google Calendar API implementation
-    types.rs     - Protocol types (Event, Calendar, etc.)
+    types.rs     - Re-exports caldir_core types + provider-specific types (Calendar, etc.)
 ```
 
 ### Key Abstractions
 
-**event.rs** — Provider-neutral event types (`Event`, `Attendee`, `Reminder`, etc.) with JSON serialization for the provider protocol. Providers convert their API responses into these types, and the rest of the codebase works exclusively with them.
+**caldir-core** — Shared crate containing provider-neutral event types (`Event`, `Attendee`, `Reminder`, `EventTime`, etc.) with JSON serialization. Both the CLI and providers depend on this crate, ensuring type consistency across the protocol boundary. Providers convert their API responses into these types, and the CLI works exclusively with them.
 
 **provider.rs** — Provider subprocess protocol. Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `authenticate`, `fetch_events`, `create_event`, `update_event`, `delete_event`.
 
@@ -307,7 +311,12 @@ cargo run -- pull
 
 ## Dependencies
 
-**caldir-cli (core)**:
+**caldir-core** (shared types):
+- **serde** — JSON serialization for provider protocol
+- **chrono** — Date/time types
+
+**caldir-cli** (core):
+- **caldir-core** — Shared event types
 - **icalendar** — Generate and parse .ics files
 - **tokio** — Async runtime
 - **clap** — CLI argument parsing
@@ -315,6 +324,7 @@ cargo run -- pull
 - **which** — Find provider binaries in PATH
 
 **caldir-provider-google**:
+- **caldir-core** — Shared event types
 - **google-calendar** — Google Calendar API client
 - **tokio** — Async runtime
 - **dirs** — Platform-native config directories

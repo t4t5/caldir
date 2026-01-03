@@ -1,9 +1,11 @@
 mod caldir;
 mod config;
 mod diff;
-mod event;
 mod ics;
 mod provider;
+
+// Re-export caldir_core types as crate::event for internal use
+pub use caldir_core as event;
 
 use anyhow::Result;
 use chrono::{Duration, Utc};
@@ -163,7 +165,7 @@ async fn cmd_pull() -> Result<()> {
         let now = Utc::now();
         let time_range = Some((now - Duration::days(SYNC_DAYS), now + Duration::days(SYNC_DAYS)));
         let sync_diff =
-            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, false, time_range, &sync_state.synced_uids)?;
+            diff::compute(&remote_events, &local_events, &calendar_dir, false, time_range, &sync_state.synced_uids)?;
 
         // Apply changes
         let mut stats = caldir::ApplyStats {
@@ -288,7 +290,7 @@ async fn cmd_push(force: bool) -> Result<()> {
         let now = Utc::now();
         let time_range = Some((now - Duration::days(SYNC_DAYS), now + Duration::days(SYNC_DAYS)));
         let sync_diff =
-            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, false, time_range, &sync_state.synced_uids)?;
+            diff::compute(&remote_events, &local_events, &calendar_dir, false, time_range, &sync_state.synced_uids)?;
 
         if sync_diff.to_push_create.is_empty() && sync_diff.to_push_update.is_empty() && sync_diff.to_push_delete.is_empty() {
             continue;
@@ -327,26 +329,23 @@ async fn cmd_push(force: bool) -> Result<()> {
             });
 
             if let Some(local) = local_event {
-                if let Some(event) = ics::parse_event(&local.content) {
-                    println!("  Creating: {}", event.summary);
+                let event = &local.event;
+                println!("  Creating: {}", event.summary);
 
-                    let params = build_params(
-                        &calendar_config.params,
-                        &[("event", serde_json::to_value(&event)?)],
-                    );
-                    let created_event = provider.create_event(params).await?;
+                let params = build_params(
+                    &calendar_config.params,
+                    &[("event", serde_json::to_value(event)?)],
+                );
+                let created_event = provider.create_event(params).await?;
 
-                    // Write back with provider-assigned ID
-                    let new_content = ics::generate_ics(&created_event, &metadata)?;
-                    let new_filename = ics::generate_filename(&created_event);
+                // Write back with provider-assigned ID
+                let new_content = ics::generate_ics(&created_event, &metadata)?;
+                let new_filename = ics::generate_filename(&created_event);
 
-                    caldir::delete_event(&local.path)?;
-                    caldir::write_event(&calendar_dir, &new_filename, &new_content)?;
+                caldir::delete_event(&local.path)?;
+                caldir::write_event(&calendar_dir, &new_filename, &new_content)?;
 
-                    total_created += 1;
-                } else {
-                    eprintln!("  Warning: Could not parse {}", change.filename);
-                }
+                total_created += 1;
             }
         }
 
@@ -360,17 +359,14 @@ async fn cmd_push(force: bool) -> Result<()> {
             });
 
             if let Some(local) = local_event {
-                if let Some(event) = ics::parse_event(&local.content) {
-                    println!("  Updating: {}", event.summary);
-                    let params = build_params(
-                        &calendar_config.params,
-                        &[("event", serde_json::to_value(&event)?)],
-                    );
-                    provider.update_event(params).await?;
-                    total_updated += 1;
-                } else {
-                    eprintln!("  Warning: Could not parse {}", change.filename);
-                }
+                let event = &local.event;
+                println!("  Updating: {}", event.summary);
+                let params = build_params(
+                    &calendar_config.params,
+                    &[("event", serde_json::to_value(event)?)],
+                );
+                provider.update_event(params).await?;
+                total_updated += 1;
             }
         }
 
@@ -448,18 +444,11 @@ async fn cmd_status(verbose: bool) -> Result<()> {
         // Load sync state
         let sync_state = config::load_sync_state(&calendar_dir)?;
 
-        // Build calendar metadata
-        let metadata = ics::CalendarMetadata {
-            calendar_id: get_calendar_id(&calendar_config.params),
-            calendar_name: calendar_name.clone(),
-            source_url: None,
-        };
-
         // Compute diff with sync state
         let now = Utc::now();
         let time_range = Some((now - Duration::days(SYNC_DAYS), now + Duration::days(SYNC_DAYS)));
         let sync_diff =
-            diff::compute(&remote_events, &local_events, &calendar_dir, &metadata, verbose, time_range, &sync_state.synced_uids)?;
+            diff::compute(&remote_events, &local_events, &calendar_dir, verbose, time_range, &sync_state.synced_uids)?;
 
         let has_pull_changes = !sync_diff.to_pull_create.is_empty()
             || !sync_diff.to_pull_update.is_empty()

@@ -4,8 +4,8 @@
 //! without applying any changes. Used by status, pull, and push commands.
 
 use crate::caldir::LocalEvent;
-use crate::ics::{self, CalendarMetadata};
-use crate::event::Event;
+use crate::event::{Event, EventTime};
+use crate::ics;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
@@ -40,78 +40,174 @@ pub struct SyncDiff {
     pub to_push_delete: Vec<SyncChange>,
 }
 
-/// Check if two ICS contents have meaningful property differences.
-/// Uses the same property parsing as compute_property_diff to ensure consistency.
-fn has_property_changes(local_content: &str, new_content: &str) -> bool {
-    let local_props = ics::parse_properties(local_content);
-    let new_props = ics::parse_properties(new_content);
-
-    // Check for any difference in properties
-    if local_props.len() != new_props.len() {
-        return true;
-    }
-
-    for (key, local_value) in &local_props {
-        match new_props.get(key) {
-            Some(new_value) if local_value != new_value => return true,
-            None => return true,
-            _ => {}
-        }
-    }
-
-    // Check for properties in new that aren't in local
-    for key in new_props.keys() {
-        if !local_props.contains_key(key) {
-            return true;
-        }
-    }
-
-    false
+/// Check if two Events have meaningful differences.
+fn events_differ(local: &Event, remote: &Event) -> bool {
+    // Compare key fields that matter for sync
+    local.summary != remote.summary
+        || local.description != remote.description
+        || local.location != remote.location
+        || !event_times_equal(&local.start, &remote.start)
+        || !event_times_equal(&local.end, &remote.end)
+        || local.status != remote.status
+        || local.recurrence != remote.recurrence
+        || local.reminders != remote.reminders
+        || local.transparency != remote.transparency
+        || local.organizer != remote.organizer
+        || local.attendees != remote.attendees
+        || local.conference_url != remote.conference_url
 }
 
-/// Compute property-level differences between local and new ICS content
-fn compute_property_diff(local_content: &str, new_content: &str) -> Vec<PropertyChange> {
-    let local_props = ics::parse_properties(local_content);
-    let new_props = ics::parse_properties(new_content);
+/// Compare EventTime values for equality
+fn event_times_equal(a: &EventTime, b: &EventTime) -> bool {
+    match (a, b) {
+        (EventTime::DateTime(dt1), EventTime::DateTime(dt2)) => dt1 == dt2,
+        (EventTime::Date(d1), EventTime::Date(d2)) => d1 == d2,
+        _ => false,
+    }
+}
 
+/// Format an EventTime for display
+fn format_event_time(time: &EventTime) -> String {
+    match time {
+        EventTime::DateTime(dt) => dt.format("%Y-%m-%d %H:%M").to_string(),
+        EventTime::Date(d) => d.format("%Y-%m-%d").to_string(),
+    }
+}
+
+/// Compute property-level differences between two Events
+fn compute_event_diff(old: &Event, new: &Event) -> Vec<PropertyChange> {
     let mut changes = Vec::new();
 
-    // Find changed and removed properties
-    for (key, local_value) in &local_props {
-        match new_props.get(key) {
-            Some(new_value) if local_value != new_value => {
-                changes.push(PropertyChange {
-                    property: ics::property_display_name(key).to_string(),
-                    old_value: Some(ics::format_property_value(key, local_value)),
-                    new_value: Some(ics::format_property_value(key, new_value)),
-                });
-            }
-            None => {
-                changes.push(PropertyChange {
-                    property: ics::property_display_name(key).to_string(),
-                    old_value: Some(ics::format_property_value(key, local_value)),
-                    new_value: None,
-                });
-            }
-            _ => {}
-        }
+    // Compare each field
+    if old.summary != new.summary {
+        changes.push(PropertyChange {
+            property: "Summary".to_string(),
+            old_value: Some(old.summary.clone()),
+            new_value: Some(new.summary.clone()),
+        });
     }
 
-    // Find added properties
-    for (key, new_value) in &new_props {
-        if !local_props.contains_key(key) {
-            changes.push(PropertyChange {
-                property: ics::property_display_name(key).to_string(),
-                old_value: None,
-                new_value: Some(ics::format_property_value(key, new_value)),
-            });
-        }
+    if old.description != new.description {
+        changes.push(PropertyChange {
+            property: "Description".to_string(),
+            old_value: old.description.clone(),
+            new_value: new.description.clone(),
+        });
+    }
+
+    if old.location != new.location {
+        changes.push(PropertyChange {
+            property: "Location".to_string(),
+            old_value: old.location.clone(),
+            new_value: new.location.clone(),
+        });
+    }
+
+    if !event_times_equal(&old.start, &new.start) {
+        changes.push(PropertyChange {
+            property: "Start".to_string(),
+            old_value: Some(format_event_time(&old.start)),
+            new_value: Some(format_event_time(&new.start)),
+        });
+    }
+
+    if !event_times_equal(&old.end, &new.end) {
+        changes.push(PropertyChange {
+            property: "End".to_string(),
+            old_value: Some(format_event_time(&old.end)),
+            new_value: Some(format_event_time(&new.end)),
+        });
+    }
+
+    if old.status != new.status {
+        changes.push(PropertyChange {
+            property: "Status".to_string(),
+            old_value: Some(format!("{:?}", old.status)),
+            new_value: Some(format!("{:?}", new.status)),
+        });
+    }
+
+    if old.recurrence != new.recurrence {
+        changes.push(PropertyChange {
+            property: "Recurrence".to_string(),
+            old_value: old.recurrence.as_ref().map(|r| r.join(", ")),
+            new_value: new.recurrence.as_ref().map(|r| r.join(", ")),
+        });
+    }
+
+    if old.reminders != new.reminders {
+        let format_reminders = |reminders: &[crate::event::Reminder]| -> String {
+            reminders
+                .iter()
+                .map(|r| format!("{}m before", r.minutes))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        changes.push(PropertyChange {
+            property: "Reminders".to_string(),
+            old_value: Some(format_reminders(&old.reminders)),
+            new_value: Some(format_reminders(&new.reminders)),
+        });
+    }
+
+    if old.transparency != new.transparency {
+        changes.push(PropertyChange {
+            property: "Availability".to_string(),
+            old_value: Some(format!("{:?}", old.transparency)),
+            new_value: Some(format!("{:?}", new.transparency)),
+        });
+    }
+
+    if old.organizer != new.organizer {
+        let format_attendee = |a: &Option<crate::event::Attendee>| -> Option<String> {
+            a.as_ref().map(|att| {
+                att.name
+                    .clone()
+                    .unwrap_or_else(|| att.email.clone())
+            })
+        };
+        changes.push(PropertyChange {
+            property: "Organizer".to_string(),
+            old_value: format_attendee(&old.organizer),
+            new_value: format_attendee(&new.organizer),
+        });
+    }
+
+    if old.attendees != new.attendees {
+        let format_attendees = |attendees: &[crate::event::Attendee]| -> String {
+            attendees
+                .iter()
+                .map(|a| a.name.clone().unwrap_or_else(|| a.email.clone()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        changes.push(PropertyChange {
+            property: "Attendees".to_string(),
+            old_value: Some(format_attendees(&old.attendees)),
+            new_value: Some(format_attendees(&new.attendees)),
+        });
+    }
+
+    if old.conference_url != new.conference_url {
+        changes.push(PropertyChange {
+            property: "Conference URL".to_string(),
+            old_value: old.conference_url.clone(),
+            new_value: new.conference_url.clone(),
+        });
     }
 
     // Sort by property name for consistent output
     changes.sort_by(|a, b| a.property.cmp(&b.property));
 
     changes
+}
+
+/// Get the start time as UTC DateTime for time range checking
+fn event_start_utc(event: &Event) -> Option<DateTime<Utc>> {
+    match &event.start {
+        EventTime::DateTime(dt) => Some(*dt),
+        EventTime::Date(d) => d.and_hms_opt(0, 0, 0).map(|dt| dt.and_utc()),
+    }
 }
 
 /// Compute the diff between remote events and local directory.
@@ -133,7 +229,6 @@ pub fn compute(
     remote_events: &[Event],
     local_events: &HashMap<String, LocalEvent>,
     dir: &Path,
-    metadata: &CalendarMetadata,
     verbose: bool,
     time_range: Option<(DateTime<Utc>, DateTime<Utc>)>,
     synced_uids: &HashSet<String>,
@@ -150,21 +245,20 @@ pub fn compute(
     let mut seen_uids: HashSet<String> = HashSet::new();
 
     // Process each event from the remote
-    for event in remote_events {
-        seen_uids.insert(event.id.clone());
+    for remote_event in remote_events {
+        seen_uids.insert(remote_event.id.clone());
 
-        let new_filename = ics::generate_filename(event);
+        let new_filename = ics::generate_filename(remote_event);
         let new_path = dir.join(&new_filename);
-        let new_content = ics::generate_ics(event, metadata)?;
 
-        if let Some(local) = local_events.get(&event.id) {
+        if let Some(local) = local_events.get(&remote_event.id) {
             // Event exists locally - check if it changed
-            let content_changed = has_property_changes(&local.content, &new_content);
+            let content_changed = events_differ(&local.event, remote_event);
             let filename_changed = local.path != new_path;
 
             if content_changed || filename_changed {
                 // Determine direction based on timestamps
-                let is_push = match (local.modified, event.updated) {
+                let is_push = match (local.modified, remote_event.updated) {
                     (Some(local_mtime), Some(remote_updated)) => local_mtime > remote_updated,
                     // If we can't compare timestamps, default to pull (safer)
                     _ => false,
@@ -175,15 +269,29 @@ pub fn compute(
                 // For push: remote (old) → local (new)
                 let property_changes = if verbose && content_changed {
                     if is_push {
-                        compute_property_diff(&new_content, &local.content)
+                        compute_event_diff(remote_event, &local.event)
                     } else {
-                        compute_property_diff(&local.content, &new_content)
+                        compute_event_diff(&local.event, remote_event)
                     }
                 } else if verbose && filename_changed {
                     let (old_name, new_name) = if is_push {
-                        (new_filename.clone(), local.path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default())
+                        (
+                            new_filename.clone(),
+                            local
+                                .path
+                                .file_name()
+                                .map(|s| s.to_string_lossy().to_string())
+                                .unwrap_or_default(),
+                        )
                     } else {
-                        (local.path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(), new_filename.clone())
+                        (
+                            local
+                                .path
+                                .file_name()
+                                .map(|s| s.to_string_lossy().to_string())
+                                .unwrap_or_default(),
+                            new_filename.clone(),
+                        )
                     };
                     vec![PropertyChange {
                         property: "Filename".to_string(),
@@ -195,7 +303,7 @@ pub fn compute(
                 };
 
                 let change = SyncChange {
-                    uid: event.id.clone(),
+                    uid: remote_event.id.clone(),
                     filename: new_filename,
                     property_changes,
                 };
@@ -208,17 +316,17 @@ pub fn compute(
             }
         } else {
             // Check if this remote event was previously synced but deleted locally
-            if synced_uids.contains(&event.id) {
+            if synced_uids.contains(&remote_event.id) {
                 // User deleted this locally → push delete
                 diff.to_push_delete.push(SyncChange {
-                    uid: event.id.clone(),
+                    uid: remote_event.id.clone(),
                     filename: new_filename,
                     property_changes: Vec::new(),
                 });
             } else {
                 // New remote event - pull it
                 diff.to_pull_create.push(SyncChange {
-                    uid: event.id.clone(),
+                    uid: remote_event.id.clone(),
                     filename: new_filename,
                     property_changes: Vec::new(),
                 });
@@ -251,11 +359,11 @@ pub fn compute(
                 // Only consider deletion if the event falls within the queried time range.
                 // Events outside the range weren't fetched, so we can't know if they
                 // still exist on the remote.
-                let in_range = match (time_range, ics::parse_dtstart_utc(&local.content)) {
+                let in_range = match (time_range, event_start_utc(&local.event)) {
                     (Some((time_min, time_max)), Some(event_start)) => {
                         event_start >= time_min && event_start <= time_max
                     }
-                    // No time range specified, or couldn't parse date - assume in range
+                    // No time range specified, or couldn't get date - assume in range
                     _ => true,
                 };
 

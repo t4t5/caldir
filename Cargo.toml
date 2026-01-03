@@ -5,7 +5,7 @@ edition = "2021"
 description = "CLI for interacting with your local caldir directory and syncing with external calendar providers"
 
 [workspace]
-members = [".", "caldir-provider-google"]
+members = [".", "caldir-core", "caldir-provider-google"]
 
 [dependencies]
 # Async runtime
@@ -36,3 +36,6 @@ uuid = { version = "1", features = ["v4"] }
 
 # Provider discovery (finding binaries in PATH)
 which = "7"
+
+# Shared types
+caldir-core = { path = "./caldir-core" }

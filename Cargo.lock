@@ -148,6 +148,7 @@ name = "caldir-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "caldir-core",
  "chrono",
  "clap",
  "dirs",
@@ -158,6 +159,14 @@ dependencies = [
  "toml",
  "uuid",
  "which",
+]
+
+[[package]]
+name = "caldir-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
 ]
 
 [[package]]

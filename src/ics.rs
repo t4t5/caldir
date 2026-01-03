@@ -1,7 +1,7 @@
 use crate::event::{Attendee, Event, EventStatus, EventTime, Reminder, Transparency};
 use anyhow::Result;
 use chrono::{NaiveDate, TimeZone, Utc};
-use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger};
+use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger, ValueType};
 
 /// Metadata about the calendar source (for sync tracking)
 #[derive(Debug, Clone)]
@@ -56,9 +56,16 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
 
     // Set start/end times
     match (&event.start, &event.end) {
-        (EventTime::Date(start_date), EventTime::Date(_end_date)) => {
-            // All-day event
-            ics_event.all_day(*start_date);
+        (EventTime::Date(start_date), EventTime::Date(end_date)) => {
+            // All-day event - set both DTSTART and DTEND with VALUE=DATE parameter
+            // DTEND is exclusive (day after last day of event)
+            let mut dtstart = Property::new("DTSTART", start_date.format("%Y%m%d").to_string());
+            dtstart.append_parameter(ValueType::Date);
+            ics_event.append_property(dtstart);
+
+            let mut dtend = Property::new("DTEND", end_date.format("%Y%m%d").to_string());
+            dtend.append_parameter(ValueType::Date);
+            ics_event.append_property(dtend);
         }
         (EventTime::DateTime(start_dt), EventTime::DateTime(end_dt)) => {
             // Timed event
@@ -134,14 +141,30 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
 
     // ORGANIZER
     if let Some(ref org) = event.organizer {
-        let organizer_value = format_organizer_value(org);
-        ics_event.add_property("ORGANIZER", &organizer_value);
+        let mut prop = Property::new("ORGANIZER", format!("mailto:{}", org.email));
+        if let Some(ref name) = org.name {
+            prop.add_parameter("CN", name);
+        }
+        ics_event.append_property(prop);
     }
 
-    // ATTENDEE
+    // ATTENDEE (multi-property - can appear multiple times)
     for attendee in &event.attendees {
-        let attendee_value = format_attendee_value(attendee);
-        ics_event.add_property("ATTENDEE", &attendee_value);
+        let mut prop = Property::new("ATTENDEE", format!("mailto:{}", attendee.email));
+        if let Some(ref name) = attendee.name {
+            prop.add_parameter("CN", name);
+        }
+        if let Some(ref status) = attendee.response_status {
+            let partstat = match status.as_str() {
+                "accepted" => "ACCEPTED",
+                "declined" => "DECLINED",
+                "tentative" => "TENTATIVE",
+                "needsAction" => "NEEDS-ACTION",
+                _ => "NEEDS-ACTION",
+            };
+            prop.add_parameter("PARTSTAT", partstat);
+        }
+        ics_event.append_multi_property(prop);
     }
 
     // Conference URL
@@ -185,47 +208,6 @@ pub fn generate_filename(event: &Event) -> String {
     format!("{}__{}_{}.ics", date_part, slug, short_id(&event.id))
 }
 
-/// Format an organizer for iCalendar ORGANIZER property
-/// Format: CN=Name:mailto:email@example.com
-/// Note: ORGANIZER doesn't have PARTSTAT (only ATTENDEE does)
-fn format_organizer_value(organizer: &Attendee) -> String {
-    if let Some(ref name) = organizer.name {
-        format!("CN={}:mailto:{}", name, organizer.email)
-    } else {
-        format!("mailto:{}", organizer.email)
-    }
-}
-
-/// Format an attendee for iCalendar ATTENDEE property
-/// Format: CN=Name;PARTSTAT=ACCEPTED:mailto:email@example.com
-fn format_attendee_value(attendee: &Attendee) -> String {
-    let mut parts = Vec::new();
-
-    // Add CN (common name) parameter if available
-    if let Some(ref name) = attendee.name {
-        parts.push(format!("CN={}", name));
-    }
-
-    // Add PARTSTAT (participation status) parameter if available
-    if let Some(ref status) = attendee.response_status {
-        let partstat = match status.as_str() {
-            "accepted" => "ACCEPTED",
-            "declined" => "DECLINED",
-            "tentative" => "TENTATIVE",
-            "needsAction" => "NEEDS-ACTION",
-            _ => "NEEDS-ACTION",
-        };
-        parts.push(format!("PARTSTAT={}", partstat));
-    }
-
-    // Build the value
-    if parts.is_empty() {
-        format!("mailto:{}", attendee.email)
-    } else {
-        format!("{}:mailto:{}", parts.join(";"), attendee.email)
-    }
-}
-
 /// Convert a string to a filename-safe slug
 pub fn slugify(s: &str) -> String {
     s.to_lowercase()
@@ -262,63 +244,6 @@ fn short_id(id: &str) -> String {
     // Format as 8-char hex string
     format!("{:08x}", hash as u32)
 }
-
-/// Parse the UID from an .ics file, handling ICS line folding
-pub fn parse_uid(content: &str) -> Option<String> {
-    // First unfold lines (ICS wraps long lines with CRLF + space/tab)
-    let mut unfolded = String::new();
-    for line in content.lines() {
-        if line.starts_with(' ') || line.starts_with('\t') {
-            // Continuation line - append without the leading whitespace
-            unfolded.push_str(line.trim_start());
-        } else {
-            if !unfolded.is_empty() {
-                unfolded.push('\n');
-            }
-            unfolded.push_str(line);
-        }
-    }
-
-    // Now find UID in unfolded content
-    for line in unfolded.lines() {
-        if let Some(stripped) = line.strip_prefix("UID:") {
-            return Some(stripped.trim().to_string());
-        }
-    }
-    None
-}
-
-/// Parse the DTSTART from an .ics file content, returning it as DateTime<Utc>.
-/// All-day events are converted to midnight UTC of that date.
-pub fn parse_dtstart_utc(content: &str) -> Option<chrono::DateTime<Utc>> {
-    use icalendar::{CalendarComponent, DatePerhapsTime, CalendarDateTime};
-    use std::str::FromStr;
-
-    let calendar = Calendar::from_str(content).ok()?;
-
-    for component in calendar.iter() {
-        if let CalendarComponent::Event(event) = component {
-            match event.get_start()? {
-                DatePerhapsTime::DateTime(cal_dt) => {
-                    // Try to convert to UTC; for Floating/WithTimezone, fall back to naive conversion
-                    match cal_dt {
-                        CalendarDateTime::Utc(dt) => return Some(dt),
-                        CalendarDateTime::Floating(naive) => return Some(naive.and_utc()),
-                        CalendarDateTime::WithTimezone { date_time, .. } => {
-                            return Some(date_time.and_utc())
-                        }
-                    }
-                }
-                DatePerhapsTime::Date(date) => {
-                    // All-day event: use midnight UTC
-                    return Some(date.and_hms_opt(0, 0, 0)?.and_utc());
-                }
-            }
-        }
-    }
-    None
-}
-
 // ============================================================================
 // CLI Input Parsing
 // ============================================================================
@@ -400,92 +325,8 @@ pub fn parse_cli_duration(s: &str) -> Result<chrono::Duration> {
 }
 
 // ============================================================================
-// ICS Parsing (for property-level diff)
+// ICS Parsing Helpers
 // ============================================================================
-
-use std::collections::HashMap;
-
-/// Properties to skip when computing property-level diffs
-const SKIP_PROPERTIES: &[&str] = &[
-    "DTSTAMP", "LAST-MODIFIED", "BEGIN", "END", "VERSION", "PRODID", "CALSCALE",
-];
-
-/// Parse ICS content into property key-value pairs (for the VEVENT component).
-/// Also extracts alarm triggers as a special "ALARMS" property.
-pub fn parse_properties(content: &str) -> HashMap<String, String> {
-    let mut props = HashMap::new();
-    let mut in_vevent = false;
-    let mut in_valarm = false;
-    let mut current_line = String::new();
-    let mut alarm_triggers: Vec<String> = Vec::new();
-
-    for line in content.lines() {
-        // Handle line folding (lines starting with space are continuations)
-        if line.starts_with(' ') || line.starts_with('\t') {
-            current_line.push_str(line.trim_start());
-            continue;
-        }
-
-        // Process the completed line
-        if !current_line.is_empty() && in_vevent {
-            if in_valarm {
-                // Extract TRIGGER from alarms
-                if let Some((key, value)) = parse_property_line(&current_line) {
-                    if key == "TRIGGER" {
-                        alarm_triggers.push(format_trigger_value(&value));
-                    }
-                }
-            } else if let Some((key, value)) = parse_property_line(&current_line) {
-                if !SKIP_PROPERTIES.contains(&key.as_str()) {
-                    props.insert(key, value);
-                }
-            }
-        }
-
-        current_line = line.to_string();
-
-        // Track which component we're in
-        if line == "BEGIN:VEVENT" {
-            in_vevent = true;
-        } else if line == "END:VEVENT" {
-            in_vevent = false;
-        } else if line == "BEGIN:VALARM" {
-            in_valarm = true;
-        } else if line == "END:VALARM" {
-            in_valarm = false;
-        }
-    }
-
-    // Process last line
-    if !current_line.is_empty() && in_vevent && !in_valarm {
-        if let Some((key, value)) = parse_property_line(&current_line) {
-            if !SKIP_PROPERTIES.contains(&key.as_str()) {
-                props.insert(key, value);
-            }
-        }
-    }
-
-    // Add alarms as a combined property if present
-    if !alarm_triggers.is_empty() {
-        alarm_triggers.sort();
-        props.insert("ALARMS".to_string(), alarm_triggers.join(", "));
-    }
-
-    props
-}
-
-/// Parse a single ICS property line into key and value
-fn parse_property_line(line: &str) -> Option<(String, String)> {
-    // Properties can be "KEY:VALUE" or "KEY;PARAM=X:VALUE"
-    let colon_pos = line.find(':')?;
-    let key_part = &line[..colon_pos];
-    let value = &line[colon_pos + 1..];
-
-    // Extract just the property name (before any parameters)
-    let key = key_part.split(';').next()?.to_string();
-
-    Some((key, value.to_string()))
-}
 
 /// Parse a single ICS property line into key, parameters, and value
 fn parse_property_line_with_params(line: &str) -> Option<(String, String, String)> {
@@ -563,9 +404,10 @@ pub fn parse_event(content: &str) -> Option<Event> {
     let mut custom_properties: Vec<(String, String)> = Vec::new();
 
     for line in content.lines() {
-        // Handle line folding
+        // Handle line folding (RFC 5545: continuation lines start with single space or tab)
+        // Only remove the first character (the continuation indicator), preserve other whitespace
         if line.starts_with(' ') || line.starts_with('\t') {
-            current_line.push_str(line.trim_start());
+            current_line.push_str(&line[1..]);
             continue;
         }
 
@@ -603,7 +445,12 @@ pub fn parse_event(content: &str) -> Option<Event> {
                         };
                     }
                     "RRULE" | "EXDATE" => {
-                        recurrence.push(format!("{}:{}", key, value));
+                        // Preserve parameters (e.g., TZID) for EXDATE
+                        if params.is_empty() {
+                            recurrence.push(format!("{}:{}", key, value));
+                        } else {
+                            recurrence.push(format!("{};{}:{}", key, params, value));
+                        }
                     }
                     "RECURRENCE-ID" => {
                         recurrence_id = parse_datetime(&value, &params);
@@ -756,259 +603,208 @@ fn parse_trigger_minutes(value: &str) -> Option<i64> {
 
     Some(if is_before { minutes } else { -minutes })
 }
-
-// ============================================================================
-// ICS Formatting (for human-readable display)
-// ============================================================================
-
-/// Human-readable names for ICS properties
-pub fn property_display_name(prop: &str) -> &str {
-    match prop {
-        "SUMMARY" => "Title",
-        "DESCRIPTION" => "Description",
-        "LOCATION" => "Location",
-        "DTSTART" => "Start",
-        "DTEND" => "End",
-        "STATUS" => "Status",
-        "TRANSP" => "Show as",
-        "RRULE" => "Recurrence",
-        "EXDATE" => "Excluded dates",
-        "RECURRENCE-ID" => "Instance",
-        "ORGANIZER" => "Organizer",
-        "ATTENDEE" => "Attendee",
-        "URL" => "URL",
-        "SEQUENCE" => "Version",
-        "LAST-MODIFIED" => "Last modified",
-        "ALARMS" => "Reminders",
-        _ => prop,
-    }
-}
-
-/// Format a property value for display (truncate long values, format dates)
-pub fn format_property_value(prop: &str, value: &str) -> String {
-    // Format datetime values
-    if prop == "DTSTART" || prop == "DTEND" || prop == "LAST-MODIFIED" || prop == "RECURRENCE-ID" {
-        return format_datetime_value(value);
-    }
-
-    // Format transparency
-    if prop == "TRANSP" {
-        return match value {
-            "OPAQUE" => "Busy".to_string(),
-            "TRANSPARENT" => "Free".to_string(),
-            _ => value.to_string(),
-        };
-    }
-
-    // Truncate long values
-    if value.len() > 60 {
-        format!("{}...", &value[..57])
-    } else {
-        value.to_string()
-    }
-}
-
-/// Format an ICS datetime value for display
-fn format_datetime_value(value: &str) -> String {
-    // Handle VALUE=DATE format (all-day): 20250320
-    if value.len() == 8 && value.chars().all(|c| c.is_ascii_digit()) {
-        if let (Ok(y), Ok(m), Ok(d)) = (
-            value[0..4].parse::<i32>(),
-            value[4..6].parse::<u32>(),
-            value[6..8].parse::<u32>(),
-        ) {
-            return format!("{}-{:02}-{:02}", y, m, d);
-        }
-    }
-
-    // Handle datetime format: 20250320T150000Z
-    if value.len() >= 15 && value.contains('T') {
-        let date_part = &value[0..8];
-        let time_part = &value[9..15];
-        if let (Ok(y), Ok(mo), Ok(d), Ok(h), Ok(mi)) = (
-            date_part[0..4].parse::<i32>(),
-            date_part[4..6].parse::<u32>(),
-            date_part[6..8].parse::<u32>(),
-            time_part[0..2].parse::<u32>(),
-            time_part[2..4].parse::<u32>(),
-        ) {
-            return format!("{}-{:02}-{:02} {:02}:{:02}", y, mo, d, h, mi);
-        }
-    }
-
-    value.to_string()
-}
-
-/// Format a TRIGGER value for display (e.g., "-PT86400S" -> "1 day before")
-fn format_trigger_value(value: &str) -> String {
-    // Parse ISO 8601 duration format: -PT{n}S, -PT{n}M, -PT{n}H, -P{n}D, etc.
-    let is_before = value.starts_with('-');
-    let duration_part = value
-        .trim_start_matches('-')
-        .trim_start_matches('P')
-        .trim_start_matches('T');
-
-    // Try to parse common formats
-    if let Some(seconds) = duration_part.strip_suffix('S') {
-        if let Ok(s) = seconds.parse::<i64>() {
-            let minutes = s / 60;
-            if minutes >= 60 && minutes % 60 == 0 {
-                let hours = minutes / 60;
-                if hours >= 24 && hours % 24 == 0 {
-                    let days = hours / 24;
-                    return format_duration(days, "day", is_before);
-                }
-                return format_duration(hours, "hour", is_before);
-            }
-            return format_duration(minutes, "min", is_before);
-        }
-    }
-    if let Some(minutes) = duration_part.strip_suffix('M') {
-        if let Ok(m) = minutes.parse::<i64>() {
-            if m >= 60 && m % 60 == 0 {
-                return format_duration(m / 60, "hour", is_before);
-            }
-            return format_duration(m, "min", is_before);
-        }
-    }
-    if let Some(hours) = duration_part.strip_suffix('H') {
-        if let Ok(h) = hours.parse::<i64>() {
-            if h >= 24 && h % 24 == 0 {
-                return format_duration(h / 24, "day", is_before);
-            }
-            return format_duration(h, "hour", is_before);
-        }
-    }
-
-    // Fallback to raw value
-    value.to_string()
-}
-
-fn format_duration(value: i64, unit: &str, is_before: bool) -> String {
-    let plural = if value == 1 { "" } else { "s" };
-    let direction = if is_before { "before" } else { "after" };
-    format!("{} {}{} {}", value, unit, plural, direction)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Datelike, Timelike};
+    use crate::event::EventStatus;
 
-    #[test]
-    fn test_format_organizer_with_name() {
-        let organizer = Attendee {
-            name: Some("John Doe".to_string()),
-            email: "john@example.com".to_string(),
-            response_status: None,
-        };
-        assert_eq!(
-            format_organizer_value(&organizer),
-            "CN=John Doe:mailto:john@example.com"
-        );
+    fn make_test_event() -> Event {
+        Event {
+            id: "test-event-123".to_string(),
+            summary: "Test Event".to_string(),
+            description: None,
+            location: None,
+            start: EventTime::DateTime(
+                chrono::Utc.with_ymd_and_hms(2025, 3, 20, 15, 0, 0).unwrap(),
+            ),
+            end: EventTime::DateTime(
+                chrono::Utc.with_ymd_and_hms(2025, 3, 20, 16, 0, 0).unwrap(),
+            ),
+            status: EventStatus::Confirmed,
+            recurrence: None,
+            original_start: None,
+            reminders: vec![],
+            transparency: Transparency::Opaque,
+            organizer: None,
+            attendees: vec![],
+            conference_url: None,
+            updated: None,
+            sequence: None,
+            custom_properties: vec![],
+        }
+    }
+
+    fn make_test_metadata() -> CalendarMetadata {
+        CalendarMetadata {
+            calendar_id: "test@example.com".to_string(),
+            calendar_name: "Test Calendar".to_string(),
+            source_url: None,
+        }
     }
 
     #[test]
-    fn test_format_organizer_without_name() {
-        let organizer = Attendee {
-            name: None,
-            email: "john@example.com".to_string(),
-            response_status: None,
-        };
-        assert_eq!(
-            format_organizer_value(&organizer),
-            "mailto:john@example.com"
-        );
-    }
-
-    #[test]
-    fn test_format_organizer_ignores_response_status() {
-        // ORGANIZER should NOT include PARTSTAT even if response_status is set
-        let organizer = Attendee {
-            name: Some("John Doe".to_string()),
-            email: "john@example.com".to_string(),
-            response_status: Some("accepted".to_string()),
-        };
-        let result = format_organizer_value(&organizer);
-        assert!(!result.contains("PARTSTAT"), "ORGANIZER should not have PARTSTAT");
-        assert_eq!(result, "CN=John Doe:mailto:john@example.com");
-    }
-
-    #[test]
-    fn test_format_attendee_with_name_and_status() {
-        let attendee = Attendee {
-            name: Some("Jane Doe".to_string()),
-            email: "jane@example.com".to_string(),
-            response_status: Some("accepted".to_string()),
-        };
-        assert_eq!(
-            format_attendee_value(&attendee),
-            "CN=Jane Doe;PARTSTAT=ACCEPTED:mailto:jane@example.com"
-        );
-    }
-
-    #[test]
-    fn test_format_attendee_with_name_only() {
-        let attendee = Attendee {
-            name: Some("Jane Doe".to_string()),
-            email: "jane@example.com".to_string(),
-            response_status: None,
-        };
-        assert_eq!(
-            format_attendee_value(&attendee),
-            "CN=Jane Doe:mailto:jane@example.com"
-        );
-    }
-
-    #[test]
-    fn test_format_attendee_with_status_only() {
-        let attendee = Attendee {
-            name: None,
-            email: "jane@example.com".to_string(),
-            response_status: Some("declined".to_string()),
-        };
-        assert_eq!(
-            format_attendee_value(&attendee),
-            "PARTSTAT=DECLINED:mailto:jane@example.com"
-        );
-    }
-
-    #[test]
-    fn test_format_attendee_email_only() {
-        let attendee = Attendee {
-            name: None,
-            email: "jane@example.com".to_string(),
-            response_status: None,
-        };
-        assert_eq!(
-            format_attendee_value(&attendee),
-            "mailto:jane@example.com"
-        );
-    }
-
-    #[test]
-    fn test_format_attendee_partstat_values() {
-        let test_cases = vec![
-            ("accepted", "ACCEPTED"),
-            ("declined", "DECLINED"),
-            ("tentative", "TENTATIVE"),
-            ("needsAction", "NEEDS-ACTION"),
-            ("unknown", "NEEDS-ACTION"), // Unknown values default to NEEDS-ACTION
+    fn test_generate_ics_multiple_attendees() {
+        let mut event = make_test_event();
+        event.attendees = vec![
+            Attendee {
+                name: Some("Alice".to_string()),
+                email: "alice@example.com".to_string(),
+                response_status: Some("accepted".to_string()),
+            },
+            Attendee {
+                name: Some("Bob".to_string()),
+                email: "bob@example.com".to_string(),
+                response_status: Some("tentative".to_string()),
+            },
+            Attendee {
+                name: None,
+                email: "charlie@example.com".to_string(),
+                response_status: None,
+            },
         ];
 
-        for (input, expected) in test_cases {
-            let attendee = Attendee {
-                name: None,
-                email: "test@example.com".to_string(),
-                response_status: Some(input.to_string()),
-            };
-            let result = format_attendee_value(&attendee);
-            assert!(
-                result.contains(&format!("PARTSTAT={}", expected)),
-                "Input '{}' should produce PARTSTAT={}, got: {}",
-                input, expected, result
-            );
-        }
+        let ics = generate_ics(&event, &make_test_metadata()).unwrap();
+
+        // Count ATTENDEE lines - should be 3
+        let attendee_count = ics.lines().filter(|l| l.starts_with("ATTENDEE")).count();
+        assert_eq!(
+            attendee_count, 3,
+            "Should have 3 ATTENDEE lines, got {}. ICS:\n{}",
+            attendee_count, ics
+        );
+
+        // Verify each attendee is present
+        assert!(ics.contains("alice@example.com"), "Missing Alice");
+        assert!(ics.contains("bob@example.com"), "Missing Bob");
+        assert!(ics.contains("charlie@example.com"), "Missing Charlie");
+    }
+
+    #[test]
+    fn test_generate_ics_all_day_event_has_value_date() {
+        let mut event = make_test_event();
+        event.start = EventTime::Date(NaiveDate::from_ymd_opt(2025, 3, 20).unwrap());
+        event.end = EventTime::Date(NaiveDate::from_ymd_opt(2025, 3, 21).unwrap());
+
+        let ics = generate_ics(&event, &make_test_metadata()).unwrap();
+
+        // Should have VALUE=DATE parameter
+        assert!(
+            ics.contains("DTSTART;VALUE=DATE:20250320"),
+            "DTSTART should have VALUE=DATE parameter. ICS:\n{}",
+            ics
+        );
+        assert!(
+            ics.contains("DTEND;VALUE=DATE:20250321"),
+            "DTEND should have VALUE=DATE parameter. ICS:\n{}",
+            ics
+        );
+    }
+
+    #[test]
+    fn test_generate_ics_organizer_has_proper_parameters() {
+        let mut event = make_test_event();
+        event.organizer = Some(Attendee {
+            name: Some("Organizer Name".to_string()),
+            email: "organizer@example.com".to_string(),
+            response_status: None,
+        });
+
+        let ics = generate_ics(&event, &make_test_metadata()).unwrap();
+
+        // Find the ORGANIZER line
+        let organizer_line = ics
+            .lines()
+            .find(|l| l.starts_with("ORGANIZER"))
+            .expect("Should have ORGANIZER line");
+
+        // Should have CN as a parameter (semicolon-separated), not in value
+        assert!(
+            organizer_line.contains(";CN="),
+            "CN should be a parameter (;CN=), not part of value. Got: {}",
+            organizer_line
+        );
+        assert!(
+            organizer_line.contains("mailto:organizer@example.com"),
+            "Should have mailto value. Got: {}",
+            organizer_line
+        );
+    }
+
+    #[test]
+    fn test_parse_and_generate_roundtrip_multiple_attendees() {
+        let mut event = make_test_event();
+        event.attendees = vec![
+            Attendee {
+                name: Some("Alice".to_string()),
+                email: "alice@example.com".to_string(),
+                response_status: Some("accepted".to_string()),
+            },
+            Attendee {
+                name: Some("Bob".to_string()),
+                email: "bob@example.com".to_string(),
+                response_status: Some("declined".to_string()),
+            },
+        ];
+
+        let ics = generate_ics(&event, &make_test_metadata()).unwrap();
+        let parsed = parse_event(&ics).expect("Should parse generated ICS");
+
+        assert_eq!(
+            parsed.attendees.len(),
+            2,
+            "Should have 2 attendees after roundtrip"
+        );
+    }
+
+    #[test]
+    fn test_parse_exdate_preserves_tzid_parameter() {
+        // ICS with EXDATE that has TZID parameter
+        let ics = r#"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:TEST
+BEGIN:VEVENT
+UID:test-123
+SUMMARY:Recurring Event
+DTSTART:20240101T100000Z
+DTEND:20240101T110000Z
+RRULE:FREQ=WEEKLY;BYDAY=MO
+EXDATE;TZID=America/New_York:20240108T100000,20240115T100000
+END:VEVENT
+END:VCALENDAR"#;
+
+        let event = parse_event(ics).expect("Should parse");
+
+        let recurrence = event.recurrence.expect("Should have recurrence");
+        assert!(
+            recurrence.iter().any(|r| r.contains("TZID=America/New_York")),
+            "Should preserve TZID parameter. Got: {:?}",
+            recurrence
+        );
+    }
+
+    #[test]
+    fn test_parse_line_folding_preserves_whitespace() {
+        // ICS with folded description line - the fold happens in the middle of text
+        // After "Hello " the line is folded, and continues with "world"
+        let ics = "BEGIN:VCALENDAR\r\n\
+VERSION:2.0\r\n\
+PRODID:TEST\r\n\
+BEGIN:VEVENT\r\n\
+UID:test-123\r\n\
+SUMMARY:Test\r\n\
+DTSTART:20240101T100000Z\r\n\
+DTEND:20240101T110000Z\r\n\
+DESCRIPTION:Hello \r\n world and \r\n more text\r\n\
+END:VEVENT\r\n\
+END:VCALENDAR";
+
+        let event = parse_event(ics).expect("Should parse");
+
+        let desc = event.description.expect("Should have description");
+        assert_eq!(
+            desc, "Hello world and more text",
+            "Line folding should preserve the space before 'world'"
+        );
     }
 
     #[test]
@@ -1027,66 +823,15 @@ mod tests {
 
     #[test]
     fn test_short_id() {
-        assert_eq!(short_id("abc12345xyz"), "abc12345");
-        assert_eq!(short_id("short"), "short");
-        assert_eq!(short_id(""), "");
-    }
+        // short_id returns an 8-char hex hash of the input
+        assert_eq!(short_id("abc12345xyz").len(), 8);
+        assert_eq!(short_id("short").len(), 8);
+        assert_eq!(short_id("").len(), 8);
 
-    #[test]
-    fn test_parse_dtstart_utc_datetime_with_z() {
-        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:20241217T180000Z\nEND:VEVENT\nEND:VCALENDAR";
-        let result = parse_dtstart_utc(ics);
-        assert!(result.is_some());
-        let dt = result.unwrap();
-        assert_eq!(dt.year(), 2024);
-        assert_eq!(dt.month(), 12);
-        assert_eq!(dt.day(), 17);
-        assert_eq!(dt.hour(), 18);
-        assert_eq!(dt.minute(), 0);
-    }
+        // Same input should produce same hash
+        assert_eq!(short_id("test-id"), short_id("test-id"));
 
-    #[test]
-    fn test_parse_dtstart_utc_all_day_event() {
-        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART;VALUE=DATE:20241217\nEND:VEVENT\nEND:VCALENDAR";
-        let result = parse_dtstart_utc(ics);
-        assert!(result.is_some());
-        let dt = result.unwrap();
-        assert_eq!(dt.year(), 2024);
-        assert_eq!(dt.month(), 12);
-        assert_eq!(dt.day(), 17);
-        assert_eq!(dt.hour(), 0); // All-day events become midnight UTC
-    }
-
-    #[test]
-    fn test_parse_dtstart_utc_floating_datetime() {
-        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART:20241217T140000\nEND:VEVENT\nEND:VCALENDAR";
-        let result = parse_dtstart_utc(ics);
-        assert!(result.is_some());
-        let dt = result.unwrap();
-        assert_eq!(dt.hour(), 14); // Floating treated as UTC
-    }
-
-    #[test]
-    fn test_parse_dtstart_utc_with_timezone() {
-        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nDTSTART;TZID=America/New_York:20241217T100000\nEND:VEVENT\nEND:VCALENDAR";
-        let result = parse_dtstart_utc(ics);
-        assert!(result.is_some());
-        // Note: timezone is ignored, naive datetime treated as UTC
-        let dt = result.unwrap();
-        assert_eq!(dt.hour(), 10);
-    }
-
-    #[test]
-    fn test_parse_dtstart_utc_missing_dtstart() {
-        let ics = "BEGIN:VCALENDAR\nBEGIN:VEVENT\nSUMMARY:No start time\nEND:VEVENT\nEND:VCALENDAR";
-        let result = parse_dtstart_utc(ics);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn test_parse_dtstart_utc_invalid_ics() {
-        let ics = "not valid ics content";
-        let result = parse_dtstart_utc(ics);
-        assert!(result.is_none());
+        // Different inputs should produce different hashes
+        assert_ne!(short_id("event-1"), short_id("event-2"));
     }
 }

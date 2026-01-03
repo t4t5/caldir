@@ -3,6 +3,7 @@
 //! The "caldir" is a directory of .ics files, one per event.
 //! This module handles reading from and writing to this directory.
 
+use crate::event::Event;
 use crate::ics;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -13,8 +14,8 @@ use std::path::{Path, PathBuf};
 pub struct LocalEvent {
     /// Path to the .ics file
     pub path: PathBuf,
-    /// Raw ICS content
-    pub content: String,
+    /// Parsed event data
+    pub event: Event,
     /// File modification time (for push detection)
     pub modified: Option<DateTime<Utc>>,
 }
@@ -34,14 +35,15 @@ pub fn read_all(dir: &Path) -> Result<HashMap<String, LocalEvent>> {
 
         if path.extension().map(|e| e == "ics").unwrap_or(false) {
             if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Some(uid) = ics::parse_uid(&content) {
+                if let Some(event) = ics::parse_event(&content) {
                     // Get file modification time for push detection
                     let modified = std::fs::metadata(&path)
                         .ok()
                         .and_then(|m| m.modified().ok())
                         .map(DateTime::<Utc>::from);
 
-                    events.insert(uid, LocalEvent { path, content, modified });
+                    let uid = event.id.clone();
+                    events.insert(uid, LocalEvent { path, event, modified });
                 }
             }
         }
