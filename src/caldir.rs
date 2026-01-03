@@ -33,19 +33,18 @@ pub fn read_all(dir: &Path) -> Result<HashMap<String, LocalEvent>> {
         let entry = entry?;
         let path = entry.path();
 
-        if path.extension().map(|e| e == "ics").unwrap_or(false) {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Some(event) = ics::parse_event(&content) {
-                    // Get file modification time for push detection
-                    let modified = std::fs::metadata(&path)
-                        .ok()
-                        .and_then(|m| m.modified().ok())
-                        .map(DateTime::<Utc>::from);
+        if path.extension().map(|e| e == "ics").unwrap_or(false)
+            && let Ok(content) = std::fs::read_to_string(&path)
+            && let Some(event) = ics::parse_event(&content)
+        {
+            // Get file modification time for push detection
+            let modified = std::fs::metadata(&path)
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .map(DateTime::<Utc>::from);
 
-                    let uid = event.id.clone();
-                    events.insert(uid, LocalEvent { path, event, modified });
-                }
-            }
+            let uid = event.id.clone();
+            events.insert(uid, LocalEvent { path, event, modified });
         }
     }
 

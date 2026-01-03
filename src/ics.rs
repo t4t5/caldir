@@ -401,12 +401,11 @@ pub fn parse_event(content: &str) -> Option<Event> {
         if !current_line.is_empty() && in_vevent {
             if in_valarm {
                 // Extract TRIGGER from alarms
-                if let Some((key, _, value)) = parse_property_line_with_params(&current_line) {
-                    if key == "TRIGGER" {
-                        if let Some(minutes) = parse_trigger_minutes(&value) {
-                            reminders.push(Reminder { minutes });
-                        }
-                    }
+                if let Some((key, _, value)) = parse_property_line_with_params(&current_line)
+                    && key == "TRIGGER"
+                    && let Some(minutes) = parse_trigger_minutes(&value)
+                {
+                    reminders.push(Reminder { minutes });
                 }
             } else if let Some((key, params, value)) = parse_property_line_with_params(&current_line) {
                 match key.as_str() {

@@ -597,10 +597,10 @@ async fn cmd_new(
 fn get_calendar_id(params: &std::collections::HashMap<String, toml::Value>, fallback: &str) -> String {
     // Look for any key ending in _calendar_id
     for (key, value) in params {
-        if key.ends_with("_calendar_id") {
-            if let toml::Value::String(s) = value {
-                return s.clone();
-            }
+        if key.ends_with("_calendar_id")
+            && let toml::Value::String(s) = value
+        {
+            return s.clone();
         }
     }
     fallback.to_string()

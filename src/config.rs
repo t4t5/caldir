@@ -91,10 +91,10 @@ pub fn load_config() -> Result<Config> {
 
 /// Expand ~ in paths to the home directory
 pub fn expand_path(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped);
-        }
+    if let Some(stripped) = path.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(stripped);
     }
     PathBuf::from(path)
 }
