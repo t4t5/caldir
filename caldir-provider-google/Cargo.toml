@@ -9,6 +9,9 @@ name = "caldir-provider-google"
 path = "src/main.rs"
 
 [dependencies]
+# Shared types
+caldir-core = { path = "../caldir-core" }
+
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 
