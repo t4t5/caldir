@@ -156,7 +156,7 @@ async fn cmd_pull() -> Result<()> {
 
         // Build calendar metadata for ICS generation
         let metadata = ics::CalendarMetadata {
-            calendar_id: get_calendar_id(&calendar_config.params),
+            calendar_id: get_calendar_id(&calendar_config.params, calendar_name),
             calendar_name: calendar_name.clone(),
         };
 
@@ -280,7 +280,7 @@ async fn cmd_push(force: bool) -> Result<()> {
 
         // Build calendar metadata
         let metadata = ics::CalendarMetadata {
-            calendar_id: get_calendar_id(&calendar_config.params),
+            calendar_id: get_calendar_id(&calendar_config.params, calendar_name),
             calendar_name: calendar_name.clone(),
         };
 
@@ -594,7 +594,7 @@ async fn cmd_new(
 }
 
 /// Extract calendar_id from provider params, looking for {provider}_calendar_id
-fn get_calendar_id(params: &std::collections::HashMap<String, toml::Value>) -> String {
+fn get_calendar_id(params: &std::collections::HashMap<String, toml::Value>, fallback: &str) -> String {
     // Look for any key ending in _calendar_id
     for (key, value) in params {
         if key.ends_with("_calendar_id") {
@@ -603,6 +603,5 @@ fn get_calendar_id(params: &std::collections::HashMap<String, toml::Value>) -> S
             }
         }
     }
-    // Fallback to "primary"
-    "primary".to_string()
+    fallback.to_string()
 }

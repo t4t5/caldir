@@ -15,6 +15,9 @@ use caldir_core::protocol::{Command, Request, Response};
 use serde::Deserialize;
 use std::io::{self, BufRead, Write};
 
+/// Google's alias for the user's main calendar
+const DEFAULT_CALENDAR_ID: &str = "primary";
+
 #[tokio::main]
 async fn main() {
     let stdin = io::stdin();
@@ -102,8 +105,10 @@ async fn handle_list_events(params: &serde_json::Value) -> String {
         Err(e) => return Response::error(&format!("Invalid params: {}", e)),
     };
 
-    // Default to primary calendar if not specified
-    let calendar_id = params.google_calendar_id.as_deref().unwrap_or("primary");
+    let calendar_id = params
+        .google_calendar_id
+        .as_deref()
+        .unwrap_or(DEFAULT_CALENDAR_ID);
 
     match google::fetch_events(
         &params.google_account,
@@ -131,7 +136,10 @@ async fn handle_create_event(params: &serde_json::Value) -> String {
         Err(e) => return Response::error(&format!("Invalid params: {}", e)),
     };
 
-    let calendar_id = params.google_calendar_id.as_deref().unwrap_or("primary");
+    let calendar_id = params
+        .google_calendar_id
+        .as_deref()
+        .unwrap_or(DEFAULT_CALENDAR_ID);
 
     match google::create_event(&params.google_account, calendar_id, &params.event).await {
         Ok(event) => Response::success(event),
@@ -152,7 +160,10 @@ async fn handle_update_event(params: &serde_json::Value) -> String {
         Err(e) => return Response::error(&format!("Invalid params: {}", e)),
     };
 
-    let calendar_id = params.google_calendar_id.as_deref().unwrap_or("primary");
+    let calendar_id = params
+        .google_calendar_id
+        .as_deref()
+        .unwrap_or(DEFAULT_CALENDAR_ID);
 
     match google::update_event(&params.google_account, calendar_id, &params.event).await {
         Ok(()) => Response::success(()),
@@ -173,7 +184,10 @@ async fn handle_delete_event(params: &serde_json::Value) -> String {
         Err(e) => return Response::error(&format!("Invalid params: {}", e)),
     };
 
-    let calendar_id = params.google_calendar_id.as_deref().unwrap_or("primary");
+    let calendar_id = params
+        .google_calendar_id
+        .as_deref()
+        .unwrap_or(DEFAULT_CALENDAR_ID);
 
     match google::delete_event(&params.google_account, calendar_id, &params.event_id).await {
         Ok(()) => Response::success(()),
