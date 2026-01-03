@@ -3,15 +3,13 @@ use anyhow::Result;
 use chrono::{NaiveDate, TimeZone, Utc};
 use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger, ValueType};
 
-/// Metadata about the calendar source (for sync tracking)
+/// Metadata about the calendar source (embedded in .ics files)
 #[derive(Debug, Clone)]
 pub struct CalendarMetadata {
     /// Calendar ID (e.g., "user@gmail.com")
     pub calendar_id: String,
     /// Human-readable calendar name (e.g., "Personal Calendar")
     pub calendar_name: String,
-    /// Source URL for this calendar (provider-specific)
-    pub source_url: Option<String>,
 }
 
 /// Generate .ics content for an event with calendar metadata
@@ -19,11 +17,6 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
     let mut cal = Calendar::new();
 
     // Add calendar-level metadata properties
-    // SOURCE (RFC 7986) - URL identifying the calendar source
-    if let Some(ref source_url) = metadata.source_url {
-        cal.append_property(Property::new("SOURCE", source_url));
-    }
-
     // X-WR-CALNAME - Human-readable calendar name (de facto standard)
     cal.append_property(Property::new("X-WR-CALNAME", &metadata.calendar_name));
 
@@ -638,7 +631,6 @@ mod tests {
         CalendarMetadata {
             calendar_id: "test@example.com".to_string(),
             calendar_name: "Test Calendar".to_string(),
-            source_url: None,
         }
     }
 

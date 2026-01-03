@@ -195,16 +195,16 @@ impl Provider {
 // Helper Functions
 // =============================================================================
 
-/// Convert calendar config params (toml::Value) to JSON and merge with additional params.
+/// Convert calendar config params to JSON and merge with additional params.
 pub fn build_params(
     config_params: &HashMap<String, toml::Value>,
     additional: &[(&str, serde_json::Value)],
 ) -> serde_json::Value {
     let mut params = serde_json::Map::new();
 
-    // Add config params
+    // Add config params (toml::Value implements Serialize)
     for (key, value) in config_params {
-        if let Ok(json_value) = toml_to_json(value) {
+        if let Ok(json_value) = serde_json::to_value(value) {
             params.insert(key.clone(), json_value);
         }
     }
@@ -215,26 +215,4 @@ pub fn build_params(
     }
 
     serde_json::Value::Object(params)
-}
-
-/// Convert a toml::Value to serde_json::Value
-fn toml_to_json(value: &toml::Value) -> Result<serde_json::Value> {
-    match value {
-        toml::Value::String(s) => Ok(serde_json::Value::String(s.clone())),
-        toml::Value::Integer(i) => Ok(serde_json::Value::Number((*i).into())),
-        toml::Value::Float(f) => Ok(serde_json::json!(*f)),
-        toml::Value::Boolean(b) => Ok(serde_json::Value::Bool(*b)),
-        toml::Value::Array(arr) => {
-            let json_arr: Result<Vec<_>> = arr.iter().map(toml_to_json).collect();
-            Ok(serde_json::Value::Array(json_arr?))
-        }
-        toml::Value::Table(table) => {
-            let mut map = serde_json::Map::new();
-            for (k, v) in table {
-                map.insert(k.clone(), toml_to_json(v)?);
-            }
-            Ok(serde_json::Value::Object(map))
-        }
-        toml::Value::Datetime(dt) => Ok(serde_json::Value::String(dt.to_string())),
-    }
 }

@@ -40,6 +40,20 @@ pub struct SyncDiff {
     pub to_push_delete: Vec<SyncChange>,
 }
 
+impl SyncDiff {
+    pub fn has_pull_changes(&self) -> bool {
+        !self.to_pull_create.is_empty()
+            || !self.to_pull_update.is_empty()
+            || !self.to_pull_delete.is_empty()
+    }
+
+    pub fn has_push_changes(&self) -> bool {
+        !self.to_push_create.is_empty()
+            || !self.to_push_update.is_empty()
+            || !self.to_push_delete.is_empty()
+    }
+}
+
 /// Check if two Events have meaningful differences.
 fn events_differ(local: &Event, remote: &Event) -> bool {
     // Compare key fields that matter for sync

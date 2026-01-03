@@ -158,7 +158,6 @@ async fn cmd_pull() -> Result<()> {
         let metadata = ics::CalendarMetadata {
             calendar_id: get_calendar_id(&calendar_config.params),
             calendar_name: calendar_name.clone(),
-            source_url: None,
         };
 
         // Compute diff with time range awareness and sync state
@@ -283,7 +282,6 @@ async fn cmd_push(force: bool) -> Result<()> {
         let metadata = ics::CalendarMetadata {
             calendar_id: get_calendar_id(&calendar_config.params),
             calendar_name: calendar_name.clone(),
-            source_url: None,
         };
 
         // Compute diff with time range awareness and sync state
@@ -292,7 +290,7 @@ async fn cmd_push(force: bool) -> Result<()> {
         let sync_diff =
             diff::compute(&remote_events, &local_events, &calendar_dir, false, time_range, &sync_state.synced_uids)?;
 
-        if sync_diff.to_push_create.is_empty() && sync_diff.to_push_update.is_empty() && sync_diff.to_push_delete.is_empty() {
+        if !sync_diff.has_push_changes() {
             continue;
         }
 
@@ -450,14 +448,7 @@ async fn cmd_status(verbose: bool) -> Result<()> {
         let sync_diff =
             diff::compute(&remote_events, &local_events, &calendar_dir, verbose, time_range, &sync_state.synced_uids)?;
 
-        let has_pull_changes = !sync_diff.to_pull_create.is_empty()
-            || !sync_diff.to_pull_update.is_empty()
-            || !sync_diff.to_pull_delete.is_empty();
-        let has_push_changes = !sync_diff.to_push_create.is_empty()
-            || !sync_diff.to_push_update.is_empty()
-            || !sync_diff.to_push_delete.is_empty();
-
-        if !has_pull_changes && !has_push_changes {
+        if !sync_diff.has_pull_changes() && !sync_diff.has_push_changes() {
             continue;
         }
 
@@ -465,7 +456,7 @@ async fn cmd_status(verbose: bool) -> Result<()> {
         println!("\n📅 {}", calendar_name);
 
         // Display pull changes
-        if has_pull_changes {
+        if sync_diff.has_pull_changes() {
             println!("  To pull:");
             for change in &sync_diff.to_pull_create {
                 println!("    + {}", change.filename);
@@ -480,7 +471,7 @@ async fn cmd_status(verbose: bool) -> Result<()> {
         }
 
         // Display push changes
-        if has_push_changes {
+        if sync_diff.has_push_changes() {
             println!("  To push:");
             for change in &sync_diff.to_push_create {
                 println!("    + {}", change.filename);
@@ -589,7 +580,6 @@ async fn cmd_new(
     let metadata = ics::CalendarMetadata {
         calendar_id: "local".to_string(),
         calendar_name: calendar_name.clone(),
-        source_url: None,
     };
 
     let ics_content = ics::generate_ics(&event, &metadata)?;
