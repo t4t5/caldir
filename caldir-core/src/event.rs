@@ -57,8 +57,45 @@ pub struct Attendee {
     pub name: Option<String>,
     /// Email address
     pub email: String,
-    /// Response status: "accepted", "declined", "tentative", "needsAction"
-    pub response_status: Option<String>,
+    /// Participation status (RFC 5545 PARTSTAT)
+    pub response_status: Option<ParticipationStatus>,
+}
+
+/// Participation status for an attendee (RFC 5545 PARTSTAT)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING-KEBAB-CASE")]
+pub enum ParticipationStatus {
+    /// Attendee has accepted
+    Accepted,
+    /// Attendee has declined
+    Declined,
+    /// Attendee has tentatively accepted
+    Tentative,
+    /// Attendee needs to respond
+    NeedsAction,
+}
+
+impl ParticipationStatus {
+    /// Convert to ICS PARTSTAT string (RFC 5545)
+    pub fn as_ics_str(&self) -> &'static str {
+        match self {
+            Self::Accepted => "ACCEPTED",
+            Self::Declined => "DECLINED",
+            Self::Tentative => "TENTATIVE",
+            Self::NeedsAction => "NEEDS-ACTION",
+        }
+    }
+
+    /// Parse from ICS PARTSTAT string
+    pub fn from_ics_str(s: &str) -> Option<Self> {
+        match s {
+            "ACCEPTED" => Some(Self::Accepted),
+            "DECLINED" => Some(Self::Declined),
+            "TENTATIVE" => Some(Self::Tentative),
+            "NEEDS-ACTION" => Some(Self::NeedsAction),
+            _ => None,
+        }
+    }
 }
 
 /// A reminder/alarm for an event

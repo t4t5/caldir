@@ -1,7 +1,7 @@
 [package]
 name = "caldir-cli"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "CLI for interacting with your local caldir directory and syncing with external calendar providers"
 
 [workspace]
@@ -14,19 +14,19 @@ tokio = { version = "1", features = ["full"] }
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+toml = "0.9"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
 
 # .ics parsing/generation
-icalendar = "0.16"
+icalendar = "0.17"
 
 # Error handling
 anyhow = "1"
 
 # Filesystem paths
-dirs = "5"
+dirs = "6"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
@@ -35,7 +35,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 
 # Provider discovery (finding binaries in PATH)
-which = "7"
+which = "8"
 
 # Shared types
 caldir-core = { path = "./caldir-core" }

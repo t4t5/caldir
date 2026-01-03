@@ -1,4 +1,4 @@
-use crate::event::{Attendee, Event, EventStatus, EventTime, Reminder, Transparency};
+use crate::event::{Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency};
 use anyhow::Result;
 use chrono::{NaiveDate, TimeZone, Utc};
 use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger, ValueType};
@@ -147,15 +147,8 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
         if let Some(ref name) = attendee.name {
             prop.add_parameter("CN", name);
         }
-        if let Some(ref status) = attendee.response_status {
-            let partstat = match status.as_str() {
-                "accepted" => "ACCEPTED",
-                "declined" => "DECLINED",
-                "tentative" => "TENTATIVE",
-                "needsAction" => "NEEDS-ACTION",
-                _ => "NEEDS-ACTION",
-            };
-            prop.add_parameter("PARTSTAT", partstat);
+        if let Some(partstat) = attendee.response_status {
+            prop.add_parameter("PARTSTAT", partstat.as_ics_str());
         }
         ics_event.append_multi_property(prop);
     }
@@ -555,14 +548,7 @@ fn parse_attendee_value(params: &str, value: &str) -> Attendee {
         if let Some(cn) = param.strip_prefix("CN=") {
             name = Some(cn.to_string());
         } else if let Some(partstat) = param.strip_prefix("PARTSTAT=") {
-            // Convert ICS PARTSTAT to Google's format
-            response_status = Some(match partstat {
-                "ACCEPTED" => "accepted".to_string(),
-                "DECLINED" => "declined".to_string(),
-                "TENTATIVE" => "tentative".to_string(),
-                "NEEDS-ACTION" => "needsAction".to_string(),
-                _ => partstat.to_lowercase(),
-            });
+            response_status = ParticipationStatus::from_ics_str(partstat);
         }
     }
 
@@ -641,12 +627,12 @@ mod tests {
             Attendee {
                 name: Some("Alice".to_string()),
                 email: "alice@example.com".to_string(),
-                response_status: Some("accepted".to_string()),
+                response_status: Some(ParticipationStatus::Accepted),
             },
             Attendee {
                 name: Some("Bob".to_string()),
                 email: "bob@example.com".to_string(),
-                response_status: Some("tentative".to_string()),
+                response_status: Some(ParticipationStatus::Tentative),
             },
             Attendee {
                 name: None,
@@ -729,12 +715,12 @@ mod tests {
             Attendee {
                 name: Some("Alice".to_string()),
                 email: "alice@example.com".to_string(),
-                response_status: Some("accepted".to_string()),
+                response_status: Some(ParticipationStatus::Accepted),
             },
             Attendee {
                 name: Some("Bob".to_string()),
                 email: "bob@example.com".to_string(),
-                response_status: Some("declined".to_string()),
+                response_status: Some(ParticipationStatus::Declined),
             },
         ];
 

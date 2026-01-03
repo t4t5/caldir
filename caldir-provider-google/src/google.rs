@@ -2,8 +2,8 @@
 
 use crate::config;
 use crate::types::{
-    AccountTokens, Attendee, Calendar, Event, EventStatus, EventTime, GoogleCredentials, Reminder,
-    Transparency,
+    AccountTokens, Attendee, Calendar, Event, EventStatus, EventTime, GoogleCredentials,
+    ParticipationStatus, Reminder, Transparency,
 };
 use anyhow::{Context, Result};
 use google_calendar::types::{
@@ -16,6 +16,27 @@ use std::net::TcpListener;
 const REDIRECT_PORT: u16 = 8085;
 const REDIRECT_URI: &str = "http://localhost:8085/callback";
 const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
+
+/// Convert Google's response status to ParticipationStatus
+fn google_to_participation_status(google_status: &str) -> Option<ParticipationStatus> {
+    match google_status {
+        "accepted" => Some(ParticipationStatus::Accepted),
+        "declined" => Some(ParticipationStatus::Declined),
+        "tentative" => Some(ParticipationStatus::Tentative),
+        "needsAction" => Some(ParticipationStatus::NeedsAction),
+        _ => None,
+    }
+}
+
+/// Convert ParticipationStatus to Google's response status format
+fn participation_status_to_google(status: ParticipationStatus) -> &'static str {
+    match status {
+        ParticipationStatus::Accepted => "accepted",
+        ParticipationStatus::Declined => "declined",
+        ParticipationStatus::Tentative => "tentative",
+        ParticipationStatus::NeedsAction => "needsAction",
+    }
+}
 
 /// Create a Google Calendar client from stored tokens
 fn create_client(creds: &GoogleCredentials, tokens: &AccountTokens) -> Client {
@@ -347,11 +368,7 @@ pub async fn fetch_events(
                     Some(a.display_name.clone())
                 },
                 email: a.email.clone(),
-                response_status: if a.response_status.is_empty() {
-                    None
-                } else {
-                    Some(a.response_status.clone())
-                },
+                response_status: google_to_participation_status(&a.response_status),
             })
             .collect();
 
@@ -468,7 +485,11 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
         .map(|a| EventAttendee {
             email: a.email.clone(),
             display_name: a.name.clone().unwrap_or_default(),
-            response_status: a.response_status.clone().unwrap_or_default(),
+            response_status: a
+                .response_status
+                .map(participation_status_to_google)
+                .unwrap_or("needsAction")
+                .to_string(),
             additional_guests: 0,
             comment: String::new(),
             id: String::new(),
@@ -683,11 +704,7 @@ fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
                 Some(a.display_name.clone())
             },
             email: a.email.clone(),
-            response_status: if a.response_status.is_empty() {
-                None
-            } else {
-                Some(a.response_status.clone())
-            },
+            response_status: google_to_participation_status(&a.response_status),
         })
         .collect();
 

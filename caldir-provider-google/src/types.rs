@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 // Re-export shared event types from caldir-core
-pub use caldir_core::{Attendee, Event, EventStatus, EventTime, Reminder, Transparency};
+pub use caldir_core::{Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency};
 
 // =============================================================================
 // Provider-specific types (not shared with caldir-core)

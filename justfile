@@ -24,3 +24,11 @@ check:
 
 test:
   cargo test
+
+# Install provider binary to PATH
+install-provider:
+  cargo install --path caldir-provider-google
+
+# Build and install everything
+install: install-provider
+  cargo install --path .
