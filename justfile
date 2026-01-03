@@ -3,7 +3,7 @@ default:
   @just --list
 
 cli +args:
-  cargo run -- {{ args }}
+  cargo run -p caldir-cli -- {{ args }}
 
 auth:
   @just cli auth
@@ -31,4 +31,4 @@ install-provider:
 
 # Build and install everything
 install: install-provider
-  cargo install --path .
+  cargo install --path caldir-cli
