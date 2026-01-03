@@ -144,10 +144,17 @@ caldir-core/                   # Shared types (used by CLI and providers)
 
 caldir-cli/                    # Core CLI
   src/
-    main.rs      - CLI entry point and command implementations
+    main.rs      - CLI parsing and command dispatch
+    commands/
+      mod.rs     - CalendarContext, shared helpers (SYNC_DAYS, require_calendars)
+      auth.rs    - Authentication flow
+      pull.rs    - Pull remote → local
+      push.rs    - Push local → remote
+      status.rs  - Show pending changes
+      new.rs     - Create local events
     config.rs    - Configuration and sync state (no token storage - providers handle that)
     diff.rs      - Pure diff computation between local and remote (compares Event structs)
-    caldir.rs    - Local directory operations (read/write .ics files)
+    caldir.rs    - Local directory operations (read/write .ics files, ApplyStats)
     ics.rs       - ICS format: generation, parsing, formatting
     provider.rs  - Provider subprocess protocol (JSON over stdin/stdout)
 
@@ -162,6 +169,8 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
 ### Key Abstractions
 
 **caldir-core** — Shared crate containing provider-neutral event types (`Event`, `Attendee`, `Reminder`, `EventTime`, `ParticipationStatus`, etc.) and protocol types (`Command`, `Request`, `Response`) with JSON serialization. Both the CLI and providers depend on this crate, ensuring type consistency across the protocol boundary. Providers convert their API responses into these types, and the CLI works exclusively with them.
+
+**CalendarContext** — Bundles all state needed for sync operations on a single calendar: directory path, local events, remote events, computed diff, metadata, provider, and config. The `CalendarContext::load()` method handles all common setup (reading local files, fetching remote events, computing diff), so each command just works with the loaded context.
 
 **provider.rs** — Provider subprocess protocol. Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `authenticate`, `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event`.
 

@@ -67,8 +67,22 @@ pub fn delete_event(path: &Path) -> Result<()> {
 }
 
 /// Statistics from applying changes to the local directory
+#[derive(Default)]
 pub struct ApplyStats {
     pub created: usize,
     pub updated: usize,
     pub deleted: usize,
+}
+
+impl ApplyStats {
+    /// Accumulate stats from another ApplyStats
+    pub fn add(&mut self, other: &ApplyStats) {
+        self.created += other.created;
+        self.updated += other.updated;
+        self.deleted += other.deleted;
+    }
+
+    pub fn has_changes(&self) -> bool {
+        self.created > 0 || self.updated > 0 || self.deleted > 0
+    }
 }

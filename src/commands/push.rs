@@ -1,158 +1,138 @@
 use anyhow::Result;
-use chrono::{Duration, Utc};
+use std::collections::HashMap;
 
-use crate::provider::{build_params, Provider};
-use crate::{caldir, config, diff, ics};
+use crate::provider::build_params;
+use crate::{caldir, config, ics};
 
-use super::{get_calendar_id, SYNC_DAYS};
+use super::{require_calendars, CalendarContext};
 
 pub async fn run(force: bool) -> Result<()> {
     let cfg = config::load_config()?;
+    require_calendars(&cfg)?;
 
-    if cfg.calendars.is_empty() {
-        anyhow::bail!(
-            "No calendars configured.\n\
-            Run `caldir-cli auth <provider>` first, then add calendars to config.toml"
-        );
-    }
+    let mut total_stats = caldir::ApplyStats::default();
 
-    let mut total_created = 0;
-    let mut total_updated = 0;
-    let mut total_deleted = 0;
-
-    // Push to each configured calendar
     for (calendar_name, calendar_config) in &cfg.calendars {
-        let provider = Provider::new(&calendar_config.provider)?;
-
-        // Get calendar-specific directory
+        // Skip if directory doesn't exist
         let calendar_dir = config::calendar_path(&cfg, calendar_name);
         if !calendar_dir.exists() {
             continue;
         }
 
-        // Read local events from this calendar's directory
-        let local_events = caldir::read_all(&calendar_dir)?;
+        let ctx = CalendarContext::load(&cfg, calendar_name, calendar_config, false).await?;
 
-        // Load sync state
-        let sync_state = config::load_sync_state(&calendar_dir)?;
-
-        // Fetch remote events
-        let params = build_params(&calendar_config.params, &[]);
-        let remote_events = provider.list_events(params).await?;
-
-        // Build calendar metadata
-        let metadata = ics::CalendarMetadata {
-            calendar_id: get_calendar_id(&calendar_config.params, calendar_name),
-            calendar_name: calendar_name.clone(),
-        };
-
-        // Compute diff with time range awareness and sync state
-        let now = Utc::now();
-        let time_range = Some((now - Duration::days(SYNC_DAYS), now + Duration::days(SYNC_DAYS)));
-        let sync_diff = diff::compute(
-            &remote_events,
-            &local_events,
-            &calendar_dir,
-            false,
-            time_range,
-            &sync_state.synced_uids,
-        )?;
-
-        if !sync_diff.has_push_changes() {
+        if !ctx.sync_diff.has_push_changes() {
             continue;
         }
 
-        println!("\n📤 Pushing: {}", calendar_name);
-
-        // Safety check: refuse to delete everything if local is empty (unless --force)
-        if !sync_diff.to_push_delete.is_empty() && local_events.is_empty() && !force {
-            anyhow::bail!(
-                "Refusing to delete all {} events from remote (local calendar '{}' is empty).\n\
-                 If this is intentional, use: caldir-cli push --force",
-                sync_diff.to_push_delete.len(),
-                calendar_name
-            );
-        }
-
-        // Delete events from remote that were deleted locally
-        for change in &sync_diff.to_push_delete {
-            println!("  Deleting: {}", change.uid);
-            let params = build_params(
-                &calendar_config.params,
-                &[("event_id", serde_json::json!(change.uid))],
-            );
-            provider.delete_event(params).await?;
-            total_deleted += 1;
-        }
-
-        // Push new local events
-        for change in &sync_diff.to_push_create {
-            let local_event = local_events.values().find(|l| {
-                l.path
-                    .file_name()
-                    .map(|f| f.to_string_lossy().to_string())
-                    == Some(change.filename.clone())
-            });
-
-            if let Some(local) = local_event {
-                let event = &local.event;
-                println!("  Creating: {}", event.summary);
-
-                let params = build_params(
-                    &calendar_config.params,
-                    &[("event", serde_json::to_value(event)?)],
-                );
-                let created_event = provider.create_event(params).await?;
-
-                // Write back with provider-assigned ID
-                let new_content = ics::generate_ics(&created_event, &metadata)?;
-                let new_filename = ics::generate_filename(&created_event);
-
-                caldir::delete_event(&local.path)?;
-                caldir::write_event(&calendar_dir, &new_filename, &new_content)?;
-
-                total_created += 1;
-            }
-        }
-
-        // Push updated events
-        for change in &sync_diff.to_push_update {
-            let local_event = local_events.values().find(|l| {
-                l.path
-                    .file_name()
-                    .map(|f| f.to_string_lossy().to_string())
-                    == Some(change.filename.clone())
-            });
-
-            if let Some(local) = local_event {
-                let event = &local.event;
-                println!("  Updating: {}", event.summary);
-                let params = build_params(
-                    &calendar_config.params,
-                    &[("event", serde_json::to_value(event)?)],
-                );
-                provider.update_event(params).await?;
-                total_updated += 1;
-            }
-        }
-
-        // Update sync state
-        let mut new_sync_state = config::SyncState::default();
-        let updated_local_events = caldir::read_all(&calendar_dir)?;
-        for uid in updated_local_events.keys() {
-            new_sync_state.synced_uids.insert(uid.clone());
-        }
-        config::save_sync_state(&calendar_dir, &new_sync_state)?;
+        let stats = push_calendar(&ctx, force).await?;
+        total_stats.add(&stats);
     }
 
-    if total_created > 0 || total_updated > 0 || total_deleted > 0 {
+    if total_stats.has_changes() {
         println!(
             "\nPushed {} created, {} updated, {} deleted",
-            total_created, total_updated, total_deleted
+            total_stats.created, total_stats.updated, total_stats.deleted
         );
     } else {
         println!("\nNo changes to push.");
     }
 
     Ok(())
+}
+
+async fn push_calendar(ctx: &CalendarContext, force: bool) -> Result<caldir::ApplyStats> {
+    println!("\n📤 Pushing: {}", ctx.metadata.calendar_name);
+
+    // Safety check: refuse to delete everything if local is empty (unless --force)
+    if !ctx.sync_diff.to_push_delete.is_empty() && ctx.local_events.is_empty() && !force {
+        anyhow::bail!(
+            "Refusing to delete all {} events from remote (local calendar '{}' is empty).\n\
+             If this is intentional, use: caldir-cli push --force",
+            ctx.sync_diff.to_push_delete.len(),
+            ctx.metadata.calendar_name
+        );
+    }
+
+    let stats = apply_changes(ctx).await?;
+
+    // Update sync state
+    update_sync_state(&ctx.dir)?;
+
+    Ok(stats)
+}
+
+async fn apply_changes(ctx: &CalendarContext) -> Result<caldir::ApplyStats> {
+    let mut stats = caldir::ApplyStats::default();
+
+    // Delete events from remote
+    for change in &ctx.sync_diff.to_push_delete {
+        println!("  Deleting: {}", change.uid);
+        let params = build_params(
+            &ctx.calendar_config.params,
+            &[("event_id", serde_json::json!(change.uid))],
+        );
+        ctx.provider.delete_event(params).await?;
+        stats.deleted += 1;
+    }
+
+    // Create new events on remote
+    for change in &ctx.sync_diff.to_push_create {
+        let Some(local) = find_local_by_filename(&ctx.local_events, &change.filename) else {
+            continue;
+        };
+
+        println!("  Creating: {}", local.event.summary);
+        let params = build_params(
+            &ctx.calendar_config.params,
+            &[("event", serde_json::to_value(&local.event)?)],
+        );
+        let created_event = ctx.provider.create_event(params).await?;
+
+        // Write back with provider-assigned ID
+        let new_content = ics::generate_ics(&created_event, &ctx.metadata)?;
+        let new_filename = ics::generate_filename(&created_event);
+        caldir::delete_event(&local.path)?;
+        caldir::write_event(&ctx.dir, &new_filename, &new_content)?;
+
+        stats.created += 1;
+    }
+
+    // Update existing events on remote
+    for change in &ctx.sync_diff.to_push_update {
+        let Some(local) = find_local_by_filename(&ctx.local_events, &change.filename) else {
+            continue;
+        };
+
+        println!("  Updating: {}", local.event.summary);
+        let params = build_params(
+            &ctx.calendar_config.params,
+            &[("event", serde_json::to_value(&local.event)?)],
+        );
+        ctx.provider.update_event(params).await?;
+        stats.updated += 1;
+    }
+
+    Ok(stats)
+}
+
+fn find_local_by_filename<'a>(
+    local_events: &'a HashMap<String, caldir::LocalEvent>,
+    filename: &str,
+) -> Option<&'a caldir::LocalEvent> {
+    local_events.values().find(|l| {
+        l.path
+            .file_name()
+            .map(|f| f.to_string_lossy() == filename)
+            .unwrap_or(false)
+    })
+}
+
+fn update_sync_state(calendar_dir: &std::path::Path) -> Result<()> {
+    let mut new_sync_state = config::SyncState::default();
+    let local_events = caldir::read_all(calendar_dir)?;
+    for uid in local_events.keys() {
+        new_sync_state.synced_uids.insert(uid.clone());
+    }
+    config::save_sync_state(calendar_dir, &new_sync_state)
 }
