@@ -133,12 +133,21 @@ pub fn load_sync_state(calendar_dir: &Path) -> Result<SyncState> {
     Ok(state)
 }
 
-/// Save sync state to calendar directory
+/// Save sync state to calendar directory (atomic write via temp file + rename)
 pub fn save_sync_state(calendar_dir: &Path, state: &SyncState) -> Result<()> {
     let path = sync_state_path(calendar_dir);
-    let contents = serde_json::to_string_pretty(state)
-        .context("Failed to serialize sync state")?;
-    std::fs::write(&path, contents)
-        .with_context(|| format!("Failed to write sync state at {}", path.display()))?;
+    let temp_path = calendar_dir.join(".caldir-sync.tmp");
+
+    let contents =
+        serde_json::to_string_pretty(state).context("Failed to serialize sync state")?;
+
+    // Write to temp file first
+    std::fs::write(&temp_path, contents)
+        .with_context(|| format!("Failed to write temp sync state at {}", temp_path.display()))?;
+
+    // Atomic rename (on POSIX systems, rename is atomic if same filesystem)
+    std::fs::rename(&temp_path, &path)
+        .with_context(|| format!("Failed to rename sync state to {}", path.display()))?;
+
     Ok(())
 }

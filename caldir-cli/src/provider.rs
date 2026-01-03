@@ -72,7 +72,10 @@ impl Provider {
 
         // Write request to stdin
         {
-            let mut stdin = child.stdin.take().unwrap();
+            let mut stdin = child
+                .stdin
+                .take()
+                .context("Failed to get provider stdin handle")?;
             stdin
                 .write_all(request_json.as_bytes())
                 .await
@@ -86,7 +89,10 @@ impl Provider {
         }
 
         // Read response from stdout
-        let stdout = child.stdout.take().unwrap();
+        let stdout = child
+            .stdout
+            .take()
+            .context("Failed to get provider stdout handle")?;
         let mut reader = BufReader::new(stdout);
         let mut line = String::new();
         reader

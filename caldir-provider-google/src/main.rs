@@ -41,16 +41,20 @@ async fn main() {
             Ok(r) => r,
             Err(e) => {
                 let response = Response::error(&format!("Failed to parse request: {}", e));
-                writeln!(stdout, "{}", response).unwrap();
-                stdout.flush().unwrap();
+                if writeln!(stdout, "{}", response).is_err() || stdout.flush().is_err() {
+                    eprintln!("Failed to write to stdout, exiting");
+                    break;
+                }
                 continue;
             }
         };
 
         let response = handle_request(request).await;
 
-        writeln!(stdout, "{}", response).unwrap();
-        stdout.flush().unwrap();
+        if writeln!(stdout, "{}", response).is_err() || stdout.flush().is_err() {
+            eprintln!("Failed to write to stdout, exiting");
+            break;
+        }
     }
 }
 

@@ -60,14 +60,12 @@ fn apply_changes(ctx: &CalendarContext) -> Result<caldir::ApplyStats> {
 
     // Update modified events
     for change in &ctx.sync_diff.to_pull_update {
-        // Delete old file if filename changed
-        if let Some(local) = ctx.local_events.values().find(|l| {
-            l.path
-                .file_name()
-                .map(|f| f.to_string_lossy().to_string())
-                != Some(change.filename.clone())
-        }) {
-            let _ = caldir::delete_event(&local.path);
+        // Delete old file if filename changed (find by UID, not by scanning all files)
+        if let Some(local) = ctx.local_events.get(&change.uid) {
+            let old_filename = local.path.file_name().map(|f| f.to_string_lossy().to_string());
+            if old_filename != Some(change.filename.clone()) {
+                let _ = caldir::delete_event(&local.path);
+            }
         }
 
         if let Some(event) = find_remote_by_filename(&ctx.remote_events, &change.filename) {
