@@ -38,10 +38,6 @@ enum ProviderResponse<T> {
     Error { error: String },
 }
 
-/// Empty params for commands that don't need parameters
-#[derive(Debug, Serialize)]
-struct EmptyParams {}
-
 // =============================================================================
 // Provider Client
 // =============================================================================
@@ -154,7 +150,7 @@ impl Provider {
     ///
     /// Returns the account identifier (e.g., email for Google).
     pub async fn authenticate(&self) -> Result<String> {
-        self.call("authenticate", EmptyParams {}).await
+        self.call("authenticate", ()).await
     }
 
     /// Fetch events from a calendar.

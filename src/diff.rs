@@ -46,8 +46,8 @@ fn events_differ(local: &Event, remote: &Event) -> bool {
     local.summary != remote.summary
         || local.description != remote.description
         || local.location != remote.location
-        || !event_times_equal(&local.start, &remote.start)
-        || !event_times_equal(&local.end, &remote.end)
+        || local.start != remote.start
+        || local.end != remote.end
         || local.status != remote.status
         || local.recurrence != remote.recurrence
         || local.reminders != remote.reminders
@@ -55,15 +55,6 @@ fn events_differ(local: &Event, remote: &Event) -> bool {
         || local.organizer != remote.organizer
         || local.attendees != remote.attendees
         || local.conference_url != remote.conference_url
-}
-
-/// Compare EventTime values for equality
-fn event_times_equal(a: &EventTime, b: &EventTime) -> bool {
-    match (a, b) {
-        (EventTime::DateTime(dt1), EventTime::DateTime(dt2)) => dt1 == dt2,
-        (EventTime::Date(d1), EventTime::Date(d2)) => d1 == d2,
-        _ => false,
-    }
 }
 
 /// Format an EventTime for display
@@ -103,7 +94,7 @@ fn compute_event_diff(old: &Event, new: &Event) -> Vec<PropertyChange> {
         });
     }
 
-    if !event_times_equal(&old.start, &new.start) {
+    if old.start != new.start {
         changes.push(PropertyChange {
             property: "Start".to_string(),
             old_value: Some(format_event_time(&old.start)),
@@ -111,7 +102,7 @@ fn compute_event_diff(old: &Event, new: &Event) -> Vec<PropertyChange> {
         });
     }
 
-    if !event_times_equal(&old.end, &new.end) {
+    if old.end != new.end {
         changes.push(PropertyChange {
             property: "End".to_string(),
             old_value: Some(format_event_time(&old.end)),
