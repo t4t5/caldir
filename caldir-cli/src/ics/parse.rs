@@ -1,125 +1,108 @@
-//! ICS file parsing.
+//! ICS file parsing using the icalendar crate's parser.
 
 use crate::event::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
 };
-use chrono::{NaiveDate, TimeZone, Utc};
+use chrono::{NaiveDate, NaiveDateTime};
+use icalendar::parser::{read_calendar, unfold, Property};
 
 /// Parse ICS content into an Event struct
 pub fn parse_event(content: &str) -> Option<Event> {
-    let mut in_vevent = false;
-    let mut in_valarm = false;
-    let mut current_line = String::new();
+    let unfolded = unfold(content);
+    let calendar = read_calendar(&unfolded).ok()?;
 
-    // Collected properties
-    let mut uid = None;
-    let mut summary = None;
-    let mut description = None;
-    let mut location = None;
-    let mut dtstart = None;
-    let mut dtend = None;
-    let mut status = EventStatus::Confirmed;
-    let mut transparency = Transparency::Opaque;
-    let mut recurrence: Vec<String> = Vec::new();
-    let mut recurrence_id = None;
-    let mut organizer = None;
-    let mut attendees: Vec<Attendee> = Vec::new();
-    let mut reminders: Vec<Reminder> = Vec::new();
-    let mut conference_url = None;
-    let mut sequence = None;
-    let mut custom_properties: Vec<(String, String)> = Vec::new();
+    // Find the VEVENT component
+    let vevent = calendar.components.iter().find(|c| c.name == "VEVENT")?;
 
-    for line in content.lines() {
-        // Handle line folding (RFC 5545: continuation lines start with single space or tab)
-        // Only remove the first character (the continuation indicator), preserve other whitespace
-        if line.starts_with(' ') || line.starts_with('\t') {
-            current_line.push_str(&line[1..]);
-            continue;
-        }
+    // Extract required fields
+    let uid = vevent.find_prop("UID")?.val.to_string();
+    let summary = vevent
+        .find_prop("SUMMARY")
+        .map(|p| p.val.to_string())
+        .unwrap_or_else(|| "(No title)".to_string());
 
-        // Process completed line
-        if !current_line.is_empty() && in_vevent {
-            if in_valarm {
-                // Extract TRIGGER from alarms
-                if let Some((key, _, value)) = parse_property_line_with_params(&current_line)
-                    && key == "TRIGGER"
-                    && let Some(minutes) = parse_trigger_minutes(&value)
-                {
-                    reminders.push(Reminder { minutes });
-                }
-            } else if let Some((key, params, value)) = parse_property_line_with_params(&current_line)
-            {
-                match key.as_str() {
-                    "UID" => uid = Some(value),
-                    "SUMMARY" => summary = Some(value),
-                    "DESCRIPTION" => description = Some(value),
-                    "LOCATION" => location = Some(value),
-                    "DTSTART" => dtstart = parse_datetime(&value, &params),
-                    "DTEND" => dtend = parse_datetime(&value, &params),
-                    "STATUS" => {
-                        status = match value.as_str() {
-                            "TENTATIVE" => EventStatus::Tentative,
-                            "CANCELLED" => EventStatus::Cancelled,
-                            _ => EventStatus::Confirmed,
-                        };
-                    }
-                    "TRANSP" => {
-                        transparency = if value == "TRANSPARENT" {
-                            Transparency::Transparent
-                        } else {
-                            Transparency::Opaque
-                        };
-                    }
-                    "RRULE" | "EXDATE" => {
-                        // Preserve parameters (e.g., TZID) for EXDATE
-                        if params.is_empty() {
-                            recurrence.push(format!("{}:{}", key, value));
-                        } else {
-                            recurrence.push(format!("{};{}:{}", key, params, value));
-                        }
-                    }
-                    "RECURRENCE-ID" => {
-                        recurrence_id = parse_datetime(&value, &params);
-                    }
-                    "ORGANIZER" => {
-                        organizer = Some(parse_attendee_value(&params, &value));
-                    }
-                    "ATTENDEE" => {
-                        attendees.push(parse_attendee_value(&params, &value));
-                    }
-                    "URL" => {
-                        conference_url = Some(value);
-                    }
-                    "SEQUENCE" => {
-                        sequence = value.parse().ok();
-                    }
-                    _ if key.starts_with("X-") => {
-                        custom_properties.push((key, value));
-                    }
-                    _ => {}
-                }
+    let start = parse_datetime_prop(vevent.find_prop("DTSTART")?)?;
+    let end = parse_datetime_prop(vevent.find_prop("DTEND")?)?;
+
+    // Extract optional fields
+    let description = vevent.find_prop("DESCRIPTION").map(|p| p.val.to_string());
+    let location = vevent.find_prop("LOCATION").map(|p| p.val.to_string());
+
+    let status = vevent
+        .find_prop("STATUS")
+        .map(|p| match p.val.as_ref() {
+            "TENTATIVE" => EventStatus::Tentative,
+            "CANCELLED" => EventStatus::Cancelled,
+            _ => EventStatus::Confirmed,
+        })
+        .unwrap_or(EventStatus::Confirmed);
+
+    let transparency = vevent
+        .find_prop("TRANSP")
+        .map(|p| {
+            if p.val == "TRANSPARENT" {
+                Transparency::Transparent
+            } else {
+                Transparency::Opaque
             }
-        }
+        })
+        .unwrap_or(Transparency::Opaque);
 
-        current_line = line.to_string();
+    let sequence = vevent
+        .find_prop("SEQUENCE")
+        .and_then(|p| p.val.as_ref().parse().ok());
 
-        // Track components
-        if line == "BEGIN:VEVENT" {
-            in_vevent = true;
-        } else if line == "END:VEVENT" {
-            in_vevent = false;
-        } else if line == "BEGIN:VALARM" {
-            in_valarm = true;
-        } else if line == "END:VALARM" {
-            in_valarm = false;
-        }
-    }
+    let conference_url = vevent.find_prop("URL").map(|p| p.val.to_string());
 
-    // Require at minimum UID, summary, start, and end
-    let uid = uid?;
-    let summary = summary.unwrap_or_else(|| "(No title)".to_string());
-    let start = dtstart?;
-    let end = dtend?;
+    // Recurrence rules (RRULE, EXDATE)
+    let recurrence: Vec<String> = vevent
+        .properties
+        .iter()
+        .filter(|p| p.name == "RRULE" || p.name == "EXDATE")
+        .map(|p| format_property_with_params(p))
+        .collect();
+    let recurrence = if recurrence.is_empty() {
+        None
+    } else {
+        Some(recurrence)
+    };
+
+    // RECURRENCE-ID for instance overrides
+    let original_start = vevent
+        .find_prop("RECURRENCE-ID")
+        .and_then(parse_datetime_prop);
+
+    // ORGANIZER
+    let organizer = vevent.find_prop("ORGANIZER").map(parse_attendee_prop);
+
+    // ATTENDEE (can appear multiple times)
+    let attendees: Vec<Attendee> = vevent
+        .properties
+        .iter()
+        .filter(|p| p.name == "ATTENDEE")
+        .map(parse_attendee_prop)
+        .collect();
+
+    // VALARM components for reminders
+    let reminders: Vec<Reminder> = vevent
+        .components
+        .iter()
+        .filter(|c| c.name == "VALARM")
+        .filter_map(|alarm| {
+            alarm
+                .find_prop("TRIGGER")
+                .and_then(|p| parse_trigger_minutes(p.val.as_ref()))
+                .map(|minutes| Reminder { minutes })
+        })
+        .collect();
+
+    // Custom X- properties
+    let custom_properties: Vec<(String, String)> = vevent
+        .properties
+        .iter()
+        .filter(|p| p.name.as_ref().starts_with("X-"))
+        .map(|p| (p.name.to_string(), p.val.to_string()))
+        .collect();
 
     Some(Event {
         id: uid,
@@ -129,123 +112,77 @@ pub fn parse_event(content: &str) -> Option<Event> {
         start,
         end,
         status,
-        recurrence: if recurrence.is_empty() {
-            None
-        } else {
-            Some(recurrence)
-        },
-        original_start: recurrence_id,
+        recurrence,
+        original_start,
         reminders,
         transparency,
         organizer,
         attendees,
         conference_url,
-        updated: None, // Not stored in ICS we generate
+        updated: None,
         sequence,
         custom_properties,
     })
 }
 
-/// Parse a single ICS property line into key, parameters, and value
-fn parse_property_line_with_params(line: &str) -> Option<(String, String, String)> {
-    let colon_pos = line.find(':')?;
-    let key_part = &line[..colon_pos];
-    let value = &line[colon_pos + 1..];
-
-    let mut parts = key_part.splitn(2, ';');
-    let key = parts.next()?.to_string();
-    let params = parts.next().unwrap_or("").to_string();
-
-    // Unescape ICS values (reverse of RFC 5545 escaping)
-    let unescaped_value = unescape_ics_value(value);
-
-    Some((key, params, unescaped_value))
-}
-
-/// Unescape ICS property values per RFC 5545
-/// Reverses: \, → , and \; → ; and \\ → \ and \n → newline
-fn unescape_ics_value(value: &str) -> String {
-    let mut result = String::with_capacity(value.len());
-    let mut chars = value.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.peek() {
-                Some(',') => {
-                    result.push(',');
-                    chars.next();
-                }
-                Some(';') => {
-                    result.push(';');
-                    chars.next();
-                }
-                Some('\\') => {
-                    result.push('\\');
-                    chars.next();
-                }
-                Some('n') | Some('N') => {
-                    result.push('\n');
-                    chars.next();
-                }
-                _ => result.push(c), // Keep backslash if not a recognized escape
-            }
-        } else {
-            result.push(c);
-        }
+/// Format a property with its parameters back to ICS format (e.g., "RRULE:FREQ=WEEKLY")
+fn format_property_with_params(prop: &Property) -> String {
+    if prop.params.is_empty() {
+        format!("{}:{}", prop.name, prop.val)
+    } else {
+        let params: Vec<String> = prop
+            .params
+            .iter()
+            .map(|p| match &p.val {
+                Some(v) => format!("{}={}", p.key, v),
+                None => p.key.to_string(),
+            })
+            .collect();
+        format!("{};{}:{}", prop.name, params.join(";"), prop.val)
     }
-
-    result
 }
 
-/// Parse a datetime or date value from ICS
-fn parse_datetime(value: &str, params: &str) -> Option<EventTime> {
-    // Check if it's a date-only value (VALUE=DATE)
-    let is_date = params.contains("VALUE=DATE");
+/// Parse a DTSTART/DTEND property into EventTime
+fn parse_datetime_prop(prop: &Property) -> Option<EventTime> {
+    let value = prop.val.as_ref();
+    let is_date_only = prop
+        .params
+        .iter()
+        .any(|p| p.key == "VALUE" && p.val.as_ref().map(|v| v.as_ref()) == Some("DATE"));
 
-    if is_date || (value.len() == 8 && value.chars().all(|c| c.is_ascii_digit())) {
+    if is_date_only || value.len() == 8 {
         // Date format: YYYYMMDD
-        let y = value.get(0..4)?.parse().ok()?;
-        let m = value.get(4..6)?.parse().ok()?;
-        let d = value.get(6..8)?.parse().ok()?;
-        let date = NaiveDate::from_ymd_opt(y, m, d)?;
-        return Some(EventTime::Date(date));
+        let date = NaiveDate::parse_from_str(value, "%Y%m%d").ok()?;
+        Some(EventTime::Date(date))
+    } else {
+        // DateTime format: YYYYMMDDTHHMMSS or YYYYMMDDTHHMMSSZ
+        let value = value.trim_end_matches('Z');
+        let naive = NaiveDateTime::parse_from_str(value, "%Y%m%dT%H%M%S").ok()?;
+        Some(EventTime::DateTime(naive.and_utc()))
     }
-
-    // DateTime format: YYYYMMDDTHHMMSSZ or YYYYMMDDTHHMMSS
-    if value.len() >= 15 && value.contains('T') {
-        let y: i32 = value.get(0..4)?.parse().ok()?;
-        let mo: u32 = value.get(4..6)?.parse().ok()?;
-        let d: u32 = value.get(6..8)?.parse().ok()?;
-        let h: u32 = value.get(9..11)?.parse().ok()?;
-        let mi: u32 = value.get(11..13)?.parse().ok()?;
-        let s: u32 = value.get(13..15)?.parse().ok()?;
-
-        let dt = Utc.with_ymd_and_hms(y, mo, d, h, mi, s).single()?;
-        return Some(EventTime::DateTime(dt));
-    }
-
-    None
 }
 
-/// Parse ATTENDEE/ORGANIZER parameters and value into an Attendee struct
-fn parse_attendee_value(params: &str, value: &str) -> Attendee {
-    // Extract email from mailto:email@example.com
-    let email = value
+/// Parse ATTENDEE/ORGANIZER property into Attendee struct
+fn parse_attendee_prop(prop: &Property) -> Attendee {
+    let email = prop
+        .val
+        .as_ref()
         .strip_prefix("mailto:")
-        .unwrap_or(value)
+        .unwrap_or(prop.val.as_ref())
         .to_string();
 
-    // Parse parameters like CN=Name;PARTSTAT=ACCEPTED
-    let mut name = None;
-    let mut response_status = None;
+    let name = prop
+        .params
+        .iter()
+        .find(|p| p.key == "CN")
+        .and_then(|p| p.val.as_ref().map(|v| v.to_string()));
 
-    for param in params.split(';') {
-        if let Some(cn) = param.strip_prefix("CN=") {
-            name = Some(cn.to_string());
-        } else if let Some(partstat) = param.strip_prefix("PARTSTAT=") {
-            response_status = ParticipationStatus::from_ics_str(partstat);
-        }
-    }
+    let response_status = prop
+        .params
+        .iter()
+        .find(|p| p.key == "PARTSTAT")
+        .and_then(|p| p.val.as_ref())
+        .and_then(|v| ParticipationStatus::from_ics_str(v.as_ref()));
 
     Attendee {
         name,
@@ -255,8 +192,8 @@ fn parse_attendee_value(params: &str, value: &str) -> Attendee {
 }
 
 /// Parse TRIGGER value to minutes before event
+/// Format: -PT30M, -PT1H, -P1D, etc.
 fn parse_trigger_minutes(value: &str) -> Option<i64> {
-    // Format: -PT{n}M, -PT{n}H, -P{n}D, -PT{n}S, etc.
     let is_before = value.starts_with('-');
     let duration_part = value
         .trim_start_matches('-')
@@ -299,8 +236,10 @@ mod tests {
             summary: "Test Event".to_string(),
             description: None,
             location: None,
-            start: EventTime::DateTime(Utc.with_ymd_and_hms(2025, 3, 20, 15, 0, 0).unwrap()),
-            end: EventTime::DateTime(Utc.with_ymd_and_hms(2025, 3, 20, 16, 0, 0).unwrap()),
+            start: EventTime::DateTime(
+                chrono::Utc.with_ymd_and_hms(2025, 3, 20, 15, 0, 0).unwrap(),
+            ),
+            end: EventTime::DateTime(chrono::Utc.with_ymd_and_hms(2025, 3, 20, 16, 0, 0).unwrap()),
             status: EventStatus::Confirmed,
             recurrence: None,
             original_start: None,
@@ -337,7 +276,6 @@ mod tests {
 
     #[test]
     fn test_parse_exdate_preserves_tzid_parameter() {
-        // ICS with EXDATE that has TZID parameter
         let ics = r#"BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:TEST
@@ -355,7 +293,9 @@ END:VCALENDAR"#;
 
         let recurrence = event.recurrence.expect("Should have recurrence");
         assert!(
-            recurrence.iter().any(|r| r.contains("TZID=America/New_York")),
+            recurrence
+                .iter()
+                .any(|r| r.contains("TZID=America/New_York")),
             "Should preserve TZID parameter. Got: {:?}",
             recurrence
         );
@@ -363,8 +303,7 @@ END:VCALENDAR"#;
 
     #[test]
     fn test_parse_line_folding_preserves_whitespace() {
-        // ICS with folded description line - the fold happens in the middle of text
-        // After "Hello " the line is folded, and continues with "world"
+        // The icalendar parser handles line folding via unfold()
         let ics = "BEGIN:VCALENDAR\r\n\
 VERSION:2.0\r\n\
 PRODID:TEST\r\n\
