@@ -66,6 +66,60 @@ pub fn delete_event(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Generate a unique filename, adding -2, -3, etc. suffix if there's a collision.
+///
+/// Takes a base filename (from `ics::generate_filename`) and checks for existing
+/// files with the same name but different UIDs. If a collision is found, appends
+/// a numeric suffix like `-2`, `-3`, etc.
+///
+/// The `own_uid` parameter is the UID of the event being written, so we don't
+/// consider our own existing file as a collision.
+pub fn unique_filename(base_filename: &str, dir: &Path, own_uid: &str) -> Result<String> {
+    let base = base_filename.trim_end_matches(".ics");
+
+    // Check if base filename is available
+    let base_path = dir.join(base_filename);
+    if !base_path.exists() {
+        return Ok(base_filename.to_string());
+    }
+
+    // File exists - check if it's the same event (same UID)
+    if let Ok(content) = std::fs::read_to_string(&base_path) {
+        if let Some(event) = crate::ics::parse_event(&content) {
+            if event.id == own_uid {
+                // Same event, can overwrite
+                return Ok(base_filename.to_string());
+            }
+        }
+    }
+
+    // Collision detected - find an available suffix
+    for n in 2..=100 {
+        let suffixed = format!("{}-{}.ics", base, n);
+        let suffixed_path = dir.join(&suffixed);
+
+        if !suffixed_path.exists() {
+            return Ok(suffixed);
+        }
+
+        // Check if this suffixed file is the same event
+        if let Ok(content) = std::fs::read_to_string(&suffixed_path) {
+            if let Some(event) = crate::ics::parse_event(&content) {
+                if event.id == own_uid {
+                    // Same event, can overwrite
+                    return Ok(suffixed);
+                }
+            }
+        }
+    }
+
+    // Fallback: very unlikely to have 100+ events with same name/time
+    anyhow::bail!(
+        "Too many filename collisions for {}",
+        base_filename
+    )
+}
+
 /// Statistics from applying changes to the local directory
 #[derive(Default)]
 pub struct ApplyStats {

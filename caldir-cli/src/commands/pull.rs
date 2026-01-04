@@ -51,26 +51,25 @@ fn apply_changes(ctx: &CalendarContext) -> Result<caldir::ApplyStats> {
 
     // Create new events
     for change in &ctx.sync_diff.to_pull_create {
-        if let Some(event) = find_remote_by_filename(&ctx.remote_events, &change.filename) {
+        if let Some(event) = find_remote_by_uid(&ctx.remote_events, &change.uid) {
             let content = ics::generate_ics(event, &ctx.metadata)?;
-            caldir::write_event(&ctx.dir, &change.filename, &content)?;
+            let filename = caldir::unique_filename(&change.filename, &ctx.dir, &event.id)?;
+            caldir::write_event(&ctx.dir, &filename, &content)?;
             stats.created += 1;
         }
     }
 
     // Update modified events
     for change in &ctx.sync_diff.to_pull_update {
-        // Delete old file if filename changed (find by UID, not by scanning all files)
+        // Delete old file first (we'll write with potentially new filename)
         if let Some(local) = ctx.local_events.get(&change.uid) {
-            let old_filename = local.path.file_name().map(|f| f.to_string_lossy().to_string());
-            if old_filename != Some(change.filename.clone()) {
-                let _ = caldir::delete_event(&local.path);
-            }
+            let _ = caldir::delete_event(&local.path);
         }
 
-        if let Some(event) = find_remote_by_filename(&ctx.remote_events, &change.filename) {
+        if let Some(event) = find_remote_by_uid(&ctx.remote_events, &change.uid) {
             let content = ics::generate_ics(event, &ctx.metadata)?;
-            caldir::write_event(&ctx.dir, &change.filename, &content)?;
+            let filename = caldir::unique_filename(&change.filename, &ctx.dir, &event.id)?;
+            caldir::write_event(&ctx.dir, &filename, &content)?;
             stats.updated += 1;
         }
     }
@@ -85,10 +84,8 @@ fn apply_changes(ctx: &CalendarContext) -> Result<caldir::ApplyStats> {
     Ok(stats)
 }
 
-fn find_remote_by_filename<'a>(remote_events: &'a [Event], filename: &str) -> Option<&'a Event> {
-    remote_events
-        .iter()
-        .find(|e| ics::generate_filename(e) == filename)
+fn find_remote_by_uid<'a>(remote_events: &'a [Event], uid: &str) -> Option<&'a Event> {
+    remote_events.iter().find(|e| e.id == uid)
 }
 
 fn update_sync_state(ctx: &CalendarContext) -> Result<()> {

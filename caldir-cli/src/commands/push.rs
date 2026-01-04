@@ -91,8 +91,9 @@ async fn apply_changes(ctx: &CalendarContext) -> Result<caldir::ApplyStats> {
 
         // Write back with provider-assigned ID
         let new_content = ics::generate_ics(&created_event, &ctx.metadata)?;
-        let new_filename = ics::generate_filename(&created_event);
+        let base_filename = ics::generate_filename(&created_event);
         caldir::delete_event(&local.path)?;
+        let new_filename = caldir::unique_filename(&base_filename, &ctx.dir, &created_event.id)?;
         caldir::write_event(&ctx.dir, &new_filename, &new_content)?;
 
         stats.created += 1;

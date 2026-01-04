@@ -9,7 +9,6 @@ use crate::ics;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 
 /// A single property change (for verbose output)
 #[derive(Debug, Clone)]
@@ -234,7 +233,6 @@ fn event_start_utc(event: &Event) -> Option<DateTime<Utc>> {
 pub fn compute(
     remote_events: &[Event],
     local_events: &HashMap<String, LocalEvent>,
-    dir: &Path,
     verbose: bool,
     time_range: Option<(DateTime<Utc>, DateTime<Utc>)>,
     synced_uids: &HashSet<String>,
@@ -255,14 +253,11 @@ pub fn compute(
         seen_uids.insert(remote_event.id.clone());
 
         let new_filename = ics::generate_filename(remote_event);
-        let new_path = dir.join(&new_filename);
 
         if let Some(local) = local_events.get(&remote_event.id) {
-            // Event exists locally - check if it changed
-            let content_changed = events_differ(&local.event, remote_event);
-            let filename_changed = local.path != new_path;
-
-            if content_changed || filename_changed {
+            // Event exists locally - check if content changed
+            // (filenames are cosmetic and don't affect sync decisions)
+            if events_differ(&local.event, remote_event) {
                 // Determine direction based on timestamps
                 let is_push = match (local.modified, remote_event.updated) {
                     (Some(local_mtime), Some(remote_updated)) => local_mtime > remote_updated,
@@ -270,40 +265,12 @@ pub fn compute(
                     _ => false,
                 };
 
-                // Compute property-level changes if verbose mode is enabled
-                // For pull: local (old) → remote (new)
-                // For push: remote (old) → local (new)
-                let property_changes = if verbose && content_changed {
+                let property_changes = if verbose {
                     if is_push {
                         compute_event_diff(remote_event, &local.event)
                     } else {
                         compute_event_diff(&local.event, remote_event)
                     }
-                } else if verbose && filename_changed {
-                    let (old_name, new_name) = if is_push {
-                        (
-                            new_filename.clone(),
-                            local
-                                .path
-                                .file_name()
-                                .map(|s| s.to_string_lossy().to_string())
-                                .unwrap_or_default(),
-                        )
-                    } else {
-                        (
-                            local
-                                .path
-                                .file_name()
-                                .map(|s| s.to_string_lossy().to_string())
-                                .unwrap_or_default(),
-                            new_filename.clone(),
-                        )
-                    };
-                    vec![PropertyChange {
-                        property: "Filename".to_string(),
-                        old_value: Some(old_name),
-                        new_value: Some(new_name),
-                    }]
                 } else {
                     Vec::new()
                 };

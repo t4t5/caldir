@@ -107,7 +107,8 @@ pub async fn run(
     };
 
     let ics_content = ics::generate_ics(&event, &metadata)?;
-    let filename = ics::generate_filename(&event);
+    let base_filename = ics::generate_filename(&event);
+    let filename = caldir::unique_filename(&base_filename, &calendar_dir, &event.id)?;
 
     // Write to disk
     caldir::write_event(&calendar_dir, &filename, &ics_content)?;

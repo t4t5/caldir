@@ -59,7 +59,6 @@ impl CalendarContext {
         let sync_diff = diff::compute(
             &remote_events,
             &local_events,
-            &dir,
             verbose,
             time_range,
             &sync_state.synced_uids,

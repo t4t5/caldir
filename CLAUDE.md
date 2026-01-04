@@ -38,7 +38,7 @@ caldir takes a different approach to filenames:
 5a3c9b7e-1234-5678-abcd-ef1234567890.ics
 
 # caldir filenames (human/LLM readable)
-2025-03-20T1500__meeting-with-alice_5a3c9b7e.ics
+2025-03-20T1500__meeting-with-alice.ics
 ```
 
 **Why human-readable filenames matter:**
@@ -195,7 +195,7 @@ When `push` creates a new event on Google Calendar:
    - Google-assigned event ID (replaces `local-{uuid}`)
    - Google-added fields (organizer, default reminders, etc.)
 4. Write the Google-returned event back to local file:
-   - New filename with Google ID suffix
+   - Filename based on event date/time and title (with collision suffix if needed)
    - All Google-added fields preserved (ORGANIZER, VALARM, etc.)
 5. Update sync state with the new Google-assigned event ID
 
@@ -203,13 +203,13 @@ This ensures the local file exactly matches the remote state after push, prevent
 
 ## Filename Convention
 
-**Timed events:** `YYYY-MM-DDTHHMM__slug_eventid.ics`
-- Example: `2025-03-20T1500__client-call_abc12345.ics`
+**Timed events:** `YYYY-MM-DDTHHMM__slug.ics`
+- Example: `2025-03-20T1500__client-call.ics`
 
-**All-day events:** `YYYY-MM-DD__slug_eventid.ics`
-- Example: `2025-03-21__offsite_def67890.ics`
+**All-day events:** `YYYY-MM-DD__slug.ics`
+- Example: `2025-03-21__offsite.ics`
 
-The slug is derived from the event title: lowercased, spaces replaced with hyphens, special characters removed. The event ID suffix (8-char hash) ensures uniqueness when multiple events have the same title and time.
+The slug is derived from the event title: lowercased, spaces replaced with hyphens, special characters removed. If multiple events have the same date/time and title, a numeric suffix is added (`-2`, `-3`, etc.) to ensure uniqueness.
 
 ## Configuration
 

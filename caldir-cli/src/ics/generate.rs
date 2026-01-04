@@ -159,13 +159,16 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
     Ok(cal.to_string())
 }
 
-/// Generate the caldir filename for an event
+/// Generate the caldir base filename for an event (without collision suffix).
+///
+/// Returns a filename like `2025-03-20T1500__meeting.ics`.
+/// Use `caldir::unique_filename()` to add collision suffixes when writing.
 pub fn generate_filename(event: &Event) -> String {
     let slug = slugify(&event.summary);
 
     // Recurring master events (have RRULE) get a special prefix instead of date
     if event.recurrence.is_some() {
-        return format!("_recurring__{}_{}.ics", slug, short_id(&event.id));
+        return format!("_recurring__{}.ics", slug);
     }
 
     // Regular events and instance overrides get date-based filenames
@@ -188,7 +191,7 @@ pub fn generate_filename(event: &Event) -> String {
         }
     };
 
-    format!("{}__{}_{}.ics", date_part, slug, short_id(&event.id))
+    format!("{}__{}.ics", date_part, slug)
 }
 
 /// Convert a string to a filename-safe slug
@@ -210,22 +213,6 @@ pub fn slugify(s: &str) -> String {
         .chars()
         .take(50) // Limit slug length
         .collect()
-}
-
-/// Get a short version of the event ID for uniqueness
-fn short_id(id: &str) -> String {
-    // Use a hash to ensure uniqueness regardless of where the differentiating
-    // characters are in the ID (Google recurring instance IDs share prefixes
-    // but differ in suffixes like _R20240920T153000)
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
-    id.hash(&mut hasher);
-    let hash = hasher.finish();
-
-    // Format as 8-char hex string
-    format!("{:08x}", hash as u32)
 }
 
 #[cfg(test)]
@@ -367,16 +354,23 @@ mod tests {
     }
 
     #[test]
-    fn test_short_id() {
-        // short_id returns an 8-char hex hash of the input
-        assert_eq!(short_id("abc12345xyz").len(), 8);
-        assert_eq!(short_id("short").len(), 8);
-        assert_eq!(short_id("").len(), 8);
+    fn test_generate_filename() {
+        let event = make_test_event();
+        // Should be date + slug, no hash
+        assert_eq!(generate_filename(&event), "2025-03-20T1500__test-event.ics");
+    }
 
-        // Same input should produce same hash
-        assert_eq!(short_id("test-id"), short_id("test-id"));
+    #[test]
+    fn test_generate_filename_all_day() {
+        let mut event = make_test_event();
+        event.start = EventTime::Date(NaiveDate::from_ymd_opt(2025, 3, 20).unwrap());
+        assert_eq!(generate_filename(&event), "2025-03-20__test-event.ics");
+    }
 
-        // Different inputs should produce different hashes
-        assert_ne!(short_id("event-1"), short_id("event-2"));
+    #[test]
+    fn test_generate_filename_recurring() {
+        let mut event = make_test_event();
+        event.recurrence = Some(vec!["RRULE:FREQ=WEEKLY".to_string()]);
+        assert_eq!(generate_filename(&event), "_recurring__test-event.ics");
     }
 }
