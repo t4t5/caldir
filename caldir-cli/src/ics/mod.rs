@@ -5,7 +5,7 @@
 mod generate;
 mod parse;
 
-pub use generate::{generate_filename, generate_ics};
+pub use generate::generate_ics;
 pub use parse::parse_event;
 
 /// Metadata about the calendar source (embedded in .ics files)

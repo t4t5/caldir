@@ -1,8 +1,7 @@
 use anyhow::Result;
-use std::collections::HashMap;
 
 use crate::provider::build_params;
-use crate::{caldir, config, ics};
+use crate::{config, store, sync};
 
 use super::{require_calendars, CalendarContext};
 
@@ -10,7 +9,7 @@ pub async fn run(force: bool) -> Result<()> {
     let cfg = config::load_config()?;
     require_calendars(&cfg)?;
 
-    let mut total_stats = caldir::ApplyStats::default();
+    let mut total_stats = sync::ApplyStats::default();
 
     for (calendar_name, calendar_config) in &cfg.calendars {
         // Skip if directory doesn't exist
@@ -41,7 +40,7 @@ pub async fn run(force: bool) -> Result<()> {
     Ok(())
 }
 
-async fn push_calendar(ctx: &CalendarContext, force: bool) -> Result<caldir::ApplyStats> {
+async fn push_calendar(ctx: &CalendarContext, force: bool) -> Result<sync::ApplyStats> {
     println!("\n📤 Pushing: {}", ctx.metadata.calendar_name);
 
     // Safety check: refuse to delete everything if local is empty (unless --force)
@@ -62,8 +61,8 @@ async fn push_calendar(ctx: &CalendarContext, force: bool) -> Result<caldir::App
     Ok(stats)
 }
 
-async fn apply_changes(ctx: &CalendarContext) -> Result<caldir::ApplyStats> {
-    let mut stats = caldir::ApplyStats::default();
+async fn apply_changes(ctx: &CalendarContext) -> Result<sync::ApplyStats> {
+    let mut stats = sync::ApplyStats::default();
 
     // Delete events from remote
     for change in &ctx.sync_diff.to_push_delete {
@@ -78,37 +77,33 @@ async fn apply_changes(ctx: &CalendarContext) -> Result<caldir::ApplyStats> {
 
     // Create new events on remote
     for change in &ctx.sync_diff.to_push_create {
-        let Some(local) = find_local_by_filename(&ctx.local_events, &change.filename) else {
+        let Some(local_event) = ctx.local_events.get(&change.uid) else {
             continue;
         };
 
-        println!("  Creating: {}", local.event.summary);
+        println!("  Creating: {}", local_event.event.summary);
         let params = build_params(
             &ctx.calendar_config.params,
-            &[("event", serde_json::to_value(&local.event)?)],
+            &[("event", serde_json::to_value(&local_event.event)?)],
         );
         let created_event = ctx.provider.create_event(params).await?;
 
         // Write back with provider-assigned ID
-        let new_content = ics::generate_ics(&created_event, &ctx.metadata)?;
-        let base_filename = ics::generate_filename(&created_event);
-        caldir::delete_event(&local.path)?;
-        let new_filename = caldir::unique_filename(&base_filename, &ctx.dir, &created_event.id)?;
-        caldir::write_event(&ctx.dir, &new_filename, &new_content)?;
+        store::update(&ctx.dir, local_event, &created_event, &ctx.metadata)?;
 
         stats.created += 1;
     }
 
     // Update existing events on remote
     for change in &ctx.sync_diff.to_push_update {
-        let Some(local) = find_local_by_filename(&ctx.local_events, &change.filename) else {
+        let Some(local_event) = ctx.local_events.get(&change.uid) else {
             continue;
         };
 
-        println!("  Updating: {}", local.event.summary);
+        println!("  Updating: {}", local_event.event.summary);
         let params = build_params(
             &ctx.calendar_config.params,
-            &[("event", serde_json::to_value(&local.event)?)],
+            &[("event", serde_json::to_value(&local_event.event)?)],
         );
         ctx.provider.update_event(params).await?;
         stats.updated += 1;
@@ -117,23 +112,11 @@ async fn apply_changes(ctx: &CalendarContext) -> Result<caldir::ApplyStats> {
     Ok(stats)
 }
 
-fn find_local_by_filename<'a>(
-    local_events: &'a HashMap<String, caldir::LocalEvent>,
-    filename: &str,
-) -> Option<&'a caldir::LocalEvent> {
-    local_events.values().find(|l| {
-        l.path
-            .file_name()
-            .map(|f| f.to_string_lossy() == filename)
-            .unwrap_or(false)
-    })
-}
-
 fn update_sync_state(calendar_dir: &std::path::Path) -> Result<()> {
-    let mut new_sync_state = config::SyncState::default();
-    let local_events = caldir::read_all(calendar_dir)?;
+    let mut new_sync_state = sync::SyncState::default();
+    let local_events = store::list(calendar_dir)?;
     for uid in local_events.keys() {
         new_sync_state.synced_uids.insert(uid.clone());
     }
-    config::save_sync_state(calendar_dir, &new_sync_state)
+    sync::save_state(calendar_dir, &new_sync_state)
 }

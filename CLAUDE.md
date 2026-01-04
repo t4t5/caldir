@@ -142,10 +142,16 @@ caldir-cli/                    # Core CLI
       push.rs    - Push local → remote
       status.rs  - Show pending changes
       new.rs     - Create local events
-    config.rs    - Configuration and sync state (no token storage - providers handle that)
-    diff.rs      - Pure diff computation between local and remote (compares Event structs)
-    caldir.rs    - Local directory operations (read/write .ics files, ApplyStats)
-    ics.rs       - ICS format: generation, parsing, formatting
+    config.rs    - User configuration (~/.config/caldir/config.toml)
+    diff.rs      - Pure diff computation between local and remote
+    store/       - Local event file storage
+      mod.rs     - LocalEvent type, re-exports
+      list.rs    - List all events in a directory
+      create.rs  - Create event files (includes filename generation)
+      update.rs  - Update event files (delete + create)
+      delete.rs  - Delete event files
+    sync.rs      - Sync state tracking (SyncState, ApplyStats)
+    ics.rs       - ICS format: generation, parsing (RFC 5545)
     provider.rs  - Provider subprocess protocol (JSON over stdin/stdout)
 
 caldir-provider-google/        # Google Calendar provider (separate crate)
@@ -166,9 +172,17 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
 
 **diff.rs** — Bidirectional diff computation. Compares remote events against local files and returns `SyncDiff` with separate lists for pull changes (`to_pull_create/update/delete`) and push changes (`to_push_create/update/delete`). Uses timestamp comparison to determine sync direction. Accepts sync state (set of previously synced UIDs) to detect local deletions. Accepts an optional time range to avoid flagging old events for deletion when they fall outside the queried window.
 
-**caldir.rs** — The local calendar directory as a first-class abstraction. Reads all `.ics` files into a UID → LocalEvent map (including file modification times for sync direction detection), writes events, deletes events. The filesystem is the source of truth.
+**store/** — Local event file storage. Manages `.ics` files on disk, organized by action:
+- `list(dir)` — Returns all events in a directory as a UID → LocalEvent map
+- `create(dir, event, content)` — Creates a new event file with auto-generated filename, returns LocalEvent
+- `update(dir, old, new_event, content)` — Updates an event (deletes old file, creates new), returns LocalEvent
+- `delete(local_event)` — Deletes an event file
 
-**ics.rs** — Everything ICS format. Generates compliant `.ics` files from `Event` structs, parses properties from existing files, formats values for human-readable output (e.g., alarm triggers like "1 day before"). Provider-neutral — no provider-specific code.
+**sync.rs** — Sync state tracking:
+- `SyncState` — Tracks which UIDs have been synced (persisted in `.caldir-sync` file) for detecting local deletions
+- `ApplyStats` — Tracks sync operation results (created, updated, deleted counts)
+
+**ics.rs** — Pure ICS format (RFC 5545). Generates compliant `.ics` files from `Event` structs, parses properties from existing files. Provider-neutral — no provider-specific code, no filename logic.
 
 ## Event Properties
 

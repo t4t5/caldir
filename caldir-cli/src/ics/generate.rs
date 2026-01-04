@@ -159,62 +159,6 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
     Ok(cal.to_string())
 }
 
-/// Generate the caldir base filename for an event (without collision suffix).
-///
-/// Returns a filename like `2025-03-20T1500__meeting.ics`.
-/// Use `caldir::unique_filename()` to add collision suffixes when writing.
-pub fn generate_filename(event: &Event) -> String {
-    let slug = slugify(&event.summary);
-
-    // Recurring master events (have RRULE) get a special prefix instead of date
-    if event.recurrence.is_some() {
-        return format!("_recurring__{}.ics", slug);
-    }
-
-    // Regular events and instance overrides get date-based filenames
-    let date_part = match &event.start {
-        EventTime::Date(d) => {
-            // Format: 2025-03-20
-            d.format("%Y-%m-%d").to_string()
-        }
-        EventTime::DateTimeUtc(dt) => {
-            // Format: 2025-03-20T1500
-            dt.format("%Y-%m-%dT%H%M").to_string()
-        }
-        EventTime::DateTimeFloating(dt) => {
-            // Format: 2025-03-20T1500
-            dt.format("%Y-%m-%dT%H%M").to_string()
-        }
-        EventTime::DateTimeZoned { datetime, .. } => {
-            // Format: 2025-03-20T1500 (use local time for filename)
-            datetime.format("%Y-%m-%dT%H%M").to_string()
-        }
-    };
-
-    format!("{}__{}.ics", date_part, slug)
-}
-
-/// Convert a string to a filename-safe slug
-pub fn slugify(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() {
-                c
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
-        .chars()
-        .take(50) // Limit slug length
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -337,40 +281,5 @@ mod tests {
             "Should have mailto value. Got: {}",
             organizer_line
         );
-    }
-
-    #[test]
-    fn test_slugify() {
-        assert_eq!(slugify("Team Standup"), "team-standup");
-        assert_eq!(slugify("Meeting: Q4 Review!"), "meeting-q4-review");
-        assert_eq!(slugify("  Lots   of   spaces  "), "lots-of-spaces");
-        assert_eq!(slugify("Special@#$%Characters"), "special-characters");
-    }
-
-    #[test]
-    fn test_slugify_truncates_long_titles() {
-        let long_title = "a".repeat(100);
-        assert_eq!(slugify(&long_title).len(), 50);
-    }
-
-    #[test]
-    fn test_generate_filename() {
-        let event = make_test_event();
-        // Should be date + slug, no hash
-        assert_eq!(generate_filename(&event), "2025-03-20T1500__test-event.ics");
-    }
-
-    #[test]
-    fn test_generate_filename_all_day() {
-        let mut event = make_test_event();
-        event.start = EventTime::Date(NaiveDate::from_ymd_opt(2025, 3, 20).unwrap());
-        assert_eq!(generate_filename(&event), "2025-03-20__test-event.ics");
-    }
-
-    #[test]
-    fn test_generate_filename_recurring() {
-        let mut event = make_test_event();
-        event.recurrence = Some(vec!["RRULE:FREQ=WEEKLY".to_string()]);
-        assert_eq!(generate_filename(&event), "_recurring__test-event.ics");
     }
 }

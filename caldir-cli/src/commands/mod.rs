@@ -12,7 +12,7 @@ use chrono::{Duration, Utc};
 
 use crate::event::Event;
 use crate::provider::{build_params, Provider};
-use crate::{caldir, config, diff, ics};
+use crate::{config, diff, ics, store, sync};
 
 /// Number of days to sync in each direction (past and future)
 pub const SYNC_DAYS: i64 = 365;
@@ -20,7 +20,7 @@ pub const SYNC_DAYS: i64 = 365;
 /// Common context for calendar operations, loaded once per calendar.
 pub struct CalendarContext {
     pub dir: PathBuf,
-    pub local_events: HashMap<String, caldir::LocalEvent>,
+    pub local_events: HashMap<String, store::LocalEvent>,
     pub remote_events: Vec<Event>,
     pub sync_diff: diff::SyncDiff,
     pub metadata: ics::CalendarMetadata,
@@ -40,13 +40,13 @@ impl CalendarContext {
 
         // Read local events (empty if directory doesn't exist)
         let local_events = if dir.exists() {
-            caldir::read_all(&dir)?
+            store::list(&dir)?
         } else {
             HashMap::new()
         };
 
         // Load sync state
-        let sync_state = config::load_sync_state(&dir)?;
+        let sync_state = sync::load_state(&dir)?;
 
         // Fetch remote events
         let provider = Provider::new(&calendar_config.provider)?;

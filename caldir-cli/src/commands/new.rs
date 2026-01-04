@@ -2,7 +2,7 @@ use anyhow::Result;
 use chrono::NaiveDate;
 
 use crate::event::{Event, EventStatus, EventTime, Transparency};
-use crate::{caldir, config, ics};
+use crate::{config, ics, store};
 
 pub async fn run(
     title: String,
@@ -100,18 +100,15 @@ pub async fn run(
         custom_properties: Vec::new(),
     };
 
-    // Generate ICS content and filename
+    // Create metadata for ICS generation
     let metadata = ics::CalendarMetadata {
         calendar_id: "local".to_string(),
         calendar_name: calendar_name.clone(),
     };
 
-    let ics_content = ics::generate_ics(&event, &metadata)?;
-    let base_filename = ics::generate_filename(&event);
-    let filename = caldir::unique_filename(&base_filename, &calendar_dir, &event.id)?;
-
-    // Write to disk
-    caldir::write_event(&calendar_dir, &filename, &ics_content)?;
+    // Write to disk (ICS content and filename generated automatically)
+    let local_event = store::create(&calendar_dir, &event, &metadata)?;
+    let filename = local_event.path.file_name().unwrap().to_string_lossy();
 
     println!("Created in {}: {}", calendar_name, filename);
 

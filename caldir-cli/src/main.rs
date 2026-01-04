@@ -1,9 +1,10 @@
-mod caldir;
 mod commands;
 mod config;
 mod diff;
 mod ics;
 mod provider;
+mod store;
+mod sync;
 
 // Re-export caldir_core types as crate::event for internal use
 pub use caldir_core as event;
@@ -13,7 +14,9 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
-#[command(about = "Interact with your local caldir directory and sync with external calendar providers")]
+#[command(
+    about = "Interact with your local caldir directory and sync with external calendar providers"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -88,8 +91,6 @@ async fn main() -> Result<()> {
             description,
             location,
             calendar,
-        } => {
-            commands::new::run(title, start, end, duration, description, location, calendar).await
-        }
+        } => commands::new::run(title, start, end, duration, description, location, calendar).await,
     }
 }

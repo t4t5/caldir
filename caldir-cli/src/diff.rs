@@ -3,9 +3,8 @@
 //! This module computes what's different between two sets of events
 //! without applying any changes. Used by status, pull, and push commands.
 
-use crate::caldir::LocalEvent;
 use crate::event::{Event, EventTime};
-use crate::ics;
+use crate::store::{self, LocalEvent};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::collections::{HashMap, HashSet};
@@ -252,7 +251,7 @@ pub fn compute(
     for remote_event in remote_events {
         seen_uids.insert(remote_event.id.clone());
 
-        let new_filename = ics::generate_filename(remote_event);
+        let new_filename = store::expected_filename(remote_event);
 
         if let Some(local) = local_events.get(&remote_event.id) {
             // Event exists locally - check if content changed

@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 // =============================================================================
 // Configuration Structures
@@ -102,52 +102,4 @@ pub fn expand_path(path: &str) -> PathBuf {
 /// Get the full path for a calendar directory
 pub fn calendar_path(config: &Config, calendar_name: &str) -> PathBuf {
     expand_path(&config.calendar_dir).join(calendar_name)
-}
-
-// =============================================================================
-// Sync State (for tracking which events have been synced)
-// =============================================================================
-
-/// Tracks which event UIDs have been synced for a calendar.
-/// Used to detect local deletions (UID in state but no local file).
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct SyncState {
-    pub synced_uids: HashSet<String>,
-}
-
-/// Get sync state file path for a calendar directory
-pub fn sync_state_path(calendar_dir: &Path) -> PathBuf {
-    calendar_dir.join(".caldir-sync")
-}
-
-/// Load sync state from calendar directory
-pub fn load_sync_state(calendar_dir: &Path) -> Result<SyncState> {
-    let path = sync_state_path(calendar_dir);
-    if !path.exists() {
-        return Ok(SyncState::default());
-    }
-    let contents = std::fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read sync state at {}", path.display()))?;
-    let state: SyncState = serde_json::from_str(&contents)
-        .with_context(|| format!("Failed to parse sync state at {}", path.display()))?;
-    Ok(state)
-}
-
-/// Save sync state to calendar directory (atomic write via temp file + rename)
-pub fn save_sync_state(calendar_dir: &Path, state: &SyncState) -> Result<()> {
-    let path = sync_state_path(calendar_dir);
-    let temp_path = calendar_dir.join(".caldir-sync.tmp");
-
-    let contents =
-        serde_json::to_string_pretty(state).context("Failed to serialize sync state")?;
-
-    // Write to temp file first
-    std::fs::write(&temp_path, contents)
-        .with_context(|| format!("Failed to write temp sync state at {}", temp_path.display()))?;
-
-    // Atomic rename (on POSIX systems, rename is atomic if same filesystem)
-    std::fs::rename(&temp_path, &path)
-        .with_context(|| format!("Failed to rename sync state to {}", path.display()))?;
-
-    Ok(())
 }
