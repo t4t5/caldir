@@ -49,16 +49,6 @@ caldir takes a different approach to filenames:
 4. **Sorting works** — Files sort chronologically by default
 5. **Tab completion** — Start typing the date to find events
 
-**Why not pimsync/vdirsyncer for Google Calendar?**
-
-| Tool | Google Calendar | Status |
-|------|-----------------|--------|
-| caldir-cli | Native REST API | Works now |
-| vdirsyncer | CalDAV | Works but unmaintained |
-| pimsync | CalDAV | Google OAuth not yet implemented |
-
-Google's CalDAV API is a second-class citizen — slower, quirkier, requires separate API enablement. caldir-cli uses Google's native REST API, which is what Google actually supports and maintains.
-
 ## Design Decisions
 
 ### User-Provided OAuth Credentials
@@ -270,7 +260,7 @@ Then run `caldir-cli auth google` to authenticate. This supports multiple accoun
 
 ```bash
 # Authenticate with Google Calendar (auto-adds calendars to config)
-caldir-cli auth
+caldir-cli auth google
 
 # Create a new local event (uses default_calendar from config)
 caldir-cli new "Meeting with Alice" --start 2025-03-20T15:00
