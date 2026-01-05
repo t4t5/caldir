@@ -9,6 +9,7 @@ mod sync;
 
 mod caldir;
 mod calendar;
+mod local_event;
 
 // Re-export caldir_core types as crate::event for internal use
 pub use caldir_core as event;
