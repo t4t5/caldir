@@ -8,6 +8,9 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// A calendar event (provider-neutral)
+///
+/// `PartialEq` compares content fields only, ignoring sync metadata
+/// (`updated`, `sequence`, `custom_properties`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     pub id: String,
@@ -34,16 +37,35 @@ pub struct Event {
     pub attendees: Vec<Attendee>,
     pub conference_url: Option<String>,
 
-    // Sync Infrastructure
+    // Sync Infrastructure (excluded from PartialEq)
     /// Last modification timestamp (LAST-MODIFIED)
     pub updated: Option<DateTime<Utc>>,
     /// Revision sequence number (SEQUENCE)
     pub sequence: Option<i64>,
 
-    // Provider-specific
+    // Provider-specific (excluded from PartialEq)
     /// Custom properties from the provider (e.g., X-GOOGLE-CONFERENCE)
     /// These are preserved for round-tripping back to the provider
     pub custom_properties: Vec<(String, String)>,
+}
+
+impl PartialEq for Event {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.summary == other.summary
+            && self.description == other.description
+            && self.location == other.location
+            && self.start == other.start
+            && self.end == other.end
+            && self.status == other.status
+            && self.recurrence == other.recurrence
+            && self.original_start == other.original_start
+            && self.reminders == other.reminders
+            && self.transparency == other.transparency
+            && self.organizer == other.organizer
+            && self.attendees == other.attendees
+            && self.conference_url == other.conference_url
+    }
 }
 
 /// An event attendee (also used for organizer)

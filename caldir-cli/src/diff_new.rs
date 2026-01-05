@@ -1,90 +1,102 @@
-use crate::local_event::LocalEvent;
 use caldir_core::Event;
 use std::fmt;
 
-/// Where the change originated
 #[derive(Debug, Clone, PartialEq)]
-pub enum Source {
-    Local,  // Change originated locally → needs push
-    Remote, // Change originated remotely → needs pull
-}
-
-/// What kind of change
-#[derive(Debug, Clone, PartialEq)]
-pub enum ChangeKind {
+pub enum DiffKind {
     Create,
     Update,
     Delete,
 }
 
-impl fmt::Display for ChangeKind {
+impl fmt::Display for DiffKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChangeKind::Create => write!(f, "new"),
-            ChangeKind::Update => write!(f, "modified"),
-            ChangeKind::Delete => write!(f, "deleted"),
+            DiffKind::Create => write!(f, "created"),
+            DiffKind::Update => write!(f, "modified"),
+            DiffKind::Delete => write!(f, "deleted"),
         }
     }
 }
 
-/// A single change between local and remote state
-#[derive(Debug)]
-pub struct Change {
-    pub source: Source,
-    pub kind: ChangeKind,
-    pub local: Option<LocalEvent>,
-    pub remote: Option<Event>,
+#[derive(Debug, Clone)]
+pub struct EventDiff {
+    pub kind: DiffKind,
+    pub old: Option<Event>,
+    pub new: Option<Event>,
 }
 
-impl Change {
+impl EventDiff {
+    pub fn get_diff(old_event: Option<Event>, new_event: Option<Event>) -> Option<EventDiff> {
+        match (&old_event, &new_event) {
+            (None, Some(_)) => Some(EventDiff {
+                kind: DiffKind::Create,
+                old: None,
+                new: new_event,
+            }),
+            (Some(_), None) => Some(EventDiff {
+                kind: DiffKind::Delete,
+                old: old_event,
+                new: None,
+            }),
+            (Some(old), Some(new)) => {
+                if old == new {
+                    None
+                } else {
+                    Some(EventDiff {
+                        kind: DiffKind::Update,
+                        old: old_event,
+                        new: new_event,
+                    })
+                }
+            }
+            (None, None) => None,
+        }
+    }
+
+    /// Get the event summary (from new if available, otherwise old)
     pub fn summary(&self) -> &str {
-        self.local
+        self.new
             .as_ref()
-            .map(|l| l.event.summary.as_str())
-            .or_else(|| self.remote.as_ref().map(|r| r.summary.as_str()))
-            .unwrap_or("?")
+            .or(self.old.as_ref())
+            .map(|e| e.summary.as_str())
+            .unwrap_or("(unknown)")
     }
 }
 
-/// The diff between local and remote calendars
-pub struct Diff(pub Vec<Change>);
-
-impl Diff {
-    /// Changes that need to be pushed (local → remote)
-    pub fn to_push(&self) -> impl Iterator<Item = &Change> {
-        self.0.iter().filter(|c| c.source == Source::Local)
+impl fmt::Display for EventDiff {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.kind, self.summary())
     }
+}
 
-    /// Changes that need to be pulled (remote → local)
-    pub fn to_pull(&self) -> impl Iterator<Item = &Change> {
-        self.0.iter().filter(|c| c.source == Source::Remote)
-    }
+pub struct CalendarDiff {
+    pub to_push: Vec<EventDiff>,
+    pub to_pull: Vec<EventDiff>,
+}
 
+impl CalendarDiff {
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.to_push.is_empty() && self.to_pull.is_empty()
     }
 }
 
-impl fmt::Display for Diff {
+impl fmt::Display for CalendarDiff {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_empty() {
-            return writeln!(f, "Up to date");
+            return writeln!(f, "No changes");
         }
 
-        let to_pull: Vec<_> = self.to_pull().collect();
-        let to_push: Vec<_> = self.to_push().collect();
-
-        if !to_pull.is_empty() {
-            writeln!(f, "To pull ({}):", to_pull.len())?;
-            for change in to_pull {
-                writeln!(f, "  {} {}", change.kind, change.summary())?;
+        if !self.to_push.is_empty() {
+            writeln!(f, "To push:")?;
+            for diff in &self.to_push {
+                writeln!(f, "  {}", diff)?;
             }
         }
 
-        if !to_push.is_empty() {
-            writeln!(f, "To push ({}):", to_push.len())?;
-            for change in to_push {
-                writeln!(f, "  {} {}", change.kind, change.summary())?;
+        if !self.to_pull.is_empty() {
+            writeln!(f, "To pull:")?;
+            for diff in &self.to_pull {
+                writeln!(f, "  {}", diff)?;
             }
         }
 

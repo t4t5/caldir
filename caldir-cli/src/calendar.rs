@@ -1,10 +1,11 @@
 use crate::caldir::Caldir;
 use crate::config::CalendarConfig;
-use crate::diff_new::{Change, ChangeKind, Diff, Source};
+use crate::diff_new::{CalendarDiff, EventDiff};
 use crate::local_event::LocalEvent;
 use crate::remote::Remote;
+use crate::sync;
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub struct Calendar {
     pub name: String,
@@ -43,39 +44,76 @@ impl Calendar {
         Ok(local_events)
     }
 
-    pub async fn get_diff(&self) -> Result<Diff> {
+    /// UIDs we've seen before (for detecting deletions)
+    pub fn seen_event_uids(&self) -> Result<HashSet<String>> {
+        let state = sync::load_state(&self.data_path())?;
+        Ok(state.synced_uids)
+    }
+
+    pub async fn get_diff(&self) -> Result<CalendarDiff> {
         let remote_events = self.remote().events().await?;
         let local_events = self.events()?;
+        let seen_uids = self.seen_event_uids()?;
 
-        // Index local events by UID for fast lookup
-        let local_by_uid: HashMap<String, LocalEvent> = local_events
+        let local_by_uid: HashMap<_, _> = local_events
             .into_iter()
             .map(|e| (e.event.id.clone(), e))
             .collect();
 
-        let mut changes = Vec::new();
+        let remote_by_uid: HashMap<_, _> = remote_events
+            .into_iter()
+            .map(|e| (e.id.clone(), e))
+            .collect();
 
-        for remote_event in remote_events {
-            match local_by_uid.get(&remote_event.id) {
-                Some(local_event) => {
-                    if let Some(change) = local_event.diff_with(&remote_event) {
-                        changes.push(change);
+        let mut to_push = Vec::new();
+        let mut to_pull = Vec::new();
+
+        // Local-only events
+        for (uid, local) in &local_by_uid {
+            if !remote_by_uid.contains_key(uid) {
+                if seen_uids.contains(uid) {
+                    // Was synced before, now gone from remote → delete locally
+                    if let Some(diff) = EventDiff::get_diff(Some(local.event.clone()), None) {
+                        to_pull.push(diff);
                     }
-                }
-                None => {
-                    changes.push(Change {
-                        source: Source::Remote,
-                        kind: ChangeKind::Create,
-                        local: None,
-                        remote: Some(remote_event),
-                    });
+                } else {
+                    // Never synced → create on remote
+                    if let Some(diff) = EventDiff::get_diff(None, Some(local.event.clone())) {
+                        to_push.push(diff);
+                    }
                 }
             }
         }
 
-        // TODO: Check for local-only events (push creates)
-        // TODO: Handle deletes (requires sync state)
+        // Remote-only events
+        for (uid, remote) in &remote_by_uid {
+            if !local_by_uid.contains_key(uid) {
+                if seen_uids.contains(uid) {
+                    // Was synced before, now gone locally → delete on remote
+                    if let Some(diff) = EventDiff::get_diff(Some(remote.clone()), None) {
+                        to_push.push(diff);
+                    }
+                } else {
+                    // Never synced → create locally
+                    if let Some(diff) = EventDiff::get_diff(None, Some(remote.clone())) {
+                        to_pull.push(diff);
+                    }
+                }
+            }
+        }
 
-        Ok(Diff(changes))
+        // Events in both → check if content differs
+        for (uid, local) in &local_by_uid {
+            if let Some(remote) = remote_by_uid.get(uid) {
+                if let Some(diff) =
+                    EventDiff::get_diff(Some(local.event.clone()), Some(remote.clone()))
+                {
+                    // Content differs - pull remote version (remote is source of truth)
+                    to_pull.push(diff);
+                }
+            }
+        }
+
+        Ok(CalendarDiff { to_push, to_pull })
     }
 }
