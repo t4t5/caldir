@@ -3,6 +3,7 @@ mod config;
 mod diff;
 mod ics;
 mod provider;
+mod remote;
 mod store;
 mod sync;
 
