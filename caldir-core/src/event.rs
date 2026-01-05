@@ -25,17 +25,13 @@ pub struct Event {
     pub original_start: Option<EventTime>,
 
     // Alarms & Availability
-    /// Reminders/alarms for this event
     pub reminders: Vec<Reminder>,
     /// Whether event blocks time (OPAQUE) or is free (TRANSPARENT)
     pub transparency: Transparency,
 
     // Meeting Data
-    /// Event organizer
     pub organizer: Option<Attendee>,
-    /// Event attendees/participants
     pub attendees: Vec<Attendee>,
-    /// Conference/video call URL
     pub conference_url: Option<String>,
 
     // Sync Infrastructure
@@ -53,9 +49,7 @@ pub struct Event {
 /// An event attendee (also used for organizer)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Attendee {
-    /// Display name
     pub name: Option<String>,
-    /// Email address
     pub email: String,
     /// Participation status (RFC 5545 PARTSTAT)
     pub response_status: Option<ParticipationStatus>,
@@ -65,13 +59,9 @@ pub struct Attendee {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING-KEBAB-CASE")]
 pub enum ParticipationStatus {
-    /// Attendee has accepted
     Accepted,
-    /// Attendee has declined
     Declined,
-    /// Attendee has tentatively accepted
     Tentative,
-    /// Attendee needs to respond
     NeedsAction,
 }
 
@@ -98,7 +88,6 @@ impl ParticipationStatus {
     }
 }
 
-/// A reminder/alarm for an event
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Reminder {
     /// Minutes before the event to trigger

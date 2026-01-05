@@ -1,8 +1,17 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
 
 use crate::{config, diff};
 
-use super::{require_calendars, CalendarContext};
+use super::{CalendarContext, require_calendars};
+
+struct Provider(String);
+
+struct Calendar {
+    path: PathBuf,
+    provider: Provider,
+}
 
 pub async fn run(verbose: bool) -> Result<()> {
     let cfg = config::load_config()?;
@@ -70,7 +79,10 @@ fn print_property_changes(change: &diff::SyncChange, verbose: bool) {
     for prop_change in &change.property_changes {
         match (&prop_change.old_value, &prop_change.new_value) {
             (Some(old), Some(new)) => {
-                println!("        {}: \"{}\" → \"{}\"", prop_change.property, old, new);
+                println!(
+                    "        {}: \"{}\" → \"{}\"",
+                    prop_change.property, old, new
+                );
             }
             (Some(old), None) => {
                 println!("        {}: \"{}\" → (removed)", prop_change.property, old);
