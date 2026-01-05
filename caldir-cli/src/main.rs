@@ -6,6 +6,9 @@ mod provider;
 mod store;
 mod sync;
 
+mod caldir;
+mod calendar;
+
 // Re-export caldir_core types as crate::event for internal use
 pub use caldir_core as event;
 
