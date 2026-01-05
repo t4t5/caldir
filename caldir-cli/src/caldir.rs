@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::calendar::{Calendar, Provider};
+use crate::calendar::Calendar;
 use crate::config::CaldirConfig;
 use anyhow::Result;
 use config::{Config, File};
@@ -33,9 +33,7 @@ impl Caldir {
         self.config
             .calendars
             .iter()
-            .map(|(name, entry)| {
-                Calendar::from(name, self.clone(), Provider::from_name(&entry.provider))
-            })
+            .map(|(name, config)| Calendar::from(name, self, config))
             .collect()
     }
 

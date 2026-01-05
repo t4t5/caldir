@@ -5,8 +5,10 @@ use crate::caldir::Caldir;
 pub async fn run() -> Result<()> {
     let caldir = Caldir::load()?;
 
-    println!("Path: {:?}", caldir.data_path());
-    println!("Calendars: {:?}", caldir.calendars().len());
+    for cal in caldir.calendars() {
+        let events = cal.remote().list_events().await?;
+        println!("Calendar: {} ({} remote events)", cal.name, events.len());
+    }
 
     Ok(())
 }
