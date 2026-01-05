@@ -41,7 +41,7 @@ impl Remote {
         }
     }
 
-    pub async fn list_events(&self) -> Result<Vec<Event>> {
+    pub async fn events(&self) -> Result<Vec<Event>> {
         self.provider
             .call(ProviderCommand::ListEvents, self.config.to_json())
             .await
