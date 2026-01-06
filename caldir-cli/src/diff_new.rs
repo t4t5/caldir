@@ -1,5 +1,6 @@
 use anyhow::Result;
 use caldir_core::Event;
+use owo_colors::OwoColorize;
 use std::collections::HashMap;
 use std::fmt;
 
@@ -15,10 +16,26 @@ pub enum DiffKind {
 impl fmt::Display for DiffKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DiffKind::Create => write!(f, "created"),
-            DiffKind::Update => write!(f, "modified"),
-            DiffKind::Delete => write!(f, "deleted"),
+            DiffKind::Create => write!(f, "+"),
+            DiffKind::Update => write!(f, "~"),
+            DiffKind::Delete => write!(f, "-"),
         }
+    }
+}
+
+impl DiffKind {
+    /// Colorize text according to this diff kind
+    pub fn colorize(&self, text: &str) -> String {
+        match self {
+            DiffKind::Create => text.green().to_string(),
+            DiffKind::Update => text.to_string(),
+            DiffKind::Delete => text.red().to_string(),
+        }
+    }
+
+    /// Render the symbol with appropriate color
+    pub fn render(&self) -> String {
+        self.colorize(&self.to_string())
     }
 }
 
@@ -27,6 +44,12 @@ pub struct EventDiff {
     pub kind: DiffKind,
     pub old: Option<Event>,
     pub new: Option<Event>,
+}
+
+impl fmt::Display for EventDiff {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.kind, self.event())
+    }
 }
 
 impl EventDiff {
@@ -57,19 +80,20 @@ impl EventDiff {
         }
     }
 
-    /// Get the event summary (from new if available, otherwise old)
-    pub fn summary(&self) -> &str {
+    /// Get the event (prefer new, fallback to old)
+    fn event(&self) -> &Event {
         self.new
             .as_ref()
             .or(self.old.as_ref())
-            .map(|e| e.summary.as_str())
-            .unwrap_or("(unknown)")
+            .expect("EventDiff must have at least one event")
     }
-}
 
-impl fmt::Display for EventDiff {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.kind, self.summary())
+    pub fn render(&self) -> String {
+        let event = self.event();
+        let summary = self.kind.colorize(&event.to_string());
+        let time = event.render_event_time();
+
+        format!("{} {} {}", self.kind.render(), summary, time.dimmed())
     }
 }
 
@@ -78,33 +102,33 @@ pub struct CalendarDiff {
     pub to_pull: Vec<EventDiff>,
 }
 
-impl fmt::Display for CalendarDiff {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl CalendarDiff {
+    pub fn is_empty(&self) -> bool {
+        self.to_push.is_empty() && self.to_pull.is_empty()
+    }
+
+    pub fn render(&self) -> String {
         if self.is_empty() {
-            return writeln!(f, "No changes");
+            return "   No changes".dimmed().to_string();
         }
 
+        let mut lines = Vec::new();
+
         if !self.to_push.is_empty() {
-            writeln!(f, "To push:")?;
+            lines.push("   Local changes (to push):".dimmed().to_string());
             for diff in &self.to_push {
-                writeln!(f, "  {}", diff)?;
+                lines.push(format!("   {}", diff.render()));
             }
         }
 
         if !self.to_pull.is_empty() {
-            writeln!(f, "To pull:")?;
+            lines.push("   Remote changes (to pull):".dimmed().to_string());
             for diff in &self.to_pull {
-                writeln!(f, "  {}", diff)?;
+                lines.push(format!("   {}", diff.render()));
             }
         }
 
-        Ok(())
-    }
-}
-
-impl CalendarDiff {
-    pub fn is_empty(&self) -> bool {
-        self.to_push.is_empty() && self.to_pull.is_empty()
+        lines.join("\n")
     }
 
     pub async fn from_calendar(calendar: &Calendar) -> Result<Self> {
@@ -176,12 +200,16 @@ impl CalendarDiff {
             // Content differs - use timestamps to determine direction
             if local.is_newer_than(remote) {
                 // Local was modified more recently -> push
-                if let Some(diff) = EventDiff::get_diff(Some(remote.clone()), Some(local.event.clone())) {
+                if let Some(diff) =
+                    EventDiff::get_diff(Some(remote.clone()), Some(local.event.clone()))
+                {
                     to_push.push(diff);
                 }
             } else {
                 // Remote was modified more recently -> pull
-                if let Some(diff) = EventDiff::get_diff(Some(local.event.clone()), Some(remote.clone())) {
+                if let Some(diff) =
+                    EventDiff::get_diff(Some(local.event.clone()), Some(remote.clone()))
+                {
                     to_pull.push(diff);
                 }
             }

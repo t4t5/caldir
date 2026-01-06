@@ -42,3 +42,6 @@ which = "8"
 # Shared types
 caldir-core = { path = "../caldir-core" }
 indoc = "2.0.7"
+
+# Colored output
+owo-colors = "4"

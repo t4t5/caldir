@@ -6,6 +6,7 @@
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// A calendar event (provider-neutral)
 ///
@@ -165,9 +166,44 @@ impl EventTime {
     }
 }
 
+impl fmt::Display for EventTime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EventTime::Date(d) => write!(f, "{}", d.format("%Y-%m-%d")),
+            EventTime::DateTimeUtc(dt) => write!(f, "{}", dt.format("%Y-%m-%d %H:%M")),
+            EventTime::DateTimeFloating(dt) => write!(f, "{}", dt.format("%Y-%m-%d %H:%M")),
+            EventTime::DateTimeZoned { datetime, .. } => {
+                write!(f, "{}", datetime.format("%Y-%m-%d %H:%M"))
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EventStatus {
     Confirmed,
     Tentative,
     Cancelled,
+}
+
+impl fmt::Display for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.summary.is_empty() {
+            write!(f, "(Unknown Event)")
+        } else {
+            write!(f, "{}", self.summary)
+        }
+    }
+}
+
+impl Event {
+    /// Render the event time with recurring indicator
+    pub fn render_event_time(&self) -> String {
+        let recurring = if self.recurrence.is_some() {
+            " 🔁"
+        } else {
+            ""
+        };
+        format!("{}{}", self.start, recurring)
+    }
 }

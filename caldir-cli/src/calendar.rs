@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::collections::HashSet;
+use std::fmt;
 
 use crate::caldir::Caldir;
 use crate::config::CalendarConfig;
@@ -53,5 +54,15 @@ impl Calendar {
 
     pub async fn get_diff(&self) -> Result<CalendarDiff> {
         CalendarDiff::from_calendar(self).await
+    }
+
+    pub fn render(&self) -> String {
+        format!("🗓️ {}", self.name)
+    }
+}
+
+impl fmt::Display for Calendar {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
     }
 }

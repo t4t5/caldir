@@ -4,11 +4,19 @@ use crate::caldir::Caldir;
 
 pub async fn run() -> Result<()> {
     let caldir = Caldir::load()?;
+    let calendars = caldir.calendars();
 
-    for cal in caldir.calendars() {
-        println!("Calendar: {}", cal.name);
+    for (i, cal) in calendars.iter().enumerate() {
+        println!("{}", cal.render());
+
         let diff = cal.get_diff().await?;
-        print!("{}", diff);
+
+        println!("{}", diff.render());
+
+        // Add spacing between calendars (but not after the last one)
+        if i < calendars.len() - 1 {
+            println!();
+        }
     }
 
     Ok(())
