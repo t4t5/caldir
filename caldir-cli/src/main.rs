@@ -35,8 +35,8 @@ enum Commands {
     //     /// Provider to authenticate with (e.g., "google")
     //     provider: String,
     // },
-    // /// Pull events from cloud to local directory
-    // Pull,
+    /// Pull events from cloud to local directory
+    Pull,
     // /// Push local changes to cloud calendars
     // Push {
     //     /// Force deletion even when local calendar is empty (dangerous)
@@ -86,7 +86,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         // Commands::Auth { provider } => commands::auth::run(&provider).await,
-        // Commands::Pull => commands::pull::run().await,
+        Commands::Pull => commands::pull::run().await,
         // Commands::Push { force } => commands::push::run(force).await,
         Commands::Status { verbose } => commands::status::run().await,
         // Commands::New {

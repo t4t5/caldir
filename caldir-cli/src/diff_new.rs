@@ -97,7 +97,8 @@ impl EventDiff {
     }
 }
 
-pub struct CalendarDiff {
+pub struct CalendarDiff<'a> {
+    pub calendar: &Calendar,
     pub to_push: Vec<EventDiff>,
     pub to_pull: Vec<EventDiff>,
 }
@@ -216,12 +217,15 @@ impl CalendarDiff {
         }
 
         // Sort by event start time (ascending)
-        let sort_by_start = |a: &EventDiff, b: &EventDiff| {
-            a.event().start.to_utc().cmp(&b.event().start.to_utc())
-        };
+        let sort_by_start =
+            |a: &EventDiff, b: &EventDiff| a.event().start.to_utc().cmp(&b.event().start.to_utc());
         to_push.sort_by(sort_by_start);
         to_pull.sort_by(sort_by_start);
 
-        Ok(CalendarDiff { to_push, to_pull })
+        Ok(CalendarDiff {
+            calendar,
+            to_push,
+            to_pull,
+        })
     }
 }
