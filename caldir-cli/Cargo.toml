@@ -45,3 +45,6 @@ indoc = "2.0.7"
 
 # Colored output
 owo-colors = "4"
+
+# Terminal spinners
+indicatif = "0.17"
