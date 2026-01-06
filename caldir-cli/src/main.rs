@@ -88,7 +88,7 @@ async fn main() -> Result<()> {
         // Commands::Auth { provider } => commands::auth::run(&provider).await,
         // Commands::Pull => commands::pull::run().await,
         // Commands::Push { force } => commands::push::run(force).await,
-        Commands::Status { verbose } => commands::status2::run().await,
+        Commands::Status { verbose } => commands::status::run().await,
         // Commands::New {
         //     title,
         //     start,
