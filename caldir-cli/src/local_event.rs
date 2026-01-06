@@ -1,9 +1,10 @@
+use crate::commands::SYNC_DAYS;
 use crate::ics;
-use anyhow::Result;
-use std::path::PathBuf;
 
+use anyhow::Result;
 use caldir_core::Event;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
+use std::path::PathBuf;
 
 /// A local calendar event (stored as an ics file)
 #[derive(Debug, Clone)]
@@ -38,5 +39,25 @@ impl LocalEvent {
             event,
             modified,
         })
+    }
+
+    /// Check if this event falls within the sync window (±SYNC_DAYS from now).
+    pub fn is_in_sync_range(&self) -> bool {
+        let now = Utc::now();
+        let range_start = now - Duration::days(SYNC_DAYS);
+        let range_end = now + Duration::days(SYNC_DAYS);
+
+        match self.event.start.to_utc() {
+            Some(start) => start >= range_start && start <= range_end,
+            None => true,
+        }
+    }
+
+    /// Check if local file was modified after the remote event was updated.
+    pub fn is_newer_than(&self, remote: &Event) -> bool {
+        match (self.modified, remote.updated) {
+            (Some(local_mtime), Some(remote_updated)) => local_mtime > remote_updated,
+            _ => false,
+        }
     }
 }

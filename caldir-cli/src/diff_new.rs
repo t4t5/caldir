@@ -140,8 +140,11 @@ impl CalendarDiff {
         for (uid, local) in local_only_events {
             if seen_uids.contains(uid) {
                 // Was synced before, now gone from remote → delete locally
-                if let Some(diff) = EventDiff::get_diff(Some(local.event.clone()), None) {
-                    to_pull.push(diff);
+                // But only if in sync range (old events weren't fetched, so we can't know)
+                if local.is_in_sync_range() {
+                    if let Some(diff) = EventDiff::get_diff(Some(local.event.clone()), None) {
+                        to_pull.push(diff);
+                    }
                 }
             } else {
                 // Never synced -> create on remote
@@ -166,10 +169,21 @@ impl CalendarDiff {
         }
 
         for (local, remote) in shared_events {
-            if let Some(diff) = EventDiff::get_diff(Some(local.event.clone()), Some(remote.clone()))
-            {
-                // Content differs -> pull remote version (remote is source of truth)
-                to_pull.push(diff);
+            if local.event == *remote {
+                continue;
+            }
+
+            // Content differs - use timestamps to determine direction
+            if local.is_newer_than(remote) {
+                // Local was modified more recently -> push
+                if let Some(diff) = EventDiff::get_diff(Some(remote.clone()), Some(local.event.clone())) {
+                    to_push.push(diff);
+                }
+            } else {
+                // Remote was modified more recently -> pull
+                if let Some(diff) = EventDiff::get_diff(Some(local.event.clone()), Some(remote.clone())) {
+                    to_pull.push(diff);
+                }
             }
         }
 
