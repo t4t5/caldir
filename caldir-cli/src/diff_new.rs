@@ -215,6 +215,13 @@ impl CalendarDiff {
             }
         }
 
+        // Sort by event start time (ascending)
+        let sort_by_start = |a: &EventDiff, b: &EventDiff| {
+            a.event().start.to_utc().cmp(&b.event().start.to_utc())
+        };
+        to_push.sort_by(sort_by_start);
+        to_pull.sort_by(sort_by_start);
+
         Ok(CalendarDiff { to_push, to_pull })
     }
 }
