@@ -30,11 +30,15 @@ impl Caldir {
     }
 
     pub fn calendars(&self) -> Vec<Calendar> {
-        self.config
+        let mut calendars: Vec<_> = self
+            .config
             .calendars
             .iter()
             .map(|(name, config)| Calendar::from(name, self, config))
-            .collect()
+            .collect();
+
+        calendars.sort_by(|a, b| a.name.cmp(&b.name));
+        calendars
     }
 
     pub fn default_calendar(&self) -> Option<Calendar> {
