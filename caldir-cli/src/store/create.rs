@@ -45,7 +45,7 @@ pub fn expected_filename(event: &Event) -> String {
 
 /// Generate the filename to use for an event in a directory.
 /// Handles collisions by adding numeric suffixes (-2, -3, etc).
-fn filename_for(event: &Event, dir: &Path) -> Result<String> {
+pub fn filename_for(event: &Event, dir: &Path) -> Result<String> {
     let base_filename = generate_base_filename(event);
     unique_filename(&base_filename, dir, &event.id)
 }
@@ -86,7 +86,7 @@ fn slugify(s: &str) -> String {
 }
 
 /// Generate a unique filename, adding -2, -3, etc. suffix if there's a collision.
-fn unique_filename(base_filename: &str, dir: &Path, own_uid: &str) -> Result<String> {
+pub fn unique_filename(base_filename: &str, dir: &Path, own_uid: &str) -> Result<String> {
     let base = base_filename.trim_end_matches(".ics");
 
     // Check if base filename is available
@@ -175,7 +175,10 @@ mod tests {
     #[test]
     fn test_generate_base_filename() {
         let event = make_test_event();
-        assert_eq!(generate_base_filename(&event), "2025-03-20T1500__test-event.ics");
+        assert_eq!(
+            generate_base_filename(&event),
+            "2025-03-20T1500__test-event.ics"
+        );
     }
 
     #[test]

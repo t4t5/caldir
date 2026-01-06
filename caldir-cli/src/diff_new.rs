@@ -97,13 +97,19 @@ impl EventDiff {
     }
 }
 
+pub struct PullStats {
+    pub created: usize,
+    pub updated: usize,
+    pub deleted: usize,
+}
+
 pub struct CalendarDiff<'a> {
-    pub calendar: &Calendar,
+    pub calendar: &'a Calendar,
     pub to_push: Vec<EventDiff>,
     pub to_pull: Vec<EventDiff>,
 }
 
-impl CalendarDiff {
+impl<'a> CalendarDiff<'a> {
     pub fn is_empty(&self) -> bool {
         self.to_push.is_empty() && self.to_pull.is_empty()
     }
@@ -132,7 +138,51 @@ impl CalendarDiff {
         lines.join("\n")
     }
 
-    pub async fn from_calendar(calendar: &Calendar) -> Result<Self> {
+    pub fn render_pull(&self) -> String {
+        if self.to_pull.is_empty() {
+            return "   No changes to pull".dimmed().to_string();
+        }
+
+        let mut lines = Vec::new();
+        for diff in &self.to_pull {
+            lines.push(format!("   {}", diff.render()));
+        }
+        lines.join("\n")
+    }
+
+    pub fn apply_pull(&self) -> Result<PullStats> {
+        let mut stats = PullStats {
+            created: 0,
+            updated: 0,
+            deleted: 0,
+        };
+
+        for diff in &self.to_pull {
+            match diff.kind {
+                DiffKind::Create => {
+                    let event = diff.new.as_ref().expect("Create must have new event");
+                    self.calendar.create_event(event)?;
+                    stats.created += 1;
+                }
+                DiffKind::Update => {
+                    let event = diff.new.as_ref().expect("Update must have new event");
+                    self.calendar.update_event(&event.id, event)?;
+                    stats.updated += 1;
+                }
+                DiffKind::Delete => {
+                    let event = diff.old.as_ref().expect("Delete must have old event");
+                    self.calendar.delete_event(&event.id)?;
+                    stats.deleted += 1;
+                }
+            }
+        }
+
+        self.calendar.save_sync_state()?;
+
+        Ok(stats)
+    }
+
+    pub async fn from_calendar(calendar: &'a Calendar) -> Result<Self> {
         let remote_events = calendar.remote().events().await?;
         let local_events = calendar.events()?;
         let seen_uids = calendar.seen_event_uids()?;
