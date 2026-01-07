@@ -11,10 +11,14 @@
 //!
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
+use std::time::Duration;
 
 use caldir_core::protocol::{Command as ProviderCommand, Request, Response};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
+use tokio::time::timeout;
+
+const PROVIDER_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct Provider(String);
 
@@ -36,6 +40,21 @@ impl Provider {
 
     /// Call a provider command and return the result.
     pub async fn call<R: DeserializeOwned>(
+        &self,
+        command: ProviderCommand,
+        params: serde_json::Value,
+    ) -> Result<R> {
+        timeout(PROVIDER_TIMEOUT, self.call_inner(command, params))
+            .await
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "Provider request timed out after {}s - check your network connection",
+                    PROVIDER_TIMEOUT.as_secs()
+                )
+            })?
+    }
+
+    async fn call_inner<R: DeserializeOwned>(
         &self,
         command: ProviderCommand,
         params: serde_json::Value,

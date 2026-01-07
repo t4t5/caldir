@@ -144,13 +144,6 @@ caldir-cli/                    # Core CLI
       new.rs     - Create local events
     config.rs    - User configuration (~/.config/caldir/config.toml)
     diff.rs      - Pure diff computation between local and remote
-    store/       - Local event file storage
-      mod.rs     - LocalEvent type, re-exports
-      list.rs    - List all events in a directory
-      create.rs  - Create event files (includes filename generation)
-      update.rs  - Update event files (delete + create)
-      delete.rs  - Delete event files
-    sync.rs      - Sync state tracking (SyncState, ApplyStats)
     ics.rs       - ICS format: generation, parsing (RFC 5545)
     provider.rs  - Provider subprocess protocol (JSON over stdin/stdout)
 
@@ -300,45 +293,11 @@ caldir-cli status
 caldir-cli status --verbose
 ```
 
-### new command options
-
-- `TITLE` (positional) — Event title
-- `--start, -s` — Start date/time (`2025-03-20` for all-day, `2025-03-20T15:00` for timed)
-- `--end, -e` — End date/time (mutually exclusive with --duration)
-- `--duration, -d` — Duration (`30m`, `1h`, `2h30m`) (mutually exclusive with --end)
-- `--description` — Event description
-- `--location, -l` — Event location
-- `--calendar, -c` — Calendar to create the event in (defaults to `default_calendar` from config)
-
 If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed events or 1 day for all-day events.
 
 ## Development
 
 ```bash
 # Check for errors
-cargo check
-
-# Run
-cargo run -- auth
-cargo run -- pull
+just check
 ```
-
-## Dependencies
-
-**caldir-core** (shared types):
-- **serde** — JSON serialization for provider protocol
-- **chrono** — Date/time types
-
-**caldir-cli** (core):
-- **caldir-core** — Shared event types
-- **icalendar** — Generate and parse .ics files
-- **tokio** — Async runtime
-- **clap** — CLI argument parsing
-- **uuid** — Generate unique event IDs for locally-created events
-- **which** — Find provider binaries in PATH
-
-**caldir-provider-google**:
-- **caldir-core** — Shared event types
-- **google-calendar** — Google Calendar API client
-- **tokio** — Async runtime
-- **dirs** — Platform-native config directories

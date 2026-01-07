@@ -42,8 +42,7 @@ async fn main() {
             Err(e) => {
                 let response = Response::error(&format!("Failed to parse request: {}", e));
                 if writeln!(stdout, "{}", response).is_err() || stdout.flush().is_err() {
-                    eprintln!("Failed to write to stdout, exiting");
-                    break;
+                    break; // Parent likely killed us, exit silently
                 }
                 continue;
             }
@@ -52,8 +51,7 @@ async fn main() {
         let response = handle_request(request).await;
 
         if writeln!(stdout, "{}", response).is_err() || stdout.flush().is_err() {
-            eprintln!("Failed to write to stdout, exiting");
-            break;
+            break; // Parent likely killed us, exit silently
         }
     }
 }

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use owo_colors::OwoColorize;
 
 use super::create_spinner;
 use crate::caldir::Caldir;
@@ -9,12 +10,17 @@ pub async fn run() -> Result<()> {
 
     for (i, cal) in calendars.iter().enumerate() {
         let spinner = create_spinner(cal.render());
-        let diff = cal.get_diff().await?;
+        let result = cal.get_diff().await;
         spinner.finish_and_clear();
 
-        // Finished loading, show calendar + diff:
+        // Show calendar name
         println!("{}", cal.render());
-        println!("{}", diff.render());
+
+        // Show diff or error
+        match result {
+            Ok(diff) => println!("{}", diff.render()),
+            Err(e) => println!("   {}", e.to_string().red()),
+        }
 
         // Add spacing between calendars (but not after the last one)
         if i < calendars.len() - 1 {

@@ -6,10 +6,10 @@ use crate::types::{
     ParticipationStatus, Reminder, Transparency,
 };
 use anyhow::{Context, Result};
+use google_calendar::Client;
 use google_calendar::types::{
     EventAttendee, EventDateTime, EventReminder, MinAccessRole, OrderBy, Reminders, SendUpdates,
 };
-use google_calendar::Client;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
@@ -175,7 +175,7 @@ async fn get_valid_tokens(account: &str) -> Result<AccountTokens> {
     let mut tokens = config::load_tokens(account)?;
 
     if config::tokens_need_refresh(&tokens) {
-        eprintln!("Access token expired, refreshing...");
+        eprintln!("Access token expired, refreshing..."); // TODO: Remove this
         tokens = refresh_token_internal(&creds, &tokens).await?;
         config::save_tokens(account, &tokens)?;
     }
@@ -184,7 +184,10 @@ async fn get_valid_tokens(account: &str) -> Result<AccountTokens> {
 }
 
 /// Internal token refresh
-async fn refresh_token_internal(creds: &GoogleCredentials, tokens: &AccountTokens) -> Result<AccountTokens> {
+async fn refresh_token_internal(
+    creds: &GoogleCredentials,
+    tokens: &AccountTokens,
+) -> Result<AccountTokens> {
     let client = create_client(creds, tokens);
 
     let access_token = client
@@ -263,19 +266,19 @@ pub async fn fetch_events(
         .events()
         .list_all(
             calendar_id,
-            "",                     // i_cal_uid
-            0,                      // max_attendees
-            OrderBy::default(),     // order_by
-            &[],                    // private_extended_property
-            "",                     // q (search query)
-            &[],                    // shared_extended_property
-            false,                  // show_deleted
-            false,                  // show_hidden_invitations
-            false,                  // single_events
+            "",
+            0,
+            OrderBy::default(),
+            &[],
+            "", // search query
+            &[],
+            false,
+            false,
+            false,
             time_max,
             time_min,
-            "",                     // time_zone
-            "",                     // updated_min
+            "",
+            "",
         )
         .await
         .context("Failed to fetch events")?;
@@ -526,11 +529,7 @@ fn to_google_event(event: &Event) -> google_calendar::types::Event {
 }
 
 /// Create a new event on Google Calendar
-pub async fn create_event(
-    account: &str,
-    calendar_id: &str,
-    event: &Event,
-) -> Result<Event> {
+pub async fn create_event(account: &str, calendar_id: &str, event: &Event) -> Result<Event> {
     let creds = config::load_credentials()?;
     let tokens = get_valid_tokens(account).await?;
     let client = create_client(&creds, &tokens);
@@ -556,11 +555,7 @@ pub async fn create_event(
 }
 
 /// Update an existing event
-pub async fn update_event(
-    account: &str,
-    calendar_id: &str,
-    event: &Event,
-) -> Result<()> {
+pub async fn update_event(account: &str, calendar_id: &str, event: &Event) -> Result<()> {
     let creds = config::load_credentials()?;
     let tokens = get_valid_tokens(account).await?;
     let client = create_client(&creds, &tokens);
@@ -586,11 +581,7 @@ pub async fn update_event(
 }
 
 /// Delete an event
-pub async fn delete_event(
-    account: &str,
-    calendar_id: &str,
-    event_id: &str,
-) -> Result<()> {
+pub async fn delete_event(account: &str, calendar_id: &str, event_id: &str) -> Result<()> {
     let creds = config::load_credentials()?;
     let tokens = get_valid_tokens(account).await?;
     let client = create_client(&creds, &tokens);

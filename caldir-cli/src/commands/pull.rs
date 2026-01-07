@@ -1,4 +1,5 @@
 use anyhow::Result;
+use owo_colors::OwoColorize;
 
 use super::create_spinner;
 use crate::caldir::Caldir;
@@ -14,18 +15,29 @@ pub async fn run() -> Result<()> {
         deleted: 0,
     };
 
-    for cal in &calendars {
+    for (i, cal) in calendars.iter().enumerate() {
         let spinner = create_spinner(cal.render());
-        let diff = cal.get_diff().await?;
+        let result = cal.get_diff().await;
         spinner.finish_and_clear();
 
         println!("{}", cal.render());
-        println!("{}", diff.render_pull());
 
-        let stats = diff.apply_pull()?;
-        total.created += stats.created;
-        total.updated += stats.updated;
-        total.deleted += stats.deleted;
+        match result {
+            Ok(diff) => {
+                println!("{}", diff.render_pull());
+
+                let stats = diff.apply_pull()?;
+                total.created += stats.created;
+                total.updated += stats.updated;
+                total.deleted += stats.deleted;
+            }
+            Err(e) => println!("   {}", e.to_string().red()),
+        }
+
+        // Add spacing between calendars (but not after the last one)
+        if i < calendars.len() - 1 {
+            println!();
+        }
     }
 
     if total.created > 0 || total.updated > 0 || total.deleted > 0 {
