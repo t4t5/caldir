@@ -97,16 +97,32 @@ impl EventDiff {
     }
 }
 
-pub struct PullStats {
-    pub created: usize,
-    pub updated: usize,
-    pub deleted: usize,
-}
+pub struct DiffBatch<'a>(pub Vec<CalendarDiff<'a>>);
 
-pub struct PushStats {
-    pub created: usize,
-    pub updated: usize,
-    pub deleted: usize,
+impl DiffBatch<'_> {
+    fn count_by_kind<'a>(diffs: impl Iterator<Item = &'a EventDiff>) -> (usize, usize, usize) {
+        let mut created = 0;
+        let mut updated = 0;
+        let mut deleted = 0;
+
+        for diff in diffs {
+            match diff.kind {
+                DiffKind::Create => created += 1,
+                DiffKind::Update => updated += 1,
+                DiffKind::Delete => deleted += 1,
+            }
+        }
+
+        (created, updated, deleted)
+    }
+
+    pub fn pull_counts(&self) -> (usize, usize, usize) {
+        Self::count_by_kind(self.0.iter().flat_map(|d| &d.to_pull))
+    }
+
+    pub fn push_counts(&self) -> (usize, usize, usize) {
+        Self::count_by_kind(self.0.iter().flat_map(|d| &d.to_push))
+    }
 }
 
 pub struct CalendarDiff<'a> {
@@ -168,13 +184,7 @@ impl<'a> CalendarDiff<'a> {
         lines.join("\n")
     }
 
-    pub async fn apply_push(&self) -> Result<PushStats> {
-        let mut stats = PushStats {
-            created: 0,
-            updated: 0,
-            deleted: 0,
-        };
-
+    pub async fn apply_push(&self) -> Result<()> {
         let remote = self.calendar.remote();
 
         for diff in &self.to_push {
@@ -184,58 +194,46 @@ impl<'a> CalendarDiff<'a> {
                     let created = remote.create_event(event).await?;
                     // Update local file with remote-assigned ID and fields
                     self.calendar.update_event(&event.id, &created)?;
-                    stats.created += 1;
                 }
                 DiffKind::Update => {
                     let event = diff.new.as_ref().expect("Update must have new event");
                     let updated = remote.update_event(event).await?;
                     // Update local file with any remote changes
                     self.calendar.update_event(&event.id, &updated)?;
-                    stats.updated += 1;
                 }
                 DiffKind::Delete => {
                     let event = diff.old.as_ref().expect("Delete must have old event");
                     remote.delete_event(&event.id).await?;
-                    stats.deleted += 1;
                 }
             }
         }
 
         self.calendar.save_sync_state()?;
 
-        Ok(stats)
+        Ok(())
     }
 
-    pub fn apply_pull(&self) -> Result<PullStats> {
-        let mut stats = PullStats {
-            created: 0,
-            updated: 0,
-            deleted: 0,
-        };
-
+    pub fn apply_pull(&self) -> Result<()> {
         for diff in &self.to_pull {
             match diff.kind {
                 DiffKind::Create => {
                     let event = diff.new.as_ref().expect("Create must have new event");
                     self.calendar.create_event(event)?;
-                    stats.created += 1;
                 }
                 DiffKind::Update => {
                     let event = diff.new.as_ref().expect("Update must have new event");
                     self.calendar.update_event(&event.id, event)?;
-                    stats.updated += 1;
                 }
                 DiffKind::Delete => {
                     let event = diff.old.as_ref().expect("Delete must have old event");
                     self.calendar.delete_event(&event.id)?;
-                    stats.deleted += 1;
                 }
             }
         }
 
         self.calendar.save_sync_state()?;
 
-        Ok(stats)
+        Ok(())
     }
 
     pub async fn from_calendar(calendar: &'a Calendar) -> Result<Self> {

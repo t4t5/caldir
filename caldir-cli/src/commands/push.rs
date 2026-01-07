@@ -2,18 +2,14 @@ use anyhow::Result;
 use owo_colors::OwoColorize;
 
 use crate::caldir::Caldir;
-use crate::diff_new::PushStats;
+use crate::diff_new::DiffBatch;
 use crate::utils::tui;
 
 pub async fn run() -> Result<()> {
     let caldir = Caldir::load()?;
     let calendars = caldir.calendars();
 
-    let mut total = PushStats {
-        created: 0,
-        updated: 0,
-        deleted: 0,
-    };
+    let mut diffs = Vec::new();
 
     for (i, cal) in calendars.iter().enumerate() {
         let spinner = tui::create_spinner(cal.render());
@@ -25,11 +21,8 @@ pub async fn run() -> Result<()> {
         match result {
             Ok(diff) => {
                 println!("{}", diff.render_push());
-
-                let stats = diff.apply_push().await?;
-                total.created += stats.created;
-                total.updated += stats.updated;
-                total.deleted += stats.deleted;
+                diff.apply_push().await?;
+                diffs.push(diff);
             }
             Err(e) => println!("   {}", e.to_string().red()),
         }
@@ -40,11 +33,11 @@ pub async fn run() -> Result<()> {
         }
     }
 
-    if total.created > 0 || total.updated > 0 || total.deleted > 0 {
-        println!(
-            "\nPushed {} created, {} updated, {} deleted",
-            total.created, total.updated, total.deleted
-        );
+    let batch = DiffBatch(diffs);
+    let (created, updated, deleted) = batch.push_counts();
+
+    if created > 0 || updated > 0 || deleted > 0 {
+        println!("\nPushed {} created, {} updated, {} deleted", created, updated, deleted);
     }
 
     Ok(())
