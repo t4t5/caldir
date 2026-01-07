@@ -1,8 +1,8 @@
-use crate::commands::SYNC_DAYS;
 use crate::ics;
 
 use anyhow::Result;
 use caldir_core::Event;
+use caldir_core::constants::DEFAULT_SYNC_DAYS;
 use chrono::{DateTime, Duration, Utc};
 use std::path::PathBuf;
 
@@ -44,8 +44,8 @@ impl LocalEvent {
     /// Check if this event falls within the sync window (±SYNC_DAYS from now).
     pub fn is_in_sync_range(&self) -> bool {
         let now = Utc::now();
-        let range_start = now - Duration::days(SYNC_DAYS);
-        let range_end = now + Duration::days(SYNC_DAYS);
+        let range_start = now - Duration::days(DEFAULT_SYNC_DAYS);
+        let range_end = now + Duration::days(DEFAULT_SYNC_DAYS);
 
         match self.event.start.to_utc() {
             Some(start) => start >= range_start && start <= range_end,

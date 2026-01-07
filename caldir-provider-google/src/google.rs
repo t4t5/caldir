@@ -6,6 +6,7 @@ use crate::types::{
     ParticipationStatus, Reminder, Transparency,
 };
 use anyhow::{Context, Result};
+use caldir_core::constants::DEFAULT_SYNC_DAYS;
 use google_calendar::Client;
 use google_calendar::types::{
     EventAttendee, EventDateTime, EventReminder, MinAccessRole, OrderBy, Reminders, SendUpdates,
@@ -256,8 +257,8 @@ pub async fn fetch_events(
 
     // Default to ±1 year if not specified
     let now = chrono::Utc::now();
-    let default_time_min = (now - chrono::Duration::days(365)).to_rfc3339();
-    let default_time_max = (now + chrono::Duration::days(365)).to_rfc3339();
+    let default_time_min = (now - chrono::Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
+    let default_time_max = (now + chrono::Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
 
     let time_min = time_min.unwrap_or(&default_time_min);
     let time_max = time_max.unwrap_or(&default_time_max);
