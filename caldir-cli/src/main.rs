@@ -10,9 +10,6 @@ mod provider;
 mod remote;
 mod utils;
 
-// Re-export caldir_core types as crate::event for internal use
-pub use caldir_core as event;
-
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 

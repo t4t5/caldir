@@ -2,39 +2,46 @@ use anyhow::Result;
 use caldir_core::{Event, EventTime};
 use std::collections::HashSet;
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use crate::caldir::Caldir;
-use crate::config::CalendarConfig;
 use crate::diff::CalendarDiff;
 use crate::ics::{self, CalendarMetadata};
-use crate::local::LocalState;
+use crate::local::{LocalConfig, LocalState};
 use crate::local_event::LocalEvent;
 use crate::remote::Remote;
 
 pub struct Calendar {
     pub name: String,
-    pub config: CalendarConfig,
-    pub caldir: Caldir,
+    pub path: PathBuf,
+    pub config: LocalConfig,
 }
 
 impl Calendar {
-    pub fn from(name: &str, caldir: &Caldir, config: &CalendarConfig) -> Self {
-        Calendar {
-            name: name.to_string(),
-            caldir: caldir.clone(),
-            config: config.clone(),
-        }
+    /// Load a calendar from a directory with .caldir/config.toml
+    pub fn load(path: &Path) -> Result<Self> {
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| anyhow::anyhow!("Invalid calendar path"))?
+            .to_string();
+
+        let config = LocalConfig::load(path)?;
+
+        Ok(Calendar {
+            name,
+            path: path.to_path_buf(),
+            config,
+        })
     }
 
     /// Where the calendar's ics files are stored
-    fn data_path(&self) -> std::path::PathBuf {
-        self.caldir.data_path().join(&self.name)
+    fn data_path(&self) -> PathBuf {
+        self.path.clone()
     }
 
-    /// Where changes get pushed to / pulled from
-    pub fn remote(&self) -> Remote {
-        Remote::from_calendar_config(&self.config)
+    /// Where changes get pushed to / pulled from (None if no remote configured)
+    pub fn remote(&self) -> Option<Remote> {
+        self.config.remote.as_ref().map(Remote::from_remote_config)
     }
 
     /// Load events from local directory

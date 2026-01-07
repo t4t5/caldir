@@ -29,12 +29,21 @@ impl Caldir {
         PathBuf::from(full_path_str)
     }
 
+    /// Discover calendars by scanning calendar_dir for subdirectories
+    /// with .caldir/config.toml files.
     pub fn calendars(&self) -> Vec<Calendar> {
-        let mut calendars: Vec<_> = self
-            .config
-            .calendars
-            .iter()
-            .map(|(name, config)| Calendar::from(name, self, config))
+        let data_path = self.data_path();
+
+        let Ok(entries) = std::fs::read_dir(&data_path) else {
+            return Vec::new();
+        };
+
+        let mut calendars: Vec<_> = entries
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir())
+            .filter(|path| path.join(".caldir").exists())
+            .filter_map(|path| Calendar::load(&path).ok())
             .collect();
 
         calendars.sort_by(|a, b| a.name.cmp(&b.name));

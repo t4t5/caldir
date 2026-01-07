@@ -10,7 +10,7 @@
 //! provider-specific parameters from the calendar config.
 //!
 use anyhow::{Context, Result};
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Deserialize};
 use std::time::Duration;
 
 use caldir_core::protocol::{Command as ProviderCommand, Request, Response};
@@ -20,6 +20,14 @@ use tokio::time::timeout;
 
 const PROVIDER_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// A calendar returned by the provider's list_calendars command
+#[derive(Debug, Deserialize)]
+pub struct ProviderCalendar {
+    pub id: String,
+    pub name: String,
+    pub primary: bool,
+}
+
 pub struct Provider(String);
 
 impl Provider {
@@ -27,9 +35,20 @@ impl Provider {
         Provider(name.to_string())
     }
 
+    pub fn name(&self) -> &str {
+        &self.0
+    }
+
     pub async fn authenticate(&self) -> Result<String> {
         self.call_inner(ProviderCommand::Authenticate, serde_json::Value::Null)
             .await
+    }
+
+    /// List all calendars for an account
+    pub async fn list_calendars(&self, account: &str) -> Result<Vec<ProviderCalendar>> {
+        let param_key = format!("{}_account", self.0);
+        let params = serde_json::json!({ param_key: account });
+        self.call(ProviderCommand::ListCalendars, params).await
     }
 
     pub fn binary_path(&self) -> Result<std::path::PathBuf> {

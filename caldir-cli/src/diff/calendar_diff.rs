@@ -65,7 +65,10 @@ impl<'a> CalendarDiff<'a> {
     }
 
     pub async fn apply_push(&self) -> Result<()> {
-        let remote = self.calendar.remote();
+        let remote = self
+            .calendar
+            .remote()
+            .ok_or_else(|| anyhow::anyhow!("No remote configured for {}", self.calendar.name))?;
 
         for diff in &self.to_push {
             match diff.kind {
@@ -117,7 +120,11 @@ impl<'a> CalendarDiff<'a> {
     }
 
     pub async fn from_calendar(calendar: &'a Calendar) -> Result<Self> {
-        let remote_events = calendar.remote().events().await?;
+        let remote = calendar
+            .remote()
+            .ok_or_else(|| anyhow::anyhow!("No remote configured"))?;
+
+        let remote_events = remote.events().await?;
         let local_events = calendar.events()?;
         let seen_uids = calendar.seen_event_uids()?;
 
