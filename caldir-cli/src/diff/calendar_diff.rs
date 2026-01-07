@@ -88,7 +88,7 @@ impl<'a> CalendarDiff<'a> {
             }
         }
 
-        self.calendar.save_sync_state()?;
+        self.calendar.update_sync_state()?;
 
         Ok(())
     }
@@ -111,7 +111,7 @@ impl<'a> CalendarDiff<'a> {
             }
         }
 
-        self.calendar.save_sync_state()?;
+        self.calendar.update_sync_state()?;
 
         Ok(())
     }

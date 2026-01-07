@@ -1,20 +1,20 @@
 use std::path::PathBuf;
 
 use crate::calendar::Calendar;
-use crate::config::CaldirConfig;
+use crate::config::GlobalConfig;
 use anyhow::Result;
 use config::{Config, File};
 
 #[derive(Clone)]
 pub struct Caldir {
-    config: CaldirConfig,
+    config: GlobalConfig,
 }
 
 impl Caldir {
     pub fn load() -> Result<Self> {
-        let config_path = CaldirConfig::config_path()?;
+        let config_path = GlobalConfig::config_path()?;
 
-        let config: CaldirConfig = Config::builder()
+        let config: GlobalConfig = Config::builder()
             .add_source(File::from(config_path).required(false))
             .build()?
             .try_deserialize()?;

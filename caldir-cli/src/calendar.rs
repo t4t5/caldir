@@ -8,9 +8,9 @@ use crate::caldir::Caldir;
 use crate::config::CalendarConfig;
 use crate::diff::CalendarDiff;
 use crate::ics::{self, CalendarMetadata};
+use crate::local::LocalState;
 use crate::local_event::LocalEvent;
 use crate::remote::Remote;
-use crate::sync;
 
 pub struct Calendar {
     pub name: String,
@@ -51,8 +51,7 @@ impl Calendar {
 
     /// UIDs we've seen before (for detecting deletions)
     pub fn seen_event_uids(&self) -> Result<HashSet<String>> {
-        let state = sync::load_state(&self.data_path())?;
-        Ok(state.synced_uids)
+        Ok(LocalState::load(&self.data_path())?.synced_uids().clone())
     }
 
     pub async fn get_diff(&self) -> Result<CalendarDiff<'_>> {
@@ -90,9 +89,9 @@ impl Calendar {
         Ok(())
     }
 
-    pub fn save_sync_state(&self) -> Result<()> {
+    pub fn update_sync_state(&self) -> Result<()> {
         let synced_uids: HashSet<String> = self.events()?.into_iter().map(|e| e.event.id).collect();
-        sync::save_state(&self.data_path(), &sync::SyncState { synced_uids })
+        LocalState::save(&self.data_path(), &synced_uids)
     }
 
     fn metadata(&self) -> CalendarMetadata {

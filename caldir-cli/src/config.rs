@@ -12,7 +12,7 @@ fn default_caldir_path() -> PathBuf {
 
 // Parse the user settings in ~/.config/caldir/config.toml
 #[derive(Deserialize, Clone)]
-pub struct CaldirConfig {
+pub struct GlobalConfig {
     #[serde(default = "default_caldir_path")]
     pub calendar_dir: PathBuf,
 
@@ -21,7 +21,7 @@ pub struct CaldirConfig {
     pub calendars: HashMap<String, CalendarConfig>,
 }
 
-impl CaldirConfig {
+impl GlobalConfig {
     pub fn config_path() -> Result<PathBuf> {
         let config_dir = dirs::config_dir()
             .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?

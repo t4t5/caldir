@@ -33,8 +33,8 @@ pub async fn run() -> Result<()> {
         }
     }
 
-    let diff_batch = BatchDiff(diffs);
-    let (created, updated, deleted) = diff_batch.pull_counts();
+    let batch = BatchDiff(diffs);
+    let (created, updated, deleted) = batch.pull_counts();
 
     if created > 0 || updated > 0 || deleted > 0 {
         println!(

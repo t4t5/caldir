@@ -1,15 +1,14 @@
+mod caldir;
+mod calendar;
 mod commands;
 mod config;
 mod diff;
 mod ics;
+mod local;
+mod local_event;
 mod provider;
 mod remote;
-mod sync;
 mod utils;
-
-mod caldir;
-mod calendar;
-mod local_event;
 
 // Re-export caldir_core types as crate::event for internal use
 pub use caldir_core as event;
