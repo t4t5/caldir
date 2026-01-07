@@ -11,6 +11,7 @@ mod remote;
 mod utils;
 
 use anyhow::Result;
+use caldir::Caldir;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -44,9 +45,37 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Auth { provider } => commands::auth::run(&provider).await,
-        Commands::Pull => commands::pull::run().await,
-        Commands::Push => commands::push::run().await,
-        Commands::Status => commands::status::run().await,
-        Commands::New { title, start } => commands::new::run(title, start),
+        Commands::Pull => {
+            require_calendars()?;
+            commands::pull::run().await
+        }
+        Commands::Push => {
+            require_calendars()?;
+            commands::push::run().await
+        }
+        Commands::Status => {
+            require_calendars()?;
+            commands::status::run().await
+        }
+        Commands::New { title, start } => {
+            require_calendars()?;
+            commands::new::run(title, start)
+        }
     }
+}
+
+fn require_calendars() -> Result<()> {
+    let caldir = Caldir::load()?;
+
+    if caldir.calendars().is_empty() {
+        anyhow::bail!(
+            "No calendars found.\n\n\
+            Connect your first calendar with:\n  \
+            caldir-cli auth <provider>\n\n\
+            Example:\n  \
+            caldir-cli auth google"
+        );
+    }
+
+    Ok(())
 }
