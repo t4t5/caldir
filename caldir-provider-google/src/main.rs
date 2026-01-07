@@ -168,7 +168,7 @@ async fn handle_update_event(params: &serde_json::Value) -> String {
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
     match google::update_event(&params.google_account, calendar_id, &params.event).await {
-        Ok(()) => Response::success(()),
+        Ok(event) => Response::success(event),
         Err(e) => Response::error(&format!("{:#}", e)),
     }
 }

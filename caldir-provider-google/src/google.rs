@@ -555,14 +555,14 @@ pub async fn create_event(account: &str, calendar_id: &str, event: &Event) -> Re
 }
 
 /// Update an existing event
-pub async fn update_event(account: &str, calendar_id: &str, event: &Event) -> Result<()> {
+pub async fn update_event(account: &str, calendar_id: &str, event: &Event) -> Result<Event> {
     let creds = config::load_credentials()?;
     let tokens = get_valid_tokens(account).await?;
     let client = create_client(&creds, &tokens);
 
     let google_event = to_google_event(event);
 
-    client
+    let response = client
         .events()
         .update(
             calendar_id,
@@ -577,7 +577,7 @@ pub async fn update_event(account: &str, calendar_id: &str, event: &Event) -> Re
         .await
         .with_context(|| format!("Failed to update event: {}", event.summary))?;
 
-    Ok(())
+    from_google_event(response.body)
 }
 
 /// Delete an event

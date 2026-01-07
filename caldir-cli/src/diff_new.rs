@@ -28,7 +28,7 @@ impl DiffKind {
     pub fn colorize(&self, text: &str) -> String {
         match self {
             DiffKind::Create => text.green().to_string(),
-            DiffKind::Update => text.to_string(),
+            DiffKind::Update => text.yellow().to_string(),
             DiffKind::Delete => text.red().to_string(),
         }
     }
