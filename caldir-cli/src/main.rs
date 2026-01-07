@@ -1,6 +1,6 @@
 mod commands;
 mod config;
-mod diff_new;
+mod diff;
 mod ics;
 mod provider;
 mod remote;

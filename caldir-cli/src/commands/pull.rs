@@ -2,7 +2,7 @@ use anyhow::Result;
 use owo_colors::OwoColorize;
 
 use crate::caldir::Caldir;
-use crate::diff_new::DiffBatch;
+use crate::diff::BatchDiff;
 use crate::utils::tui;
 
 pub async fn run() -> Result<()> {
@@ -33,7 +33,7 @@ pub async fn run() -> Result<()> {
         }
     }
 
-    let diff_batch = DiffBatch(diffs);
+    let diff_batch = BatchDiff(diffs);
     let (created, updated, deleted) = diff_batch.pull_counts();
 
     if created > 0 || updated > 0 || deleted > 0 {

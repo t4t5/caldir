@@ -6,7 +6,7 @@ use std::path::Path;
 
 use crate::caldir::Caldir;
 use crate::config::CalendarConfig;
-use crate::diff_new::CalendarDiff;
+use crate::diff::CalendarDiff;
 use crate::ics::{self, CalendarMetadata};
 use crate::local_event::LocalEvent;
 use crate::remote::Remote;
