@@ -1,122 +1,47 @@
 use anyhow::Result;
+use owo_colors::OwoColorize;
 
-use crate::provider::build_params;
-use crate::{config, store, sync};
+use crate::caldir::Caldir;
+use crate::diff::BatchDiff;
+use crate::utils::tui;
 
-use super::{require_calendars, CalendarContext};
+pub async fn run() -> Result<()> {
+    let caldir = Caldir::load()?;
+    let calendars = caldir.calendars();
 
-pub async fn run(force: bool) -> Result<()> {
-    let cfg = config::load_config()?;
-    require_calendars(&cfg)?;
+    let mut diffs = Vec::new();
 
-    let mut total_stats = sync::ApplyStats::default();
+    for (i, cal) in calendars.iter().enumerate() {
+        let spinner = tui::create_spinner(cal.render());
+        let result = cal.get_diff().await;
+        spinner.finish_and_clear();
 
-    for (calendar_name, calendar_config) in &cfg.calendars {
-        // Skip if directory doesn't exist
-        let calendar_dir = config::calendar_path(&cfg, calendar_name);
-        if !calendar_dir.exists() {
-            continue;
+        println!("{}", cal.render());
+
+        match result {
+            Ok(diff) => {
+                println!("{}", diff.render_push());
+                diff.apply_push().await?;
+                diffs.push(diff);
+            }
+            Err(e) => println!("   {}", e.to_string().red()),
         }
 
-        let ctx = CalendarContext::load(&cfg, calendar_name, calendar_config, false).await?;
-
-        if !ctx.sync_diff.has_push_changes() {
-            continue;
+        // Add spacing between calendars (but not after the last one)
+        if i < calendars.len() - 1 {
+            println!();
         }
-
-        let stats = push_calendar(&ctx, force).await?;
-        total_stats.add(&stats);
     }
 
-    if total_stats.has_changes() {
+    let batch = BatchDiff(diffs);
+    let (created, updated, deleted) = batch.push_counts();
+
+    if created > 0 || updated > 0 || deleted > 0 {
         println!(
             "\nPushed {} created, {} updated, {} deleted",
-            total_stats.created, total_stats.updated, total_stats.deleted
+            created, updated, deleted
         );
-    } else {
-        println!("\nNo changes to push.");
     }
 
     Ok(())
-}
-
-async fn push_calendar(ctx: &CalendarContext, force: bool) -> Result<sync::ApplyStats> {
-    println!("\n📤 Pushing: {}", ctx.metadata.calendar_name);
-
-    // Safety check: refuse to delete everything if local is empty (unless --force)
-    if !ctx.sync_diff.to_push_delete.is_empty() && ctx.local_events.is_empty() && !force {
-        anyhow::bail!(
-            "Refusing to delete all {} events from remote (local calendar '{}' is empty).\n\
-             If this is intentional, use: caldir-cli push --force",
-            ctx.sync_diff.to_push_delete.len(),
-            ctx.metadata.calendar_name
-        );
-    }
-
-    let stats = apply_changes(ctx).await?;
-
-    // Update sync state
-    update_sync_state(&ctx.dir)?;
-
-    Ok(stats)
-}
-
-async fn apply_changes(ctx: &CalendarContext) -> Result<sync::ApplyStats> {
-    let mut stats = sync::ApplyStats::default();
-
-    // Delete events from remote
-    for change in &ctx.sync_diff.to_push_delete {
-        println!("  Deleting: {}", change.uid);
-        let params = build_params(
-            &ctx.calendar_config.params,
-            &[("event_id", serde_json::json!(change.uid))],
-        );
-        ctx.provider.delete_event(params).await?;
-        stats.deleted += 1;
-    }
-
-    // Create new events on remote
-    for change in &ctx.sync_diff.to_push_create {
-        let Some(local_event) = ctx.local_events.get(&change.uid) else {
-            continue;
-        };
-
-        println!("  Creating: {}", local_event.event.summary);
-        let params = build_params(
-            &ctx.calendar_config.params,
-            &[("event", serde_json::to_value(&local_event.event)?)],
-        );
-        let created_event = ctx.provider.create_event(params).await?;
-
-        // Write back with provider-assigned ID
-        store::update(&ctx.dir, local_event, &created_event, &ctx.metadata)?;
-
-        stats.created += 1;
-    }
-
-    // Update existing events on remote
-    for change in &ctx.sync_diff.to_push_update {
-        let Some(local_event) = ctx.local_events.get(&change.uid) else {
-            continue;
-        };
-
-        println!("  Updating: {}", local_event.event.summary);
-        let params = build_params(
-            &ctx.calendar_config.params,
-            &[("event", serde_json::to_value(&local_event.event)?)],
-        );
-        ctx.provider.update_event(params).await?;
-        stats.updated += 1;
-    }
-
-    Ok(stats)
-}
-
-fn update_sync_state(calendar_dir: &std::path::Path) -> Result<()> {
-    let mut new_sync_state = sync::SyncState::default();
-    let local_events = store::list(calendar_dir)?;
-    for uid in local_events.keys() {
-        new_sync_state.synced_uids.insert(uid.clone());
-    }
-    sync::save_state(calendar_dir, &new_sync_state)
 }

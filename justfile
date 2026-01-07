@@ -5,17 +5,20 @@ default:
 cli +args:
   cargo run -p caldir-cli -- {{ args }}
 
-auth:
-  @just cli auth
+auth +args:
+  @just cli auth {{ args }}
 
 pull:
   @just cli pull
 
 status:
-  @just cli status --verbose
+  @just cli status
 
 push:
   @just cli push
+
+new +args:
+  @just cli new {{ args }}
 
 # Cargo
 

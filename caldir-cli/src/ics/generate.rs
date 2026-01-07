@@ -1,8 +1,8 @@
 //! ICS file generation.
 
 use super::CalendarMetadata;
-use crate::event::{Event, EventTime, Transparency};
 use anyhow::Result;
+use caldir_core::event::{Event, EventStatus, EventTime, Transparency};
 use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger, ValueType};
 
 /// Add a datetime property with proper formatting based on EventTime variant
@@ -80,9 +80,9 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
 
     // Status
     let status = match event.status {
-        crate::event::EventStatus::Confirmed => "CONFIRMED",
-        crate::event::EventStatus::Tentative => "TENTATIVE",
-        crate::event::EventStatus::Cancelled => "CANCELLED",
+        EventStatus::Confirmed => "CONFIRMED",
+        EventStatus::Tentative => "TENTATIVE",
+        EventStatus::Cancelled => "CANCELLED",
     };
     ics_event.add_property("STATUS", status);
 
@@ -162,8 +162,8 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::{Attendee, EventStatus, ParticipationStatus};
     use crate::ics::CalendarMetadata;
+    use caldir_core::event::{Attendee, EventStatus, ParticipationStatus};
     use chrono::{NaiveDate, TimeZone, Utc};
 
     fn make_test_event() -> Event {

@@ -42,8 +42,7 @@ async fn main() {
             Err(e) => {
                 let response = Response::error(&format!("Failed to parse request: {}", e));
                 if writeln!(stdout, "{}", response).is_err() || stdout.flush().is_err() {
-                    eprintln!("Failed to write to stdout, exiting");
-                    break;
+                    break; // Parent likely killed us, exit silently
                 }
                 continue;
             }
@@ -52,8 +51,7 @@ async fn main() {
         let response = handle_request(request).await;
 
         if writeln!(stdout, "{}", response).is_err() || stdout.flush().is_err() {
-            eprintln!("Failed to write to stdout, exiting");
-            break;
+            break; // Parent likely killed us, exit silently
         }
     }
 }
@@ -170,7 +168,7 @@ async fn handle_update_event(params: &serde_json::Value) -> String {
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
     match google::update_event(&params.google_account, calendar_id, &params.event).await {
-        Ok(()) => Response::success(()),
+        Ok(event) => Response::success(event),
         Err(e) => Response::error(&format!("{:#}", e)),
     }
 }

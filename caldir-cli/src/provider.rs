@@ -8,46 +8,77 @@
 //!
 //! Providers manage their own credentials and tokens. Core just passes
 //! provider-specific parameters from the calendar config.
-
-use crate::event::Event;
+//!
 use anyhow::{Context, Result};
+use serde::{de::DeserializeOwned, Deserialize};
+use std::time::Duration;
+
 use caldir_core::protocol::{Command as ProviderCommand, Request, Response};
-use serde::de::DeserializeOwned;
-use std::collections::HashMap;
-use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
+use tokio::time::timeout;
 
-// =============================================================================
-// Provider Client
-// =============================================================================
+const PROVIDER_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// A client for communicating with a provider subprocess.
-///
-/// Providers are discovered by looking for executables named
-/// `caldir-provider-{name}` in PATH.
-pub struct Provider {
-    binary_path: PathBuf,
+/// A calendar returned by the provider's list_calendars command
+#[derive(Debug, Deserialize)]
+pub struct ProviderCalendar {
+    pub id: String,
+    pub name: String,
+    pub primary: bool,
 }
 
+pub struct Provider(String);
+
 impl Provider {
-    /// Create a new provider client.
-    ///
-    /// Looks for an executable named `caldir-provider-{name}` in PATH.
-    pub fn new(name: &str) -> Result<Self> {
-        let binary_name = format!("caldir-provider-{}", name);
+    pub fn from_name(name: &str) -> Self {
+        Provider(name.to_string())
+    }
+
+    pub fn name(&self) -> &str {
+        &self.0
+    }
+
+    pub async fn authenticate(&self) -> Result<String> {
+        self.call_inner(ProviderCommand::Authenticate, serde_json::Value::Null)
+            .await
+    }
+
+    /// List all calendars for an account
+    pub async fn list_calendars(&self, account: &str) -> Result<Vec<ProviderCalendar>> {
+        let param_key = format!("{}_account", self.0);
+        let params = serde_json::json!({ param_key: account });
+        self.call(ProviderCommand::ListCalendars, params).await
+    }
+
+    pub fn binary_path(&self) -> Result<std::path::PathBuf> {
+        let binary_name = format!("caldir-provider-{}", self.0);
         let binary_path = which::which(&binary_name).with_context(|| {
             format!(
                 "Provider '{}' not found. Install it with:\n  cargo install {}",
-                name, binary_name
+                self.0, binary_name
             )
         })?;
-
-        Ok(Self { binary_path })
+        Ok(binary_path)
     }
 
     /// Call a provider command and return the result.
-    async fn call<R: DeserializeOwned>(
+    pub async fn call<R: DeserializeOwned>(
+        &self,
+        command: ProviderCommand,
+        params: serde_json::Value,
+    ) -> Result<R> {
+        timeout(PROVIDER_TIMEOUT, self.call_inner(command, params))
+            .await
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "Provider request timed out after {}s - check your network connection",
+                    PROVIDER_TIMEOUT.as_secs()
+                )
+            })?
+    }
+
+    async fn call_inner<R: DeserializeOwned>(
         &self,
         command: ProviderCommand,
         params: serde_json::Value,
@@ -57,18 +88,15 @@ impl Provider {
         let request_json =
             serde_json::to_string(&request).context("Failed to serialize provider request")?;
 
+        let binary_path = self.binary_path()?;
+
         // Spawn the provider process
-        let mut child = Command::new(&self.binary_path)
+        let mut child = Command::new(&binary_path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit()) // Let provider errors show in terminal
             .spawn()
-            .with_context(|| {
-                format!(
-                    "Failed to spawn provider: {}",
-                    self.binary_path.display()
-                )
-            })?;
+            .with_context(|| format!("Failed to spawn provider: {}", &binary_path.display()))?;
 
         // Write request to stdin
         {
@@ -84,7 +112,10 @@ impl Provider {
                 .write_all(b"\n")
                 .await
                 .context("Failed to write newline to provider stdin")?;
-            stdin.flush().await.context("Failed to flush provider stdin")?;
+            stdin
+                .flush()
+                .await
+                .context("Failed to flush provider stdin")?;
             // Drop stdin to signal EOF
         }
 
@@ -114,77 +145,12 @@ impl Provider {
         }
 
         // Parse response
-        let response: Response<R> =
-            serde_json::from_str(&line).with_context(|| {
-                format!("Failed to parse provider response: {}", line)
-            })?;
+        let response: Response<R> = serde_json::from_str(&line)
+            .with_context(|| format!("Failed to parse provider response: {}", line))?;
 
         match response {
             Response::Success { data } => Ok(data),
             Response::Error { error } => Err(anyhow::anyhow!("{}", error)),
         }
     }
-
-    // =========================================================================
-    // Provider Commands
-    // =========================================================================
-
-    /// Authenticate with the provider.
-    ///
-    /// Provider handles the full auth flow (OAuth, etc.) and stores
-    /// credentials/tokens in its own config directory.
-    ///
-    /// Returns the account identifier (e.g., email for Google).
-    pub async fn authenticate(&self) -> Result<String> {
-        self.call(ProviderCommand::Authenticate, serde_json::json!(null))
-            .await
-    }
-
-    /// List events from a calendar.
-    pub async fn list_events(&self, params: serde_json::Value) -> Result<Vec<Event>> {
-        self.call(ProviderCommand::ListEvents, params).await
-    }
-
-    /// Create a new event on a calendar.
-    ///
-    /// Returns the created event with provider-assigned ID.
-    pub async fn create_event(&self, params: serde_json::Value) -> Result<Event> {
-        self.call(ProviderCommand::CreateEvent, params).await
-    }
-
-    /// Update an existing event.
-    pub async fn update_event(&self, params: serde_json::Value) -> Result<()> {
-        self.call(ProviderCommand::UpdateEvent, params).await
-    }
-
-    /// Delete an event.
-    pub async fn delete_event(&self, params: serde_json::Value) -> Result<()> {
-        self.call(ProviderCommand::DeleteEvent, params).await
-    }
-}
-
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-/// Convert calendar config params to JSON and merge with additional params.
-pub fn build_params(
-    config_params: &HashMap<String, toml::Value>,
-    additional: &[(&str, serde_json::Value)],
-) -> serde_json::Value {
-    let mut params = serde_json::Map::new();
-
-    // Add config params (toml::Value implements Serialize)
-    for (key, value) in config_params {
-        if let Ok(json_value) = serde_json::to_value(value) {
-            params.insert(key.clone(), json_value);
-        }
-    }
-
-    // Add additional params
-    for (key, value) in additional {
-        params.insert((*key).to_string(), value.clone());
-    }
-
-    serde_json::Value::Object(params)
 }

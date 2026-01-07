@@ -1,22 +1,22 @@
+mod caldir;
+mod calendar;
 mod commands;
 mod config;
 mod diff;
 mod ics;
+mod local;
+mod local_event;
 mod provider;
-mod store;
-mod sync;
-
-// Re-export caldir_core types as crate::event for internal use
-pub use caldir_core as event;
+mod remote;
+mod utils;
 
 use anyhow::Result;
+use caldir::Caldir;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
-#[command(
-    about = "Interact with your local caldir directory and sync with external calendar providers"
-)]
+#[command(about = "Interact with your caldir directory and sync to remote calendars")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -24,53 +24,18 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Authenticate with a calendar provider
     Auth {
-        /// Provider to authenticate with (e.g., "google")
-        provider: String,
+        provider: String, // e.g. "google"
     },
-    /// Pull events from cloud to local directory
     Pull,
-    /// Push local changes to cloud calendars
-    Push {
-        /// Force deletion even when local calendar is empty (dangerous)
-        #[arg(long)]
-        force: bool,
-    },
-    /// Show changes between local directory and cloud calendars
-    Status {
-        /// Show which properties changed for each modified event
-        #[arg(short, long)]
-        verbose: bool,
-    },
-    /// Create a new local event
+    Push,
+    Status,
     New {
-        /// Event title
         title: String,
 
-        /// Start date/time (e.g., "2025-03-20" or "2025-03-20T15:00")
+        /// Start date/time (e.g., "2025-03-20T15:00")
         #[arg(short, long)]
         start: String,
-
-        /// End date/time
-        #[arg(short, long, conflicts_with = "duration")]
-        end: Option<String>,
-
-        /// Duration (e.g., "30m", "1h", "2h30m")
-        #[arg(short, long, conflicts_with = "end")]
-        duration: Option<String>,
-
-        /// Event description
-        #[arg(long)]
-        description: Option<String>,
-
-        /// Event location
-        #[arg(short, long)]
-        location: Option<String>,
-
-        /// Calendar to create the event in (defaults to default_calendar from config)
-        #[arg(short, long)]
-        calendar: Option<String>,
     },
 }
 
@@ -80,17 +45,37 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Auth { provider } => commands::auth::run(&provider).await,
-        Commands::Pull => commands::pull::run().await,
-        Commands::Push { force } => commands::push::run(force).await,
-        Commands::Status { verbose } => commands::status::run(verbose).await,
-        Commands::New {
-            title,
-            start,
-            end,
-            duration,
-            description,
-            location,
-            calendar,
-        } => commands::new::run(title, start, end, duration, description, location, calendar).await,
+        Commands::Pull => {
+            require_calendars()?;
+            commands::pull::run().await
+        }
+        Commands::Push => {
+            require_calendars()?;
+            commands::push::run().await
+        }
+        Commands::Status => {
+            require_calendars()?;
+            commands::status::run().await
+        }
+        Commands::New { title, start } => {
+            require_calendars()?;
+            commands::new::run(title, start)
+        }
     }
+}
+
+fn require_calendars() -> Result<()> {
+    let caldir = Caldir::load()?;
+
+    if caldir.calendars().is_empty() {
+        anyhow::bail!(
+            "No calendars found.\n\n\
+            Connect your first calendar with:\n  \
+            caldir-cli auth <provider>\n\n\
+            Example:\n  \
+            caldir-cli auth google"
+        );
+    }
+
+    Ok(())
 }

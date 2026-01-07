@@ -6,8 +6,12 @@
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// A calendar event (provider-neutral)
+///
+/// `PartialEq` compares content fields only, ignoring sync metadata
+/// (`updated`, `sequence`, `custom_properties`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
     pub id: String,
@@ -25,37 +29,96 @@ pub struct Event {
     pub original_start: Option<EventTime>,
 
     // Alarms & Availability
-    /// Reminders/alarms for this event
     pub reminders: Vec<Reminder>,
     /// Whether event blocks time (OPAQUE) or is free (TRANSPARENT)
     pub transparency: Transparency,
 
     // Meeting Data
-    /// Event organizer
     pub organizer: Option<Attendee>,
-    /// Event attendees/participants
     pub attendees: Vec<Attendee>,
-    /// Conference/video call URL
     pub conference_url: Option<String>,
 
-    // Sync Infrastructure
+    // Sync Infrastructure (excluded from PartialEq)
     /// Last modification timestamp (LAST-MODIFIED)
     pub updated: Option<DateTime<Utc>>,
     /// Revision sequence number (SEQUENCE)
     pub sequence: Option<i64>,
 
-    // Provider-specific
+    // Provider-specific (excluded from PartialEq)
     /// Custom properties from the provider (e.g., X-GOOGLE-CONFERENCE)
     /// These are preserved for round-tripping back to the provider
     pub custom_properties: Vec<(String, String)>,
 }
 
+impl PartialEq for Event {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.summary == other.summary
+            && self.description == other.description
+            && self.location == other.location
+            && self.start == other.start
+            && self.end == other.end
+            && self.status == other.status
+            && self.recurrence == other.recurrence
+            && self.original_start == other.original_start
+            && self.reminders == other.reminders
+            && self.transparency == other.transparency
+            && self.organizer == other.organizer
+            && self.attendees == other.attendees
+            && self.conference_url == other.conference_url
+    }
+}
+
+impl fmt::Display for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.summary.is_empty() {
+            write!(f, "(Unknown Event)")
+        } else {
+            write!(f, "{}", self.summary)
+        }
+    }
+}
+
+impl Event {
+    pub fn new(summary: String, start: EventTime, end: EventTime) -> Self {
+        let event_id = format!("local-{}", uuid::Uuid::new_v4());
+
+        Event {
+            id: event_id,
+            summary,
+            description: None,
+            location: None,
+            start,
+            end,
+            status: EventStatus::Confirmed,
+            recurrence: None,
+            original_start: None,
+            reminders: Vec::new(),
+            transparency: Transparency::Opaque,
+            organizer: None,
+            attendees: Vec::new(),
+            conference_url: None,
+            updated: None,
+            sequence: None,
+            custom_properties: Vec::new(),
+        }
+    }
+
+    /// Render the event time with recurring indicator
+    pub fn render_event_time(&self) -> String {
+        let recurring = if self.recurrence.is_some() {
+            " 🔁"
+        } else {
+            ""
+        };
+        format!("{}{}", self.start, recurring)
+    }
+}
+
 /// An event attendee (also used for organizer)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Attendee {
-    /// Display name
     pub name: Option<String>,
-    /// Email address
     pub email: String,
     /// Participation status (RFC 5545 PARTSTAT)
     pub response_status: Option<ParticipationStatus>,
@@ -65,13 +128,9 @@ pub struct Attendee {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING-KEBAB-CASE")]
 pub enum ParticipationStatus {
-    /// Attendee has accepted
     Accepted,
-    /// Attendee has declined
     Declined,
-    /// Attendee has tentatively accepted
     Tentative,
-    /// Attendee needs to respond
     NeedsAction,
 }
 
@@ -98,7 +157,6 @@ impl ParticipationStatus {
     }
 }
 
-/// A reminder/alarm for an event
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Reminder {
     /// Minutes before the event to trigger
@@ -151,6 +209,19 @@ impl EventTime {
     /// Check if this is an all-day date (not a datetime)
     pub fn is_date(&self) -> bool {
         matches!(self, EventTime::Date(_))
+    }
+}
+
+impl fmt::Display for EventTime {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EventTime::Date(d) => write!(f, "{}", d.format("%Y-%m-%d")),
+            EventTime::DateTimeUtc(dt) => write!(f, "{}", dt.format("%Y-%m-%d %H:%M")),
+            EventTime::DateTimeFloating(dt) => write!(f, "{}", dt.format("%Y-%m-%d %H:%M")),
+            EventTime::DateTimeZoned { datetime, .. } => {
+                write!(f, "{}", datetime.format("%Y-%m-%d %H:%M"))
+            }
+        }
     }
 }
 
