@@ -7,6 +7,7 @@ mod provider;
 mod remote;
 mod store;
 mod sync;
+mod utils;
 
 mod caldir;
 mod calendar;

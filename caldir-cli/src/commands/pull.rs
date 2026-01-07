@@ -1,9 +1,9 @@
 use anyhow::Result;
 use owo_colors::OwoColorize;
 
-use super::create_spinner;
 use crate::caldir::Caldir;
 use crate::diff_new::PullStats;
+use crate::utils::tui;
 
 pub async fn run() -> Result<()> {
     let caldir = Caldir::load()?;
@@ -16,7 +16,7 @@ pub async fn run() -> Result<()> {
     };
 
     for (i, cal) in calendars.iter().enumerate() {
-        let spinner = create_spinner(cal.render());
+        let spinner = tui::create_spinner(cal.render());
         let result = cal.get_diff().await;
         spinner.finish_and_clear();
 
@@ -24,12 +24,12 @@ pub async fn run() -> Result<()> {
 
         match result {
             Ok(diff) => {
-                println!("{}", diff.render_pull());
-
                 let stats = diff.apply_pull()?;
                 total.created += stats.created;
                 total.updated += stats.updated;
                 total.deleted += stats.deleted;
+
+                println!("{}", diff.render_pull());
             }
             Err(e) => println!("   {}", e.to_string().red()),
         }
