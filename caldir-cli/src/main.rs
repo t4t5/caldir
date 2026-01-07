@@ -28,20 +28,13 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Authenticate with a calendar provider
-    // Auth {
-    //     /// Provider to authenticate with (e.g., "google")
-    //     provider: String,
-    // },
-    /// Pull events from remote to local directory
+    Auth {
+        provider: String, // e.g. "google"
+    },
     Pull,
-    /// Push local changes to remote calendars
     Push,
-    /// Show changes between local directory and remote calendars
     Status,
-    /// Create a new local event
     New {
-        /// Event title
         title: String,
 
         /// Start date/time (e.g., "2025-03-20T15:00")
@@ -55,7 +48,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        // Commands::Auth { provider } => commands::auth::run(&provider).await,
+        Commands::Auth { provider } => commands::auth::run(&provider).await,
         Commands::Pull => commands::pull::run().await,
         Commands::Push => commands::push::run().await,
         Commands::Status => commands::status::run().await,

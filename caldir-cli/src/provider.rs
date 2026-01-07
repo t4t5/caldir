@@ -27,6 +27,11 @@ impl Provider {
         Provider(name.to_string())
     }
 
+    pub async fn authenticate(&self) -> Result<String> {
+        self.call_inner(ProviderCommand::Authenticate, serde_json::Value::Null)
+            .await
+    }
+
     pub fn binary_path(&self) -> Result<std::path::PathBuf> {
         let binary_name = format!("caldir-provider-{}", self.0);
         let binary_path = which::which(&binary_name).with_context(|| {

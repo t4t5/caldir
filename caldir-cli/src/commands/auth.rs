@@ -4,7 +4,7 @@ use indoc::printdoc;
 use crate::provider::Provider;
 
 pub async fn run(provider_name: &str) -> Result<()> {
-    let provider = Provider::new(provider_name)?;
+    let provider = Provider::from_name(provider_name);
 
     println!("Authenticating with {provider_name}...");
 
