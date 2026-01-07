@@ -39,35 +39,15 @@ enum Commands {
     Push,
     /// Show changes between local directory and remote calendars
     Status,
-    // Create a new local event
-    // New {
-    //     /// Event title
-    //     title: String,
-    //
-    //     /// Start date/time (e.g., "2025-03-20" or "2025-03-20T15:00")
-    //     #[arg(short, long)]
-    //     start: String,
-    //
-    //     /// End date/time
-    //     #[arg(short, long, conflicts_with = "duration")]
-    //     end: Option<String>,
-    //
-    //     /// Duration (e.g., "30m", "1h", "2h30m")
-    //     #[arg(short, long, conflicts_with = "end")]
-    //     duration: Option<String>,
-    //
-    //     /// Event description
-    //     #[arg(long)]
-    //     description: Option<String>,
-    //
-    //     /// Event location
-    //     #[arg(short, long)]
-    //     location: Option<String>,
-    //
-    //     /// Calendar to create the event in (defaults to default_calendar from config)
-    //     #[arg(short, long)]
-    //     calendar: Option<String>,
-    // },
+    /// Create a new local event
+    New {
+        /// Event title
+        title: String,
+
+        /// Start date/time (e.g., "2025-03-20T15:00")
+        #[arg(short, long)]
+        start: String,
+    },
 }
 
 #[tokio::main]
@@ -79,14 +59,6 @@ async fn main() -> Result<()> {
         Commands::Pull => commands::pull::run().await,
         Commands::Push => commands::push::run().await,
         Commands::Status => commands::status::run().await,
-        // Commands::New {
-        //     title,
-        //     start,
-        //     end,
-        //     duration,
-        //     description,
-        //     location,
-        //     calendar,
-        // } => commands::new::run(title, start, end, duration, description, location, calendar).await,
+        Commands::New { title, start } => commands::new::run(title, start),
     }
 }

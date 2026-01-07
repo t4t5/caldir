@@ -17,6 +17,9 @@ status:
 push:
   @just cli push
 
+new +args:
+  @just cli new {{ args }}
+
 # Cargo
 
 check:

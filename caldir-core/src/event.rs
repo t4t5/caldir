@@ -69,6 +69,52 @@ impl PartialEq for Event {
     }
 }
 
+impl fmt::Display for Event {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.summary.is_empty() {
+            write!(f, "(Unknown Event)")
+        } else {
+            write!(f, "{}", self.summary)
+        }
+    }
+}
+
+impl Event {
+    pub fn new(summary: String, start: EventTime, end: EventTime) -> Self {
+        let event_id = format!("local-{}", uuid::Uuid::new_v4());
+
+        Event {
+            id: event_id,
+            summary,
+            description: None,
+            location: None,
+            start,
+            end,
+            status: EventStatus::Confirmed,
+            recurrence: None,
+            original_start: None,
+            reminders: Vec::new(),
+            transparency: Transparency::Opaque,
+            organizer: None,
+            attendees: Vec::new(),
+            conference_url: None,
+            updated: None,
+            sequence: None,
+            custom_properties: Vec::new(),
+        }
+    }
+
+    /// Render the event time with recurring indicator
+    pub fn render_event_time(&self) -> String {
+        let recurring = if self.recurrence.is_some() {
+            " 🔁"
+        } else {
+            ""
+        };
+        format!("{}{}", self.start, recurring)
+    }
+}
+
 /// An event attendee (also used for organizer)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Attendee {
@@ -184,26 +230,4 @@ pub enum EventStatus {
     Confirmed,
     Tentative,
     Cancelled,
-}
-
-impl fmt::Display for Event {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.summary.is_empty() {
-            write!(f, "(Unknown Event)")
-        } else {
-            write!(f, "{}", self.summary)
-        }
-    }
-}
-
-impl Event {
-    /// Render the event time with recurring indicator
-    pub fn render_event_time(&self) -> String {
-        let recurring = if self.recurrence.is_some() {
-            " 🔁"
-        } else {
-            ""
-        };
-        format!("{}{}", self.start, recurring)
-    }
 }
