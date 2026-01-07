@@ -103,6 +103,12 @@ pub struct PullStats {
     pub deleted: usize,
 }
 
+pub struct PushStats {
+    pub created: usize,
+    pub updated: usize,
+    pub deleted: usize,
+}
+
 pub struct CalendarDiff<'a> {
     pub calendar: &'a Calendar,
     pub to_push: Vec<EventDiff>,
@@ -148,6 +154,56 @@ impl<'a> CalendarDiff<'a> {
             lines.push(format!("   {}", diff.render()));
         }
         lines.join("\n")
+    }
+
+    pub fn render_push(&self) -> String {
+        if self.to_push.is_empty() {
+            return "   No changes to push".dimmed().to_string();
+        }
+
+        let mut lines = Vec::new();
+        for diff in &self.to_push {
+            lines.push(format!("   {}", diff.render()));
+        }
+        lines.join("\n")
+    }
+
+    pub async fn apply_push(&self) -> Result<PushStats> {
+        let mut stats = PushStats {
+            created: 0,
+            updated: 0,
+            deleted: 0,
+        };
+
+        let remote = self.calendar.remote();
+
+        for diff in &self.to_push {
+            match diff.kind {
+                DiffKind::Create => {
+                    let event = diff.new.as_ref().expect("Create must have new event");
+                    let created = remote.create_event(event).await?;
+                    // Update local file with remote-assigned ID and fields
+                    self.calendar.update_event(&event.id, &created)?;
+                    stats.created += 1;
+                }
+                DiffKind::Update => {
+                    let event = diff.new.as_ref().expect("Update must have new event");
+                    let updated = remote.update_event(event).await?;
+                    // Update local file with any remote changes
+                    self.calendar.update_event(&event.id, &updated)?;
+                    stats.updated += 1;
+                }
+                DiffKind::Delete => {
+                    let event = diff.old.as_ref().expect("Delete must have old event");
+                    remote.delete_event(&event.id).await?;
+                    stats.deleted += 1;
+                }
+            }
+        }
+
+        self.calendar.save_sync_state()?;
+
+        Ok(stats)
     }
 
     pub fn apply_pull(&self) -> Result<PullStats> {

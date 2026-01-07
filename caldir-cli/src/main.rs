@@ -21,9 +21,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
-#[command(
-    about = "Interact with your local caldir directory and sync with external calendar providers"
-)]
+#[command(about = "Interact with your caldir directory and sync to remote calendars")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -36,20 +34,12 @@ enum Commands {
     //     /// Provider to authenticate with (e.g., "google")
     //     provider: String,
     // },
-    /// Pull events from cloud to local directory
+    /// Pull events from remote to local directory
     Pull,
-    // /// Push local changes to cloud calendars
-    // Push {
-    //     /// Force deletion even when local calendar is empty (dangerous)
-    //     #[arg(long)]
-    //     force: bool,
-    // },
-    /// Show changes between local directory and cloud calendars
-    Status {
-        /// Show which properties changed for each modified event
-        #[arg(short, long)]
-        verbose: bool,
-    },
+    /// Push local changes to remote calendars
+    Push,
+    /// Show changes between local directory and remote calendars
+    Status,
     // Create a new local event
     // New {
     //     /// Event title
@@ -88,8 +78,8 @@ async fn main() -> Result<()> {
     match cli.command {
         // Commands::Auth { provider } => commands::auth::run(&provider).await,
         Commands::Pull => commands::pull::run().await,
-        // Commands::Push { force } => commands::push::run(force).await,
-        Commands::Status { verbose } => commands::status::run().await,
+        Commands::Push => commands::push::run().await,
+        Commands::Status => commands::status::run().await,
         // Commands::New {
         //     title,
         //     start,

@@ -12,7 +12,7 @@ pull:
   @just cli pull
 
 status:
-  @just cli status --verbose
+  @just cli status
 
 push:
   @just cli push

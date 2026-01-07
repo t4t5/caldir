@@ -46,4 +46,22 @@ impl Remote {
             .call(ProviderCommand::ListEvents, self.config.to_json())
             .await
     }
+
+    pub async fn create_event(&self, event: &Event) -> Result<Event> {
+        let mut params = self.config.to_json();
+        params["event"] = serde_json::to_value(event)?;
+        self.provider.call(ProviderCommand::CreateEvent, params).await
+    }
+
+    pub async fn update_event(&self, event: &Event) -> Result<Event> {
+        let mut params = self.config.to_json();
+        params["event"] = serde_json::to_value(event)?;
+        self.provider.call(ProviderCommand::UpdateEvent, params).await
+    }
+
+    pub async fn delete_event(&self, event_id: &str) -> Result<()> {
+        let mut params = self.config.to_json();
+        params["event_id"] = serde_json::Value::String(event_id.to_string());
+        self.provider.call(ProviderCommand::DeleteEvent, params).await
+    }
 }
