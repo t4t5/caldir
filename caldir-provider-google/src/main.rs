@@ -68,7 +68,7 @@ async fn handle_request(request: Request) -> String {
 }
 
 async fn handle_authenticate() -> String {
-    match google::authenticate().await {
+    match google::index::authenticate().await {
         Ok(account) => Response::success(account),
         Err(e) => Response::error(&format!("{:#}", e)),
     }
@@ -85,7 +85,7 @@ async fn handle_list_calendars(params: &serde_json::Value) -> String {
         Err(e) => return Response::error(&format!("Invalid params: {}", e)),
     };
 
-    match google::fetch_calendars(&params.google_account).await {
+    match google::api::fetch_calendars(&params.google_account).await {
         Ok(calendars) => Response::success(calendars),
         Err(e) => Response::error(&format!("{:#}", e)),
     }
@@ -112,7 +112,7 @@ async fn handle_list_events(params: &serde_json::Value) -> String {
         .as_deref()
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
-    match google::fetch_events(
+    match google::api::fetch_events(
         &params.google_account,
         calendar_id,
         params.time_min.as_deref(),
@@ -143,7 +143,7 @@ async fn handle_create_event(params: &serde_json::Value) -> String {
         .as_deref()
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
-    match google::create_event(&params.google_account, calendar_id, &params.event).await {
+    match google::api::create_event(&params.google_account, calendar_id, &params.event).await {
         Ok(event) => Response::success(event),
         Err(e) => Response::error(&format!("{:#}", e)),
     }
@@ -167,7 +167,7 @@ async fn handle_update_event(params: &serde_json::Value) -> String {
         .as_deref()
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
-    match google::update_event(&params.google_account, calendar_id, &params.event).await {
+    match google::api::update_event(&params.google_account, calendar_id, &params.event).await {
         Ok(event) => Response::success(event),
         Err(e) => Response::error(&format!("{:#}", e)),
     }
@@ -191,7 +191,7 @@ async fn handle_delete_event(params: &serde_json::Value) -> String {
         .as_deref()
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
-    match google::delete_event(&params.google_account, calendar_id, &params.event_id).await {
+    match google::api::delete_event(&params.google_account, calendar_id, &params.event_id).await {
         Ok(()) => Response::success(()),
         Err(e) => Response::error(&format!("{:#}", e)),
     }
