@@ -68,7 +68,7 @@ async fn handle_request(request: Request) -> String {
 }
 
 async fn handle_authenticate() -> String {
-    match google::index::authenticate().await {
+    match google::actions::authenticate().await {
         Ok(account) => Response::success(account),
         Err(e) => Response::error(&format!("{:#}", e)),
     }

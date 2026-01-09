@@ -1,7 +1,7 @@
 use crate::config;
-use crate::google::index::{
-    from_google_event, get_valid_tokens, google_to_participation_status, to_google_event,
-};
+use crate::google::actions::get_valid_tokens;
+use crate::google::from_google::{from_google_event, google_to_participation_status};
+use crate::google::to_google::to_google_event;
 use crate::types::{AccountTokens, Calendar, GoogleCredentials};
 use anyhow::{Context, Result};
 use caldir_core::constants::DEFAULT_SYNC_DAYS;
