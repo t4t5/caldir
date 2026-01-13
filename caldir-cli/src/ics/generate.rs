@@ -5,31 +5,6 @@ use anyhow::Result;
 use caldir_core::event::{Event, EventStatus, EventTime, Transparency};
 use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger, ValueType};
 
-/// Add a datetime property with proper formatting based on EventTime variant
-fn add_datetime_property(ics_event: &mut icalendar::Event, name: &str, time: &EventTime) {
-    match time {
-        EventTime::Date(d) => {
-            let mut prop = Property::new(name, d.format("%Y%m%d").to_string());
-            prop.append_parameter(ValueType::Date);
-            ics_event.append_property(prop);
-        }
-        EventTime::DateTimeUtc(dt) => {
-            // UTC datetime with Z suffix
-            ics_event.add_property(name, dt.format("%Y%m%dT%H%M%SZ").to_string());
-        }
-        EventTime::DateTimeFloating(dt) => {
-            // Floating datetime (no Z, no TZID)
-            ics_event.add_property(name, dt.format("%Y%m%dT%H%M%S").to_string());
-        }
-        EventTime::DateTimeZoned { datetime, tzid } => {
-            // Datetime with TZID parameter
-            let mut prop = Property::new(name, datetime.format("%Y%m%dT%H%M%S").to_string());
-            prop.add_parameter("TZID", tzid);
-            ics_event.append_property(prop);
-        }
-    }
-}
-
 /// Generate .ics content for an event with calendar metadata
 pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String> {
     let mut cal = Calendar::new();
@@ -157,6 +132,31 @@ pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String
     let cal = cal.done();
 
     Ok(cal.to_string())
+}
+
+/// Add a datetime property with proper formatting based on EventTime variant
+fn add_datetime_property(ics_event: &mut icalendar::Event, name: &str, time: &EventTime) {
+    match time {
+        EventTime::Date(d) => {
+            let mut prop = Property::new(name, d.format("%Y%m%d").to_string());
+            prop.append_parameter(ValueType::Date);
+            ics_event.append_property(prop);
+        }
+        EventTime::DateTimeUtc(dt) => {
+            // UTC datetime with Z suffix
+            ics_event.add_property(name, dt.format("%Y%m%dT%H%M%SZ").to_string());
+        }
+        EventTime::DateTimeFloating(dt) => {
+            // Floating datetime (no Z, no TZID)
+            ics_event.add_property(name, dt.format("%Y%m%dT%H%M%S").to_string());
+        }
+        EventTime::DateTimeZoned { datetime, tzid } => {
+            // Datetime with TZID parameter
+            let mut prop = Property::new(name, datetime.format("%Y%m%dT%H%M%S").to_string());
+            prop.add_parameter("TZID", tzid);
+            ics_event.append_property(prop);
+        }
+    }
 }
 
 #[cfg(test)]
