@@ -4,15 +4,6 @@ use chrono::{DateTime, Utc};
 use google_calendar::types::CalendarListEntry;
 use serde::{Deserialize, Serialize};
 
-// Re-export shared event types from caldir-core
-pub use caldir_core::{
-    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
-};
-
-// =============================================================================
-// Provider-specific types (not shared with caldir-core)
-// =============================================================================
-
 /// Google app OAuth credentials
 /// Stored in ~/.config/caldir/providers/google/credentials.json
 #[derive(Debug, Clone, Serialize, Deserialize)]

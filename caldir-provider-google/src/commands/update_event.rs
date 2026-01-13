@@ -1,17 +1,18 @@
 use anyhow::Result;
+use caldir_core::Event;
 use google_calendar::{Client, types::SendUpdates};
 use serde::Deserialize;
 
+use crate::DEFAULT_CALENDAR_ID;
 use crate::config;
 use crate::google_auth::{get_valid_tokens, redirect_uri};
 use crate::transformer::{from_google_event, to_google_event};
-use crate::{DEFAULT_CALENDAR_ID, types};
 
 #[derive(Debug, Deserialize)]
 struct UpdateEventParams {
     google_account: String,
     google_calendar_id: Option<String>,
-    event: types::Event,
+    event: Event,
 }
 
 pub async fn handle_update_event(params: &serde_json::Value) -> Result<serde_json::Value> {

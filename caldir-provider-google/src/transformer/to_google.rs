@@ -1,4 +1,4 @@
-use crate::types::{Attendee, Event, EventStatus, EventTime, ParticipationStatus, Transparency};
+use caldir_core::{Attendee, Event, EventStatus, EventTime, ParticipationStatus, Transparency};
 
 /// Convert our Event to a Google Calendar API Event
 pub fn to_google_event(event: &Event) -> google_calendar::types::Event {
