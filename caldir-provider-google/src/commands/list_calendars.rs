@@ -3,9 +3,8 @@ use google_calendar::Client;
 use google_calendar::types::MinAccessRole;
 use serde::Deserialize;
 
-use crate::commands::authenticate::redirect_uri;
 use crate::config;
-use crate::google::actions::get_valid_tokens;
+use crate::google_auth::{get_valid_tokens, redirect_uri};
 use crate::types::GoogleCalendar;
 
 #[derive(Debug, Deserialize)]

@@ -5,18 +5,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
 
 use crate::config;
-
-const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
-
-const REDIRECT_PORT: u16 = 8085;
-
-pub fn redirect_uri() -> String {
-    format!("http://localhost:{}/callback", REDIRECT_PORT)
-}
-
-fn redirect_address() -> String {
-    format!("127.0.0.1:{}", REDIRECT_PORT)
-}
+use crate::google_auth::{SCOPES, redirect_address, redirect_uri};
 
 pub async fn handle_authenticate() -> Result<serde_json::Value> {
     let scopes: Vec<String> = SCOPES.iter().map(|s| s.to_string()).collect();

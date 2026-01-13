@@ -3,11 +3,11 @@ use google_calendar::Client;
 use google_calendar::types::SendUpdates;
 use serde::Deserialize;
 
-use crate::commands::authenticate::redirect_uri;
 use crate::config;
-use crate::google::actions::get_valid_tokens;
-use crate::google::from_google::from_google_event;
-use crate::google::to_google::to_google_event;
+use crate::google_auth::get_valid_tokens;
+use crate::google_auth::redirect_uri;
+use crate::transformer::from_google_event;
+use crate::transformer::to_google_event;
 use crate::{DEFAULT_CALENDAR_ID, types};
 
 #[derive(Debug, Deserialize)]

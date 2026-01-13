@@ -1,10 +1,21 @@
 //! Google Calendar API implementation.
 
-use crate::commands::authenticate::redirect_uri;
 use crate::config;
 use crate::types::{GoogleAccountTokens, GoogleCredentials};
 use anyhow::{Context, Result};
 use google_calendar::Client;
+
+pub const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
+
+const REDIRECT_PORT: u16 = 8085;
+
+pub fn redirect_uri() -> String {
+    format!("http://localhost:{}/callback", REDIRECT_PORT)
+}
+
+pub fn redirect_address() -> String {
+    format!("127.0.0.1:{}", REDIRECT_PORT)
+}
 
 /// Get tokens for an account, refreshing if needed
 pub async fn get_valid_tokens(email: &str) -> Result<GoogleAccountTokens> {
@@ -13,14 +24,14 @@ pub async fn get_valid_tokens(email: &str) -> Result<GoogleAccountTokens> {
 
     if config::tokens_need_refresh(&tokens) {
         eprintln!("Access token expired, refreshing..."); // TODO: Remove this
-        tokens = refresh_token_internal(&creds, &tokens).await?;
+        tokens = refresh_token(&creds, &tokens).await?;
         config::save_tokens(email, &tokens)?;
     }
 
     Ok(tokens)
 }
 
-pub async fn refresh_token_internal(
+pub async fn refresh_token(
     creds: &GoogleCredentials,
     tokens: &GoogleAccountTokens,
 ) -> Result<GoogleAccountTokens> {

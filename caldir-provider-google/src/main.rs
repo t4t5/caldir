@@ -9,7 +9,8 @@
 
 mod commands;
 mod config;
-mod google;
+mod google_auth;
+mod transformer;
 mod types;
 
 use anyhow::Result;

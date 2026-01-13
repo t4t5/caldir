@@ -4,13 +4,12 @@ use google_calendar::types::SendUpdates;
 use serde::Deserialize;
 
 use crate::DEFAULT_CALENDAR_ID;
-use crate::commands::authenticate::redirect_uri;
 use crate::config;
-use crate::google::actions::get_valid_tokens;
+use crate::google_auth::get_valid_tokens;
+use crate::google_auth::redirect_uri;
 
 #[derive(Debug, Deserialize)]
 struct DeleteEventParams {
-    google_account: String,
     google_calendar_id: Option<String>,
     event_id: String,
 }
