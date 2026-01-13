@@ -13,7 +13,7 @@ struct ListCalendarsParams {
     google_account: String,
 }
 
-pub async fn handle_list_calendars(params: &serde_json::Value) -> Result<Vec<String>> {
+pub async fn handle_list_calendars(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: ListCalendarsParams = serde_json::from_value(params.clone())?;
 
     let account = &params.google_account;
@@ -35,10 +35,12 @@ pub async fn handle_list_calendars(params: &serde_json::Value) -> Result<Vec<Str
         .await
         .context("Failed to fetch calendars")?;
 
-    Ok(response
+    let calendars: Vec<String> = response
         .body
         .into_iter()
         .filter(|c| !c.id.is_empty())
         .map(|c| GoogleCalendar::from_calendar_list_entry(c).name)
-        .collect())
+        .collect();
+
+    Ok(serde_json::to_value(calendars)?)
 }

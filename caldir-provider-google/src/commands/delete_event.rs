@@ -15,7 +15,7 @@ struct DeleteEventParams {
     event_id: String,
 }
 
-pub async fn handle_delete_event(params: &serde_json::Value) -> Result<()> {
+pub async fn handle_delete_event(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: DeleteEventParams = serde_json::from_value(params.clone())?;
 
     let calendar_id = params
@@ -42,11 +42,11 @@ pub async fn handle_delete_event(params: &serde_json::Value) -> Result<()> {
         .await;
 
     match result {
-        Ok(_) => Ok(()),
+        Ok(_) => Ok(serde_json::Value::Null),
         Err(e) => {
             let error_str = e.to_string();
             if error_str.contains("410") || error_str.contains("Gone") {
-                Ok(())
+                Ok(serde_json::Value::Null)
             } else {
                 Err(e).with_context(|| format!("Failed to delete event: {}", event_id))
             }

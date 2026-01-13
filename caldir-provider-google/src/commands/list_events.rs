@@ -21,7 +21,7 @@ struct ListEventsParams {
     time_max: Option<String>,
 }
 
-pub async fn handle_list_events(params: &serde_json::Value) -> Result<Vec<Event>> {
+pub async fn handle_list_events(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: ListEventsParams = serde_json::from_value(params.clone())?;
 
     let account = &params.google_account;
@@ -71,12 +71,12 @@ pub async fn handle_list_events(params: &serde_json::Value) -> Result<Vec<Event>
         .await
         .context("Failed to fetch events")?;
 
-    let mut result = Vec::new();
+    let mut events: Vec<Event> = Vec::new();
 
     for google_event in response.body {
         let event = from_google_event(google_event)?;
-        result.push(event);
+        events.push(event);
     }
 
-    Ok(result)
+    Ok(serde_json::to_value(events)?)
 }

@@ -62,18 +62,13 @@ async fn main() {
     }
 }
 
-async fn handle_request(request: Request) -> Result<String> {
-    let result = match request.command {
+async fn handle_request(request: Request) -> Result<serde_json::Value> {
+    match request.command {
         Command::Authenticate => commands::handle_authenticate().await,
         Command::ListCalendars => commands::handle_list_calendars(&request.params).await,
         Command::ListEvents => commands::handle_list_events(&request.params).await,
         Command::CreateEvent => commands::handle_create_event(&request.params).await,
-        Command::UpdateEvent => {
-            commands::handle_update_event(&client, &calendar_id, &request.params)
-                .await,
-        }
+        Command::UpdateEvent => commands::handle_update_event(&request.params).await,
         Command::DeleteEvent => commands::handle_delete_event(&request.params).await,
-    };
-
-    result
+    }
 }

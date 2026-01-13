@@ -1,5 +1,4 @@
 use anyhow::{Context, Result};
-use caldir_core::Event;
 use google_calendar::Client;
 use google_calendar::types::SendUpdates;
 use serde::Deserialize;
@@ -17,7 +16,7 @@ struct CreateEventParams {
     event: types::Event,
 }
 
-pub async fn handle_create_event(params: &serde_json::Value) -> Result<Event> {
+pub async fn handle_create_event(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: CreateEventParams = serde_json::from_value(params.clone())?;
 
     let calendar_id = params
@@ -55,5 +54,6 @@ pub async fn handle_create_event(params: &serde_json::Value) -> Result<Event> {
         .await
         .with_context(|| format!("Failed to create event: {}", event.summary))?;
 
-    from_google_event(response.body)
+    let created_event = from_google_event(response.body)?;
+    Ok(serde_json::to_value(created_event)?)
 }

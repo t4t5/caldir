@@ -18,12 +18,12 @@ fn redirect_address() -> String {
     format!("127.0.0.1:{}", REDIRECT_PORT)
 }
 
-pub async fn handle_authenticate() -> Result<String> {
+pub async fn handle_authenticate() -> Result<serde_json::Value> {
     let scopes: Vec<String> = SCOPES.iter().map(|s| s.to_string()).collect();
 
     let creds = config::load_credentials()?;
 
-    let client = Client::new(
+    let mut client = Client::new(
         creds.client_id.clone(),
         creds.client_secret.clone(),
         redirect_uri(),
@@ -45,12 +45,18 @@ pub async fn handle_authenticate() -> Result<String> {
 
     eprintln!("\nReceived authorization code, exchanging for tokens...");
 
-    let tokens = client.get_access_token(&code, &state).await?;
+    let access_token = client.get_access_token(&code, &state).await?;
 
-    let expires_at = if tokens.expires_in > 0 {
-        Some(chrono::Utc::now() + chrono::Duration::seconds(tokens.expires_in))
+    let expires_at = if access_token.expires_in > 0 {
+        Some(chrono::Utc::now() + chrono::Duration::seconds(access_token.expires_in))
     } else {
         None
+    };
+
+    let tokens = crate::types::GoogleAccountTokens {
+        access_token: access_token.access_token,
+        refresh_token: access_token.refresh_token,
+        expires_at,
     };
 
     let creds = config::load_credentials()?;
@@ -59,8 +65,8 @@ pub async fn handle_authenticate() -> Result<String> {
         creds.client_id.clone(),
         creds.client_secret.clone(),
         redirect_uri(),
-        tokens.access_token,
-        tokens.refresh_token,
+        tokens.access_token.clone(),
+        tokens.refresh_token.clone(),
     );
 
     let response = client
@@ -80,7 +86,7 @@ pub async fn handle_authenticate() -> Result<String> {
 
     eprintln!("Authentication successful!");
 
-    Ok(email)
+    Ok(serde_json::to_value(email)?)
 }
 
 fn wait_for_callback() -> Result<(String, String)> {
