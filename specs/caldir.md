@@ -300,3 +300,29 @@ Without this state, a local-only event is ambiguous: was it created locally and 
 - After `push` (create): Newly created event UIDs are added to synced_uids
 - After `pull` (delete): Removed UIDs are deleted from synced_uids
 
+---
+
+## Relationship to vdir
+
+[vdir](https://vdirsyncer.pimutils.org/en/stable/vdir.html) is an similar standard for storing calendars on a filesystem, used by vdirsyncer, khal, and other tools.
+
+### What caldir shares with vdir
+
+- Subdirectories represent calendars (collections)
+- One `.ics` file per event
+- Files contain a `UID` property
+
+### Where caldir intentionally diverges
+
+**Filenames:** vdir specifies opaque, UID-like filenames (`5a3c9b7e-1234-5678-abcd.ics`). caldir uses semantic filenames with embedded date and title (`2025-03-20T1500__team-standup.ics`).
+
+**Filename stability:** vdir requires "when changing an item, the original filename must be used." caldir renames files when the event date or title changes, since the filename encodes that information.
+
+### Why we diverge
+
+caldir is designed for human and LLM readability. The semantic filenames mean:
+
+- Files sort chronologically by default
+- AI assistants can reason about your calendar from filenames alone, without parsing ICS
+- Shell tools (grep, tab completion) work naturally
+
