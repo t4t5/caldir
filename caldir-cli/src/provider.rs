@@ -44,7 +44,7 @@ impl Provider {
     }
 
     pub async fn authenticate(&self) -> Result<String> {
-        self.call_inner(ProviderCommand::Authenticate, serde_json::Value::Null)
+        self.call_inner(ProviderCommand::Authenticate, serde_json::json!({}))
             .await
     }
 

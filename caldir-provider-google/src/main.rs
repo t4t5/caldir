@@ -55,7 +55,7 @@ async fn main() {
 
 async fn handle_request(request: Request) -> Result<serde_json::Value> {
     match request.command {
-        Command::Authenticate => commands::authenticate::handle().await,
+        Command::Authenticate => commands::authenticate::handle(request.params).await,
         Command::ListCalendars => commands::list_calendars::handle(request.params).await,
         Command::ListEvents => commands::list_events::handle(request.params).await,
         Command::CreateEvent => commands::create_event::handle(request.params).await,

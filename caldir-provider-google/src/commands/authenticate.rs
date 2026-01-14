@@ -1,8 +1,9 @@
-//! The auth process will spawn a local HTTP server (on port 8085) to receive the OAuth callback.
+//! The auth process will spawn a local HTTP server to receive the OAuth callback.
 
 use anyhow::{Context, Result};
 use google_calendar::Client;
 use google_calendar::types::MinAccessRole;
+use serde::Deserialize;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
@@ -11,17 +12,25 @@ use crate::session;
 
 pub const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
 
-const REDIRECT_PORT: u16 = 8085;
+const DEFAULT_REDIRECT_PORT: u16 = 8085;
 
-pub fn redirect_uri() -> String {
-    format!("http://localhost:{}/callback", REDIRECT_PORT)
+#[derive(Debug, Deserialize)]
+struct AuthenticateParams {
+    redirect_port: Option<u16>,
 }
 
-pub fn redirect_address() -> String {
-    format!("127.0.0.1:{}", REDIRECT_PORT)
+fn redirect_uri(port: u16) -> String {
+    format!("http://localhost:{}/callback", port)
 }
 
-pub async fn handle() -> Result<serde_json::Value> {
+fn redirect_address(port: u16) -> String {
+    format!("127.0.0.1:{}", port)
+}
+
+pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
+    let params: AuthenticateParams = serde_json::from_value(params)?;
+    let port = params.redirect_port.unwrap_or(DEFAULT_REDIRECT_PORT);
+
     let scopes: Vec<String> = SCOPES.iter().map(|s| s.to_string()).collect();
 
     let creds = app_config::load()?;
@@ -29,7 +38,7 @@ pub async fn handle() -> Result<serde_json::Value> {
     let mut client = Client::new(
         creds.client_id.clone(),
         creds.client_secret.clone(),
-        redirect_uri(),
+        redirect_uri(port),
         String::new(),
         String::new(),
     );
@@ -44,7 +53,7 @@ pub async fn handle() -> Result<serde_json::Value> {
         eprintln!("(Could not open browser automatically, please copy the URL above)");
     }
 
-    let (code, state) = wait_for_callback().await?;
+    let (code, state) = wait_for_callback(port).await?;
 
     eprintln!("\nReceived authorization code, exchanging for tokens...");
 
@@ -65,7 +74,7 @@ pub async fn handle() -> Result<serde_json::Value> {
     let client = Client::new(
         creds.client_id.clone(),
         creds.client_secret.clone(),
-        redirect_uri(),
+        redirect_uri(port),
         tokens.access_token.clone(),
         tokens.refresh_token.clone(),
     );
@@ -91,8 +100,8 @@ pub async fn handle() -> Result<serde_json::Value> {
     Ok(serde_json::to_value(account_email)?)
 }
 
-async fn wait_for_callback() -> Result<(String, String)> {
-    let listener = TcpListener::bind(redirect_address())
+async fn wait_for_callback(port: u16) -> Result<(String, String)> {
+    let listener = TcpListener::bind(redirect_address(port))
         .await
         .context("Failed to bind OAuth callback listener")?;
 
