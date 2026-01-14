@@ -1,8 +1,8 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use google_calendar::Client;
 use google_calendar::types::MinAccessRole;
-use std::io::{BufRead, BufReader, Write};
-use std::net::TcpListener;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpListener;
 
 use crate::config;
 use crate::google_auth::{SCOPES, redirect_address, redirect_uri};
@@ -30,7 +30,7 @@ pub async fn handle_authenticate() -> Result<serde_json::Value> {
         eprintln!("(Could not open browser automatically, please copy the URL above)");
     }
 
-    let (code, state) = wait_for_callback()?;
+    let (code, state) = wait_for_callback().await?;
 
     eprintln!("\nReceived authorization code, exchanging for tokens...");
 
@@ -47,8 +47,6 @@ pub async fn handle_authenticate() -> Result<serde_json::Value> {
         refresh_token: access_token.refresh_token,
         expires_at,
     };
-
-    let creds = config::load_credentials()?;
 
     let client = Client::new(
         creds.client_id.clone(),
@@ -69,7 +67,7 @@ pub async fn handle_authenticate() -> Result<serde_json::Value> {
         .iter()
         .find(|cal| cal.primary)
         .map(|cal| &cal.summary)
-        .expect("No primary calendar found");
+        .ok_or_else(|| anyhow::anyhow!("No primary calendar found"))?;
 
     // Save tokens for this account
     config::save_tokens(account, &tokens)?;
@@ -79,20 +77,28 @@ pub async fn handle_authenticate() -> Result<serde_json::Value> {
     Ok(serde_json::to_value(account)?)
 }
 
-fn wait_for_callback() -> Result<(String, String)> {
-    let listener = TcpListener::bind(redirect_address())?;
+async fn wait_for_callback() -> Result<(String, String)> {
+    let listener = TcpListener::bind(redirect_address())
+        .await
+        .context("Failed to bind OAuth callback listener")?;
 
-    let (mut stream, _) = listener.accept()?;
+    let (stream, _) = listener
+        .accept()
+        .await
+        .context("Failed to accept OAuth callback")?;
 
-    let mut reader = BufReader::new(&stream);
+    let mut reader = BufReader::new(stream);
     let mut request_line = String::new();
-    reader.read_line(&mut request_line)?;
+    reader
+        .read_line(&mut request_line)
+        .await
+        .context("Failed to read OAuth callback request line")?;
 
     // Parse the request to get the code and state
     let url_part = request_line
         .split_whitespace()
         .nth(1)
-        .expect("Invalid HTTP request");
+        .ok_or_else(|| anyhow::anyhow!("Invalid HTTP request"))?;
 
     let url = url::Url::parse(&format!("http://localhost{}", url_part))?;
 
@@ -100,13 +106,13 @@ fn wait_for_callback() -> Result<(String, String)> {
         .query_pairs()
         .find(|(k, _)| k == "code")
         .map(|(_, v)| v.to_string())
-        .expect("No code in callback");
+        .ok_or_else(|| anyhow::anyhow!("No code in callback"))?;
 
     let state = url
         .query_pairs()
         .find(|(k, _)| k == "state")
         .map(|(_, v)| v.to_string())
-        .expect("No state in callback");
+        .ok_or_else(|| anyhow::anyhow!("No state in callback"))?;
 
     // Send a response to the browser
     let response = "HTTP/1.1 200 OK\r\n\
@@ -118,8 +124,12 @@ fn wait_for_callback() -> Result<(String, String)> {
         <p>You can close this window and return to the terminal.</p>\
         </body></html>";
 
-    stream.write_all(response.as_bytes())?;
-    stream.flush()?;
+    let mut stream = reader.into_inner();
+    stream
+        .write_all(response.as_bytes())
+        .await
+        .context("Failed to write OAuth callback response")?;
+    stream.flush().await?;
 
     Ok((code, state))
 }
