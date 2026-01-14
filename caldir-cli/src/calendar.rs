@@ -6,8 +6,9 @@ use std::path::{Path, PathBuf};
 
 use crate::diff::CalendarDiff;
 use crate::ics::{self, CalendarMetadata};
-use crate::local::{LocalConfig, LocalState};
-use crate::local_event::LocalEvent;
+use crate::local::config::LocalConfig;
+use crate::local::event::LocalEvent;
+use crate::local::state::LocalState;
 use crate::remote::Remote;
 
 pub struct Calendar {

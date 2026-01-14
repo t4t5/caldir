@@ -6,7 +6,6 @@ mod constants;
 mod diff;
 mod ics;
 mod local;
-mod local_event;
 mod provider;
 mod remote;
 mod utils;

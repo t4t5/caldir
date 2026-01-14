@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use crate::caldir::Caldir;
-use crate::local::{LocalConfig, RemoteConfig};
+use crate::local::config::{LocalConfig, RemoteConfig};
 use crate::provider::Provider;
 
 pub async fn run(provider_name: &str) -> Result<()> {

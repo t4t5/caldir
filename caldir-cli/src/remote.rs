@@ -5,7 +5,7 @@ use chrono::Duration;
 use std::collections::HashMap;
 
 use crate::constants::DEFAULT_SYNC_DAYS;
-use crate::local::RemoteConfig;
+use crate::local::config::RemoteConfig;
 use crate::provider::Provider;
 
 /// Internal wrapper for provider params to convert to JSON
