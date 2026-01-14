@@ -6,7 +6,7 @@ use serde::Deserialize;
 use crate::DEFAULT_CALENDAR_ID;
 use crate::config;
 use crate::google_auth::{get_valid_tokens, redirect_uri};
-use crate::transformer::{from_google_event, to_google_event};
+use crate::parser::{from_google_event, to_google_event};
 
 #[derive(Debug, Deserialize)]
 struct UpdateEventParams {

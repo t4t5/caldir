@@ -5,8 +5,7 @@ use serde::Deserialize;
 
 use crate::DEFAULT_CALENDAR_ID;
 use crate::config;
-use crate::google_auth::get_valid_tokens;
-use crate::google_auth::redirect_uri;
+use crate::google_auth::{get_valid_tokens, redirect_uri};
 
 #[derive(Debug, Deserialize)]
 struct DeleteEventParams {

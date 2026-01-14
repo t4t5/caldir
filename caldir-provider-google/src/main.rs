@@ -10,7 +10,7 @@
 mod commands;
 mod config;
 mod google_auth;
-mod transformer;
+mod parser;
 mod types;
 
 use anyhow::Result;
