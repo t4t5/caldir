@@ -7,11 +7,10 @@
 //!   ~/.config/caldir/providers/google/credentials.json
 //!   ~/.config/caldir/providers/google/tokens/{account}.json
 
+mod app_config;
 mod commands;
-mod config;
-mod google_auth;
-mod parser;
-mod types;
+mod convert;
+mod session;
 
 use anyhow::Result;
 use caldir_core::protocol::{Command, Request, Response};

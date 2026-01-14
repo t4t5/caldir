@@ -4,14 +4,13 @@ use google_calendar::types::MinAccessRole;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
-use crate::config::GoogleAppConfig;
-use crate::google_auth::{SCOPES, redirect_address, redirect_uri};
+use crate::app_config;
+use crate::session::{self, SCOPES, redirect_address, redirect_uri};
 
 pub async fn handle() -> Result<serde_json::Value> {
     let scopes: Vec<String> = SCOPES.iter().map(|s| s.to_string()).collect();
 
-    let app = GoogleAppConfig::load()?;
-    let creds = &app.creds;
+    let creds = app_config::load()?;
 
     let mut client = Client::new(
         creds.client_id.clone(),
@@ -43,7 +42,7 @@ pub async fn handle() -> Result<serde_json::Value> {
         None
     };
 
-    let tokens = crate::types::GoogleAccountTokens {
+    let tokens = session::Tokens {
         access_token: access_token.access_token,
         refresh_token: access_token.refresh_token,
         expires_at,
@@ -71,7 +70,7 @@ pub async fn handle() -> Result<serde_json::Value> {
         .ok_or_else(|| anyhow::anyhow!("No primary calendar found"))?;
 
     // Save tokens for this account
-    app.account(account_email).save_tokens(&tokens)?;
+    session::save_tokens(account_email, &tokens)?;
 
     eprintln!("Authentication successful!");
 
