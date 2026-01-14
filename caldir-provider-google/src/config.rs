@@ -4,7 +4,7 @@
 //!   ~/.config/caldir/providers/google/credentials.json
 //!   ~/.config/caldir/providers/google/tokens/{account}.json
 
-use crate::types::{AccountTokens, GoogleCredentials};
+use crate::types::{GoogleAccountTokens, GoogleCredentials};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 
@@ -29,9 +29,9 @@ pub fn tokens_dir() -> Result<PathBuf> {
 }
 
 /// Get the token file path for a specific account
-pub fn token_path(account: &str) -> Result<PathBuf> {
+pub fn token_path(email: &str) -> Result<PathBuf> {
     // Sanitize account name for use as filename
-    let safe_account = account.replace(['/', '\\', ':'], "_");
+    let safe_account = email.replace(['/', '\\', ':'], "_");
     Ok(tokens_dir()?.join(format!("{}.json", safe_account)))
 }
 
@@ -62,38 +62,38 @@ pub fn load_credentials() -> Result<GoogleCredentials> {
 }
 
 /// Load tokens for a specific account
-pub fn load_tokens(account: &str) -> Result<AccountTokens> {
-    let path = token_path(account)?;
+pub fn load_tokens(email: &str) -> Result<GoogleAccountTokens> {
+    let path = token_path(email)?;
 
     if !path.exists() {
         anyhow::bail!(
             "No tokens for account: {}\n\
             Run `caldir-cli auth google` first.",
-            account
+            email
         );
     }
 
     let contents = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read tokens from {}", path.display()))?;
 
-    let tokens: AccountTokens = serde_json::from_str(&contents)
+    let tokens: GoogleAccountTokens = serde_json::from_str(&contents)
         .with_context(|| format!("Failed to parse tokens from {}", path.display()))?;
 
     Ok(tokens)
 }
 
 /// Save tokens for a specific account
-pub fn save_tokens(account: &str, tokens: &AccountTokens) -> Result<()> {
+pub fn save_tokens(account: &str, tokens: &GoogleAccountTokens) -> Result<()> {
     let path = token_path(account)?;
 
     // Ensure tokens directory exists
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create tokens directory at {}", parent.display()))?;
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!("Failed to create tokens directory at {}", parent.display())
+        })?;
     }
 
-    let contents = serde_json::to_string_pretty(tokens)
-        .context("Failed to serialize tokens")?;
+    let contents = serde_json::to_string_pretty(tokens).context("Failed to serialize tokens")?;
 
     std::fs::write(&path, contents)
         .with_context(|| format!("Failed to write tokens to {}", path.display()))?;
@@ -102,7 +102,7 @@ pub fn save_tokens(account: &str, tokens: &AccountTokens) -> Result<()> {
 }
 
 /// Check if tokens are expired and need refresh
-pub fn tokens_need_refresh(tokens: &AccountTokens) -> bool {
+pub fn tokens_need_refresh(tokens: &GoogleAccountTokens) -> bool {
     tokens
         .expires_at
         .map(|exp| exp < chrono::Utc::now())
