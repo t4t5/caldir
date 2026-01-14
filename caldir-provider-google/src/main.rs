@@ -3,9 +3,9 @@
 //! This binary implements the caldir provider protocol, communicating
 //! with caldir-cli via JSON over stdin/stdout.
 //!
-//! The provider manages its own credentials and tokens:
-//!   ~/.config/caldir/providers/google/credentials.json
-//!   ~/.config/caldir/providers/google/tokens/{account}.json
+//! The provider manages its own configuration and session data:
+//!   ~/.config/caldir/providers/google/app_config.toml
+//!   ~/.config/caldir/providers/google/session/{account}.toml
 
 mod app_config;
 mod commands;

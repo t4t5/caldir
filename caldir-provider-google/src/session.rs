@@ -1,7 +1,7 @@
 //! OAuth session management for the Google provider.
 //!
 //! Handles token storage, refresh, and authenticated client creation.
-//! Tokens are stored at: ~/.config/caldir/providers/google/tokens/{account}.json
+//! Session data stored at: ~/.config/caldir/providers/google/session/{account}.toml
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
@@ -10,35 +10,6 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::app_config::{self, Credentials};
-
-pub const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
-
-const REDIRECT_PORT: u16 = 8085;
-
-pub fn redirect_uri() -> String {
-    format!("http://localhost:{}/callback", REDIRECT_PORT)
-}
-
-pub fn redirect_address() -> String {
-    format!("127.0.0.1:{}", REDIRECT_PORT)
-}
-
-/// OAuth tokens for an authenticated account.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Tokens {
-    pub access_token: String,
-    pub refresh_token: String,
-    #[serde(default)]
-    pub expires_at: Option<DateTime<Utc>>,
-}
-
-impl Tokens {
-    pub fn needs_refresh(&self) -> bool {
-        self.expires_at
-            .map(|exp| exp < Utc::now())
-            .unwrap_or(false)
-    }
-}
 
 /// An authenticated session for a Google account.
 pub struct Session {
@@ -51,7 +22,7 @@ impl Session {
     /// Load a session for the given account email.
     pub fn load(email: &str) -> Result<Self> {
         let creds = app_config::load()?;
-        let tokens = load_tokens(email)?;
+        let tokens = Tokens::load(email)?;
 
         Ok(Self {
             email: email.to_string(),
@@ -69,7 +40,7 @@ impl Session {
         let client = Client::new(
             self.creds.client_id.clone(),
             self.creds.client_secret.clone(),
-            redirect_uri(),
+            String::new(),
             self.tokens.access_token.clone(),
             self.tokens.refresh_token.clone(),
         );
@@ -98,7 +69,7 @@ impl Session {
             expires_at,
         };
 
-        save_tokens(&self.email, &self.tokens)?;
+        self.tokens.save(&self.email)?;
 
         Ok(())
     }
@@ -108,53 +79,68 @@ impl Session {
         Client::new(
             self.creds.client_id.clone(),
             self.creds.client_secret.clone(),
-            redirect_uri(),
+            String::new(),
             self.tokens.access_token.clone(),
             self.tokens.refresh_token.clone(),
         )
     }
 }
 
-fn token_path(email: &str) -> Result<PathBuf> {
-    let safe_email = email.replace(['/', '\\', ':'], "_");
-    Ok(app_config::base_dir()?
-        .join("tokens")
-        .join(format!("{}.json", safe_email)))
+/// OAuth tokens for an authenticated account.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tokens {
+    pub access_token: String,
+    pub refresh_token: String,
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
-fn load_tokens(email: &str) -> Result<Tokens> {
-    let path = token_path(email)?;
-
-    if !path.exists() {
-        anyhow::bail!(
-            "No tokens for account: {}\n\
-            Run `caldir-cli auth google` first.",
-            email
-        );
+impl Tokens {
+    fn path(email: &str) -> Result<PathBuf> {
+        let safe_email = email.replace(['/', '\\', ':'], "_");
+        Ok(app_config::base_dir()?
+            .join("session")
+            .join(format!("{}.toml", safe_email)))
     }
 
-    let contents = std::fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read tokens from {}", path.display()))?;
+    pub fn load(email: &str) -> Result<Self> {
+        let path = Self::path(email)?;
 
-    let tokens: Tokens = serde_json::from_str(&contents)
-        .with_context(|| format!("Failed to parse tokens from {}", path.display()))?;
+        if !path.exists() {
+            anyhow::bail!(
+                "No session for account: {}\n\
+                Run `caldir-cli auth google` first.",
+                email
+            );
+        }
 
-    Ok(tokens)
-}
+        let contents = std::fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read session from {}", path.display()))?;
 
-pub fn save_tokens(email: &str, tokens: &Tokens) -> Result<()> {
-    let path = token_path(email)?;
+        let tokens: Tokens = toml::from_str(&contents)
+            .with_context(|| format!("Failed to parse session from {}", path.display()))?;
 
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| {
-            format!("Failed to create tokens directory at {}", parent.display())
-        })?;
+        Ok(tokens)
     }
 
-    let contents = serde_json::to_string_pretty(tokens).context("Failed to serialize tokens")?;
+    pub fn save(&self, email: &str) -> Result<()> {
+        let path = Self::path(email)?;
 
-    std::fs::write(&path, contents)
-        .with_context(|| format!("Failed to write tokens to {}", path.display()))?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create session directory at {}", parent.display())
+            })?;
+        }
 
-    Ok(())
+        let contents = toml::to_string_pretty(self).context("Failed to serialize session")?;
+
+        std::fs::write(&path, contents)
+            .with_context(|| format!("Failed to write session to {}", path.display()))?;
+
+        Ok(())
+    }
+
+    pub fn needs_refresh(&self) -> bool {
+        self.expires_at.map(|exp| exp < Utc::now()).unwrap_or(false)
+    }
 }

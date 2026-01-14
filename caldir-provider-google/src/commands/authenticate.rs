@@ -5,7 +5,19 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
 use crate::app_config;
-use crate::session::{self, SCOPES, redirect_address, redirect_uri};
+use crate::session;
+
+pub const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
+
+const REDIRECT_PORT: u16 = 8085;
+
+pub fn redirect_uri() -> String {
+    format!("http://localhost:{}/callback", REDIRECT_PORT)
+}
+
+pub fn redirect_address() -> String {
+    format!("127.0.0.1:{}", REDIRECT_PORT)
+}
 
 pub async fn handle() -> Result<serde_json::Value> {
     let scopes: Vec<String> = SCOPES.iter().map(|s| s.to_string()).collect();
@@ -70,7 +82,7 @@ pub async fn handle() -> Result<serde_json::Value> {
         .ok_or_else(|| anyhow::anyhow!("No primary calendar found"))?;
 
     // Save tokens for this account
-    session::save_tokens(account_email, &tokens)?;
+    tokens.save(account_email)?;
 
     eprintln!("Authentication successful!");
 

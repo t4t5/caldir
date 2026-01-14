@@ -1,7 +1,7 @@
 //! App-level configuration for the Google provider.
 //!
 //! User-provided OAuth credentials stored at:
-//!   ~/.config/caldir/providers/google/credentials.json
+//!   ~/.config/caldir/providers/google/app_config.toml
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -23,16 +23,14 @@ pub fn base_dir() -> Result<PathBuf> {
 }
 
 pub fn load() -> Result<Credentials> {
-    let path = base_dir()?.join("credentials.json");
+    let path = base_dir()?.join("app_config.toml");
 
     if !path.exists() {
         anyhow::bail!(
             "Google credentials not found.\n\n\
             Create {} with:\n\n\
-            {{\n  \
-              \"client_id\": \"your-client-id.apps.googleusercontent.com\",\n  \
-              \"client_secret\": \"your-client-secret\"\n\
-            }}\n\n\
+            client_id = \"your-client-id.apps.googleusercontent.com\"\n\
+            client_secret = \"your-client-secret\"\n\n\
             See https://console.cloud.google.com/apis/credentials for setup.",
             path.display()
         );
@@ -41,7 +39,7 @@ pub fn load() -> Result<Credentials> {
     let contents = std::fs::read_to_string(&path)
         .with_context(|| format!("Failed to read credentials from {}", path.display()))?;
 
-    let creds: Credentials = serde_json::from_str(&contents)
+    let creds: Credentials = toml::from_str(&contents)
         .with_context(|| format!("Failed to parse credentials from {}", path.display()))?;
 
     Ok(creds)
