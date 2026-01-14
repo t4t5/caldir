@@ -5,7 +5,6 @@
 //! - `protocol` module for the CLI-provider communication protocol
 
 pub mod calendar;
-pub mod constants;
 pub mod event;
 pub mod protocol;
 

@@ -2,6 +2,7 @@ mod caldir;
 mod calendar;
 mod commands;
 mod config;
+mod constants;
 mod diff;
 mod ics;
 mod local;

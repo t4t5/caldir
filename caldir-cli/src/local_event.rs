@@ -1,8 +1,8 @@
+use crate::constants::DEFAULT_SYNC_DAYS;
 use crate::ics;
 
 use anyhow::Result;
 use caldir_core::Event;
-use caldir_core::constants::DEFAULT_SYNC_DAYS;
 use chrono::{DateTime, Duration, Utc};
 use std::path::PathBuf;
 

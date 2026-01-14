@@ -1,8 +1,10 @@
 use anyhow::Result;
 use caldir_core::Event;
 use caldir_core::protocol::Command as ProviderCommand;
+use chrono::Duration;
 use std::collections::HashMap;
 
+use crate::constants::DEFAULT_SYNC_DAYS;
 use crate::local::RemoteConfig;
 use crate::provider::Provider;
 
@@ -50,8 +52,16 @@ impl Remote {
     }
 
     pub async fn events(&self) -> Result<Vec<Event>> {
+        let now = chrono::Utc::now();
+        let from = (now - Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
+        let to = (now + Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
+
+        let mut params = self.params.to_json();
+        params["from"] = serde_json::Value::String(from);
+        params["to"] = serde_json::Value::String(to);
+
         self.provider
-            .call(ProviderCommand::ListEvents, self.params.to_json())
+            .call(ProviderCommand::ListEvents, params)
             .await
     }
 

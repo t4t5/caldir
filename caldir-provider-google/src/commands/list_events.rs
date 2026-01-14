@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use caldir_core::Event;
-use caldir_core::constants::DEFAULT_SYNC_DAYS;
+use chrono::{DateTime, Utc};
 use google_calendar::types::OrderBy;
 use serde::Deserialize;
 
@@ -11,10 +11,8 @@ use crate::session::Session;
 struct ListEventsParams {
     google_account: String,
     google_calendar_id: String,
-    #[serde(default)]
-    time_min: Option<String>,
-    #[serde(default)]
-    time_max: Option<String>,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
 }
 
 pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
@@ -27,13 +25,8 @@ pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
 
     let client = session.client();
 
-    // Default to ±1 year if not specified
-    let now = chrono::Utc::now();
-    let default_time_min = (now - chrono::Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
-    let default_time_max = (now + chrono::Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
-
-    let time_min = params.time_min.unwrap_or(default_time_min);
-    let time_max = params.time_max.unwrap_or(default_time_max);
+    let time_min = params.from.to_rfc3339();
+    let time_max = params.to.to_rfc3339();
 
     let response = client
         .events()
