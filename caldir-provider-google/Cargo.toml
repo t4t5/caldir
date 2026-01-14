@@ -32,9 +32,6 @@ chrono = { version = "0.4", features = ["serde"] }
 # Open URLs in browser
 open = "5"
 
-# URL encoding
-urlencoding = "2"
-
 # URL parsing
 url = "2"
 
