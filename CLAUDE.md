@@ -111,8 +111,8 @@ Providers are separate binaries that communicate with caldir-cli via JSON over s
 **Discovery**: caldir-cli looks for executables named `caldir-provider-{name}` in PATH.
 
 **Provider autonomy**: Each provider manages its own state in `~/.config/caldir/providers/{name}/`. For example, the Google provider stores:
-- `credentials.json` — OAuth client_id/secret (user creates via Google Cloud Console)
-- `tokens/{account}.json` — Access/refresh tokens per authenticated account
+- `app_config.toml` — OAuth client_id/secret (user creates via Google Cloud Console)
+- `session/{account}.toml` — Access/refresh tokens per authenticated account
 
 The core CLI is completely provider-agnostic — it just passes provider-prefixed config fields (like `google_account`) to the provider binary.
 
@@ -120,10 +120,9 @@ The core CLI is completely provider-agnostic — it just passes provider-prefixe
 - `caldir-provider-google` — Google Calendar (OAuth + REST API)
 
 **Future providers** (not yet implemented):
-- `caldir-provider-google-cloud` — Hosted OAuth (zero-friction auth via `auth.caldir.dev`)
+- `caldir-provider-icloud` — Apple iCloud
 - `caldir-provider-outlook` — Microsoft Graph API
 - `caldir-provider-caldav` — Generic CalDAV servers
-- `caldir-provider-ical` — Read-only iCal URLs
 
 ## Module Architecture
 
