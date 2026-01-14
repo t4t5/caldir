@@ -8,103 +8,100 @@ use crate::types::{GoogleAccountTokens, GoogleCredentials};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 
-/// Get the provider's config directory (~/.config/caldir/providers/google)
-pub fn provider_dir() -> Result<PathBuf> {
-    let config_dir = dirs::config_dir()
+fn base_dir() -> Result<PathBuf> {
+    Ok(dirs::config_dir()
         .context("Could not determine config directory")?
         .join("caldir")
         .join("providers")
-        .join("google");
-    Ok(config_dir)
+        .join("google"))
 }
 
-/// Get the credentials file path
-pub fn credentials_path() -> Result<PathBuf> {
-    Ok(provider_dir()?.join("credentials.json"))
+pub struct GoogleAppConfig {
+    pub creds: GoogleCredentials,
 }
 
-/// Get the tokens directory path
-pub fn tokens_dir() -> Result<PathBuf> {
-    Ok(provider_dir()?.join("tokens"))
-}
+impl GoogleAppConfig {
+    pub fn load() -> Result<Self> {
+        let path = base_dir()?.join("credentials.json");
 
-/// Get the token file path for a specific account
-pub fn token_path(email: &str) -> Result<PathBuf> {
-    // Sanitize account name for use as filename
-    let safe_account = email.replace(['/', '\\', ':'], "_");
-    Ok(tokens_dir()?.join(format!("{}.json", safe_account)))
-}
+        if !path.exists() {
+            anyhow::bail!(
+                "Google credentials not found.\n\n\
+                Create {} with:\n\n\
+                {{\n  \
+                  \"client_id\": \"your-client-id.apps.googleusercontent.com\",\n  \
+                  \"client_secret\": \"your-client-secret\"\n\
+                }}\n\n\
+                See https://console.cloud.google.com/apis/credentials for setup.",
+                path.display()
+            );
+        }
 
-/// Load credentials from disk
-pub fn load_credentials() -> Result<GoogleCredentials> {
-    let path = credentials_path()?;
+        let contents = std::fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read credentials from {}", path.display()))?;
 
-    if !path.exists() {
-        anyhow::bail!(
-            "Google credentials not found.\n\n\
-            Create {} with:\n\n\
-            {{\n  \
-              \"client_id\": \"your-client-id.apps.googleusercontent.com\",\n  \
-              \"client_secret\": \"your-client-secret\"\n\
-            }}\n\n\
-            See https://console.cloud.google.com/apis/credentials for setup.",
-            path.display()
-        );
+        let creds: GoogleCredentials = serde_json::from_str(&contents)
+            .with_context(|| format!("Failed to parse credentials from {}", path.display()))?;
+
+        Ok(Self { creds })
     }
 
-    let contents = std::fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read credentials from {}", path.display()))?;
-
-    let creds: GoogleCredentials = serde_json::from_str(&contents)
-        .with_context(|| format!("Failed to parse credentials from {}", path.display()))?;
-
-    Ok(creds)
+    pub fn account(&self, account_email: &str) -> GoogleAccountConfig {
+        GoogleAccountConfig {
+            account: account_email.to_string(),
+            creds: self.creds.clone(),
+        }
+    }
 }
 
-/// Load tokens for a specific account
-pub fn load_tokens(email: &str) -> Result<GoogleAccountTokens> {
-    let path = token_path(email)?;
+pub struct GoogleAccountConfig {
+    pub account: String,
+    pub creds: GoogleCredentials,
+}
 
-    if !path.exists() {
-        anyhow::bail!(
-            "No tokens for account: {}\n\
-            Run `caldir-cli auth google` first.",
-            email
-        );
+impl GoogleAccountConfig {
+    pub fn load_tokens(&self) -> Result<GoogleAccountTokens> {
+        let path = self.token_path()?;
+
+        if !path.exists() {
+            anyhow::bail!(
+                "No tokens for account: {}\n\
+                Run `caldir-cli auth google` first.",
+                self.account
+            );
+        }
+
+        let contents = std::fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read tokens from {}", path.display()))?;
+
+        let tokens: GoogleAccountTokens = serde_json::from_str(&contents)
+            .with_context(|| format!("Failed to parse tokens from {}", path.display()))?;
+
+        Ok(tokens)
     }
 
-    let contents = std::fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read tokens from {}", path.display()))?;
+    pub fn save_tokens(&self, tokens: &GoogleAccountTokens) -> Result<()> {
+        let path = self.token_path()?;
 
-    let tokens: GoogleAccountTokens = serde_json::from_str(&contents)
-        .with_context(|| format!("Failed to parse tokens from {}", path.display()))?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create tokens directory at {}", parent.display())
+            })?;
+        }
 
-    Ok(tokens)
-}
+        let contents =
+            serde_json::to_string_pretty(tokens).context("Failed to serialize tokens")?;
 
-/// Save tokens for a specific account
-pub fn save_tokens(account: &str, tokens: &GoogleAccountTokens) -> Result<()> {
-    let path = token_path(account)?;
+        std::fs::write(&path, contents)
+            .with_context(|| format!("Failed to write tokens to {}", path.display()))?;
 
-    // Ensure tokens directory exists
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).with_context(|| {
-            format!("Failed to create tokens directory at {}", parent.display())
-        })?;
+        Ok(())
     }
 
-    let contents = serde_json::to_string_pretty(tokens).context("Failed to serialize tokens")?;
-
-    std::fs::write(&path, contents)
-        .with_context(|| format!("Failed to write tokens to {}", path.display()))?;
-
-    Ok(())
-}
-
-/// Check if tokens are expired and need refresh
-pub fn tokens_need_refresh(tokens: &GoogleAccountTokens) -> bool {
-    tokens
-        .expires_at
-        .map(|exp| exp < chrono::Utc::now())
-        .unwrap_or(false)
+    fn token_path(&self) -> Result<PathBuf> {
+        let safe_account = self.account.replace(['/', '\\', ':'], "_");
+        Ok(base_dir()?
+            .join("tokens")
+            .join(format!("{}.json", safe_account)))
+    }
 }

@@ -3,7 +3,7 @@ use caldir_core::calendar::ProviderCalendar;
 use google_calendar::types::MinAccessRole;
 use serde::Deserialize;
 
-use crate::google_auth::client_for_account;
+use crate::commands::authed_client;
 use crate::parser::from_google_calendar;
 
 #[derive(Debug, Deserialize)]
@@ -14,9 +14,9 @@ struct ListCalendarsParams {
 pub async fn handle_list_calendars(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: ListCalendarsParams = serde_json::from_value(params.clone())?;
 
-    let account = &params.google_account;
+    let account_email = &params.google_account;
 
-    let client = client_for_account(account).await?;
+    let client = authed_client(account_email).await?;
 
     let google_calendars = client
         .calendar_list()

@@ -5,7 +5,7 @@ use google_calendar::types::OrderBy;
 use serde::Deserialize;
 
 use crate::DEFAULT_CALENDAR_ID;
-use crate::google_auth::client_for_account;
+use crate::commands::authed_client;
 use crate::parser::from_google_event;
 
 #[derive(Debug, Deserialize)]
@@ -21,14 +21,14 @@ struct ListEventsParams {
 pub async fn handle_list_events(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: ListEventsParams = serde_json::from_value(params.clone())?;
 
-    let account = &params.google_account;
+    let account_email = &params.google_account;
 
     let calendar_id = params
         .google_calendar_id
         .as_deref()
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
-    let client = client_for_account(account).await?;
+    let client = authed_client(account_email).await?;
 
     // Default to ±1 year if not specified
     let now = chrono::Utc::now();

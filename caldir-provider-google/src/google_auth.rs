@@ -1,6 +1,5 @@
 //! Google Calendar API implementation.
 
-use crate::config;
 use crate::types::{GoogleAccountTokens, GoogleCredentials};
 use anyhow::{Context, Result};
 use google_calendar::Client;
@@ -17,32 +16,11 @@ pub fn redirect_address() -> String {
     format!("127.0.0.1:{}", REDIRECT_PORT)
 }
 
-/// Get tokens for an account, refreshing if needed
-pub async fn get_valid_tokens(email: &str) -> Result<GoogleAccountTokens> {
-    let creds = config::load_credentials()?;
-    let mut tokens = config::load_tokens(email)?;
-
-    if config::tokens_need_refresh(&tokens) {
-        eprintln!("Access token expired, refreshing..."); // TODO: Remove this
-        tokens = refresh_token(&creds, &tokens).await?;
-        config::save_tokens(email, &tokens)?;
-    }
-
-    Ok(tokens)
-}
-
-/// Create an authenticated Google Calendar client for the account.
-pub async fn client_for_account(email: &str) -> Result<Client> {
-    let creds = config::load_credentials()?;
-    let tokens = get_valid_tokens(email).await?;
-
-    Ok(Client::new(
-        creds.client_id,
-        creds.client_secret,
-        redirect_uri(),
-        tokens.access_token,
-        tokens.refresh_token,
-    ))
+pub fn tokens_need_refresh(tokens: &GoogleAccountTokens) -> bool {
+    tokens
+        .expires_at
+        .map(|exp| exp < chrono::Utc::now())
+        .unwrap_or(false)
 }
 
 pub async fn refresh_token(

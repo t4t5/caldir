@@ -3,7 +3,7 @@ use google_calendar::types::SendUpdates;
 use serde::Deserialize;
 
 use crate::DEFAULT_CALENDAR_ID;
-use crate::google_auth::client_for_account;
+use crate::commands::authed_client;
 
 #[derive(Debug, Deserialize)]
 struct DeleteEventParams {
@@ -15,14 +15,14 @@ struct DeleteEventParams {
 pub async fn handle_delete_event(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: DeleteEventParams = serde_json::from_value(params.clone())?;
 
-    let account = &params.google_account;
+    let account_email = &params.google_account;
 
     let calendar_id = params
         .google_calendar_id
         .as_deref()
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
-    let client = client_for_account(account).await?;
+    let client = authed_client(account_email).await?;
 
     let event_id = params.event_id;
 
