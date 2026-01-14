@@ -137,6 +137,14 @@ impl Tokens {
         std::fs::write(&path, contents)
             .with_context(|| format!("Failed to write session to {}", path.display()))?;
 
+        // Restrict permissions to owner-only (0600) since this file contains OAuth tokens
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .with_context(|| format!("Failed to set permissions on {}", path.display()))?;
+        }
+
         Ok(())
     }
 
