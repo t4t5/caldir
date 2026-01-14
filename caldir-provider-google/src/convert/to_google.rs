@@ -1,62 +1,62 @@
 use caldir_core::{Attendee, Event, EventStatus, EventTime, ParticipationStatus, Transparency};
 
-use super::ToGoogle;
+use crate::convert::ToGoogle;
 
 impl ToGoogle<google_calendar::types::Event> for Event {
     fn to_google(&self) -> google_calendar::types::Event {
-    let start = event_time_to_google(&self.start);
-    let end = event_time_to_google(&self.end);
+        let start = event_time_to_google(&self.start);
+        let end = event_time_to_google(&self.end);
 
-    let status = match self.status {
-        EventStatus::Confirmed => "confirmed".to_string(),
-        EventStatus::Tentative => "tentative".to_string(),
-        EventStatus::Cancelled => "cancelled".to_string(),
-    };
+        let status = match self.status {
+            EventStatus::Confirmed => "confirmed".to_string(),
+            EventStatus::Tentative => "tentative".to_string(),
+            EventStatus::Cancelled => "cancelled".to_string(),
+        };
 
-    let transparency = match self.transparency {
-        Transparency::Opaque => "opaque".to_string(),
-        Transparency::Transparent => "transparent".to_string(),
-    };
+        let transparency = match self.transparency {
+            Transparency::Opaque => "opaque".to_string(),
+            Transparency::Transparent => "transparent".to_string(),
+        };
 
-    let reminders = if self.reminders.is_empty() {
-        None
-    } else {
-        Some(google_calendar::types::Reminders {
-            overrides: self
-                .reminders
-                .iter()
-                .map(|r| google_calendar::types::EventReminder {
-                    method: "popup".to_string(),
-                    minutes: r.minutes,
-                })
-                .collect(),
-            use_default: false,
-        })
-    };
+        let reminders = if self.reminders.is_empty() {
+            None
+        } else {
+            Some(google_calendar::types::Reminders {
+                overrides: self
+                    .reminders
+                    .iter()
+                    .map(|r| google_calendar::types::EventReminder {
+                        method: "popup".to_string(),
+                        minutes: r.minutes,
+                    })
+                    .collect(),
+                use_default: false,
+            })
+        };
 
-    let attendees: Vec<google_calendar::types::EventAttendee> =
-        self.attendees.iter().map(attendee_to_google).collect();
+        let attendees: Vec<google_calendar::types::EventAttendee> =
+            self.attendees.iter().map(attendee_to_google).collect();
 
-    let recurrence = self.recurrence.clone().unwrap_or_default();
+        let recurrence = self.recurrence.clone().unwrap_or_default();
 
-    let original_start_time = self.original_start.as_ref().map(event_time_to_google);
+        let original_start_time = self.original_start.as_ref().map(event_time_to_google);
 
-    google_calendar::types::Event {
-        id: self.id.clone(),
-        summary: self.summary.clone(),
-        description: self.description.clone().unwrap_or_default(),
-        location: self.location.clone().unwrap_or_default(),
-        start: Some(start),
-        end: Some(end),
-        status,
-        transparency,
-        reminders,
-        attendees,
-        recurrence,
-        original_start_time,
-        sequence: self.sequence.unwrap_or(0),
-        ..Default::default()
-    }
+        google_calendar::types::Event {
+            id: self.id.clone(),
+            summary: self.summary.clone(),
+            description: self.description.clone().unwrap_or_default(),
+            location: self.location.clone().unwrap_or_default(),
+            start: Some(start),
+            end: Some(end),
+            status,
+            transparency,
+            reminders,
+            attendees,
+            recurrence,
+            original_start_time,
+            sequence: self.sequence.unwrap_or(0),
+            ..Default::default()
+        }
     }
 }
 

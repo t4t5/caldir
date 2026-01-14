@@ -1,10 +1,14 @@
+//! List Google Calendars (name + config) for a given account.
+//! The config should contain the minimum data needed to identify each calendar on your local
+//! system.
+//! In this case: google_account + google_calendar_id.
+
 use anyhow::{Context, Result};
-use caldir_core::calendar::{CalendarWithConfig, ProviderCalendar};
+use caldir_core::calendar_config::CalendarConfig;
 use google_calendar::types::MinAccessRole;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::convert::FromGoogle;
 use crate::session::Session;
 
 #[derive(Debug, Deserialize)]
@@ -29,11 +33,9 @@ pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
         .context("Failed to fetch calendars")?
         .body;
 
-    let calendars: Vec<CalendarWithConfig> = google_calendars
+    let calendar_configs: Vec<CalendarConfig> = google_calendars
         .iter()
         .map(|cal| {
-            let calendar = ProviderCalendar::from_google(cal)?;
-
             let mut config = HashMap::new();
             config.insert(
                 "google_account".to_string(),
@@ -44,9 +46,12 @@ pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
                 serde_json::Value::String(cal.id.clone()),
             );
 
-            Ok(CalendarWithConfig { calendar, config })
+            Ok(CalendarConfig {
+                name: cal.summary.clone(),
+                config,
+            })
         })
         .collect::<Result<_, anyhow::Error>>()?;
 
-    Ok(serde_json::to_value(calendars)?)
+    Ok(serde_json::to_value(calendar_configs)?)
 }

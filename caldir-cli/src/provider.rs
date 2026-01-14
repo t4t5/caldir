@@ -10,7 +10,7 @@
 //! provider-specific parameters from the calendar config.
 //!
 use anyhow::{Context, Result};
-use caldir_core::calendar::CalendarWithConfig;
+use caldir_core::calendar_config::CalendarConfig;
 use serde::de::DeserializeOwned;
 use std::time::Duration;
 
@@ -32,19 +32,7 @@ impl Provider {
         &self.0
     }
 
-    pub async fn authenticate(&self) -> Result<String> {
-        self.call_inner(ProviderCommand::Authenticate, serde_json::Value::Null)
-            .await
-    }
-
-    /// List all calendars for an account
-    pub async fn list_calendars(&self, account: &str) -> Result<Vec<CalendarWithConfig>> {
-        let param_key = format!("{}_account", self.0);
-        let params = serde_json::json!({ param_key: account });
-        self.call(ProviderCommand::ListCalendars, params).await
-    }
-
-    pub fn binary_path(&self) -> Result<std::path::PathBuf> {
+    fn binary_path(&self) -> Result<std::path::PathBuf> {
         let binary_name = format!("caldir-provider-{}", self.0);
         let binary_path = which::which(&binary_name).with_context(|| {
             format!(
@@ -53,6 +41,18 @@ impl Provider {
             )
         })?;
         Ok(binary_path)
+    }
+
+    pub async fn authenticate(&self) -> Result<String> {
+        self.call_inner(ProviderCommand::Authenticate, serde_json::Value::Null)
+            .await
+    }
+
+    /// List all calendars for an account
+    pub async fn list_calendars(&self, account: &str) -> Result<Vec<CalendarConfig>> {
+        let param_key = format!("{}_account", self.0);
+        let params = serde_json::json!({ param_key: account });
+        self.call(ProviderCommand::ListCalendars, params).await
     }
 
     /// Call a provider command and return the result.

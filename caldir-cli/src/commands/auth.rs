@@ -28,7 +28,7 @@ pub async fn run(provider_name: &str) -> Result<()> {
 
     // Create local directories for each calendar
     for entry in calendars {
-        let dir_name = slugify(&entry.calendar.name);
+        let dir_name = slugify(&entry.name);
         let cal_path = caldir.data_path().join(&dir_name);
 
         // Skip if already exists
