@@ -87,10 +87,10 @@ Each calendar has a `.caldir/` directory (similar to `.git/`) for local state an
 [remote]
 provider = "google"
 google_account = "me@gmail.com"
-# google_calendar_id is omitted for primary calendar
+google_calendar_id = "primary"
 ```
 
-This is created automatically by `caldir auth google`. Like `.git/config`, it contains the "remote" settings for syncing.
+This is created automatically by `caldir auth google`. Like `.git/config`, it contains the "remote" settings for syncing. The config fields (except `provider`) are returned by the provider's `list_calendars` command, so the CLI remains provider-agnostic.
 
 **synced_uids** — Tracks which event UIDs have been synced. This is used for **delete detection**: if a UID is in `synced_uids` but has no corresponding local file, the event was deleted locally and should be deleted from the remote on the next `push`.
 
@@ -132,6 +132,7 @@ caldir-core/                   # Shared types (used by CLI and providers)
   src/
     lib.rs       - Re-exports
     event.rs     - Provider-neutral event types (Event, Attendee, Reminder, etc.)
+    calendar.rs  - ProviderCalendar, CalendarWithConfig (returned by list_calendars)
     protocol.rs  - CLI-provider communication protocol (Command enum, Request/Response)
 
 caldir-cli/                    # Core CLI
@@ -161,7 +162,7 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
 
 ### Key Abstractions
 
-**caldir-core** — Shared crate containing provider-neutral event types (`Event`, `Attendee`, `Reminder`, `EventTime`, `ParticipationStatus`, etc.) and protocol types (`Command`, `Request`, `Response`) with JSON serialization. Both the CLI and providers depend on this crate, ensuring type consistency across the protocol boundary. Providers convert their API responses into these types, and the CLI works exclusively with them.
+**caldir-core** — Shared crate containing provider-neutral event types (`Event`, `Attendee`, `Reminder`, `EventTime`, `ParticipationStatus`, etc.), calendar types (`ProviderCalendar`, `CalendarWithConfig`), and protocol types (`Command`, `Request`, `Response`) with JSON serialization. Both the CLI and providers depend on this crate, ensuring type consistency across the protocol boundary. Providers convert their API responses into these types, and the CLI works exclusively with them. `CalendarWithConfig` pairs calendar metadata with the config to save, keeping the CLI provider-agnostic.
 
 **Calendar** — Represents a single calendar directory. Loaded via `Calendar::load(path)` which reads the local config from `.caldir/config.toml`. Provides methods for event CRUD operations and sync state management. The `remote()` method returns `Option<Remote>` — calendars without `.caldir/config.toml` are local-only.
 
@@ -239,6 +240,7 @@ Each calendar stores its remote configuration in `.caldir/config.toml` (similar 
 [remote]
 provider = "google"
 google_account = "me@gmail.com"
+google_calendar_id = "primary"
 
 # ~/calendar/work/.caldir/config.toml
 [remote]
@@ -247,7 +249,7 @@ google_account = "me@gmail.com"
 google_calendar_id = "work@group.calendar.google.com"
 ```
 
-These files are created automatically by `caldir auth google`. Calendars without `.caldir/config.toml` are treated as local-only (not synced).
+These files are created automatically by `caldir auth google`. The provider returns the config fields to save (via `CalendarWithConfig`), so the CLI doesn't need to know about provider-specific field names. Calendars without `.caldir/config.toml` are treated as local-only (not synced).
 
 ### Provider Credentials
 

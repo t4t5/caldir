@@ -20,12 +20,12 @@ pub struct Session {
 
 impl Session {
     /// Load a session for the given account email.
-    pub fn load(email: &str) -> Result<Self> {
+    pub fn load(account_email: &str) -> Result<Self> {
         let creds = app_config::load()?;
-        let tokens = Tokens::load(email)?;
+        let tokens = Tokens::load(account_email)?;
 
         Ok(Self {
-            email: email.to_string(),
+            email: account_email.to_string(),
             creds,
             tokens,
         })
@@ -96,21 +96,21 @@ pub struct Tokens {
 }
 
 impl Tokens {
-    fn path(email: &str) -> Result<PathBuf> {
-        let safe_email = email.replace(['/', '\\', ':'], "_");
+    fn path(account_email: &str) -> Result<PathBuf> {
+        let safe_email = account_email.replace(['/', '\\', ':'], "_");
         Ok(app_config::base_dir()?
             .join("session")
             .join(format!("{}.toml", safe_email)))
     }
 
-    pub fn load(email: &str) -> Result<Self> {
-        let path = Self::path(email)?;
+    pub fn load(account_email: &str) -> Result<Self> {
+        let path = Self::path(account_email)?;
 
         if !path.exists() {
             anyhow::bail!(
                 "No session for account: {}\n\
                 Run `caldir-cli auth google` first.",
-                email
+                account_email
             );
         }
 
@@ -123,8 +123,8 @@ impl Tokens {
         Ok(tokens)
     }
 
-    pub fn save(&self, email: &str) -> Result<()> {
-        let path = Self::path(email)?;
+    pub fn save(&self, account_email: &str) -> Result<()> {
+        let path = Self::path(account_email)?;
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).with_context(|| {

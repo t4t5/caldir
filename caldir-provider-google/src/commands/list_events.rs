@@ -4,14 +4,13 @@ use caldir_core::constants::DEFAULT_SYNC_DAYS;
 use google_calendar::types::OrderBy;
 use serde::Deserialize;
 
-use crate::DEFAULT_CALENDAR_ID;
 use crate::convert::FromGoogle;
 use crate::session::Session;
 
 #[derive(Debug, Deserialize)]
 struct ListEventsParams {
     google_account: String,
-    google_calendar_id: Option<String>,
+    google_calendar_id: String,
     #[serde(default)]
     time_min: Option<String>,
     #[serde(default)]
@@ -21,10 +20,7 @@ struct ListEventsParams {
 pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: ListEventsParams = serde_json::from_value(params.clone())?;
 
-    let calendar_id = params
-        .google_calendar_id
-        .as_deref()
-        .unwrap_or(DEFAULT_CALENDAR_ID);
+    let calendar_id = params.google_calendar_id;
 
     let mut session = Session::load(&params.google_account)?;
     session.refresh_if_needed().await?;
@@ -42,7 +38,7 @@ pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
     let response = client
         .events()
         .list_all(
-            calendar_id,
+            &calendar_id,
             "",
             0,
             OrderBy::default(),

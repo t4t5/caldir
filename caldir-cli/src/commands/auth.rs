@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use anyhow::Result;
 
 use crate::caldir::Caldir;
@@ -29,8 +27,8 @@ pub async fn run(provider_name: &str) -> Result<()> {
     println!("Found {} calendar(s):\n", calendars.len());
 
     // Create local directories for each calendar
-    for cal in calendars {
-        let dir_name = slugify(&cal.name);
+    for entry in calendars {
+        let dir_name = slugify(&entry.calendar.name);
         let cal_path = caldir.data_path().join(&dir_name);
 
         // Skip if already exists
@@ -42,19 +40,12 @@ pub async fn run(provider_name: &str) -> Result<()> {
         // Create directory structure
         std::fs::create_dir_all(cal_path.join(".caldir/state"))?;
 
-        // Build provider-specific params
-        let mut params = HashMap::new();
-        params.insert(
-            format!("{}_account", provider.name()),
-            toml::Value::String(account.clone()),
-        );
-        // Only add calendar_id if not primary (primary is the default)
-        if !cal.primary {
-            params.insert(
-                format!("{}_calendar_id", provider.name()),
-                toml::Value::String(cal.id),
-            );
-        }
+        // Convert JSON config from provider to TOML values
+        let params = entry
+            .config
+            .into_iter()
+            .map(|(k, v)| Ok((k, serde_json::from_value(v)?)))
+            .collect::<Result<_>>()?;
 
         // Save config
         let config = LocalConfig {

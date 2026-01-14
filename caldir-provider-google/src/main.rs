@@ -16,9 +16,6 @@ use anyhow::Result;
 use caldir_core::protocol::{Command, Request, Response};
 use std::io::{self, BufRead, Write};
 
-/// Google's alias for the user's main calendar
-const DEFAULT_CALENDAR_ID: &str = "primary";
-
 #[tokio::main]
 async fn main() {
     let stdin = io::stdin();

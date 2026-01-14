@@ -10,7 +10,7 @@
 //! provider-specific parameters from the calendar config.
 //!
 use anyhow::{Context, Result};
-use caldir_core::calendar::ProviderCalendar;
+use caldir_core::calendar::CalendarWithConfig;
 use serde::de::DeserializeOwned;
 use std::time::Duration;
 
@@ -38,7 +38,7 @@ impl Provider {
     }
 
     /// List all calendars for an account
-    pub async fn list_calendars(&self, account: &str) -> Result<Vec<ProviderCalendar>> {
+    pub async fn list_calendars(&self, account: &str) -> Result<Vec<CalendarWithConfig>> {
         let param_key = format!("{}_account", self.0);
         let params = serde_json::json!({ param_key: account });
         self.call(ProviderCommand::ListCalendars, params).await

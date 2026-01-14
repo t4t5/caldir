@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
-use caldir_core::calendar::ProviderCalendar;
+use caldir_core::calendar::{CalendarWithConfig, ProviderCalendar};
 use google_calendar::types::MinAccessRole;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 use crate::convert::FromGoogle;
 use crate::session::Session;
@@ -14,7 +15,9 @@ struct ListCalendarsParams {
 pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: ListCalendarsParams = serde_json::from_value(params.clone())?;
 
-    let mut session = Session::load(&params.google_account)?;
+    let account_email = &params.google_account;
+
+    let mut session = Session::load(account_email)?;
     session.refresh_if_needed().await?;
 
     let client = session.client();
@@ -26,10 +29,24 @@ pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
         .context("Failed to fetch calendars")?
         .body;
 
-    let calendars: Vec<ProviderCalendar> = google_calendars
+    let calendars: Vec<CalendarWithConfig> = google_calendars
         .iter()
-        .map(ProviderCalendar::from_google)
-        .collect::<Result<_, _>>()?;
+        .map(|cal| {
+            let calendar = ProviderCalendar::from_google(cal)?;
+
+            let mut config = HashMap::new();
+            config.insert(
+                "google_account".to_string(),
+                serde_json::Value::String(account_email.clone()),
+            );
+            config.insert(
+                "google_calendar_id".to_string(),
+                serde_json::Value::String(cal.id.clone()),
+            );
+
+            Ok(CalendarWithConfig { calendar, config })
+        })
+        .collect::<Result<_, anyhow::Error>>()?;
 
     Ok(serde_json::to_value(calendars)?)
 }
