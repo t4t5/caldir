@@ -9,6 +9,7 @@ use crate::google_auth::{get_valid_tokens, redirect_uri};
 
 #[derive(Debug, Deserialize)]
 struct DeleteEventParams {
+    google_account: String,
     google_calendar_id: Option<String>,
     event_id: String,
 }
@@ -16,13 +17,15 @@ struct DeleteEventParams {
 pub async fn handle_delete_event(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: DeleteEventParams = serde_json::from_value(params.clone())?;
 
+    let account = &params.google_account;
+
     let calendar_id = params
         .google_calendar_id
         .as_deref()
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
     let creds = config::load_credentials()?;
-    let tokens = get_valid_tokens(calendar_id).await?;
+    let tokens = get_valid_tokens(account).await?;
 
     let client = Client::new(
         creds.client_id.clone(),

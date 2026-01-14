@@ -11,6 +11,7 @@ use crate::parser::{from_google_event, to_google_event};
 
 #[derive(Debug, Deserialize)]
 struct CreateEventParams {
+    google_account: String,
     google_calendar_id: Option<String>,
     event: Event,
 }
@@ -18,13 +19,15 @@ struct CreateEventParams {
 pub async fn handle_create_event(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: CreateEventParams = serde_json::from_value(params.clone())?;
 
+    let account = &params.google_account;
+
     let calendar_id = params
         .google_calendar_id
         .as_deref()
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
     let creds = config::load_credentials()?;
-    let tokens = get_valid_tokens(calendar_id).await?;
+    let tokens = get_valid_tokens(account).await?;
 
     let client = Client::new(
         creds.client_id.clone(),
