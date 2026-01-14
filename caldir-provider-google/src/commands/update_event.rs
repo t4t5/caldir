@@ -13,14 +13,14 @@ struct UpdateEventParams {
     event: Event,
 }
 
-pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
-    let params: UpdateEventParams = serde_json::from_value(params.clone())?;
+pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
+    let params: UpdateEventParams = serde_json::from_value(params)?;
 
-    let account_email = &params.google_account;
+    let account_email = params.google_account;
     let calendar_id = params.google_calendar_id;
     let event = params.event;
 
-    let mut session = Session::load(account_email)?;
+    let mut session = Session::load(&account_email)?;
     session.refresh_if_needed().await?;
 
     let client = session.client();

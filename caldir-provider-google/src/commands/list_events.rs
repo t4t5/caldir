@@ -15,18 +15,18 @@ struct ListEventsParams {
     to: DateTime<Utc>,
 }
 
-pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
-    let params: ListEventsParams = serde_json::from_value(params.clone())?;
+pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
+    let params: ListEventsParams = serde_json::from_value(params)?;
 
+    let account_email = params.google_account;
     let calendar_id = params.google_calendar_id;
+    let time_min = params.from.to_rfc3339();
+    let time_max = params.to.to_rfc3339();
 
-    let mut session = Session::load(&params.google_account)?;
+    let mut session = Session::load(&account_email)?;
     session.refresh_if_needed().await?;
 
     let client = session.client();
-
-    let time_min = params.from.to_rfc3339();
-    let time_max = params.to.to_rfc3339();
 
     let response = client
         .events()

@@ -16,8 +16,8 @@ struct ListCalendarsParams {
     google_account: String,
 }
 
-pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
-    let params: ListCalendarsParams = serde_json::from_value(params.clone())?;
+pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
+    let params: ListCalendarsParams = serde_json::from_value(params)?;
 
     let account_email = &params.google_account;
 
