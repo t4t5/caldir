@@ -154,10 +154,11 @@ caldir-cli/                    # Core CLI
 
 caldir-provider-google/        # Google Calendar provider (separate crate)
   src/
-    main.rs      - JSON protocol handler (reads stdin, writes stdout)
-    config.rs    - Credential and token storage (~/.config/caldir/providers/google/)
-    google.rs    - Google Calendar API implementation
-    types.rs     - Re-exports caldir_core types + provider-specific types (Calendar, etc.)
+    main.rs        - JSON protocol handler (reads stdin, writes stdout)
+    app_config.rs  - OAuth credentials (~/.config/caldir/providers/google/app_config.toml)
+    session.rs     - Token storage and refresh (~/.config/caldir/providers/google/session/)
+    commands/      - Command handlers (authenticate, list_calendars, list_events, etc.)
+    convert/       - Conversion between Google API types and caldir_core types
 ```
 
 ### Key Abstractions
@@ -257,18 +258,16 @@ Provider credentials and tokens are managed by each provider in its own director
 
 ```
 ~/.config/caldir/providers/google/
-  credentials.json              # OAuth client_id/secret
-  tokens/
-    me@gmail.com.json          # Access/refresh tokens (auto-refreshed)
+  app_config.toml              # OAuth client_id/secret
+  session/
+    me@gmail.com.toml          # Access/refresh tokens (auto-refreshed)
 ```
 
-To set up Google Calendar, create `~/.config/caldir/providers/google/credentials.json`:
+To set up Google Calendar, create `~/.config/caldir/providers/google/app_config.toml`:
 
-```json
-{
-  "client_id": "your-client-id.apps.googleusercontent.com",
-  "client_secret": "your-client-secret"
-}
+```toml
+client_id = "your-client-id.apps.googleusercontent.com"
+client_secret = "your-client-secret"
 ```
 
 Then run `caldir auth google` to authenticate. This will:
