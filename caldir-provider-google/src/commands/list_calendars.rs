@@ -1,11 +1,9 @@
 use anyhow::{Context, Result};
 use caldir_core::calendar::ProviderCalendar;
-use google_calendar::Client;
 use google_calendar::types::MinAccessRole;
 use serde::Deserialize;
 
-use crate::config;
-use crate::google_auth::{get_valid_tokens, redirect_uri};
+use crate::google_auth::client_for_account;
 use crate::parser::from_google_calendar;
 
 #[derive(Debug, Deserialize)]
@@ -18,16 +16,7 @@ pub async fn handle_list_calendars(params: &serde_json::Value) -> Result<serde_j
 
     let account = &params.google_account;
 
-    let creds = config::load_credentials()?;
-    let tokens = get_valid_tokens(account).await?;
-
-    let client = Client::new(
-        creds.client_id.clone(),
-        creds.client_secret.clone(),
-        redirect_uri(),
-        tokens.access_token,
-        tokens.refresh_token,
-    );
+    let client = client_for_account(account).await?;
 
     let google_calendars = client
         .calendar_list()

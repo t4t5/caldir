@@ -1,11 +1,9 @@
 use anyhow::{Context, Result};
-use google_calendar::Client;
 use google_calendar::types::SendUpdates;
 use serde::Deserialize;
 
 use crate::DEFAULT_CALENDAR_ID;
-use crate::config;
-use crate::google_auth::{get_valid_tokens, redirect_uri};
+use crate::google_auth::client_for_account;
 
 #[derive(Debug, Deserialize)]
 struct DeleteEventParams {
@@ -24,16 +22,7 @@ pub async fn handle_delete_event(params: &serde_json::Value) -> Result<serde_jso
         .as_deref()
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
-    let creds = config::load_credentials()?;
-    let tokens = get_valid_tokens(account).await?;
-
-    let client = Client::new(
-        creds.client_id.clone(),
-        creds.client_secret.clone(),
-        redirect_uri(),
-        tokens.access_token,
-        tokens.refresh_token,
-    );
+    let client = client_for_account(account).await?;
 
     let event_id = params.event_id;
 

@@ -1,12 +1,10 @@
 use anyhow::{Context, Result};
 use caldir_core::Event;
-use google_calendar::Client;
 use google_calendar::types::SendUpdates;
 use serde::Deserialize;
 
 use crate::DEFAULT_CALENDAR_ID;
-use crate::config;
-use crate::google_auth::{get_valid_tokens, redirect_uri};
+use crate::google_auth::client_for_account;
 use crate::parser::{from_google_event, to_google_event};
 
 #[derive(Debug, Deserialize)]
@@ -26,16 +24,7 @@ pub async fn handle_create_event(params: &serde_json::Value) -> Result<serde_jso
         .as_deref()
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
-    let creds = config::load_credentials()?;
-    let tokens = get_valid_tokens(account).await?;
-
-    let client = Client::new(
-        creds.client_id.clone(),
-        creds.client_secret.clone(),
-        redirect_uri(),
-        tokens.access_token,
-        tokens.refresh_token,
-    );
+    let client = client_for_account(account).await?;
 
     let event = params.event;
 

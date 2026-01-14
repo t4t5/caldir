@@ -31,6 +31,20 @@ pub async fn get_valid_tokens(email: &str) -> Result<GoogleAccountTokens> {
     Ok(tokens)
 }
 
+/// Create an authenticated Google Calendar client for the account.
+pub async fn client_for_account(email: &str) -> Result<Client> {
+    let creds = config::load_credentials()?;
+    let tokens = get_valid_tokens(email).await?;
+
+    Ok(Client::new(
+        creds.client_id,
+        creds.client_secret,
+        redirect_uri(),
+        tokens.access_token,
+        tokens.refresh_token,
+    ))
+}
+
 pub async fn refresh_token(
     creds: &GoogleCredentials,
     tokens: &GoogleAccountTokens,

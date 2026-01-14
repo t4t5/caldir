@@ -1,13 +1,11 @@
 use anyhow::{Context, Result};
 use caldir_core::Event;
 use caldir_core::constants::DEFAULT_SYNC_DAYS;
-use google_calendar::Client;
 use google_calendar::types::OrderBy;
 use serde::Deserialize;
 
 use crate::DEFAULT_CALENDAR_ID;
-use crate::config;
-use crate::google_auth::{get_valid_tokens, redirect_uri};
+use crate::google_auth::client_for_account;
 use crate::parser::from_google_event;
 
 #[derive(Debug, Deserialize)]
@@ -25,21 +23,12 @@ pub async fn handle_list_events(params: &serde_json::Value) -> Result<serde_json
 
     let account = &params.google_account;
 
-    let creds = config::load_credentials()?;
-    let tokens = get_valid_tokens(account).await?;
-
     let calendar_id = params
         .google_calendar_id
         .as_deref()
         .unwrap_or(DEFAULT_CALENDAR_ID);
 
-    let client = Client::new(
-        creds.client_id.clone(),
-        creds.client_secret.clone(),
-        redirect_uri(),
-        tokens.access_token,
-        tokens.refresh_token,
-    );
+    let client = client_for_account(account).await?;
 
     // Default to ±1 year if not specified
     let now = chrono::Utc::now();
