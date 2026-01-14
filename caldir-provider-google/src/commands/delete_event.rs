@@ -12,7 +12,7 @@ struct DeleteEventParams {
     event_id: String,
 }
 
-pub async fn handle_delete_event(params: &serde_json::Value) -> Result<serde_json::Value> {
+pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: DeleteEventParams = serde_json::from_value(params.clone())?;
 
     let account_email = &params.google_account;

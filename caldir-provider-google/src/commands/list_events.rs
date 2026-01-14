@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::DEFAULT_CALENDAR_ID;
 use crate::commands::authed_client;
-use crate::parser::from_google_event;
+use crate::parser::FromGoogle;
 
 #[derive(Debug, Deserialize)]
 struct ListEventsParams {
@@ -18,7 +18,7 @@ struct ListEventsParams {
     time_max: Option<String>,
 }
 
-pub async fn handle_list_events(params: &serde_json::Value) -> Result<serde_json::Value> {
+pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: ListEventsParams = serde_json::from_value(params.clone())?;
 
     let account_email = &params.google_account;
@@ -59,12 +59,11 @@ pub async fn handle_list_events(params: &serde_json::Value) -> Result<serde_json
         .await
         .context("Failed to fetch events")?;
 
-    let mut events: Vec<Event> = Vec::new();
-
-    for google_event in response.body {
-        let event = from_google_event(google_event)?;
-        events.push(event);
-    }
+    let events: Vec<Event> = response
+        .body
+        .into_iter()
+        .map(Event::from_google)
+        .collect::<Result<_, _>>()?;
 
     Ok(serde_json::to_value(events)?)
 }

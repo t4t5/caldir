@@ -5,13 +5,6 @@ pub mod list_calendars;
 pub mod list_events;
 pub mod update_event;
 
-pub use authenticate::handle_authenticate;
-pub use create_event::handle_create_event;
-pub use delete_event::handle_delete_event;
-pub use list_calendars::handle_list_calendars;
-pub use list_events::handle_list_events;
-pub use update_event::handle_update_event;
-
 use anyhow::Result;
 use google_calendar::Client;
 
@@ -25,7 +18,7 @@ pub async fn authed_client(account_email: &str) -> Result<Client> {
     let mut tokens = account_config.load_tokens()?;
 
     if tokens_need_refresh(&tokens) {
-        tokens = refresh_token(&creds, &tokens).await?;
+        tokens = refresh_token(creds, &tokens).await?;
         account_config.save_tokens(&tokens)?;
     }
 

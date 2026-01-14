@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::DEFAULT_CALENDAR_ID;
 use crate::commands::authed_client;
-use crate::parser::{from_google_event, to_google_event};
+use crate::parser::{FromGoogle, ToGoogle};
 
 #[derive(Debug, Deserialize)]
 struct UpdateEventParams {
@@ -14,7 +14,7 @@ struct UpdateEventParams {
     event: Event,
 }
 
-pub async fn handle_update_event(params: &serde_json::Value) -> Result<serde_json::Value> {
+pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: UpdateEventParams = serde_json::from_value(params.clone())?;
 
     let account_email = &params.google_account;
@@ -28,7 +28,7 @@ pub async fn handle_update_event(params: &serde_json::Value) -> Result<serde_jso
 
     let event = params.event;
 
-    let google_event = to_google_event(&event);
+    let google_event = event.to_google();
 
     let response = client
         .events()
@@ -44,6 +44,6 @@ pub async fn handle_update_event(params: &serde_json::Value) -> Result<serde_jso
         )
         .await?;
 
-    let updated_event = from_google_event(response.body)?;
+    let updated_event = Event::from_google(response.body)?;
     Ok(serde_json::to_value(updated_event)?)
 }

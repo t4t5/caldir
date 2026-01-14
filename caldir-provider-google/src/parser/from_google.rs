@@ -1,24 +1,27 @@
-use anyhow::Result;
 use caldir_core::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
     calendar::ProviderCalendar,
 };
 use google_calendar::types::CalendarListEntry;
 
-pub fn from_google_calendar(calendar: &CalendarListEntry) -> ProviderCalendar {
-    ProviderCalendar {
-        id: calendar.id.clone(),
-        name: if calendar.summary.is_empty() {
-            "Unnamed".to_string()
-        } else {
-            calendar.summary.clone()
-        },
-        primary: calendar.primary,
+use super::FromGoogle;
+
+impl FromGoogle<&CalendarListEntry> for ProviderCalendar {
+    fn from_google(calendar: &CalendarListEntry) -> anyhow::Result<Self> {
+        Ok(ProviderCalendar {
+            id: calendar.id.clone(),
+            name: if calendar.summary.is_empty() {
+                "Unnamed".to_string()
+            } else {
+                calendar.summary.clone()
+            },
+            primary: calendar.primary,
+        })
     }
 }
 
-/// Convert a Google Calendar API Event to our Event
-pub fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {
+impl FromGoogle<google_calendar::types::Event> for Event {
+    fn from_google(event: google_calendar::types::Event) -> anyhow::Result<Self> {
     let start = if let Some(ref start) = event.start {
         if let Some(dt) = start.date_time {
             EventTime::DateTimeUtc(dt)
@@ -151,10 +154,11 @@ pub fn from_google_event(event: google_calendar::types::Event) -> Result<Event> 
         },
         custom_properties,
     })
+    }
 }
 
 /// Convert Google's response status to ParticipationStatus
-pub fn google_to_participation_status(google_status: &str) -> Option<ParticipationStatus> {
+fn google_to_participation_status(google_status: &str) -> Option<ParticipationStatus> {
     match google_status {
         "accepted" => Some(ParticipationStatus::Accepted),
         "declined" => Some(ParticipationStatus::Declined),

@@ -7,7 +7,7 @@ use tokio::net::TcpListener;
 use crate::config::GoogleAppConfig;
 use crate::google_auth::{SCOPES, redirect_address, redirect_uri};
 
-pub async fn handle_authenticate() -> Result<serde_json::Value> {
+pub async fn handle() -> Result<serde_json::Value> {
     let scopes: Vec<String> = SCOPES.iter().map(|s| s.to_string()).collect();
 
     let app = GoogleAppConfig::load()?;

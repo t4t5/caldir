@@ -1,6 +1,14 @@
 mod from_google;
 mod to_google;
 
-pub use from_google::from_google_calendar;
-pub use from_google::from_google_event;
-pub use to_google::to_google_event;
+/// Convert from Google API types to caldir types
+pub trait FromGoogle<T> {
+    fn from_google(value: T) -> anyhow::Result<Self>
+    where
+        Self: Sized;
+}
+
+/// Convert to Google API types from caldir types
+pub trait ToGoogle<T> {
+    fn to_google(&self) -> T;
+}

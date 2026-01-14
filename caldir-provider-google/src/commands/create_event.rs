@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::DEFAULT_CALENDAR_ID;
 use crate::commands::authed_client;
-use crate::parser::{from_google_event, to_google_event};
+use crate::parser::{FromGoogle, ToGoogle};
 
 #[derive(Debug, Deserialize)]
 struct CreateEventParams {
@@ -14,7 +14,7 @@ struct CreateEventParams {
     event: Event,
 }
 
-pub async fn handle_create_event(params: &serde_json::Value) -> Result<serde_json::Value> {
+pub async fn handle(params: &serde_json::Value) -> Result<serde_json::Value> {
     let params: CreateEventParams = serde_json::from_value(params.clone())?;
 
     let account_email = &params.google_account;
@@ -28,7 +28,7 @@ pub async fn handle_create_event(params: &serde_json::Value) -> Result<serde_jso
 
     let event = params.event;
 
-    let mut google_event = to_google_event(&event);
+    let mut google_event = event.to_google();
     google_event.id = String::new(); // Let Google assign the ID
 
     let response = client
@@ -45,6 +45,6 @@ pub async fn handle_create_event(params: &serde_json::Value) -> Result<serde_jso
         .await
         .with_context(|| format!("Failed to create event: {}", event.summary))?;
 
-    let created_event = from_google_event(response.body)?;
+    let created_event = Event::from_google(response.body)?;
     Ok(serde_json::to_value(created_event)?)
 }

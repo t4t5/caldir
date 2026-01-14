@@ -65,11 +65,11 @@ async fn main() {
 
 async fn handle_request(request: Request) -> Result<serde_json::Value> {
     match request.command {
-        Command::Authenticate => commands::handle_authenticate().await,
-        Command::ListCalendars => commands::handle_list_calendars(&request.params).await,
-        Command::ListEvents => commands::handle_list_events(&request.params).await,
-        Command::CreateEvent => commands::handle_create_event(&request.params).await,
-        Command::UpdateEvent => commands::handle_update_event(&request.params).await,
-        Command::DeleteEvent => commands::handle_delete_event(&request.params).await,
+        Command::Authenticate => commands::authenticate::handle().await,
+        Command::ListCalendars => commands::list_calendars::handle(&request.params).await,
+        Command::ListEvents => commands::list_events::handle(&request.params).await,
+        Command::CreateEvent => commands::create_event::handle(&request.params).await,
+        Command::UpdateEvent => commands::update_event::handle(&request.params).await,
+        Command::DeleteEvent => commands::delete_event::handle(&request.params).await,
     }
 }

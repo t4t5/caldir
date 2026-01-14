@@ -1,26 +1,28 @@
 use caldir_core::{Attendee, Event, EventStatus, EventTime, ParticipationStatus, Transparency};
 
-/// Convert our Event to a Google Calendar API Event
-pub fn to_google_event(event: &Event) -> google_calendar::types::Event {
-    let start = event_time_to_google(&event.start);
-    let end = event_time_to_google(&event.end);
+use super::ToGoogle;
 
-    let status = match event.status {
+impl ToGoogle<google_calendar::types::Event> for Event {
+    fn to_google(&self) -> google_calendar::types::Event {
+    let start = event_time_to_google(&self.start);
+    let end = event_time_to_google(&self.end);
+
+    let status = match self.status {
         EventStatus::Confirmed => "confirmed".to_string(),
         EventStatus::Tentative => "tentative".to_string(),
         EventStatus::Cancelled => "cancelled".to_string(),
     };
 
-    let transparency = match event.transparency {
+    let transparency = match self.transparency {
         Transparency::Opaque => "opaque".to_string(),
         Transparency::Transparent => "transparent".to_string(),
     };
 
-    let reminders = if event.reminders.is_empty() {
+    let reminders = if self.reminders.is_empty() {
         None
     } else {
         Some(google_calendar::types::Reminders {
-            overrides: event
+            overrides: self
                 .reminders
                 .iter()
                 .map(|r| google_calendar::types::EventReminder {
@@ -33,17 +35,17 @@ pub fn to_google_event(event: &Event) -> google_calendar::types::Event {
     };
 
     let attendees: Vec<google_calendar::types::EventAttendee> =
-        event.attendees.iter().map(attendee_to_google).collect();
+        self.attendees.iter().map(attendee_to_google).collect();
 
-    let recurrence = event.recurrence.clone().unwrap_or_default();
+    let recurrence = self.recurrence.clone().unwrap_or_default();
 
-    let original_start_time = event.original_start.as_ref().map(event_time_to_google);
+    let original_start_time = self.original_start.as_ref().map(event_time_to_google);
 
     google_calendar::types::Event {
-        id: event.id.clone(),
-        summary: event.summary.clone(),
-        description: event.description.clone().unwrap_or_default(),
-        location: event.location.clone().unwrap_or_default(),
+        id: self.id.clone(),
+        summary: self.summary.clone(),
+        description: self.description.clone().unwrap_or_default(),
+        location: self.location.clone().unwrap_or_default(),
         start: Some(start),
         end: Some(end),
         status,
@@ -52,8 +54,9 @@ pub fn to_google_event(event: &Event) -> google_calendar::types::Event {
         attendees,
         recurrence,
         original_start_time,
-        sequence: event.sequence.unwrap_or(0),
+        sequence: self.sequence.unwrap_or(0),
         ..Default::default()
+    }
     }
 }
 
