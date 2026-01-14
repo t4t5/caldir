@@ -1,3 +1,5 @@
+//! The auth process will spawn a local HTTP server (on port 8085) to receive the OAuth callback.
+
 use anyhow::{Context, Result};
 use google_calendar::Client;
 use google_calendar::types::MinAccessRole;

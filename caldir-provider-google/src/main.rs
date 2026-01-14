@@ -1,11 +1,5 @@
-//! caldir-provider-google - Google Calendar provider for caldir-cli
-//!
 //! This binary implements the caldir provider protocol, communicating
 //! with caldir-cli via JSON over stdin/stdout.
-//!
-//! The provider manages its own configuration and session data:
-//!   ~/.config/caldir/providers/google/app_config.toml
-//!   ~/.config/caldir/providers/google/session/{account}.toml
 
 mod app_config;
 mod commands;
