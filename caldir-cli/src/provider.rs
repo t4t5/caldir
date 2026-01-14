@@ -10,7 +10,8 @@
 //! provider-specific parameters from the calendar config.
 //!
 use anyhow::{Context, Result};
-use serde::{de::DeserializeOwned, Deserialize};
+use caldir_core::calendar::ProviderCalendar;
+use serde::de::DeserializeOwned;
 use std::time::Duration;
 
 use caldir_core::protocol::{Command as ProviderCommand, Request, Response};
@@ -19,14 +20,6 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 const PROVIDER_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// A calendar returned by the provider's list_calendars command
-#[derive(Debug, Deserialize)]
-pub struct ProviderCalendar {
-    pub id: String,
-    pub name: String,
-    pub primary: bool,
-}
 
 pub struct Provider(String);
 

@@ -58,24 +58,25 @@ pub async fn handle_authenticate() -> Result<serde_json::Value> {
         tokens.refresh_token.clone(),
     );
 
-    let response = client
+    let calendars = client
         .calendar_list()
         .list_all(MinAccessRole::default(), false, false)
-        .await?;
+        .await?
+        .body;
 
-    let email = response
-        .body
+    // user email (i.e. primary calendar)
+    let account = calendars
         .iter()
         .find(|cal| cal.primary)
-        .map(|cal| cal.id.clone())
+        .map(|cal| &cal.summary)
         .expect("No primary calendar found");
 
     // Save tokens for this account
-    config::save_tokens(&email, &tokens)?;
+    config::save_tokens(account, &tokens)?;
 
     eprintln!("Authentication successful!");
 
-    Ok(serde_json::to_value(email)?)
+    Ok(serde_json::to_value(account)?)
 }
 
 fn wait_for_callback() -> Result<(String, String)> {

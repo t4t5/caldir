@@ -1,7 +1,21 @@
 use anyhow::Result;
 use caldir_core::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
+    calendar::ProviderCalendar,
 };
+use google_calendar::types::CalendarListEntry;
+
+pub fn from_google_calendar(calendar: &CalendarListEntry) -> ProviderCalendar {
+    ProviderCalendar {
+        id: calendar.id.clone(),
+        name: if calendar.summary.is_empty() {
+            "Unnamed".to_string()
+        } else {
+            calendar.summary.clone()
+        },
+        primary: calendar.primary,
+    }
+}
 
 /// Convert a Google Calendar API Event to our Event
 pub fn from_google_event(event: google_calendar::types::Event) -> Result<Event> {

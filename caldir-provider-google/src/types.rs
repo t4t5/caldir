@@ -1,7 +1,6 @@
 //! Types for the Google Calendar provider.
 
 use chrono::{DateTime, Utc};
-use google_calendar::types::CalendarListEntry;
 use serde::{Deserialize, Serialize};
 
 /// Google app OAuth credentials
@@ -20,25 +19,4 @@ pub struct GoogleAccountTokens {
     pub refresh_token: String,
     #[serde(default)]
     pub expires_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GoogleCalendar {
-    pub id: String,
-    pub name: String,
-    pub primary: bool,
-}
-
-impl GoogleCalendar {
-    pub fn from_calendar_list_entry(entry: CalendarListEntry) -> Self {
-        GoogleCalendar {
-            id: entry.id,
-            name: if entry.summary.is_empty() {
-                "(unnamed)".to_string()
-            } else {
-                entry.summary
-            },
-            primary: entry.primary,
-        }
-    }
 }
