@@ -8,13 +8,12 @@
 //!
 //! Providers manage their own credentials and tokens. Core just passes
 //! provider-specific parameters from the calendar config.
-//!
-use anyhow::{Context, Result};
-use caldir_core::calendar_config::CalendarConfig;
+
+use crate::calendar_config::CalendarConfig;
+use crate::error::{CalDirError, CalDirResult};
+use crate::protocol::{Command as ProviderCommand, Request, Response};
 use serde::de::DeserializeOwned;
 use std::time::Duration;
-
-use caldir_core::protocol::{Command as ProviderCommand, Request, Response};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -32,24 +31,24 @@ impl Provider {
         &self.0
     }
 
-    fn binary_path(&self) -> Result<std::path::PathBuf> {
+    fn binary_path(&self) -> CalDirResult<std::path::PathBuf> {
         let binary_name = format!("caldir-provider-{}", self.0);
-        let binary_path = which::which(&binary_name).with_context(|| {
-            format!(
+        let binary_path = which::which(&binary_name).map_err(|_| {
+            CalDirError::ProviderNotInstalled(format!(
                 "Provider '{}' not found. Install it with:\n  cargo install {}",
                 self.0, binary_name
-            )
+            ))
         })?;
         Ok(binary_path)
     }
 
-    pub async fn authenticate(&self) -> Result<String> {
+    pub async fn authenticate(&self) -> CalDirResult<String> {
         self.call_inner(ProviderCommand::Authenticate, serde_json::json!({}))
             .await
     }
 
     /// List all calendars for an account
-    pub async fn list_calendars(&self, account: &str) -> Result<Vec<CalendarConfig>> {
+    pub async fn list_calendars(&self, account: &str) -> CalDirResult<Vec<CalendarConfig>> {
         let param_key = format!("{}_account", self.0);
         let params = serde_json::json!({ param_key: account });
         self.call(ProviderCommand::ListCalendars, params).await
@@ -60,26 +59,21 @@ impl Provider {
         &self,
         command: ProviderCommand,
         params: serde_json::Value,
-    ) -> Result<R> {
+    ) -> CalDirResult<R> {
         timeout(PROVIDER_TIMEOUT, self.call_inner(command, params))
             .await
-            .map_err(|_| {
-                anyhow::anyhow!(
-                    "Provider request timed out after {}s - check your network connection",
-                    PROVIDER_TIMEOUT.as_secs()
-                )
-            })?
+            .map_err(|_| CalDirError::ProviderTimeout(PROVIDER_TIMEOUT.as_secs()))?
     }
 
     async fn call_inner<R: DeserializeOwned>(
         &self,
         command: ProviderCommand,
         params: serde_json::Value,
-    ) -> Result<R> {
+    ) -> CalDirResult<R> {
         let request = Request { command, params };
 
-        let request_json =
-            serde_json::to_string(&request).context("Failed to serialize provider request")?;
+        let request_json = serde_json::to_string(&request)
+            .map_err(|e| CalDirError::Serialization(e.to_string()))?;
 
         let binary_path = self.binary_path()?;
 
@@ -89,26 +83,32 @@ impl Provider {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit()) // Let provider errors show in terminal
             .spawn()
-            .with_context(|| format!("Failed to spawn provider: {}", &binary_path.display()))?;
+            .map_err(|e| {
+                CalDirError::Provider(format!(
+                    "Failed to spawn provider {}: {}",
+                    binary_path.display(),
+                    e
+                ))
+            })?;
 
         // Write request to stdin
         {
             let mut stdin = child
                 .stdin
                 .take()
-                .context("Failed to get provider stdin handle")?;
+                .ok_or_else(|| CalDirError::Provider("Failed to get provider stdin handle".into()))?;
             stdin
                 .write_all(request_json.as_bytes())
                 .await
-                .context("Failed to write to provider stdin")?;
+                .map_err(|e| CalDirError::Provider(format!("Failed to write to provider stdin: {}", e)))?;
             stdin
                 .write_all(b"\n")
                 .await
-                .context("Failed to write newline to provider stdin")?;
+                .map_err(|e| CalDirError::Provider(format!("Failed to write newline: {}", e)))?;
             stdin
                 .flush()
                 .await
-                .context("Failed to flush provider stdin")?;
+                .map_err(|e| CalDirError::Provider(format!("Failed to flush stdin: {}", e)))?;
             // Drop stdin to signal EOF
         }
 
@@ -116,34 +116,37 @@ impl Provider {
         let stdout = child
             .stdout
             .take()
-            .context("Failed to get provider stdout handle")?;
+            .ok_or_else(|| CalDirError::Provider("Failed to get provider stdout handle".into()))?;
         let mut reader = BufReader::new(stdout);
         let mut line = String::new();
         reader
             .read_line(&mut line)
             .await
-            .context("Failed to read provider response")?;
+            .map_err(|e| CalDirError::Provider(format!("Failed to read provider response: {}", e)))?;
 
         if line.is_empty() {
-            anyhow::bail!("Provider returned no response");
+            return Err(CalDirError::Provider("Provider returned no response".into()));
         }
 
         // Wait for process to exit
-        let status = child.wait().await.context("Failed to wait for provider")?;
+        let status = child
+            .wait()
+            .await
+            .map_err(|e| CalDirError::Provider(format!("Failed to wait for provider: {}", e)))?;
         if !status.success() {
-            anyhow::bail!(
+            return Err(CalDirError::Provider(format!(
                 "Provider exited with status: {}",
                 status.code().unwrap_or(-1)
-            );
+            )));
         }
 
         // Parse response
         let response: Response<R> = serde_json::from_str(&line)
-            .with_context(|| format!("Failed to parse provider response: {}", line))?;
+            .map_err(|e| CalDirError::Provider(format!("Failed to parse provider response: {}", e)))?;
 
         match response {
             Response::Success { data } => Ok(data),
-            Response::Error { error } => Err(anyhow::anyhow!("{}", error)),
+            Response::Error { error } => Err(CalDirError::Provider(error)),
         }
     }
 }

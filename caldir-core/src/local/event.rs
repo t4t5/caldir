@@ -1,8 +1,9 @@
-use crate::constants::DEFAULT_SYNC_DAYS;
-use crate::ics;
+//! Local event representation with file metadata.
 
-use anyhow::Result;
-use caldir_core::Event;
+use crate::error::{CalDirError, CalDirResult};
+use crate::event::Event;
+use crate::ics::parse_event;
+use crate::constants::DEFAULT_SYNC_DAYS;
 use chrono::{DateTime, Duration, Utc};
 use std::path::PathBuf;
 
@@ -18,15 +19,12 @@ pub struct LocalEvent {
 }
 
 impl LocalEvent {
-    pub fn from_file(path: PathBuf) -> Result<Self> {
+    pub fn from_file(path: PathBuf) -> CalDirResult<Self> {
         let content = std::fs::read_to_string(&path)?;
 
-        let Some(event) = ics::parse_event(&content) else {
-            return Err(anyhow::anyhow!(
-                "Failed to parse event from {}",
-                path.display()
-            ));
-        };
+        let event = parse_event(&content).ok_or_else(|| {
+            CalDirError::IcsParse(format!("Failed to parse event from {}", path.display()))
+        })?;
 
         // Get file modification time for sync direction detection
         let modified = std::fs::metadata(&path)

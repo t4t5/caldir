@@ -1,7 +1,10 @@
+//! Global caldir configuration.
+
 use std::path::PathBuf;
 
-use anyhow::Result;
 use serde::Deserialize;
+
+use crate::error::{CalDirError, CalDirResult};
 
 static DEFAULT_CALDIR_PATH: &str = "~/calendar";
 
@@ -22,9 +25,9 @@ pub struct GlobalConfig {
 }
 
 impl GlobalConfig {
-    pub fn config_path() -> Result<PathBuf> {
+    pub fn config_path() -> CalDirResult<PathBuf> {
         let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow::anyhow!("Could not determine config directory"))?
+            .ok_or_else(|| CalDirError::Config("Could not determine config directory".into()))?
             .join("caldir");
 
         Ok(config_dir.join("config.toml"))

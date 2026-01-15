@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use caldir_core::{
+use caldir_core::event::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
 };
 

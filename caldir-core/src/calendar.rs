@@ -1,16 +1,16 @@
-use anyhow::Result;
-use caldir_core::{Event, EventTime};
+//! Calendar directory management.
+
+use crate::config::LocalConfig;
+use crate::error::{CalDirError, CalDirResult};
+use crate::event::{Event, EventTime};
+use crate::ics::{generate_ics, parse_event, CalendarMetadata};
+use crate::local::{LocalEvent, LocalState};
+use crate::remote::Remote;
 use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use crate::diff::CalendarDiff;
-use crate::ics::{self, CalendarMetadata};
-use crate::local::config::LocalConfig;
-use crate::local::event::LocalEvent;
-use crate::local::state::LocalState;
-use crate::remote::Remote;
-
+#[derive(Clone)]
 pub struct Calendar {
     pub name: String,
     pub path: PathBuf,
@@ -19,11 +19,11 @@ pub struct Calendar {
 
 impl Calendar {
     /// Load a calendar from a directory with .caldir/config.toml
-    pub fn load(path: &Path) -> Result<Self> {
+    pub fn load(path: &Path) -> CalDirResult<Self> {
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
-            .ok_or_else(|| anyhow::anyhow!("Invalid calendar path"))?
+            .ok_or_else(|| CalDirError::Config("Invalid calendar path".into()))?
             .to_string();
 
         let config = LocalConfig::load(path)?;
@@ -36,7 +36,7 @@ impl Calendar {
     }
 
     /// Where the calendar's ics files are stored
-    fn data_path(&self) -> PathBuf {
+    pub fn data_path(&self) -> PathBuf {
         self.path.clone()
     }
 
@@ -46,8 +46,11 @@ impl Calendar {
     }
 
     /// Load events from local directory
-    pub fn events(&self) -> Result<Vec<LocalEvent>> {
-        let local_events = std::fs::read_dir(self.data_path())?
+    pub fn events(&self) -> CalDirResult<Vec<LocalEvent>> {
+        let data_path = self.data_path();
+        let entries = std::fs::read_dir(&data_path)?;
+
+        let local_events = entries
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
             .filter(|path| path.extension().is_some_and(|e| e == "ics"))
@@ -58,46 +61,38 @@ impl Calendar {
     }
 
     /// UIDs we've seen before (for detecting deletions)
-    pub fn seen_event_uids(&self) -> Result<HashSet<String>> {
+    pub fn seen_event_uids(&self) -> CalDirResult<HashSet<String>> {
         Ok(LocalState::load(&self.data_path())?.synced_uids().clone())
     }
 
-    pub async fn get_diff(&self) -> Result<CalendarDiff<'_>> {
-        CalendarDiff::from_calendar(self).await
-    }
-
-    pub fn render(&self) -> String {
-        format!("🗓️ {}", self.name)
-    }
-
     // =========================================================================
-    // Event operations (used by CalendarDiff::apply_pull)
+    // Event operations
     // =========================================================================
 
-    pub fn create_event(&self, event: &Event) -> Result<()> {
+    pub fn create_event(&self, event: &Event) -> CalDirResult<()> {
         let dir = self.data_path();
         std::fs::create_dir_all(&dir)?;
 
-        let content = ics::generate_ics(event, &self.metadata())?;
+        let content = generate_ics(event, &self.metadata())?;
         let filename = filename_for(event, &dir)?;
 
         std::fs::write(dir.join(filename), content)?;
         Ok(())
     }
 
-    pub fn update_event(&self, event_id: &str, event: &Event) -> Result<()> {
+    pub fn update_event(&self, event_id: &str, event: &Event) -> CalDirResult<()> {
         self.delete_event(event_id)?;
         self.create_event(event)
     }
 
-    pub fn delete_event(&self, event_id: &str) -> Result<()> {
+    pub fn delete_event(&self, event_id: &str) -> CalDirResult<()> {
         if let Some(local) = self.events()?.into_iter().find(|e| e.event.id == event_id) {
             std::fs::remove_file(&local.path)?;
         }
         Ok(())
     }
 
-    pub fn update_sync_state(&self) -> Result<()> {
+    pub fn update_sync_state(&self) -> CalDirResult<()> {
         let synced_uids: HashSet<String> = self.events()?.into_iter().map(|e| e.event.id).collect();
         LocalState::save(&self.data_path(), &synced_uids)
     }
@@ -121,7 +116,7 @@ impl fmt::Display for Calendar {
 // =============================================================================
 
 /// Generate a unique filename for an event, handling collisions.
-fn filename_for(event: &Event, dir: &Path) -> Result<String> {
+fn filename_for(event: &Event, dir: &Path) -> CalDirResult<String> {
     let base = base_filename(event);
     let stem = base.trim_end_matches(".ics");
 
@@ -138,13 +133,16 @@ fn filename_for(event: &Event, dir: &Path) -> Result<String> {
         }
     }
 
-    anyhow::bail!("Too many filename collisions for {}", base)
+    Err(CalDirError::Sync(format!(
+        "Too many filename collisions for {}",
+        base
+    )))
 }
 
 fn file_has_uid(dir: &Path, filename: &str, uid: &str) -> bool {
     std::fs::read_to_string(dir.join(filename))
         .ok()
-        .and_then(|content| ics::parse_event(&content))
+        .and_then(|content| parse_event(&content))
         .is_some_and(|e| e.id == uid)
 }
 

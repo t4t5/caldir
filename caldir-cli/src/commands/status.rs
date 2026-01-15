@@ -1,7 +1,9 @@
 use anyhow::Result;
+use caldir_core::caldir::Caldir;
+use caldir_core::sync::CalendarDiff;
 use owo_colors::OwoColorize;
 
-use crate::caldir::Caldir;
+use crate::render::{CalendarDiffRender, Render};
 use crate::utils::tui;
 
 pub async fn run() -> Result<()> {
@@ -10,7 +12,7 @@ pub async fn run() -> Result<()> {
 
     for (i, cal) in calendars.iter().enumerate() {
         let spinner = tui::create_spinner(cal.render());
-        let result = cal.get_diff().await;
+        let result = CalendarDiff::from_calendar(&cal).await;
         spinner.finish_and_clear();
 
         println!("{}", cal.render());

@@ -1,12 +1,12 @@
 //! ICS file generation.
 
 use super::CalendarMetadata;
-use anyhow::Result;
-use caldir_core::event::{Event, EventStatus, EventTime, Transparency};
+use crate::error::CalDirResult;
+use crate::event::{Event, EventStatus, EventTime, Transparency};
 use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger, ValueType};
 
 /// Generate .ics content for an event with calendar metadata
-pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> Result<String> {
+pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> CalDirResult<String> {
     let mut cal = Calendar::new();
 
     // Add calendar-level metadata properties
@@ -162,8 +162,8 @@ fn add_datetime_property(ics_event: &mut icalendar::Event, name: &str, time: &Ev
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::event::{Attendee, EventStatus, ParticipationStatus};
     use crate::ics::CalendarMetadata;
-    use caldir_core::event::{Attendee, EventStatus, ParticipationStatus};
     use chrono::{NaiveDate, TimeZone, Utc};
 
     fn make_test_event() -> Event {

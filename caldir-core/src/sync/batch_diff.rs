@@ -1,8 +1,10 @@
-use crate::diff::{CalendarDiff, DiffKind, EventDiff};
+//! Batch diff aggregation for multiple calendars.
 
-pub struct BatchDiff<'a>(pub Vec<CalendarDiff<'a>>);
+use crate::sync::{CalendarDiff, DiffKind, EventDiff};
 
-impl BatchDiff<'_> {
+pub struct BatchDiff(pub Vec<CalendarDiff>);
+
+impl BatchDiff {
     fn count_by_kind<'a>(diffs: impl Iterator<Item = &'a EventDiff>) -> (usize, usize, usize) {
         let mut created = 0;
         let mut updated = 0;
