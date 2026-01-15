@@ -42,6 +42,18 @@ impl Session {
         Self::path_for_account_email(&self.account_email)
     }
 
+    pub fn client(&self) -> Result<Client> {
+        let app_config = AppConfig::load()?;
+
+        Ok(Client::new(
+            app_config.client_id,
+            app_config.client_secret,
+            String::new(),
+            self.data.access_token.clone(),
+            self.data.refresh_token.clone(),
+        ))
+    }
+
     pub fn new(account_email: &str, session_data: &SessionData) -> Result<Self> {
         let session = Session {
             account_email: account_email.to_string(),

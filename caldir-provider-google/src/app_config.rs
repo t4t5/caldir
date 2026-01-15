@@ -28,7 +28,7 @@ impl AppConfig {
 
         if !path.exists() {
             anyhow::bail!(
-                "Google credentials not found.\n\n\
+                "Google app config not found.\n\n\
             Create {} with:\n\n\
             client_id = \"your-client-id.apps.googleusercontent.com\"\n\
             client_secret = \"your-client-secret\"\n\n\

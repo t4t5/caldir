@@ -23,10 +23,7 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
     let time_min = params.from.to_rfc3339();
     let time_max = params.to.to_rfc3339();
 
-    let mut session = Session::load(&account_email)?;
-    session.refresh_if_needed().await?;
-
-    let client = session.client();
+    let client = Session::load_valid(&account_email).await?.client()?;
 
     let response = client
         .events()

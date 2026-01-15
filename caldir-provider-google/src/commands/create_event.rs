@@ -20,7 +20,7 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
     let calendar_id = params.google_calendar_id;
     let event = params.event;
 
-    let session = Session::load_valid(&account_email).await?;
+    let client = Session::load_valid(&account_email).await?.client()?;
 
     let mut google_event = event.to_google();
     google_event.id = String::new(); // Let Google assign the ID
