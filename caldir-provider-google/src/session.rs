@@ -1,3 +1,5 @@
+//! Creates a valid Google session (access token) that we can use to call the gcal API
+
 use anyhow::{Context, Result};
 use chrono::{DateTime, Duration, Utc};
 use google_calendar::{AccessToken, Client};

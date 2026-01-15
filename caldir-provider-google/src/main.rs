@@ -12,44 +12,33 @@ use std::io::{self, BufRead, Write};
 
 #[tokio::main]
 async fn main() {
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
+    let input = io::stdin().lock();
+    let mut output = io::stdout();
 
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(e) => {
-                eprintln!("Failed to read stdin: {}", e);
-                break;
-            }
-        };
+    for line in input.lines() {
+        let Ok(line) = line else { break };
 
-        // Skip empty lines
         if line.trim().is_empty() {
             continue;
         }
 
-        let request: Request = match serde_json::from_str(&line) {
-            Ok(r) => r,
-            Err(e) => {
-                let response = Response::error(&format!("Failed to parse request: {}", e));
-                if writeln!(stdout, "{}", response).is_err() || stdout.flush().is_err() {
-                    break; // Parent likely killed us, exit silently
-                }
-                continue;
-            }
-        };
+        let response = process_request(&line).await;
 
-        let result = handle_request(request).await;
-
-        let protocol_response = match result {
-            Ok(data) => Response::success(data),
-            Err(e) => Response::error(&format!("Error handling request: {:#}", e)),
-        };
-
-        if writeln!(stdout, "{}", protocol_response).is_err() || stdout.flush().is_err() {
-            break; // Parent likely killed us, exit silently
+        if writeln!(output, "{}", response).is_err() || output.flush().is_err() {
+            break;
         }
+    }
+}
+
+async fn process_request(line: &str) -> String {
+    let request: Request = match serde_json::from_str(line) {
+        Ok(r) => r,
+        Err(e) => return Response::error(&format!("Failed to parse request: {e}")),
+    };
+
+    match handle_request(request).await {
+        Ok(data) => Response::success(data),
+        Err(e) => Response::error(&format!("Error handling request: {e:#}")),
     }
 }
 
