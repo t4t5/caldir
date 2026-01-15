@@ -32,6 +32,10 @@ test:
 install-provider:
   cargo install --path caldir-provider-google
 
+# Install server binary to PATH
+install-server:
+  cargo install --path caldir-server
+
 # Build and install everything
-install: install-provider
+install: install-provider install-server
   cargo install --path caldir-cli

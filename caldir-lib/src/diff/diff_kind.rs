@@ -1,6 +1,8 @@
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum DiffKind {
     Create,
     Update,

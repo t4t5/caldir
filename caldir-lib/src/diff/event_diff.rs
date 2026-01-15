@@ -1,10 +1,12 @@
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::event::Event;
 
 use crate::diff::DiffKind;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventDiff {
     pub kind: DiffKind,
     pub old: Option<Event>,

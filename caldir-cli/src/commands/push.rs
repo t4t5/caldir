@@ -1,46 +1,51 @@
 use anyhow::Result;
 use owo_colors::OwoColorize;
 
-use caldir_lib::diff::BatchDiff;
-use caldir_lib::Caldir;
+use caldir_lib::diff::DiffKind;
 
-use crate::render;
+use crate::client::Client;
+use crate::render::{self, Render};
 
 pub async fn run() -> Result<()> {
-    let caldir = Caldir::load()?;
-    let calendars = caldir.calendars();
+    let spinner = render::create_spinner("Pushing to remote...".to_string());
 
-    let mut diffs = Vec::new();
+    let client = Client::connect().await?;
+    let results = client.push().await;
 
-    for (i, cal) in calendars.iter().enumerate() {
-        let spinner = render::create_spinner(render::render_calendar(cal));
-        let result = cal.get_diff().await;
-        spinner.finish_and_clear();
+    spinner.finish_and_clear();
 
-        println!("{}", render::render_calendar(cal));
+    let results = results?;
 
-        match result {
-            Ok(diff) => {
-                println!("{}", render::render_push_diff(&diff));
-                diff.apply_push().await?;
-                diffs.push(diff);
+    let mut total_created = 0;
+    let mut total_updated = 0;
+    let mut total_deleted = 0;
+
+    for (i, result) in results.iter().enumerate() {
+        println!("{}", format!("{}:", result.calendar).bold());
+
+        if let Some(ref error) = result.error {
+            println!("   {}", error.red());
+        } else {
+            println!("{}", result.events.render());
+
+            for event in &result.events {
+                match event.kind {
+                    DiffKind::Create => total_created += 1,
+                    DiffKind::Update => total_updated += 1,
+                    DiffKind::Delete => total_deleted += 1,
+                }
             }
-            Err(e) => println!("   {}", e.to_string().red()),
         }
 
-        // Add spacing between calendars (but not after the last one)
-        if i < calendars.len() - 1 {
+        if i < results.len() - 1 {
             println!();
         }
     }
 
-    let batch = BatchDiff(diffs);
-    let (created, updated, deleted) = batch.push_counts();
-
-    if created > 0 || updated > 0 || deleted > 0 {
+    if total_created > 0 || total_updated > 0 || total_deleted > 0 {
         println!(
             "\nPushed: {} created, {} updated, {} deleted",
-            created, updated, deleted
+            total_created, total_updated, total_deleted
         );
     }
 

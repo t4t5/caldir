@@ -14,14 +14,18 @@ clap = { version = "4", features = ["derive"] }
 # Error handling
 anyhow = "1"
 
-# Core library
+# Core library (for types only in thin client mode)
 caldir-lib = { path = "../caldir-lib" }
 
 # Date/time (for new command)
 chrono = { version = "0.4", features = ["serde"] }
 
-# JSON (for auth command)
+# Serialization
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
 
 # Colored output
 owo-colors = "4"
