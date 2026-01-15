@@ -1,8 +1,8 @@
 use anyhow::Result;
 
-use crate::caldir::Caldir;
-use crate::local::config::{LocalConfig, RemoteConfig};
-use crate::provider::Provider;
+use caldir_lib::local::config::{LocalConfig, RemoteConfig};
+use caldir_lib::provider::Provider;
+use caldir_lib::Caldir;
 
 pub async fn run(provider_name: &str) -> Result<()> {
     let provider = Provider::from_name(provider_name);

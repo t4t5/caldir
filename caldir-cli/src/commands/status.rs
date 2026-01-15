@@ -1,22 +1,23 @@
 use anyhow::Result;
 use owo_colors::OwoColorize;
 
-use crate::caldir::Caldir;
-use crate::utils::tui;
+use caldir_lib::Caldir;
+
+use crate::render;
 
 pub async fn run() -> Result<()> {
     let caldir = Caldir::load()?;
     let calendars = caldir.calendars();
 
     for (i, cal) in calendars.iter().enumerate() {
-        let spinner = tui::create_spinner(cal.render());
+        let spinner = render::create_spinner(render::render_calendar(cal));
         let result = cal.get_diff().await;
         spinner.finish_and_clear();
 
-        println!("{}", cal.render());
+        println!("{}", render::render_calendar(cal));
 
         match result {
-            Ok(diff) => println!("{}", diff.render()),
+            Ok(diff) => println!("{}", render::render_calendar_diff(&diff)),
             Err(e) => println!("   {}", e.to_string().red()),
         }
 

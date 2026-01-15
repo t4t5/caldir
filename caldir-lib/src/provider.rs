@@ -10,11 +10,11 @@
 //! provider-specific parameters from the calendar config.
 //!
 use anyhow::{Context, Result};
-use caldir_core::calendar_config::CalendarConfig;
 use serde::de::DeserializeOwned;
 use std::time::Duration;
 
-use caldir_core::protocol::{Command as ProviderCommand, Request, Response};
+use crate::calendar_config::CalendarConfig;
+use crate::protocol::{Command as ProviderCommand, Request, Response};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use tokio::time::timeout;

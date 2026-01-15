@@ -1,17 +1,8 @@
-mod caldir;
-mod calendar;
 mod commands;
-mod config;
-mod constants;
-mod diff;
-mod ics;
-mod local;
-mod provider;
-mod remote;
-mod utils;
+mod render;
 
 use anyhow::Result;
-use caldir::Caldir;
+use caldir_lib::Caldir;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]

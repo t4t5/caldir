@@ -1,11 +1,11 @@
 use anyhow::Result;
-use caldir_core::Event;
-use caldir_core::protocol::Command as ProviderCommand;
 use chrono::Duration;
 use std::collections::HashMap;
 
 use crate::constants::DEFAULT_SYNC_DAYS;
+use crate::event::Event;
 use crate::local::config::RemoteConfig;
+use crate::protocol::Command as ProviderCommand;
 use crate::provider::Provider;
 
 /// Internal wrapper for provider params to convert to JSON

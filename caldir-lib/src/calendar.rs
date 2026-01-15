@@ -1,10 +1,10 @@
 use anyhow::Result;
-use caldir_core::{Event, EventTime};
 use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
 use crate::diff::CalendarDiff;
+use crate::event::{Event, EventTime};
 use crate::ics::{self, CalendarMetadata};
 use crate::local::config::LocalConfig;
 use crate::local::event::LocalEvent;
@@ -64,10 +64,6 @@ impl Calendar {
 
     pub async fn get_diff(&self) -> Result<CalendarDiff<'_>> {
         CalendarDiff::from_calendar(self).await
-    }
-
-    pub fn render(&self) -> String {
-        format!("🗓️ {}", self.name)
     }
 
     // =========================================================================

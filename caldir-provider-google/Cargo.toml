@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Shared types
-caldir-core = { path = "../caldir-core" }
+caldir-lib = { path = "../caldir-lib" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

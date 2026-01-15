@@ -1,6 +1,6 @@
 //! ICS file parsing using the icalendar crate's parser.
 
-use caldir_core::event::{
+use crate::event::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
 };
 use icalendar::{
@@ -201,7 +201,7 @@ fn parse_trigger_minutes(value: &str) -> Option<i64> {
 mod tests {
     use super::*;
     use crate::ics::{CalendarMetadata, generate_ics};
-    use caldir_core::event::ParticipationStatus;
+    use crate::event::ParticipationStatus;
     use chrono::{TimeZone, Utc};
 
     fn make_test_metadata() -> CalendarMetadata {

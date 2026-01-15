@@ -172,16 +172,26 @@ name = "caldir-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "caldir-core",
+ "caldir-lib",
  "chrono",
  "clap",
+ "indicatif",
+ "owo-colors",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "caldir-lib"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
  "config",
  "dirs",
  "icalendar",
- "indicatif",
  "indoc",
  "iso8601",
- "owo-colors",
  "serde",
  "serde_json",
  "shellexpand",
@@ -192,21 +202,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "caldir-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
- "uuid",
-]
-
-[[package]]
 name = "caldir-provider-google"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "caldir-core",
+ "caldir-lib",
  "chrono",
  "dirs",
  "google-calendar",

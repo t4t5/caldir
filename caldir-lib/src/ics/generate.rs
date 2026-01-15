@@ -2,7 +2,7 @@
 
 use super::CalendarMetadata;
 use anyhow::Result;
-use caldir_core::event::{Event, EventStatus, EventTime, Transparency};
+use crate::event::{Event, EventStatus, EventTime, Transparency};
 use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger, ValueType};
 
 /// Generate .ics content for an event with calendar metadata
@@ -163,7 +163,7 @@ fn add_datetime_property(ics_event: &mut icalendar::Event, name: &str, time: &Ev
 mod tests {
     use super::*;
     use crate::ics::CalendarMetadata;
-    use caldir_core::event::{Attendee, EventStatus, ParticipationStatus};
+    use crate::event::{Attendee, EventStatus, ParticipationStatus};
     use chrono::{NaiveDate, TimeZone, Utc};
 
     fn make_test_event() -> Event {

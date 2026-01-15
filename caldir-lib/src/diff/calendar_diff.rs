@@ -1,5 +1,4 @@
 use anyhow::Result;
-use owo_colors::OwoColorize;
 use std::collections::HashMap;
 
 use crate::calendar::Calendar;
@@ -14,54 +13,6 @@ pub struct CalendarDiff<'a> {
 impl<'a> CalendarDiff<'a> {
     pub fn is_empty(&self) -> bool {
         self.to_push.is_empty() && self.to_pull.is_empty()
-    }
-
-    pub fn render(&self) -> String {
-        if self.is_empty() {
-            return "   No changes".dimmed().to_string();
-        }
-
-        let mut lines = Vec::new();
-
-        if !self.to_push.is_empty() {
-            lines.push("   Local changes (to push):".dimmed().to_string());
-            for diff in &self.to_push {
-                lines.push(format!("   {}", diff.render()));
-            }
-        }
-
-        if !self.to_pull.is_empty() {
-            lines.push("   Remote changes (to pull):".dimmed().to_string());
-            for diff in &self.to_pull {
-                lines.push(format!("   {}", diff.render()));
-            }
-        }
-
-        lines.join("\n")
-    }
-
-    pub fn render_pull(&self) -> String {
-        if self.to_pull.is_empty() {
-            return "   No changes to pull".dimmed().to_string();
-        }
-
-        let mut lines = Vec::new();
-        for diff in &self.to_pull {
-            lines.push(format!("   {}", diff.render()));
-        }
-        lines.join("\n")
-    }
-
-    pub fn render_push(&self) -> String {
-        if self.to_push.is_empty() {
-            return "   No changes to push".dimmed().to_string();
-        }
-
-        let mut lines = Vec::new();
-        for diff in &self.to_push {
-            lines.push(format!("   {}", diff.render()));
-        }
-        lines.join("\n")
     }
 
     pub async fn apply_push(&self) -> Result<()> {

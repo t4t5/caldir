@@ -1,9 +1,10 @@
 use anyhow::Result;
 use owo_colors::OwoColorize;
 
-use crate::caldir::Caldir;
-use crate::diff::BatchDiff;
-use crate::utils::tui;
+use caldir_lib::diff::BatchDiff;
+use caldir_lib::Caldir;
+
+use crate::render;
 
 pub async fn run() -> Result<()> {
     let caldir = Caldir::load()?;
@@ -12,15 +13,15 @@ pub async fn run() -> Result<()> {
     let mut diffs = Vec::new();
 
     for (i, cal) in calendars.iter().enumerate() {
-        let spinner = tui::create_spinner(cal.render());
+        let spinner = render::create_spinner(render::render_calendar(cal));
         let result = cal.get_diff().await;
         spinner.finish_and_clear();
 
-        println!("{}", cal.render());
+        println!("{}", render::render_calendar(cal));
 
         match result {
             Ok(diff) => {
-                println!("{}", diff.render_push());
+                println!("{}", render::render_push_diff(&diff));
                 diff.apply_push().await?;
                 diffs.push(diff);
             }
