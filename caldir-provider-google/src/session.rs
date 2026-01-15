@@ -138,10 +138,15 @@ impl Session {
             self.data.refresh_token.clone(),
         );
 
-        let tokens = client
+        let mut tokens = client
             .refresh_access_token()
             .await
             .context("Failed to refresh token")?;
+
+        // Google typically doesn't return a new refresh_token on refresh
+        if tokens.refresh_token.is_empty() {
+            tokens.refresh_token = self.data.refresh_token.clone();
+        }
 
         let session_data: SessionData = (&tokens).into();
 
