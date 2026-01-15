@@ -22,7 +22,10 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
 
     let client = Session::load_valid(&account_email).await?.client()?;
 
-    let google_event = event.to_google();
+    // Let google change the ID
+    // (Otherwise we'll get "Invalid resource id value")
+    let mut google_event = event.to_google();
+    google_event.id = String::new();
 
     let response = client
         .events()

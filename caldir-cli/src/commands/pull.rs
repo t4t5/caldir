@@ -38,7 +38,7 @@ pub async fn run() -> Result<()> {
 
     if created > 0 || updated > 0 || deleted > 0 {
         println!(
-            "\nPulled {} created, {} updated, {} deleted",
+            "\nPulled: {} created, {} updated, {} deleted",
             created, updated, deleted
         );
     }
