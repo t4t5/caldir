@@ -1,0 +1,36 @@
+[package]
+name = "caldir-server"
+version = "0.1.0"
+edition = "2024"
+description = "HTTP server for caldir - enables GUI apps to interact with calendars"
+
+[[bin]]
+name = "caldir-server"
+path = "src/main.rs"
+
+[dependencies]
+# Core library
+caldir-lib = { path = "../caldir-lib" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8", features = ["macros"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+
+# Tower utilities (for CORS, etc.)
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors"] }
+
+# Filesystem locking for singleton
+fs2 = "0.4"
+
+# Platform directories
+dirs = "6"
