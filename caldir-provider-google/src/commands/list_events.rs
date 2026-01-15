@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use caldir_lib::Event;
+use caldir_core::Event;
 use chrono::{DateTime, Utc};
 use google_calendar::types::OrderBy;
 use serde::Deserialize;

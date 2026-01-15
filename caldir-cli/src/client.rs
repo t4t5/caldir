@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::time::Duration;
 
-use caldir_lib::diff::EventDiff;
-use caldir_lib::{Event, EventTime};
+use caldir_core::diff::EventDiff;
+use caldir_core::{Event, EventTime};
 
 const SERVER_URL: &str = "http://127.0.0.1:4096";
 const MAX_RETRIES: u32 = 10;

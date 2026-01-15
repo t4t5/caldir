@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use caldir_lib::{Event, EventTime};
+use caldir_core::{Event, EventTime};
 
 use crate::routes::AppError;
 use crate::state::AppState;

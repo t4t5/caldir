@@ -3,7 +3,7 @@
 //! This module provides a `Render` trait that extends core types with
 //! terminal rendering capabilities (colors, formatting).
 
-use caldir_lib::diff::{DiffKind, EventDiff};
+use caldir_core::diff::{DiffKind, EventDiff};
 use indicatif::{ProgressBar, ProgressStyle};
 use owo_colors::OwoColorize;
 

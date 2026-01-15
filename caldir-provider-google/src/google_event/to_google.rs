@@ -1,4 +1,4 @@
-use caldir_lib::{Attendee, Event, EventStatus, EventTime, ParticipationStatus, Transparency};
+use caldir_core::{Attendee, Event, EventStatus, EventTime, ParticipationStatus, Transparency};
 
 pub trait ToGoogle {
     fn to_google(&self) -> google_calendar::types::Event;

@@ -8,8 +8,8 @@ use axum::{
 };
 use serde::Serialize;
 
-use caldir_lib::local::config::{LocalConfig, RemoteConfig};
-use caldir_lib::provider::Provider;
+use caldir_core::local::config::{LocalConfig, RemoteConfig};
+use caldir_core::provider::Provider;
 
 use crate::routes::AppError;
 use crate::state::AppState;

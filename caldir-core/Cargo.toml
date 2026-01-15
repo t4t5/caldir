@@ -1,5 +1,5 @@
 [package]
-name = "caldir-lib"
+name = "caldir-core"
 version = "0.1.0"
 edition = "2024"
 description = "Core library for caldir ecosystem - calendar management and sync"

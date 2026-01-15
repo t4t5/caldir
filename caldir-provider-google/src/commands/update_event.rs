@@ -1,5 +1,5 @@
 use anyhow::Result;
-use caldir_lib::Event;
+use caldir_core::Event;
 use google_calendar::types::SendUpdates;
 use serde::Deserialize;
 

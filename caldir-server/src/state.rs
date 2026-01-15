@@ -1,5 +1,5 @@
 use anyhow::Result;
-use caldir_lib::Caldir;
+use caldir_core::Caldir;
 
 /// Shared application state
 #[derive(Clone)]

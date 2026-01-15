@@ -1,7 +1,7 @@
 use anyhow::Result;
 use owo_colors::OwoColorize;
 
-use caldir_lib::diff::DiffKind;
+use caldir_core::diff::DiffKind;
 
 use crate::client::Client;
 use crate::render::{self, Render};

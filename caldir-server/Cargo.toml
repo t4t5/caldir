@@ -10,7 +10,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Core library
-caldir-lib = { path = "../caldir-lib" }
+caldir-core = { path = "../caldir-core" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

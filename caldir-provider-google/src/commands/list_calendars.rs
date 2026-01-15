@@ -4,7 +4,7 @@
 //! In this case: google_account + google_calendar_id.
 
 use anyhow::{Context, Result};
-use caldir_lib::calendar_config::CalendarConfig;
+use caldir_core::calendar_config::CalendarConfig;
 use google_calendar::types::MinAccessRole;
 use serde::Deserialize;
 use std::collections::HashMap;

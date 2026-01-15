@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::Serialize;
 
-use caldir_lib::diff::EventDiff;
+use caldir_core::diff::EventDiff;
 
 use crate::routes::AppError;
 use crate::state::AppState;

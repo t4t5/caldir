@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use chrono::{Duration, NaiveDateTime};
 use owo_colors::OwoColorize;
 
-use caldir_lib::EventTime;
+use caldir_core::EventTime;
 
 use crate::client::Client;
 

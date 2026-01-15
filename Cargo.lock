@@ -236,7 +236,7 @@ name = "caldir-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "caldir-lib",
+ "caldir-core",
  "chrono",
  "clap",
  "indicatif",
@@ -248,7 +248,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "caldir-lib"
+name = "caldir-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -272,7 +272,7 @@ name = "caldir-provider-google"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "caldir-lib",
+ "caldir-core",
  "chrono",
  "dirs",
  "google-calendar",
@@ -290,7 +290,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "caldir-lib",
+ "caldir-core",
  "dirs",
  "fs2",
  "serde",
