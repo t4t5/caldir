@@ -7,13 +7,6 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// Google OAuth client credentials (user-provided).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Credentials {
-    pub client_id: String,
-    pub client_secret: String,
-}
-
 pub fn base_dir() -> Result<PathBuf> {
     Ok(dirs::config_dir()
         .context("Could not determine config directory")?
@@ -22,25 +15,34 @@ pub fn base_dir() -> Result<PathBuf> {
         .join("google"))
 }
 
-pub fn load() -> Result<Credentials> {
-    let path = base_dir()?.join("app_config.toml");
+/// Google OAuth client credentials (user-provided).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppConfig {
+    pub client_id: String,
+    pub client_secret: String,
+}
 
-    if !path.exists() {
-        anyhow::bail!(
-            "Google credentials not found.\n\n\
+impl AppConfig {
+    pub fn load() -> Result<Self> {
+        let path = base_dir()?.join("app_config.toml");
+
+        if !path.exists() {
+            anyhow::bail!(
+                "Google credentials not found.\n\n\
             Create {} with:\n\n\
             client_id = \"your-client-id.apps.googleusercontent.com\"\n\
             client_secret = \"your-client-secret\"\n\n\
             See https://console.cloud.google.com/apis/credentials for setup.",
-            path.display()
-        );
+                path.display()
+            );
+        }
+
+        let contents = std::fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read credentials from {}", path.display()))?;
+
+        let app_config: AppConfig = toml::from_str(&contents)
+            .with_context(|| format!("Failed to parse credentials from {}", path.display()))?;
+
+        Ok(app_config)
     }
-
-    let contents = std::fs::read_to_string(&path)
-        .with_context(|| format!("Failed to read credentials from {}", path.display()))?;
-
-    let creds: Credentials = toml::from_str(&contents)
-        .with_context(|| format!("Failed to parse credentials from {}", path.display()))?;
-
-    Ok(creds)
 }

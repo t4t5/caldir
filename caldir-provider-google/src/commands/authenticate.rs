@@ -7,7 +7,7 @@ use serde::Deserialize;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
-use crate::app_config;
+use crate::app_config::AppConfig;
 use crate::session;
 
 pub const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
@@ -33,11 +33,11 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
 
     let scopes: Vec<String> = SCOPES.iter().map(|s| s.to_string()).collect();
 
-    let creds = app_config::load()?;
+    let app_config = AppConfig::load()?;
 
     let mut client = Client::new(
-        creds.client_id.clone(),
-        creds.client_secret.clone(),
+        app_config.client_id.clone(),
+        app_config.client_secret.clone(),
         redirect_uri(port),
         String::new(),
         String::new(),
@@ -72,8 +72,8 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
     };
 
     let client = Client::new(
-        creds.client_id.clone(),
-        creds.client_secret.clone(),
+        app_config.client_id.clone(),
+        app_config.client_secret.clone(),
         redirect_uri(port),
         tokens.access_token.clone(),
         tokens.refresh_token.clone(),
