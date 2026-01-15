@@ -83,7 +83,7 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
         .ok_or_else(|| anyhow::anyhow!("No primary calendar found"))?;
 
     // Save access_token + refresh_token in session file:
-    let session = Session::new(&account_email, &session_data)?;
+    let session = Session::new(account_email, &session_data)?;
     session.save()?;
 
     eprintln!("Authentication successful!");

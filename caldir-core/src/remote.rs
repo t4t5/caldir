@@ -1,11 +1,11 @@
 //! Remote calendar operations via providers.
 
+use crate::config::RemoteConfig;
+use crate::constants::DEFAULT_SYNC_DAYS;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Event;
 use crate::protocol::Command as ProviderCommand;
 use crate::provider::Provider;
-use crate::config::RemoteConfig;
-use crate::constants::DEFAULT_SYNC_DAYS;
 use chrono::Duration;
 use std::collections::HashMap;
 
@@ -62,26 +62,26 @@ impl Remote {
         params["to"] = serde_json::Value::String(to);
 
         self.provider
-            .call(ProviderCommand::ListEvents, params)
+            .call_with_timeout(ProviderCommand::ListEvents, params)
             .await
     }
 
     pub async fn create_event(&self, event: &Event) -> CalDirResult<Event> {
         self.ensure_account_param()?;
         let mut params = self.params.to_json();
-        params["event"] = serde_json::to_value(event)
-            .map_err(|e| CalDirError::Serialization(e.to_string()))?;
+        params["event"] =
+            serde_json::to_value(event).map_err(|e| CalDirError::Serialization(e.to_string()))?;
         self.provider
-            .call(ProviderCommand::CreateEvent, params)
+            .call_with_timeout(ProviderCommand::CreateEvent, params)
             .await
     }
 
     pub async fn update_event(&self, event: &Event) -> CalDirResult<Event> {
         let mut params = self.params.to_json();
-        params["event"] = serde_json::to_value(event)
-            .map_err(|e| CalDirError::Serialization(e.to_string()))?;
+        params["event"] =
+            serde_json::to_value(event).map_err(|e| CalDirError::Serialization(e.to_string()))?;
         self.provider
-            .call(ProviderCommand::UpdateEvent, params)
+            .call_with_timeout(ProviderCommand::UpdateEvent, params)
             .await
     }
 
@@ -90,7 +90,7 @@ impl Remote {
         let mut params = self.params.to_json();
         params["event_id"] = serde_json::Value::String(event_id.to_string());
         self.provider
-            .call(ProviderCommand::DeleteEvent, params)
+            .call_with_timeout(ProviderCommand::DeleteEvent, params)
             .await
     }
 }

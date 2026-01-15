@@ -14,7 +14,7 @@ use crate::error::{CalDirError, CalDirResult};
 use crate::protocol::{Command as ProviderCommand, Request, Response};
 use serde::de::DeserializeOwned;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
@@ -43,7 +43,7 @@ impl Provider {
     }
 
     pub async fn authenticate(&self) -> CalDirResult<String> {
-        self.call_inner(ProviderCommand::Authenticate, serde_json::json!({}))
+        self.call(ProviderCommand::Authenticate, serde_json::json!({}))
             .await
     }
 
@@ -55,94 +55,62 @@ impl Provider {
     }
 
     /// Call a provider command and return the result.
-    pub async fn call<R: DeserializeOwned>(
+    pub async fn call_with_timeout<R: DeserializeOwned>(
         &self,
         command: ProviderCommand,
         params: serde_json::Value,
     ) -> CalDirResult<R> {
-        timeout(PROVIDER_TIMEOUT, self.call_inner(command, params))
+        timeout(PROVIDER_TIMEOUT, self.call(command, params))
             .await
             .map_err(|_| CalDirError::ProviderTimeout(PROVIDER_TIMEOUT.as_secs()))?
     }
 
-    async fn call_inner<R: DeserializeOwned>(
+    async fn call<R: DeserializeOwned>(
         &self,
         command: ProviderCommand,
         params: serde_json::Value,
     ) -> CalDirResult<R> {
         let request = Request { command, params };
-
         let request_json = serde_json::to_string(&request)
             .map_err(|e| CalDirError::Serialization(e.to_string()))?;
 
         let binary_path = self.binary_path()?;
 
-        // Spawn the provider process
         let mut child = Command::new(&binary_path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::inherit()) // Let provider errors show in terminal
+            .stderr(std::process::Stdio::inherit())
             .spawn()
             .map_err(|e| {
-                CalDirError::Provider(format!(
-                    "Failed to spawn provider {}: {}",
-                    binary_path.display(),
-                    e
-                ))
+                CalDirError::Provider(format!("Failed to spawn {}: {}", binary_path.display(), e))
             })?;
 
-        // Write request to stdin
-        {
-            let mut stdin = child
-                .stdin
-                .take()
-                .ok_or_else(|| CalDirError::Provider("Failed to get provider stdin handle".into()))?;
-            stdin
-                .write_all(request_json.as_bytes())
-                .await
-                .map_err(|e| CalDirError::Provider(format!("Failed to write to provider stdin: {}", e)))?;
-            stdin
-                .write_all(b"\n")
-                .await
-                .map_err(|e| CalDirError::Provider(format!("Failed to write newline: {}", e)))?;
-            stdin
-                .flush()
-                .await
-                .map_err(|e| CalDirError::Provider(format!("Failed to flush stdin: {}", e)))?;
-            // Drop stdin to signal EOF
-        }
+        // Write request to stdin (unwrap safe: we piped stdin above)
+        let mut stdin = child.stdin.take().unwrap();
+        stdin
+            .write_all(format!("{request_json}\n").as_bytes())
+            .await?;
+        drop(stdin);
 
-        // Read response from stdout
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| CalDirError::Provider("Failed to get provider stdout handle".into()))?;
-        let mut reader = BufReader::new(stdout);
-        let mut line = String::new();
-        reader
-            .read_line(&mut line)
-            .await
-            .map_err(|e| CalDirError::Provider(format!("Failed to read provider response: {}", e)))?;
+        // Wait for process and collect output
+        let output = child.wait_with_output().await?;
 
-        if line.is_empty() {
-            return Err(CalDirError::Provider("Provider returned no response".into()));
-        }
-
-        // Wait for process to exit
-        let status = child
-            .wait()
-            .await
-            .map_err(|e| CalDirError::Provider(format!("Failed to wait for provider: {}", e)))?;
-        if !status.success() {
+        if !output.status.success() {
             return Err(CalDirError::Provider(format!(
                 "Provider exited with status: {}",
-                status.code().unwrap_or(-1)
+                output.status.code().unwrap_or(-1)
             )));
         }
 
-        // Parse response
-        let response: Response<R> = serde_json::from_str(&line)
-            .map_err(|e| CalDirError::Provider(format!("Failed to parse provider response: {}", e)))?;
+        let response_str = String::from_utf8_lossy(&output.stdout);
+        if response_str.is_empty() {
+            return Err(CalDirError::Provider(
+                "Provider returned no response".into(),
+            ));
+        }
+
+        let response: Response<R> = serde_json::from_str(&response_str)
+            .map_err(|e| CalDirError::Provider(format!("Failed to parse response: {}", e)))?;
 
         match response {
             Response::Success { data } => Ok(data),

@@ -24,7 +24,7 @@ impl Render for DiffKind {
 }
 
 /// Colorize text according to the diff kind
-fn colorize(kind: DiffKind, text: &str) -> String {
+fn colorize_diff(kind: DiffKind, text: &str) -> String {
     match kind {
         DiffKind::Create => text.green().to_string(),
         DiffKind::Update => text.yellow().to_string(),
@@ -35,7 +35,7 @@ fn colorize(kind: DiffKind, text: &str) -> String {
 impl Render for EventDiff {
     fn render(&self) -> String {
         let event = self.event();
-        let summary = colorize(self.kind, &event.to_string());
+        let summary = colorize_diff(self.kind, &event.to_string());
         let time = event.render_event_time();
 
         format!("{} {} {}", self.kind.render(), summary, time.dimmed())

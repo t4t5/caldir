@@ -14,7 +14,7 @@ pub async fn run() -> Result<()> {
 
     for (i, cal) in calendars.iter().enumerate() {
         let spinner = tui::create_spinner(cal.render());
-        let result = CalendarDiff::from_calendar(&cal).await;
+        let result = CalendarDiff::from_calendar(cal).await;
         spinner.finish_and_clear();
 
         println!("{}", cal.render());
