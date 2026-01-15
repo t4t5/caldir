@@ -8,7 +8,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
 use crate::app_config::AppConfig;
-use crate::session;
+use crate::session::{Session, SessionData};
 
 pub const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
 
@@ -57,19 +57,9 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
 
     eprintln!("\nReceived authorization code, exchanging for tokens...");
 
-    let access_token = client.get_access_token(&code, &state).await?;
+    let tokens = client.get_access_token(&code, &state).await?;
 
-    let expires_at = if access_token.expires_in > 0 {
-        Some(chrono::Utc::now() + chrono::Duration::seconds(access_token.expires_in))
-    } else {
-        None
-    };
-
-    let tokens = session::Tokens {
-        access_token: access_token.access_token,
-        refresh_token: access_token.refresh_token,
-        expires_at,
-    };
+    let session_data: SessionData = (&tokens).into();
 
     let client = Client::new(
         app_config.client_id.clone(),
@@ -92,8 +82,9 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
         .map(|cal| &cal.summary)
         .ok_or_else(|| anyhow::anyhow!("No primary calendar found"))?;
 
-    // Save tokens for this account
-    tokens.save(account_email)?;
+    // Save access_token + refresh_token in session file:
+    let session = Session::new(&account_email, &session_data)?;
+    session.save()?;
 
     eprintln!("Authentication successful!");
 

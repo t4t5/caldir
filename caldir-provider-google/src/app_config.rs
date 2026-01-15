@@ -38,10 +38,10 @@ impl AppConfig {
         }
 
         let contents = std::fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read credentials from {}", path.display()))?;
+            .with_context(|| format!("Failed to read app_config from {}", path.display()))?;
 
         let app_config: AppConfig = toml::from_str(&contents)
-            .with_context(|| format!("Failed to parse credentials from {}", path.display()))?;
+            .with_context(|| format!("Failed to parse app_config from {}", path.display()))?;
 
         Ok(app_config)
     }
