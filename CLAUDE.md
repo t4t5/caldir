@@ -124,57 +124,89 @@ The core CLI is completely provider-agnostic — it just passes provider-prefixe
 - `caldir-provider-outlook` — Microsoft Graph API
 - `caldir-provider-caldav` — Generic CalDAV servers
 
+## Architecture
+
+```
+┌─────────────┐     ┌─────────────┐
+│  caldir-cli │     │   GUI App   │
+│ (thin HTTP  │     │  (future)   │
+│   client)   │     │             │
+└──────┬──────┘     └──────┬──────┘
+       │                   │
+       │   HTTP (REST)     │
+       └────────┬──────────┘
+                │
+        ┌───────▼───────┐
+        │ caldir-server │  ← singleton daemon (auto-started)
+        └───────┬───────┘
+                │
+    ┌───────────┼───────────┐
+    ▼           ▼           ▼
+providers    ~/calendar/   ~/.config/caldir/
+```
+
+**Key principles:**
+- One daemon, multiple clients (CLI, future GUI apps)
+- CLI auto-starts server if not running
+- Providers installed once, shared by all clients
+- Filesystem (`~/calendar/`) is source of truth
+
 ## Module Architecture
 
 ```
-caldir-core/                   # Shared types (used by CLI and providers)
+caldir-core/                   # Core library (business logic + types)
   src/
     lib.rs       - Re-exports
     event.rs     - Provider-neutral event types (Event, Attendee, Reminder, etc.)
-    calendar.rs  - ProviderCalendar, CalendarWithConfig (returned by list_calendars)
-    protocol.rs  - CLI-provider communication protocol (Command enum, Request/Response)
+    calendar_config.rs - ProviderCalendar, CalendarWithConfig
+    protocol.rs  - CLI-provider communication protocol
+    caldir.rs    - Caldir struct (discover calendars)
+    calendar.rs  - Calendar struct (CRUD operations)
+    config.rs    - GlobalConfig
+    provider.rs  - Provider subprocess communication
+    local/       - LocalConfig, LocalState, LocalEvent
+    diff/        - Sync diff logic (EventDiff, CalendarDiff)
+    ics/         - ICS parsing/generation
 
-caldir-cli/                    # Core CLI
+caldir-server/                 # HTTP server (singleton daemon)
+  src/
+    main.rs      - Axum server, singleton lock
+    state.rs     - AppState (holds Caldir instance)
+    singleton.rs - File lock for single instance
+    routes/
+      calendars.rs - GET/POST /calendars, /calendars/:id/events
+      remote.rs    - POST /remote/pull, /remote/push, GET /remote/status
+      auth.rs      - POST /auth/:provider
+
+caldir-cli/                    # CLI (thin HTTP client)
   src/
     main.rs      - CLI parsing and command dispatch
-    commands/
-      mod.rs     
-      auth.rs    - Authentication flow
-      pull.rs    - Pull remote → local
-      push.rs    - Push local → remote
-      status.rs  - Show pending changes
-      new.rs     - Create local events
-    config.rs    - Global config (~/.config/caldir/config.toml), GlobalConfig struct
-    local.rs     - Per-calendar state: LocalConfig (.caldir/config.toml), LocalState (.caldir/state/)
-    calendar.rs  - Calendar struct, event CRUD, sync state updates
-    diff/        - Bidirectional diff computation between local and remote
-    ics/         - ICS format: generation, parsing (RFC 5545)
-    provider.rs  - Provider subprocess protocol (JSON over stdin/stdout)
+    client.rs    - HTTP client, auto-starts server
+    render.rs    - Render trait for terminal output
+    commands/    - Command handlers (call client methods)
 
-caldir-provider-google/        # Google Calendar provider (separate crate)
+caldir-provider-google/        # Google Calendar provider
   src/
-    main.rs        - JSON protocol handler (reads stdin, writes stdout)
-    app_config.rs  - OAuth credentials (~/.config/caldir/providers/google/app_config.toml)
-    session.rs     - Token storage and refresh (~/.config/caldir/providers/google/session/)
-    commands/      - Command handlers (authenticate, list_calendars, list_events, etc.)
-    convert/       - Conversion between Google API types and caldir_core types
+    main.rs        - JSON protocol handler (stdin/stdout)
+    app_config.rs  - OAuth credentials
+    session.rs     - Token storage and refresh
+    commands/      - authenticate, list_calendars, list_events, etc.
+    convert/       - Google API ↔ caldir_core type conversion
 ```
 
 ### Key Abstractions
 
-**caldir-core** — Shared crate containing provider-neutral event types (`Event`, `Attendee`, `Reminder`, `EventTime`, `ParticipationStatus`, etc.), calendar types (`ProviderCalendar`, `CalendarWithConfig`), and protocol types (`Command`, `Request`, `Response`) with JSON serialization. Both the CLI and providers depend on this crate, ensuring type consistency across the protocol boundary. Providers convert their API responses into these types, and the CLI works exclusively with them. `CalendarWithConfig` pairs calendar metadata with the config to save, keeping the CLI provider-agnostic.
+**caldir-core** — Core library containing all business logic. Provider-neutral event types (`Event`, `EventDiff`, `EventTime`, etc.), calendar management (`Caldir`, `Calendar`), sync diffing, and ICS file handling. Both server and providers depend on this crate.
 
-**Calendar** — Represents a single calendar directory. Loaded via `Calendar::load(path)` which reads the local config from `.caldir/config.toml`. Provides methods for event CRUD operations and sync state management. The `remote()` method returns `Option<Remote>` — calendars without `.caldir/config.toml` are local-only.
+**caldir-server** — HTTP server using Axum. Runs as a singleton daemon (file lock prevents multiple instances). Exposes REST API for calendar operations. Auto-started by CLI when needed.
 
-**provider.rs** — Provider subprocess protocol. Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `authenticate`, `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event`.
+**caldir-cli** — Thin HTTP client. Connects to caldir-server (starting it if needed). Uses `Render` trait to extend core types with terminal formatting (colors via owo-colors).
 
-**diff/** — Bidirectional diff computation. Compares remote events against local files and returns lists for pull changes and push changes. Uses timestamp comparison to determine sync direction. Uses sync state (set of previously synced UIDs) to detect local deletions.
+**Calendar** — Represents a single calendar directory. Loaded via `Calendar::load(path)`. Provides event CRUD and sync state management. `remote()` returns `Option<Remote>` for synced calendars.
 
-**local.rs** — Per-calendar state stored in `.caldir/` directory:
-- `LocalConfig` — Remote configuration stored in `.caldir/config.toml` (provider, account, calendar_id)
-- `LocalState` — Sync state stored in `.caldir/state/synced_uids` (tracks synced UIDs for delete detection)
+**diff/** — Bidirectional sync diffing. `EventDiff` and `CalendarDiff` are serializable for HTTP transport. Uses timestamp comparison and sync state for direction detection.
 
-**ics/** — Pure ICS format (RFC 5545). Generates compliant `.ics` files from `Event` structs, parses properties from existing files. Provider-neutral.
+**provider.rs** — Provider subprocess protocol. Spawns `caldir-provider-{name}` binaries, communicates via JSON over stdin/stdout.
 
 ## Event Properties
 
