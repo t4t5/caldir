@@ -21,7 +21,7 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
 
     let account_email = &params.google_account;
 
-    let client = Session::load_valid(&account_email).await?.client()?;
+    let client = Session::load_valid(account_email).await?.client()?;
 
     let google_calendars = client
         .calendar_list()

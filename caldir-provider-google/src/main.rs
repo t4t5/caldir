@@ -3,7 +3,7 @@
 
 mod app_config;
 mod commands;
-mod convert;
+mod google_event;
 mod session;
 
 use anyhow::Result;

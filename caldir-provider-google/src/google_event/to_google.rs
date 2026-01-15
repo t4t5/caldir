@@ -1,8 +1,10 @@
 use caldir_core::{Attendee, Event, EventStatus, EventTime, ParticipationStatus, Transparency};
 
-use crate::convert::ToGoogle;
+pub trait ToGoogle {
+    fn to_google(&self) -> google_calendar::types::Event;
+}
 
-impl ToGoogle<google_calendar::types::Event> for Event {
+impl ToGoogle for Event {
     fn to_google(&self) -> google_calendar::types::Event {
         let start = event_time_to_google(&self.start);
         let end = event_time_to_google(&self.end);
@@ -79,7 +81,6 @@ fn attendee_to_google(attendee: &Attendee) -> google_calendar::types::EventAtten
     }
 }
 
-/// Convert EventTime to Google's EventDateTime
 fn event_time_to_google(time: &EventTime) -> google_calendar::types::EventDateTime {
     match time {
         EventTime::Date(d) => google_calendar::types::EventDateTime {
@@ -105,7 +106,6 @@ fn event_time_to_google(time: &EventTime) -> google_calendar::types::EventDateTi
     }
 }
 
-/// Convert ParticipationStatus to Google's response status format
 fn participation_status_to_google(status: ParticipationStatus) -> &'static str {
     match status {
         ParticipationStatus::Accepted => "accepted",

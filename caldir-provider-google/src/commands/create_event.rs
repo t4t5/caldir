@@ -3,7 +3,7 @@ use caldir_core::Event;
 use google_calendar::types::SendUpdates;
 use serde::Deserialize;
 
-use crate::convert::{FromGoogle, ToGoogle};
+use crate::google_event::{FromGoogle, ToGoogle};
 use crate::session::Session;
 
 #[derive(Debug, Deserialize)]
@@ -22,8 +22,7 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
 
     let client = Session::load_valid(&account_email).await?.client()?;
 
-    let mut google_event = event.to_google();
-    google_event.id = String::new(); // Let Google assign the ID
+    let google_event = event.to_google();
 
     let response = client
         .events()
@@ -37,8 +36,9 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
             &google_event,
         )
         .await
-        .with_context(|| format!("Failed to create event: {}", event.summary))?;
+        .with_context(|| format!("Failed to create event: {}", &google_event.summary))?;
 
     let created_event = Event::from_google(response.body)?;
+
     Ok(serde_json::to_value(created_event)?)
 }

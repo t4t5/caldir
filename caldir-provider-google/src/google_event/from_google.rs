@@ -1,21 +1,26 @@
+use anyhow::{bail, Result};
 use caldir_core::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
 };
 
-use crate::convert::FromGoogle;
+pub trait FromGoogle {
+    fn from_google(event: google_calendar::types::Event) -> Result<Self>
+    where
+        Self: Sized;
+}
 
-impl FromGoogle<google_calendar::types::Event> for Event {
-    fn from_google(event: google_calendar::types::Event) -> anyhow::Result<Self> {
+impl FromGoogle for Event {
+    fn from_google(event: google_calendar::types::Event) -> Result<Self> {
         let start = if let Some(ref start) = event.start {
             if let Some(dt) = start.date_time {
                 EventTime::DateTimeUtc(dt)
             } else if let Some(d) = start.date {
                 EventTime::Date(d)
             } else {
-                anyhow::bail!("Event has no start time");
+                bail!("Event has no start time");
             }
         } else {
-            anyhow::bail!("Event has no start time");
+            bail!("Event has no start time");
         };
 
         let end = if let Some(ref end) = event.end {
@@ -24,10 +29,10 @@ impl FromGoogle<google_calendar::types::Event> for Event {
             } else if let Some(d) = end.date {
                 EventTime::Date(d)
             } else {
-                anyhow::bail!("Event has no end time");
+                bail!("Event has no end time");
             }
         } else {
-            anyhow::bail!("Event has no end time");
+            bail!("Event has no end time");
         };
 
         let status = match event.status.as_str() {
@@ -141,7 +146,6 @@ impl FromGoogle<google_calendar::types::Event> for Event {
     }
 }
 
-/// Convert Google's response status to ParticipationStatus
 fn google_to_participation_status(google_status: &str) -> Option<ParticipationStatus> {
     match google_status {
         "accepted" => Some(ParticipationStatus::Accepted),

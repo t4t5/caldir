@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use google_calendar::types::OrderBy;
 use serde::Deserialize;
 
-use crate::convert::FromGoogle;
+use crate::google_event::FromGoogle;
 use crate::session::Session;
 
 #[derive(Debug, Deserialize)]
@@ -25,7 +25,7 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
 
     let client = Session::load_valid(&account_email).await?.client()?;
 
-    let response = client
+    let google_events = client
         .events()
         .list_all(
             &calendar_id,
@@ -44,10 +44,10 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
             "",
         )
         .await
-        .context("Failed to fetch events")?;
+        .context("Failed to fetch events")?
+        .body;
 
-    let events: Vec<Event> = response
-        .body
+    let events: Vec<Event> = google_events
         .into_iter()
         .map(Event::from_google)
         .collect::<Result<_, _>>()?;

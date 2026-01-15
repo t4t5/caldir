@@ -3,7 +3,7 @@ use caldir_core::Event;
 use google_calendar::types::SendUpdates;
 use serde::Deserialize;
 
-use crate::convert::{FromGoogle, ToGoogle};
+use crate::google_event::{FromGoogle, ToGoogle};
 use crate::session::Session;
 
 #[derive(Debug, Deserialize)]
