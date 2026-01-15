@@ -26,11 +26,13 @@ pub struct CalendarInfo {
     pub name: String,
     pub path: String,
     pub has_remote: bool,
+    pub is_default: bool,
 }
 
 /// GET /calendars - List all calendars
 async fn list_calendars(State(state): State<AppState>) -> Result<Json<Vec<CalendarInfo>>, AppError> {
     let caldir = state.caldir()?;
+    let default_name = caldir.default_calendar().map(|c| c.name);
 
     let calendars: Vec<CalendarInfo> = caldir
         .calendars()
@@ -39,6 +41,7 @@ async fn list_calendars(State(state): State<AppState>) -> Result<Json<Vec<Calend
             name: cal.name.clone(),
             path: cal.path.to_string_lossy().to_string(),
             has_remote: cal.remote().is_some(),
+            is_default: default_name.as_ref() == Some(&cal.name),
         })
         .collect();
 

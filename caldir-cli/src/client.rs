@@ -18,14 +18,8 @@ pub struct Client {
     base_url: String,
 }
 
-// Response types matching server API
-
-#[derive(Deserialize)]
-pub struct CalendarInfo {
-    pub name: String,
-    pub path: String,
-    pub has_remote: bool,
-}
+// Minimal response types - just enough to deserialize server responses
+// The server defines the canonical types; these mirror the JSON structure
 
 #[derive(Deserialize)]
 pub struct SyncResult {
@@ -49,20 +43,9 @@ pub struct AuthResponse {
     pub calendars_existing: Vec<String>,
 }
 
-#[derive(Serialize)]
-pub struct CreateEventRequest {
-    pub summary: String,
-    pub start: EventTime,
-    pub end: EventTime,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub location: Option<String>,
-}
-
 #[derive(Deserialize)]
-pub struct ErrorResponse {
-    pub error: String,
+struct ErrorResponse {
+    error: String,
 }
 
 impl Client {
@@ -100,58 +83,6 @@ impl Client {
             .send()
             .await?;
         Ok(())
-    }
-
-    /// GET /calendars
-    pub async fn list_calendars(&self) -> Result<Vec<CalendarInfo>> {
-        let resp = self
-            .http
-            .get(format!("{}/calendars", self.base_url))
-            .send()
-            .await
-            .context("Failed to connect to server")?;
-
-        if !resp.status().is_success() {
-            let err: ErrorResponse = resp.json().await?;
-            anyhow::bail!("{}", err.error);
-        }
-
-        Ok(resp.json().await?)
-    }
-
-    /// GET /calendars/:id/events
-    pub async fn list_events(&self, calendar: &str) -> Result<Vec<Event>> {
-        let resp = self
-            .http
-            .get(format!("{}/calendars/{}/events", self.base_url, calendar))
-            .send()
-            .await
-            .context("Failed to connect to server")?;
-
-        if !resp.status().is_success() {
-            let err: ErrorResponse = resp.json().await?;
-            anyhow::bail!("{}", err.error);
-        }
-
-        Ok(resp.json().await?)
-    }
-
-    /// POST /calendars/:id/events
-    pub async fn create_event(&self, calendar: &str, req: CreateEventRequest) -> Result<Event> {
-        let resp = self
-            .http
-            .post(format!("{}/calendars/{}/events", self.base_url, calendar))
-            .json(&req)
-            .send()
-            .await
-            .context("Failed to connect to server")?;
-
-        if !resp.status().is_success() {
-            let err: ErrorResponse = resp.json().await?;
-            anyhow::bail!("{}", err.error);
-        }
-
-        Ok(resp.json().await?)
     }
 
     /// POST /remote/pull
@@ -221,12 +152,90 @@ impl Client {
 
         Ok(resp.json().await?)
     }
+
+    /// POST /calendars/:id/events
+    pub async fn create_event(
+        &self,
+        calendar: &str,
+        summary: String,
+        start: EventTime,
+        end: EventTime,
+    ) -> Result<Event> {
+        #[derive(Serialize)]
+        struct Request {
+            summary: String,
+            start: EventTime,
+            end: EventTime,
+        }
+
+        let resp = self
+            .http
+            .post(format!("{}/calendars/{}/events", self.base_url, calendar))
+            .json(&Request { summary, start, end })
+            .send()
+            .await
+            .context("Failed to connect to server")?;
+
+        if !resp.status().is_success() {
+            let err: ErrorResponse = resp.json().await?;
+            anyhow::bail!("{}", err.error);
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// GET /calendars - returns calendar names
+    pub async fn list_calendars(&self) -> Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct CalendarInfo {
+            name: String,
+        }
+
+        let resp = self
+            .http
+            .get(format!("{}/calendars", self.base_url))
+            .send()
+            .await
+            .context("Failed to connect to server")?;
+
+        if !resp.status().is_success() {
+            let err: ErrorResponse = resp.json().await?;
+            anyhow::bail!("{}", err.error);
+        }
+
+        let calendars: Vec<CalendarInfo> = resp.json().await?;
+        Ok(calendars.into_iter().map(|c| c.name).collect())
+    }
+
+    /// GET /calendars - returns the default calendar name
+    pub async fn default_calendar(&self) -> Result<Option<String>> {
+        #[derive(Deserialize)]
+        struct CalendarInfo {
+            name: String,
+            is_default: bool,
+        }
+
+        let resp = self
+            .http
+            .get(format!("{}/calendars", self.base_url))
+            .send()
+            .await
+            .context("Failed to connect to server")?;
+
+        if !resp.status().is_success() {
+            let err: ErrorResponse = resp.json().await?;
+            anyhow::bail!("{}", err.error);
+        }
+
+        let calendars: Vec<CalendarInfo> = resp.json().await?;
+        Ok(calendars.into_iter().find(|c| c.is_default).map(|c| c.name))
+    }
 }
 
 /// Start the caldir-server process
 fn start_server() -> Result<()> {
     Command::new("caldir-server")
         .spawn()
-        .context("Failed to start caldir-server. Is it installed?")?;
+        .context("Failed to start caldir-server. Is it installed? Run 'just install'")?;
     Ok(())
 }
