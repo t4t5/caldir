@@ -13,13 +13,13 @@ use crate::session::Session;
 
 #[derive(Debug, Deserialize)]
 struct ListCalendarsParams {
-    google_account: String,
+    account_identifier: String,
 }
 
 pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
     let params: ListCalendarsParams = serde_json::from_value(params)?;
 
-    let account_email = &params.google_account;
+    let account_email = &params.account_identifier;
 
     let client = Session::load_valid(account_email).await?.client()?;
 

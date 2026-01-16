@@ -10,13 +10,13 @@ pub async fn run(provider_name: &str) -> Result<()> {
     println!("Authenticating with {provider_name}...");
 
     // Provider handles the full OAuth flow and stores credentials/tokens
-    let account = provider.authenticate().await?;
+    let provider_account = provider.authenticate().await?;
 
-    println!("Authenticated as: {account}\n");
+    println!("Authenticated as: {}\n", { &provider_account.identifier });
     println!("Fetching calendars...");
 
     // List all calendars for this account
-    let calendars = provider.list_calendars(&account).await?;
+    let calendars = provider_account.list_calendars().await?;
 
     if calendars.is_empty() {
         println!("No calendars found.");

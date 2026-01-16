@@ -9,9 +9,9 @@
 //! Providers manage their own credentials and tokens. Core just passes
 //! provider-specific parameters from the calendar config.
 
-use crate::calendar_config::CalendarConfig;
 use crate::error::{CalDirError, CalDirResult};
 use crate::protocol::{Command as ProviderCommand, Request, Response};
+use crate::provider_account::ProviderAccount;
 use serde::de::DeserializeOwned;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
@@ -20,6 +20,7 @@ use tokio::time::timeout;
 
 const PROVIDER_TIMEOUT: Duration = Duration::from_secs(10);
 
+#[derive(Clone)]
 pub struct Provider(String);
 
 impl Provider {
@@ -42,16 +43,12 @@ impl Provider {
         Ok(binary_path)
     }
 
-    pub async fn authenticate(&self) -> CalDirResult<String> {
-        self.call(ProviderCommand::Authenticate, serde_json::json!({}))
-            .await
-    }
+    pub async fn authenticate(&self) -> CalDirResult<ProviderAccount> {
+        let identifier: String = self
+            .call(ProviderCommand::Authenticate, serde_json::json!({}))
+            .await?;
 
-    /// List all calendars for an account
-    pub async fn list_calendars(&self, account: &str) -> CalDirResult<Vec<CalendarConfig>> {
-        let param_key = format!("{}_account", self.0);
-        let params = serde_json::json!({ param_key: account });
-        self.call(ProviderCommand::ListCalendars, params).await
+        Ok(ProviderAccount::new(self.clone(), identifier))
     }
 
     /// Call a provider command and return the result.
@@ -65,7 +62,7 @@ impl Provider {
             .map_err(|_| CalDirError::ProviderTimeout(PROVIDER_TIMEOUT.as_secs()))?
     }
 
-    async fn call<R: DeserializeOwned>(
+    pub async fn call<R: DeserializeOwned>(
         &self,
         command: ProviderCommand,
         params: serde_json::Value,
