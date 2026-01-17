@@ -22,7 +22,7 @@ impl CalendarDiff {
         let remote = self
             .calendar
             .remote()
-            .ok_or_else(|| CalDirError::NoRemoteConfigured(self.calendar.name.clone()))?;
+            .ok_or_else(|| CalDirError::NoRemoteConfigured(self.calendar.name.to_string()))?;
 
         for diff in &self.to_push {
             match diff.kind {
@@ -76,7 +76,7 @@ impl CalendarDiff {
     pub async fn from_calendar(calendar: &Calendar) -> CalDirResult<Self> {
         let remote = calendar
             .remote()
-            .ok_or_else(|| CalDirError::NoRemoteConfigured(calendar.name.clone()))?;
+            .ok_or_else(|| CalDirError::NoRemoteConfigured(calendar.name.to_string()))?;
 
         let remote_events = remote.events().await?;
         let local_events = calendar.events()?;

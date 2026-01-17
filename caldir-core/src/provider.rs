@@ -17,10 +17,11 @@ use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
+use serde::{Deserialize, Serialize};
 
 const PROVIDER_TIMEOUT: Duration = Duration::from_secs(10);
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Provider(String);
 
 impl Provider {

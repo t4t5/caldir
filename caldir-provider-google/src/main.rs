@@ -3,6 +3,7 @@
 
 mod app_config;
 mod commands;
+mod constants;
 mod google_event;
 mod session;
 

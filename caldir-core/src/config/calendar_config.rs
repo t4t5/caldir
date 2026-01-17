@@ -1,36 +1,35 @@
 //! Per-calendar local configuration.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::Path;
 
-use crate::error::CalDirResult;
+use crate::calendar::Calendar;
+use crate::error::{CalDirError, CalDirResult};
+use crate::remote::Remote;
 
 /// Configuration stored in each calendar's .caldir/config.toml
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct LocalConfig {
-    pub remote: Option<RemoteConfig>,
+pub struct CalendarConfig {
+    pub remote: Option<Remote>,
 }
 
-/// Remote provider configuration (e.g., Google Calendar settings)
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct RemoteConfig {
-    pub provider: String,
-    #[serde(flatten)]
-    pub params: HashMap<String, toml::Value>,
-}
-
-impl LocalConfig {
+impl CalendarConfig {
     /// Load config from .caldir/config.toml
-    pub fn load(calendar_dir: &Path) -> CalDirResult<Self> {
+    pub fn load_from_calendar_name(calendar_name: &str) -> CalDirResult<Self> {
+        let calendar_dir = Calendar::data_dir_path(calendar_name)?;
+
         let path = calendar_dir.join(".caldir/config.toml");
+
         if path.exists() {
             let content = std::fs::read_to_string(&path)?;
-            let config: LocalConfig = toml::from_str(&content)
+            let config: CalendarConfig = toml::from_str(&content)
                 .map_err(|e| crate::error::CalDirError::Config(e.to_string()))?;
             Ok(config)
         } else {
-            Ok(LocalConfig::default())
+            Err(CalDirError::Config(format!(
+                "Config file not found: {}",
+                path.display()
+            )))
         }
     }
 
@@ -40,9 +39,12 @@ impl LocalConfig {
         std::fs::create_dir_all(&dir)?;
 
         let path = dir.join("config.toml");
-        let content =
-            toml::to_string_pretty(self).map_err(|e| crate::error::CalDirError::Config(e.to_string()))?;
+
+        let content = toml::to_string_pretty(self)
+            .map_err(|e| crate::error::CalDirError::Config(e.to_string()))?;
+
         std::fs::write(&path, content)?;
+
         Ok(())
     }
 }

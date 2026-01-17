@@ -1,7 +1,4 @@
 //! Configuration types for caldir.
 
-mod global;
-mod local;
-
-pub use global::GlobalConfig;
-pub use local::{LocalConfig, RemoteConfig};
+pub mod calendar_config;
+pub mod global_config;

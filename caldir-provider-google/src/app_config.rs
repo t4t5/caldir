@@ -7,12 +7,14 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::constants::PROVIDER_NAME;
+
 pub fn base_dir() -> Result<PathBuf> {
     Ok(dirs::config_dir()
         .context("Could not determine config directory")?
         .join("caldir")
         .join("providers")
-        .join("google"))
+        .join(PROVIDER_NAME))
 }
 
 /// Google OAuth client credentials (user-provided).

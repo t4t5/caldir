@@ -1,6 +1,5 @@
 use anyhow::Result;
 use caldir_core::caldir::Caldir;
-use caldir_core::config::{LocalConfig, RemoteConfig};
 use caldir_core::provider::Provider;
 
 pub async fn run(provider_name: &str) -> Result<()> {
@@ -61,16 +60,4 @@ pub async fn run(provider_name: &str) -> Result<()> {
     println!("\nRun `caldir pull` to sync events.");
 
     Ok(())
-}
-
-/// Convert a calendar name to a directory-safe slug
-fn slugify(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
 }

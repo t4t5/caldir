@@ -1,53 +1,59 @@
 //! Calendar directory management.
 
-use crate::config::LocalConfig;
+use serde::{Deserialize, Serialize};
+
+use crate::caldir::Caldir;
+use crate::config::calendar_config::CalendarConfig;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::{Event, EventTime};
-use crate::ics::{generate_ics, parse_event, CalendarMetadata};
+use crate::ics::{CalendarMetadata, generate_ics, parse_event};
 use crate::local::{LocalEvent, LocalState};
 use crate::remote::Remote;
 use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Calendar {
     pub name: String,
-    pub path: PathBuf,
-    pub config: LocalConfig,
+    pub config: CalendarConfig,
 }
 
 impl Calendar {
-    /// Load a calendar from a directory with .caldir/config.toml
-    pub fn load(path: &Path) -> CalDirResult<Self> {
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| CalDirError::Config("Invalid calendar path".into()))?
-            .to_string();
+    pub fn new(name: &str) -> Self {
+        Calendar {
+            name: name.to_string(),
+            config: CalendarConfig::default(),
+        }
+    }
 
-        let config = LocalConfig::load(path)?;
+    pub fn load(name: &str) -> CalDirResult<Self> {
+        let config = CalendarConfig::load_from_calendar_name(name)?;
 
         Ok(Calendar {
-            name,
-            path: path.to_path_buf(),
+            name: name.to_string(),
             config,
         })
     }
 
-    /// Where the calendar's ics files are stored
-    pub fn data_path(&self) -> PathBuf {
-        self.path.clone()
+    pub fn data_dir_path(calendar_name: &str) -> CalDirResult<PathBuf> {
+        let caldir = Caldir::load()?;
+        Ok(caldir.data_path().join(calendar_name))
+    }
+
+    pub fn data_dir(&self) -> CalDirResult<PathBuf> {
+        Self::data_dir_path(&self.name)
     }
 
     /// Where changes get pushed to / pulled from (None if no remote configured)
     pub fn remote(&self) -> Option<Remote> {
-        self.config.remote.as_ref().map(Remote::from_remote_config)
+        self.config.remote.clone()
     }
 
     /// Load events from local directory
     pub fn events(&self) -> CalDirResult<Vec<LocalEvent>> {
-        let data_path = self.data_path();
+        let data_path = self.data_dir()?;
+
         let entries = std::fs::read_dir(&data_path)?;
 
         let local_events = entries
@@ -62,7 +68,9 @@ impl Calendar {
 
     /// UIDs we've seen before (for detecting deletions)
     pub fn seen_event_uids(&self) -> CalDirResult<HashSet<String>> {
-        Ok(LocalState::load(&self.data_path())?.synced_uids().clone())
+        let dir = self.data_dir()?;
+
+        Ok(LocalState::load(&dir)?.synced_uids().clone())
     }
 
     // =========================================================================
@@ -70,7 +78,7 @@ impl Calendar {
     // =========================================================================
 
     pub fn create_event(&self, event: &Event) -> CalDirResult<()> {
-        let dir = self.data_path();
+        let dir = self.data_dir()?;
         std::fs::create_dir_all(&dir)?;
 
         let content = generate_ics(event, &self.metadata())?;
@@ -93,8 +101,10 @@ impl Calendar {
     }
 
     pub fn update_sync_state(&self) -> CalDirResult<()> {
+        let dir = self.data_dir()?;
+
         let synced_uids: HashSet<String> = self.events()?.into_iter().map(|e| e.event.id).collect();
-        LocalState::save(&self.data_path(), &synced_uids)
+        LocalState::save(&dir, &synced_uids)
     }
 
     fn metadata(&self) -> CalendarMetadata {

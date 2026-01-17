@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use crate::calendar::Calendar;
-use crate::config::GlobalConfig;
+use crate::config::global_config::GlobalConfig;
 use crate::error::{CalDirError, CalDirResult};
 use config::{Config, File};
 
@@ -42,12 +42,15 @@ impl Caldir {
             return Vec::new();
         };
 
-        let mut calendars: Vec<_> = entries
+        let mut calendars: Vec<Calendar> = entries
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
-            .filter(|path| path.is_dir())
-            .filter(|path| path.join(".caldir").exists())
-            .filter_map(|path| Calendar::load(&path).ok())
+            .filter(|path| path.is_dir() && path.join(".caldir").exists())
+            .filter_map(|path| {
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .and_then(|name| Calendar::load(name).ok())
+            })
             .collect();
 
         calendars.sort_by(|a, b| a.name.cmp(&b.name));

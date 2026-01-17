@@ -1,55 +1,39 @@
 //! Remote calendar operations via providers.
 
-use crate::config::RemoteConfig;
+use std::collections::HashMap;
+
 use crate::constants::DEFAULT_SYNC_DAYS;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Event;
 use crate::protocol::Command as ProviderCommand;
 use crate::provider::Provider;
 use chrono::Duration;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
-/// Internal wrapper for provider params to convert to JSON
-struct RemoteParams(HashMap<String, toml::Value>);
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RemoteConfig(pub HashMap<String, toml::Value>);
 
-impl RemoteParams {
-    fn to_json(&self) -> serde_json::Value {
-        let json_map: serde_json::Map<String, serde_json::Value> = self
+impl From<&RemoteConfig> for serde_json::Map<String, serde_json::Value> {
+    fn from(config: &RemoteConfig) -> Self {
+        config
             .0
             .iter()
-            .map(|(k, v)| {
-                (
-                    k.clone(),
-                    serde_json::to_value(v).unwrap_or(serde_json::Value::Null),
-                )
-            })
-            .collect();
-        serde_json::Value::Object(json_map)
+            .filter_map(|(k, v)| serde_json::to_value(v).ok().map(|v| (k.clone(), v)))
+            .collect()
     }
 }
 
+/// Remote provider configuration (e.g., Google Calendar settings)
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Remote {
-    provider: Provider,
-    params: RemoteParams,
+    pub provider: Provider,
+    #[serde(flatten)]
+    pub config: RemoteConfig,
 }
 
 impl Remote {
-    pub fn from_remote_config(config: &RemoteConfig) -> Self {
-        Remote {
-            provider: Provider::from_name(&config.provider),
-            params: RemoteParams(config.params.clone()),
-        }
-    }
-
-    fn ensure_account_param(&self) -> CalDirResult<()> {
-        let account_key = format!("{}_account", self.provider.name());
-        if !self.params.0.contains_key(&account_key) {
-            return Err(CalDirError::Config(format!(
-                "Missing required remote config: {} (in .caldir/config.toml)",
-                account_key
-            )));
-        }
-        Ok(())
+    fn json_params(&self) -> serde_json::Map<String, serde_json::Value> {
+        serde_json::Map::from(&self.config)
     }
 
     pub async fn events(&self) -> CalDirResult<Vec<Event>> {
@@ -57,40 +41,57 @@ impl Remote {
         let from = (now - Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
         let to = (now + Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
 
-        let mut params = self.params.to_json();
-        params["from"] = serde_json::Value::String(from);
-        params["to"] = serde_json::Value::String(to);
+        let mut params = self.json_params();
+        params.insert("from".into(), from.into());
+        params.insert("to".into(), to.into());
 
         self.provider
-            .call_with_timeout(ProviderCommand::ListEvents, params)
+            .call_with_timeout(
+                ProviderCommand::ListEvents,
+                serde_json::Value::Object(params),
+            )
             .await
     }
 
     pub async fn create_event(&self, event: &Event) -> CalDirResult<Event> {
-        self.ensure_account_param()?;
-        let mut params = self.params.to_json();
-        params["event"] =
-            serde_json::to_value(event).map_err(|e| CalDirError::Serialization(e.to_string()))?;
+        let mut params = self.json_params();
+        params.insert(
+            "event".into(),
+            serde_json::to_value(event).map_err(|e| CalDirError::Serialization(e.to_string()))?,
+        );
+
         self.provider
-            .call_with_timeout(ProviderCommand::CreateEvent, params)
+            .call_with_timeout(
+                ProviderCommand::CreateEvent,
+                serde_json::Value::Object(params),
+            )
             .await
     }
 
     pub async fn update_event(&self, event: &Event) -> CalDirResult<Event> {
-        let mut params = self.params.to_json();
-        params["event"] =
-            serde_json::to_value(event).map_err(|e| CalDirError::Serialization(e.to_string()))?;
+        let mut params = self.json_params();
+        params.insert(
+            "event".into(),
+            serde_json::to_value(event).map_err(|e| CalDirError::Serialization(e.to_string()))?,
+        );
+
         self.provider
-            .call_with_timeout(ProviderCommand::UpdateEvent, params)
+            .call_with_timeout(
+                ProviderCommand::UpdateEvent,
+                serde_json::Value::Object(params),
+            )
             .await
     }
 
     pub async fn delete_event(&self, event_id: &str) -> CalDirResult<()> {
-        self.ensure_account_param()?;
-        let mut params = self.params.to_json();
-        params["event_id"] = serde_json::Value::String(event_id.to_string());
+        let mut params = self.json_params();
+        params.insert("event_id".into(), event_id.into());
+
         self.provider
-            .call_with_timeout(ProviderCommand::DeleteEvent, params)
+            .call_with_timeout(
+                ProviderCommand::DeleteEvent,
+                serde_json::Value::Object(params),
+            )
             .await
     }
 }

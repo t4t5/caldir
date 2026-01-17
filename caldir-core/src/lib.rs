@@ -1,6 +1,5 @@
 pub mod caldir;
 pub mod calendar;
-pub mod calendar_config;
 pub mod config;
 pub mod constants;
 pub mod error;
