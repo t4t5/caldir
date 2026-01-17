@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use caldir_core::{
-    calendar::Calendar,
+    calendar::{Calendar, slugify},
     config::calendar_config::CalendarConfig,
     provider::Provider,
     remote::{Remote, RemoteConfig},
@@ -47,9 +47,13 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
                 "google_calendar_id".to_string(),
                 toml::Value::String(cal.id.clone()),
             );
+            config.insert(
+                "google_calendar_summary".to_string(),
+                toml::Value::String(cal.summary.clone()),
+            );
 
             Calendar {
-                name: cal.summary.clone(),
+                name: slugify(&cal.summary),
                 config: CalendarConfig {
                     remote: Some(Remote {
                         provider: Provider::from_name("google"),

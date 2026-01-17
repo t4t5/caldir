@@ -1,9 +1,9 @@
 //! Per-calendar local configuration.
 
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::calendar::Calendar;
+use serde::{Deserialize, Serialize};
+
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::Remote;
 
@@ -15,21 +15,16 @@ pub struct CalendarConfig {
 
 impl CalendarConfig {
     /// Load config from .caldir/config.toml
-    pub fn load_from_calendar_name(calendar_name: &str) -> CalDirResult<Self> {
-        let calendar_dir = Calendar::data_dir_path(calendar_name)?;
-
+    pub fn load(calendar_dir: &Path) -> CalDirResult<Self> {
         let path = calendar_dir.join(".caldir/config.toml");
 
         if path.exists() {
             let content = std::fs::read_to_string(&path)?;
-            let config: CalendarConfig = toml::from_str(&content)
-                .map_err(|e| crate::error::CalDirError::Config(e.to_string()))?;
+            let config: CalendarConfig =
+                toml::from_str(&content).map_err(|e| CalDirError::Config(e.to_string()))?;
             Ok(config)
         } else {
-            Err(CalDirError::Config(format!(
-                "Config file not found: {}",
-                path.display()
-            )))
+            Ok(Self::default())
         }
     }
 
@@ -40,8 +35,8 @@ impl CalendarConfig {
 
         let path = dir.join("config.toml");
 
-        let content = toml::to_string_pretty(self)
-            .map_err(|e| crate::error::CalDirError::Config(e.to_string()))?;
+        let content =
+            toml::to_string_pretty(self).map_err(|e| CalDirError::Config(e.to_string()))?;
 
         std::fs::write(&path, content)?;
 

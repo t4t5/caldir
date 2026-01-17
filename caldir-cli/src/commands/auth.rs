@@ -1,10 +1,8 @@
 use anyhow::Result;
-use caldir_core::caldir::Caldir;
 use caldir_core::provider::Provider;
 
 pub async fn run(provider_name: &str) -> Result<()> {
     let provider = Provider::from_name(provider_name);
-    let caldir = Caldir::load()?;
 
     println!("Authenticating with {provider_name}...");
 
@@ -25,36 +23,10 @@ pub async fn run(provider_name: &str) -> Result<()> {
     println!("Found {} calendar(s):\n", calendars.len());
 
     // Create local directories for each calendar
-    for entry in calendars {
-        let dir_name = slugify(&entry.name);
-        let cal_path = caldir.data_path().join(&dir_name);
+    for calendar in calendars {
+        calendar.save_config()?;
 
-        // Skip if already exists
-        if cal_path.join(".caldir/config.toml").exists() {
-            println!("  {dir_name}/ (already exists)");
-            continue;
-        }
-
-        // Create directory structure
-        std::fs::create_dir_all(cal_path.join(".caldir/state"))?;
-
-        // Convert JSON config from provider to TOML values
-        let params = entry
-            .config
-            .into_iter()
-            .map(|(k, v)| Ok((k, serde_json::from_value(v)?)))
-            .collect::<Result<_>>()?;
-
-        // Save config
-        let config = LocalConfig {
-            remote: Some(RemoteConfig {
-                provider: provider_name.to_string(),
-                params,
-            }),
-        };
-        config.save(&cal_path)?;
-
-        println!("  {dir_name}/ (created)");
+        println!("  {}/ (created)", { calendar.name });
     }
 
     println!("\nRun `caldir pull` to sync events.");

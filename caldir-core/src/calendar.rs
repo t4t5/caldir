@@ -28,7 +28,8 @@ impl Calendar {
     }
 
     pub fn load(name: &str) -> CalDirResult<Self> {
-        let config = CalendarConfig::load_from_calendar_name(name)?;
+        let calendar_dir = Self::data_dir_path(name)?;
+        let config = CalendarConfig::load(&calendar_dir)?;
 
         Ok(Calendar {
             name: name.to_string(),
@@ -48,6 +49,11 @@ impl Calendar {
     /// Where changes get pushed to / pulled from (None if no remote configured)
     pub fn remote(&self) -> Option<Remote> {
         self.config.remote.clone()
+    }
+
+    /// Save the calendar config to .caldir/config.toml
+    pub fn save_config(&self) -> CalDirResult<()> {
+        self.config.save(&self.data_dir()?)
     }
 
     /// Load events from local directory
@@ -173,7 +179,7 @@ fn base_filename(event: &Event) -> String {
     format!("{}__{}.ics", date, slug)
 }
 
-fn slugify(s: &str) -> String {
+pub fn slugify(s: &str) -> String {
     s.to_lowercase()
         .chars()
         .map(|c| if c.is_alphanumeric() { c } else { '-' })
