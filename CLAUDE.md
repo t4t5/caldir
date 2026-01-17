@@ -129,16 +129,20 @@ The core CLI is completely provider-agnostic — it just passes provider-prefixe
 ```
 caldir-core/                   # Core library (used by CLI and future GUI apps)
   src/
-    lib.rs            - Module declarations (no re-exports, use full paths)
-    error.rs          - CalDirError enum, CalDirResult type alias
-    constants.rs      - DEFAULT_SYNC_DAYS
-    event.rs          - Provider-neutral event types (Event, Attendee, Reminder, etc.)
-    calendar_config.rs - ProviderCalendar, CalendarWithConfig (returned by list_calendars)
-    protocol.rs       - CLI-provider communication protocol (Command enum, Request/Response)
+    lib.rs              - Module declarations (no re-exports, use full paths)
+    error.rs            - CalDirError enum, CalDirResult type alias
+    constants.rs        - DEFAULT_SYNC_DAYS
+    event.rs            - Provider-neutral event types (Event, Attendee, Reminder, etc.)
+    protocol.rs         - CLI-provider communication protocol (Command enum, Request/Response)
+    provider.rs         - Provider subprocess protocol (JSON over stdin/stdout)
+    provider_account.rs - ProviderAccount (provider + account identifier for listing calendars)
+    remote.rs           - Remote, RemoteConfig (remote calendar operations)
+    calendar.rs         - Calendar struct, event CRUD, sync state
+    caldir.rs           - Caldir root directory, calendar discovery
     config/
       mod.rs
-      global.rs       - GlobalConfig (~/.config/caldir/config.toml)
-      local.rs        - LocalConfig, RemoteConfig (.caldir/config.toml)
+      global_config.rs   - GlobalConfig (~/.config/caldir/config.toml)
+      calendar_config.rs - CalendarConfig (name, color, remote in .caldir/config.toml)
     local/
       mod.rs
       state.rs        - LocalState (.caldir/state/synced_uids)
@@ -153,12 +157,8 @@ caldir-core/                   # Core library (used by CLI and future GUI apps)
       event_diff.rs   - EventDiff struct
       calendar_diff.rs - CalendarDiff (diff computation + apply)
       batch_diff.rs   - BatchDiff (multiple calendars)
-    provider.rs       - Provider subprocess protocol (JSON over stdin/stdout)
-    remote.rs         - Remote calendar operations
-    calendar.rs       - Calendar struct, event CRUD, sync state
-    caldir.rs         - Caldir root directory, calendar discovery
 
-caldir-cli/                    # Thin CLI layer (TUI rendering)
+caldir-cli/                    # Thin CLI layer (TUI rendering only)
   src/
     main.rs      - CLI parsing and command dispatch
     render.rs    - Render trait for colored terminal output
@@ -192,8 +192,10 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
 
 **Provider** — Provider subprocess protocol (`caldir_core::provider::Provider`). Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `authenticate`, `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event`.
 
-**LocalConfig/LocalState** — Per-calendar state stored in `.caldir/` directory:
-- `LocalConfig` (`caldir_core::config::LocalConfig`) — Remote configuration stored in `.caldir/config.toml` (provider, account, calendar_id)
+**ProviderAccount** — Combines a Provider with an account identifier (`caldir_core::provider_account::ProviderAccount`). Used to list all calendars for a specific authenticated account via `list_calendars()`.
+
+**CalendarConfig/LocalState** — Per-calendar state stored in `.caldir/` directory:
+- `CalendarConfig` (`caldir_core::config::calendar_config::CalendarConfig`) — Configuration stored in `.caldir/config.toml` (name, color, optional Remote for syncing)
 - `LocalState` (`caldir_core::local::LocalState`) — Sync state stored in `.caldir/state/synced_uids` (tracks synced UIDs for delete detection)
 
 **ics/** — Pure ICS format (RFC 5545) in `caldir_core::ics`. Generates compliant `.ics` files from `Event` structs, parses properties from existing files. Provider-neutral.
@@ -255,23 +257,29 @@ default_calendar = "personal"
 
 ### Per-Calendar Config
 
-Each calendar stores its remote configuration in `.caldir/config.toml` (similar to `.git/config`):
+Each calendar stores its configuration in `.caldir/config.toml` (similar to `.git/config`):
 
 ```toml
 # ~/calendar/personal/.caldir/config.toml
+name = "Personal"
+color = "#4285f4"
+
 [remote]
 provider = "google"
 google_account = "me@gmail.com"
 google_calendar_id = "primary"
 
 # ~/calendar/work/.caldir/config.toml
+name = "Work"
+color = "#0b8043"
+
 [remote]
 provider = "google"
 google_account = "me@gmail.com"
 google_calendar_id = "work@group.calendar.google.com"
 ```
 
-These files are created automatically by `caldir auth google`. The provider returns the config fields to save (via `CalendarWithConfig`), so the CLI doesn't need to know about provider-specific field names. Calendars without `.caldir/config.toml` are treated as local-only (not synced).
+These files are created automatically by `caldir auth google`. The provider returns the config fields to save (name, color, remote settings), so the CLI doesn't need to know about provider-specific field names. Calendars without `.caldir/config.toml` are treated as local-only (not synced).
 
 ### Provider Credentials
 
