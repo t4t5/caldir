@@ -4,7 +4,12 @@
 //! In this case: google_account + google_calendar_id.
 
 use anyhow::{Context, Result};
-use caldir_core::calendar_config::CalendarConfig;
+use caldir_core::{
+    calendar::{Calendar, slugify},
+    config::calendar_config::CalendarConfig,
+    provider::Provider,
+    remote::{Remote, RemoteConfig},
+};
 use google_calendar::types::MinAccessRole;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -13,13 +18,13 @@ use crate::session::Session;
 
 #[derive(Debug, Deserialize)]
 struct ListCalendarsParams {
-    google_account: String,
+    account_identifier: String,
 }
 
 pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
     let params: ListCalendarsParams = serde_json::from_value(params)?;
 
-    let account_email = &params.google_account;
+    let account_email = &params.account_identifier;
 
     let client = Session::load_valid(account_email).await?.client()?;
 
@@ -30,25 +35,32 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
         .context("Failed to fetch calendars")?
         .body;
 
-    let calendar_configs: Vec<CalendarConfig> = google_calendars
+    let calendars = google_calendars
         .iter()
         .map(|cal| {
             let mut config = HashMap::new();
             config.insert(
                 "google_account".to_string(),
-                serde_json::Value::String(account_email.clone()),
+                toml::Value::String(account_email.clone()),
             );
             config.insert(
                 "google_calendar_id".to_string(),
-                serde_json::Value::String(cal.id.clone()),
+                toml::Value::String(cal.id.clone()),
             );
 
-            Ok(CalendarConfig {
-                name: cal.summary.clone(),
-                config,
-            })
+            Calendar {
+                name: slugify(&cal.summary),
+                config: CalendarConfig {
+                    name: Some(cal.summary.clone()),
+                    color: Some(cal.background_color.clone()),
+                    remote: Some(Remote {
+                        provider: Provider::from_name("google"),
+                        config: RemoteConfig(config),
+                    }),
+                },
+            }
         })
-        .collect::<Result<_, anyhow::Error>>()?;
+        .collect::<Vec<Calendar>>();
 
-    Ok(serde_json::to_value(calendar_configs)?)
+    Ok(serde_json::to_value(calendars)?)
 }

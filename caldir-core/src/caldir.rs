@@ -1,8 +1,10 @@
+//! Caldir root directory management.
+
 use std::path::PathBuf;
 
 use crate::calendar::Calendar;
-use crate::config::GlobalConfig;
-use anyhow::Result;
+use crate::config::global_config::GlobalConfig;
+use crate::error::{CalDirError, CalDirResult};
 use config::{Config, File};
 
 #[derive(Clone)]
@@ -11,13 +13,15 @@ pub struct Caldir {
 }
 
 impl Caldir {
-    pub fn load() -> Result<Self> {
+    pub fn load() -> CalDirResult<Self> {
         let config_path = GlobalConfig::config_path()?;
 
         let config: GlobalConfig = Config::builder()
             .add_source(File::from(config_path).required(false))
-            .build()?
-            .try_deserialize()?;
+            .build()
+            .map_err(|e| CalDirError::Config(e.to_string()))?
+            .try_deserialize()
+            .map_err(|e| CalDirError::Config(e.to_string()))?;
 
         Ok(Caldir { config })
     }
@@ -38,12 +42,15 @@ impl Caldir {
             return Vec::new();
         };
 
-        let mut calendars: Vec<_> = entries
+        let mut calendars: Vec<Calendar> = entries
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
-            .filter(|path| path.is_dir())
-            .filter(|path| path.join(".caldir").exists())
-            .filter_map(|path| Calendar::load(&path).ok())
+            .filter(|path| path.is_dir() && path.join(".caldir").exists())
+            .filter_map(|path| {
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .and_then(|name| Calendar::load(name).ok())
+            })
             .collect();
 
         calendars.sort_by(|a, b| a.name.cmp(&b.name));

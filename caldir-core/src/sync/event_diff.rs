@@ -1,9 +1,9 @@
-use owo_colors::OwoColorize;
+//! Event diff representation.
+
 use std::fmt;
 
-use caldir_core::Event;
-
-use crate::diff::DiffKind;
+use crate::event::Event;
+use crate::sync::DiffKind;
 
 #[derive(Debug, Clone)]
 pub struct EventDiff {
@@ -52,13 +52,5 @@ impl EventDiff {
             .as_ref()
             .or(self.old.as_ref())
             .expect("EventDiff must have at least one event")
-    }
-
-    pub fn render(&self) -> String {
-        let event = self.event();
-        let summary = self.kind.colorize(&event.to_string());
-        let time = event.render_event_time();
-
-        format!("{} {} {}", self.kind.render(), summary, time.dimmed())
     }
 }

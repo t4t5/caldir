@@ -1,9 +1,8 @@
 use anyhow::{Context, Result};
-use caldir_core::{Event, EventTime};
+use caldir_core::caldir::Caldir;
+use caldir_core::event::{Event, EventTime};
 use chrono::{Duration, NaiveDateTime};
 use owo_colors::OwoColorize;
-
-use crate::caldir::Caldir;
 
 pub fn run(summary: String, start: String) -> Result<()> {
     let caldir = Caldir::load()?;

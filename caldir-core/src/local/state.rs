@@ -1,13 +1,17 @@
-use anyhow::Result;
+//! Sync state tracking for calendars.
+
 use std::{collections::HashSet, path::Path};
 
+use crate::error::CalDirResult;
+
+/// Tracks which events have been synced (for delete detection).
 pub struct LocalState {
     synced_uids: HashSet<String>,
 }
 
 impl LocalState {
     /// Load sync state from .caldir/state/synced_uids
-    pub fn load(calendar_dir: &Path) -> Result<Self> {
+    pub fn load(calendar_dir: &Path) -> CalDirResult<Self> {
         let path = calendar_dir.join(".caldir/state/synced_uids");
         let synced_uids = if path.exists() {
             std::fs::read_to_string(&path)?
@@ -26,7 +30,7 @@ impl LocalState {
     }
 
     /// Save sync state to .caldir/state/synced_uids (atomic write)
-    pub fn save(calendar_dir: &Path, uids: &HashSet<String>) -> Result<()> {
+    pub fn save(calendar_dir: &Path, uids: &HashSet<String>) -> CalDirResult<()> {
         let dir = calendar_dir.join(".caldir/state");
         std::fs::create_dir_all(&dir)?;
 

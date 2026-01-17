@@ -1,74 +1,28 @@
-use anyhow::Result;
-use owo_colors::OwoColorize;
+//! Calendar diff computation and application.
+
 use std::collections::HashMap;
 
 use crate::calendar::Calendar;
-use crate::diff::{DiffKind, EventDiff};
+use crate::error::{CalDirError, CalDirResult};
+use crate::sync::{DiffKind, EventDiff};
 
-pub struct CalendarDiff<'a> {
-    pub calendar: &'a Calendar,
+/// Represents the differences between local and remote calendar state.
+pub struct CalendarDiff {
+    pub calendar: Calendar,
     pub to_push: Vec<EventDiff>,
     pub to_pull: Vec<EventDiff>,
 }
 
-impl<'a> CalendarDiff<'a> {
+impl CalendarDiff {
     pub fn is_empty(&self) -> bool {
         self.to_push.is_empty() && self.to_pull.is_empty()
     }
 
-    pub fn render(&self) -> String {
-        if self.is_empty() {
-            return "   No changes".dimmed().to_string();
-        }
-
-        let mut lines = Vec::new();
-
-        if !self.to_push.is_empty() {
-            lines.push("   Local changes (to push):".dimmed().to_string());
-            for diff in &self.to_push {
-                lines.push(format!("   {}", diff.render()));
-            }
-        }
-
-        if !self.to_pull.is_empty() {
-            lines.push("   Remote changes (to pull):".dimmed().to_string());
-            for diff in &self.to_pull {
-                lines.push(format!("   {}", diff.render()));
-            }
-        }
-
-        lines.join("\n")
-    }
-
-    pub fn render_pull(&self) -> String {
-        if self.to_pull.is_empty() {
-            return "   No changes to pull".dimmed().to_string();
-        }
-
-        let mut lines = Vec::new();
-        for diff in &self.to_pull {
-            lines.push(format!("   {}", diff.render()));
-        }
-        lines.join("\n")
-    }
-
-    pub fn render_push(&self) -> String {
-        if self.to_push.is_empty() {
-            return "   No changes to push".dimmed().to_string();
-        }
-
-        let mut lines = Vec::new();
-        for diff in &self.to_push {
-            lines.push(format!("   {}", diff.render()));
-        }
-        lines.join("\n")
-    }
-
-    pub async fn apply_push(&self) -> Result<()> {
+    pub async fn apply_push(&self) -> CalDirResult<()> {
         let remote = self
             .calendar
             .remote()
-            .ok_or_else(|| anyhow::anyhow!("No remote configured for {}", self.calendar.name))?;
+            .ok_or_else(|| CalDirError::NoRemoteConfigured(self.calendar.name.to_string()))?;
 
         for diff in &self.to_push {
             match diff.kind {
@@ -96,7 +50,7 @@ impl<'a> CalendarDiff<'a> {
         Ok(())
     }
 
-    pub fn apply_pull(&self) -> Result<()> {
+    pub fn apply_pull(&self) -> CalDirResult<()> {
         for diff in &self.to_pull {
             match diff.kind {
                 DiffKind::Create => {
@@ -119,10 +73,10 @@ impl<'a> CalendarDiff<'a> {
         Ok(())
     }
 
-    pub async fn from_calendar(calendar: &'a Calendar) -> Result<Self> {
+    pub async fn from_calendar(calendar: &Calendar) -> CalDirResult<Self> {
         let remote = calendar
             .remote()
-            .ok_or_else(|| anyhow::anyhow!("No remote configured"))?;
+            .ok_or_else(|| CalDirError::NoRemoteConfigured(calendar.name.to_string()))?;
 
         let remote_events = remote.events().await?;
         let local_events = calendar.events()?;
@@ -214,7 +168,7 @@ impl<'a> CalendarDiff<'a> {
         to_pull.sort_by(sort_by_start);
 
         Ok(CalendarDiff {
-            calendar,
+            calendar: calendar.clone(),
             to_push,
             to_pull,
         })

@@ -1,12 +1,13 @@
-//! Core types for the caldir ecosystem.
-//!
-//! This crate provides shared types used by both caldir-cli and calendar providers:
-//! - `Event` and related types for calendar events
-//! - `protocol` module for the CLI-provider communication protocol
-
-pub mod calendar_config;
+pub mod caldir;
+pub mod calendar;
+pub mod config;
+pub mod constants;
+pub mod error;
 pub mod event;
+pub mod ics;
+pub mod local;
 pub mod protocol;
-
-// Re-export all event types at crate root for convenience
-pub use event::*;
+pub mod provider;
+pub mod provider_account;
+pub mod remote;
+pub mod sync;

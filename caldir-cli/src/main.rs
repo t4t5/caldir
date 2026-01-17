@@ -1,22 +1,14 @@
-mod caldir;
-mod calendar;
 mod commands;
-mod config;
-mod constants;
-mod diff;
-mod ics;
-mod local;
-mod provider;
-mod remote;
+mod render;
 mod utils;
 
 use anyhow::Result;
-use caldir::Caldir;
+use caldir_core::caldir::Caldir;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
-#[command(about = "Interact with your caldir directory and sync to remote calendars")]
+#[command(about = "Interact with your caldir events and sync to remote calendars")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -27,9 +19,9 @@ enum Commands {
     Auth {
         provider: String, // e.g. "google"
     },
+    Status,
     Pull,
     Push,
-    Status,
     New {
         title: String,
 
@@ -45,6 +37,10 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Auth { provider } => commands::auth::run(&provider).await,
+        Commands::Status => {
+            require_calendars()?;
+            commands::status::run().await
+        }
         Commands::Pull => {
             require_calendars()?;
             commands::pull::run().await
@@ -52,10 +48,6 @@ async fn main() -> Result<()> {
         Commands::Push => {
             require_calendars()?;
             commands::push::run().await
-        }
-        Commands::Status => {
-            require_calendars()?;
-            commands::status::run().await
         }
         Commands::New { title, start } => {
             require_calendars()?;
