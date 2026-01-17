@@ -47,14 +47,12 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
                 "google_calendar_id".to_string(),
                 toml::Value::String(cal.id.clone()),
             );
-            config.insert(
-                "google_calendar_summary".to_string(),
-                toml::Value::String(cal.summary.clone()),
-            );
 
             Calendar {
                 name: slugify(&cal.summary),
                 config: CalendarConfig {
+                    name: Some(cal.summary.clone()),
+                    color: Some(cal.background_color.clone()),
                     remote: Some(Remote {
                         provider: Provider::from_name("google"),
                         config: RemoteConfig(config),

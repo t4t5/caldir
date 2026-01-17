@@ -10,6 +10,8 @@ use crate::remote::Remote;
 /// Configuration stored in each calendar's .caldir/config.toml
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct CalendarConfig {
+    pub name: Option<String>,
+    pub color: Option<String>,
     pub remote: Option<Remote>,
 }
 
