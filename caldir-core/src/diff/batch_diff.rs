@@ -1,6 +1,6 @@
 //! Batch diff aggregation for multiple calendars.
 
-use crate::sync::{CalendarDiff, DiffKind, EventDiff};
+use crate::diff::{CalendarDiff, DiffKind, EventDiff};
 
 pub struct BatchDiff(pub Vec<CalendarDiff>);
 

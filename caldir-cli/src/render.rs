@@ -4,7 +4,7 @@
 //! to caldir-core types using owo_colors.
 
 use caldir_core::calendar::Calendar;
-use caldir_core::sync::{CalendarDiff, DiffKind, EventDiff};
+use caldir_core::diff::{CalendarDiff, DiffKind, EventDiff};
 use owo_colors::OwoColorize;
 
 /// Extension trait for TUI rendering with colors.

@@ -182,13 +182,13 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
 
 ### Key Abstractions
 
-**caldir-core** — The main library containing all business logic for calendar sync. Includes provider-neutral event types (`Event`, `Attendee`, `Reminder`, etc.), calendar management (`Calendar`, `Caldir`), bidirectional sync (`CalendarDiff`, `EventDiff`), ICS file handling, and provider protocol. Both the CLI and providers depend on this crate. Future GUI apps (like MagiCal) can use caldir-core directly without any TUI dependencies. Import types using full module paths (e.g., `caldir_core::sync::CalendarDiff`).
+**caldir-core** — The main library containing all business logic for calendar sync. Includes provider-neutral event types (`Event`, `Attendee`, `Reminder`, etc.), calendar management (`Calendar`, `Caldir`), bidirectional sync (`CalendarDiff`, `EventDiff`), ICS file handling, and provider protocol. Both the CLI and providers depend on this crate. Future GUI apps (like MagiCal) can use caldir-core directly without any TUI dependencies. Import types using full module paths (e.g., `caldir_core::diff::CalendarDiff`).
 
 **caldir-cli** — Thin CLI layer that provides TUI rendering via the `Render` trait. All business logic lives in caldir-core; the CLI just handles command dispatch and colored terminal output.
 
 **Calendar** — Represents a single calendar directory (`caldir_core::calendar::Calendar`). Loaded via `Calendar::load(path)` which reads the local config from `.caldir/config.toml`. Provides methods for event CRUD operations and sync state management. The `remote()` method returns `Option<Remote>` — calendars without `.caldir/config.toml` are local-only.
 
-**CalendarDiff** — Bidirectional diff for a single calendar (`caldir_core::sync::CalendarDiff`). Created via `CalendarDiff::from_calendar(&cal).await`. Contains `to_push` and `to_pull` vectors of `EventDiff`. Call `apply_push().await` or `apply_pull()` to sync changes.
+**CalendarDiff** — Bidirectional diff for a single calendar (`caldir_core::diff::CalendarDiff`). Created via `CalendarDiff::from_calendar(&cal).await`. Contains `to_push` and `to_pull` vectors of `EventDiff`. Call `apply_push().await` or `apply_pull()` to sync changes.
 
 **Provider** — Provider subprocess protocol (`caldir_core::provider::Provider`). Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `authenticate`, `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event`.
 

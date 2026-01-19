@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::calendar::Calendar;
 use crate::error::{CalDirError, CalDirResult};
-use crate::sync::{DiffKind, EventDiff};
+use crate::diff::{DiffKind, EventDiff};
 
 /// Represents the differences between local and remote calendar state.
 pub struct CalendarDiff {

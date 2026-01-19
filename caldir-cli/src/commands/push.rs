@@ -1,6 +1,6 @@
 use anyhow::Result;
 use caldir_core::caldir::Caldir;
-use caldir_core::sync::{BatchDiff, CalendarDiff};
+use caldir_core::diff::{BatchDiff, CalendarDiff};
 use owo_colors::OwoColorize;
 
 use crate::render::{CalendarDiffRender, Render};
