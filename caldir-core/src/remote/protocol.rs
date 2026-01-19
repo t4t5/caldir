@@ -2,10 +2,27 @@
 //!
 //! Defines the JSON protocol used for communication between caldir-cli
 //! and provider binaries over stdin/stdout.
+//!
+//! # Type-safe commands
+//!
+//! Each command is a struct that implements `ProviderCommand`, which ties
+//! the command to its expected response type at compile time:
+//!
+//! ```ignore
+//! // The return type is inferred from the command
+//! let events: Vec<Event> = provider.call(ListEvents { ... }).await?;
+//! ```
 
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-/// Commands that providers must implement.
+use crate::config::calendar_config::CalendarConfig;
+use crate::event::Event;
+
+// =============================================================================
+// Wire protocol types (used for JSON serialization)
+// =============================================================================
+
+/// Wire command names sent over the protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Command {
@@ -45,5 +62,112 @@ impl Response<()> {
             error: msg.to_string(),
         })
         .unwrap()
+    }
+}
+
+// =============================================================================
+// Type-safe command trait
+// =============================================================================
+
+/// Trait for type-safe provider commands.
+///
+/// Each command struct implements this trait, binding the command to its
+/// expected response type. This ensures compile-time type safety between
+/// what a provider returns and what caldir-core expects.
+pub trait ProviderCommand: Serialize {
+    /// The expected response type for this command.
+    type Response: DeserializeOwned;
+
+    /// The wire command name.
+    fn command() -> Command;
+}
+
+// =============================================================================
+// Command structs
+// =============================================================================
+
+/// Authenticate with a provider and return the account identifier.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Authenticate {}
+
+impl ProviderCommand for Authenticate {
+    type Response = String; // Account identifier (e.g., email)
+    fn command() -> Command {
+        Command::Authenticate
+    }
+}
+
+/// List all calendars for an authenticated account.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListCalendars {
+    pub account_identifier: String,
+}
+
+impl ProviderCommand for ListCalendars {
+    type Response = Vec<CalendarConfig>;
+    fn command() -> Command {
+        Command::ListCalendars
+    }
+}
+
+/// List events within a time range.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListEvents {
+    /// Provider-specific config (e.g., google_account, google_calendar_id)
+    #[serde(flatten)]
+    pub remote_config: serde_json::Map<String, serde_json::Value>,
+    pub from: String,
+    pub to: String,
+}
+
+impl ProviderCommand for ListEvents {
+    type Response = Vec<Event>;
+    fn command() -> Command {
+        Command::ListEvents
+    }
+}
+
+/// Create a new event.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateEvent {
+    #[serde(flatten)]
+    pub remote_config: serde_json::Map<String, serde_json::Value>,
+    pub event: Event,
+}
+
+impl ProviderCommand for CreateEvent {
+    type Response = Event;
+    fn command() -> Command {
+        Command::CreateEvent
+    }
+}
+
+/// Update an existing event.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateEvent {
+    #[serde(flatten)]
+    pub remote_config: serde_json::Map<String, serde_json::Value>,
+    pub event: Event,
+}
+
+impl ProviderCommand for UpdateEvent {
+    type Response = Event;
+    fn command() -> Command {
+        Command::UpdateEvent
+    }
+}
+
+/// Delete an event by ID.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteEvent {
+    #[serde(flatten)]
+    pub remote_config: serde_json::Map<String, serde_json::Value>,
+    pub event_id: String,
+}
+
+impl ProviderCommand for DeleteEvent {
+    type Response = ();
+    fn command() -> Command {
+        Command::DeleteEvent
     }
 }

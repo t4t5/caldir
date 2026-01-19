@@ -10,13 +10,14 @@
 //! provider-specific parameters from the calendar config.
 
 use crate::error::{CalDirError, CalDirResult};
-use crate::remote::protocol::{Command as ProviderCommand, Request, Response};
+use crate::remote::protocol::{
+    Authenticate, Command, ProviderCommand, Request, Response,
+};
 use crate::remote::provider_account::ProviderAccount;
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
-use tokio::process::Command;
+use tokio::process::Command as TokioCommand;
 use tokio::time::timeout;
 
 const PROVIDER_TIMEOUT: Duration = Duration::from_secs(10);
@@ -45,36 +46,35 @@ impl Provider {
     }
 
     pub async fn authenticate(&self) -> CalDirResult<ProviderAccount> {
-        let identifier: String = self
-            .call(ProviderCommand::Authenticate, serde_json::json!({}))
-            .await?;
-
+        let identifier = self.call(Authenticate {}).await?;
         Ok(ProviderAccount::new(self.clone(), identifier))
     }
 
-    /// Call a provider command and return the result.
-    pub async fn call_with_timeout<R: DeserializeOwned>(
-        &self,
-        command: ProviderCommand,
-        params: serde_json::Value,
-    ) -> CalDirResult<R> {
-        timeout(PROVIDER_TIMEOUT, self.call(command, params))
+    /// Call a typed provider command and return the result.
+    ///
+    /// The response type is inferred from the command's associated type,
+    /// ensuring compile-time type safety.
+    pub async fn call<C: ProviderCommand>(&self, cmd: C) -> CalDirResult<C::Response> {
+        timeout(PROVIDER_TIMEOUT, self.call_raw(C::command(), cmd))
             .await
             .map_err(|_| CalDirError::ProviderTimeout(PROVIDER_TIMEOUT.as_secs()))?
     }
 
-    pub async fn call<R: DeserializeOwned>(
+    /// Low-level call that sends a command with params and deserializes the response.
+    async fn call_raw<P: Serialize, R: serde::de::DeserializeOwned>(
         &self,
-        command: ProviderCommand,
-        params: serde_json::Value,
+        command: Command,
+        params: P,
     ) -> CalDirResult<R> {
+        let params = serde_json::to_value(params)
+            .map_err(|e| CalDirError::Serialization(e.to_string()))?;
         let request = Request { command, params };
         let request_json = serde_json::to_string(&request)
             .map_err(|e| CalDirError::Serialization(e.to_string()))?;
 
         let binary_path = self.binary_path()?;
 
-        let mut child = Command::new(&binary_path)
+        let mut child = TokioCommand::new(&binary_path)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::inherit())

@@ -5,10 +5,17 @@ mod app_config;
 mod commands;
 mod constants;
 mod google_event;
+mod remote_config;
 mod session;
 
 use anyhow::Result;
-use caldir_core::remote::protocol::{Command, Request, Response};
+use caldir_core::remote::protocol::{
+    Authenticate, Command, CreateEvent, DeleteEvent, ListCalendars, ListEvents, ProviderCommand,
+    Request, Response, UpdateEvent,
+};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+use std::future::Future;
 use std::io::{self, BufRead, Write};
 
 #[tokio::main]
@@ -43,13 +50,41 @@ async fn process_request(line: &str) -> String {
     }
 }
 
+/// Dispatch a command to its handler with compile-time type safety.
+///
+/// This ensures the handler returns the correct type as specified by
+/// the command's `ProviderCommand::Response` associated type.
+async fn dispatch<C, F, Fut>(params: serde_json::Value, handler: F) -> Result<serde_json::Value>
+where
+    C: ProviderCommand + DeserializeOwned,
+    C::Response: Serialize,
+    F: FnOnce(C) -> Fut,
+    Fut: Future<Output = Result<C::Response>>,
+{
+    let cmd: C = serde_json::from_value(params)?;
+    let response = handler(cmd).await?;
+    Ok(serde_json::to_value(response)?)
+}
+
 async fn handle_request(request: Request) -> Result<serde_json::Value> {
     match request.command {
-        Command::Authenticate => commands::authenticate::handle(request.params).await,
-        Command::ListCalendars => commands::list_calendars::handle(request.params).await,
-        Command::ListEvents => commands::list_events::handle(request.params).await,
-        Command::CreateEvent => commands::create_event::handle(request.params).await,
-        Command::UpdateEvent => commands::update_event::handle(request.params).await,
-        Command::DeleteEvent => commands::delete_event::handle(request.params).await,
+        Command::Authenticate => {
+            dispatch::<Authenticate, _, _>(request.params, commands::authenticate::handle).await
+        }
+        Command::ListCalendars => {
+            dispatch::<ListCalendars, _, _>(request.params, commands::list_calendars::handle).await
+        }
+        Command::ListEvents => {
+            dispatch::<ListEvents, _, _>(request.params, commands::list_events::handle).await
+        }
+        Command::CreateEvent => {
+            dispatch::<CreateEvent, _, _>(request.params, commands::create_event::handle).await
+        }
+        Command::UpdateEvent => {
+            dispatch::<UpdateEvent, _, _>(request.params, commands::update_event::handle).await
+        }
+        Command::DeleteEvent => {
+            dispatch::<DeleteEvent, _, _>(request.params, commands::delete_event::handle).await
+        }
     }
 }

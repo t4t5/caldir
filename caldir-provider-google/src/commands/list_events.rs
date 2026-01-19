@@ -1,34 +1,23 @@
 use anyhow::{Context, Result};
 use caldir_core::event::Event;
-use chrono::{DateTime, Utc};
+use caldir_core::remote::protocol::ListEvents;
 use google_calendar::types::OrderBy;
-use serde::Deserialize;
 
 use crate::google_event::FromGoogle;
+use crate::remote_config::GoogleRemoteConfig;
 use crate::session::Session;
 
-#[derive(Debug, Deserialize)]
-struct ListEventsParams {
-    google_account: String,
-    google_calendar_id: String,
-    from: DateTime<Utc>,
-    to: DateTime<Utc>,
-}
+pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
+    let config = GoogleRemoteConfig::try_from(&cmd.remote_config)?;
+    let account_email = &config.google_account;
+    let calendar_id = &config.google_calendar_id;
 
-pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
-    let params: ListEventsParams = serde_json::from_value(params)?;
-
-    let account_email = params.google_account;
-    let calendar_id = params.google_calendar_id;
-    let time_min = params.from.to_rfc3339();
-    let time_max = params.to.to_rfc3339();
-
-    let client = Session::load_valid(&account_email).await?.client()?;
+    let client = Session::load_valid(account_email).await?.client()?;
 
     let google_events = client
         .events()
         .list_all(
-            &calendar_id,
+            calendar_id,
             "",
             0,
             OrderBy::default(),
@@ -38,8 +27,8 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
             false,
             false,
             false,
-            &time_max,
-            &time_min,
+            &cmd.to,
+            &cmd.from,
             "",
             "",
         )
@@ -52,5 +41,5 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
         .map(Event::from_google)
         .collect::<Result<_, _>>()?;
 
-    Ok(serde_json::to_value(events)?)
+    Ok(events)
 }

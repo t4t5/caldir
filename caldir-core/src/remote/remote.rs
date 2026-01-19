@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 
 use crate::constants::DEFAULT_SYNC_DAYS;
-use crate::error::{CalDirError, CalDirResult};
+use crate::error::CalDirResult;
 use crate::event::Event;
-use crate::remote::protocol::Command as ProviderCommand;
+use crate::remote::protocol::{CreateEvent, DeleteEvent, ListEvents, UpdateEvent};
 use crate::remote::provider::Provider;
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
@@ -32,8 +32,12 @@ pub struct Remote {
 }
 
 impl Remote {
-    fn json_params(&self) -> serde_json::Map<String, serde_json::Value> {
+    fn remote_config(&self) -> serde_json::Map<String, serde_json::Value> {
         serde_json::Map::from(&self.config)
+    }
+
+    pub fn new(provider: Provider, config: RemoteConfig) -> Self {
+        Remote { provider, config }
     }
 
     pub async fn events(&self) -> CalDirResult<Vec<Event>> {
@@ -41,57 +45,39 @@ impl Remote {
         let from = (now - Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
         let to = (now + Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
 
-        let mut params = self.json_params();
-        params.insert("from".into(), from.into());
-        params.insert("to".into(), to.into());
-
         self.provider
-            .call_with_timeout(
-                ProviderCommand::ListEvents,
-                serde_json::Value::Object(params),
-            )
+            .call(ListEvents {
+                remote_config: self.remote_config(),
+                from,
+                to,
+            })
             .await
     }
 
     pub async fn create_event(&self, event: &Event) -> CalDirResult<Event> {
-        let mut params = self.json_params();
-        params.insert(
-            "event".into(),
-            serde_json::to_value(event).map_err(|e| CalDirError::Serialization(e.to_string()))?,
-        );
-
         self.provider
-            .call_with_timeout(
-                ProviderCommand::CreateEvent,
-                serde_json::Value::Object(params),
-            )
+            .call(CreateEvent {
+                remote_config: self.remote_config(),
+                event: event.clone(),
+            })
             .await
     }
 
     pub async fn update_event(&self, event: &Event) -> CalDirResult<Event> {
-        let mut params = self.json_params();
-        params.insert(
-            "event".into(),
-            serde_json::to_value(event).map_err(|e| CalDirError::Serialization(e.to_string()))?,
-        );
-
         self.provider
-            .call_with_timeout(
-                ProviderCommand::UpdateEvent,
-                serde_json::Value::Object(params),
-            )
+            .call(UpdateEvent {
+                remote_config: self.remote_config(),
+                event: event.clone(),
+            })
             .await
     }
 
     pub async fn delete_event(&self, event_id: &str) -> CalDirResult<()> {
-        let mut params = self.json_params();
-        params.insert("event_id".into(), event_id.into());
-
         self.provider
-            .call_with_timeout(
-                ProviderCommand::DeleteEvent,
-                serde_json::Value::Object(params),
-            )
+            .call(DeleteEvent {
+                remote_config: self.remote_config(),
+                event_id: event_id.to_string(),
+            })
             .await
     }
 }

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use caldir_core::calendar::{slugify, Calendar};
 use caldir_core::remote::provider::Provider;
 
 pub async fn run(provider_name: &str) -> Result<()> {
@@ -13,20 +14,31 @@ pub async fn run(provider_name: &str) -> Result<()> {
     println!("Fetching calendars...");
 
     // List all calendars for this account
-    let calendars = provider_account.list_calendars().await?;
+    let calendar_configs = provider_account.list_calendars().await?;
 
-    if calendars.is_empty() {
+    if calendar_configs.is_empty() {
         println!("No calendars found.");
         return Ok(());
     }
 
-    println!("Found {} calendar(s):\n", calendars.len());
+    println!("Found {} calendar(s):\n", calendar_configs.len());
 
     // Create local directories for each calendar
-    for calendar in calendars {
+    for config in calendar_configs {
+        // Derive directory name from calendar name
+        let dir_name = config
+            .name
+            .as_ref()
+            .map(|n| slugify(n))
+            .unwrap_or_else(|| "calendar".to_string());
+
+        let calendar = Calendar {
+            dir_name: dir_name.clone(),
+            config,
+        };
         calendar.save_config()?;
 
-        println!("  {}/ (created)", { calendar.dir_name });
+        println!("  {dir_name}/ (created)");
     }
 
     println!("\nRun `caldir pull` to sync events.");

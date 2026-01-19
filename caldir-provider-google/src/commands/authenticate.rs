@@ -1,9 +1,9 @@
 //! The auth process will spawn a local HTTP server to receive the OAuth callback.
 
 use anyhow::{Context, Result};
+use caldir_core::remote::protocol::Authenticate;
 use google_calendar::Client;
 use google_calendar::types::MinAccessRole;
-use serde::Deserialize;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
@@ -14,11 +14,6 @@ pub const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
 
 const DEFAULT_REDIRECT_PORT: u16 = 8085;
 
-#[derive(Debug, Deserialize)]
-struct AuthenticateParams {
-    redirect_port: Option<u16>,
-}
-
 fn redirect_uri(port: u16) -> String {
     format!("http://localhost:{}/callback", port)
 }
@@ -27,9 +22,8 @@ fn redirect_address(port: u16) -> String {
     format!("127.0.0.1:{}", port)
 }
 
-pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
-    let params: AuthenticateParams = serde_json::from_value(params)?;
-    let port = params.redirect_port.unwrap_or(DEFAULT_REDIRECT_PORT);
+pub async fn handle(_cmd: Authenticate) -> Result<String> {
+    let port = DEFAULT_REDIRECT_PORT;
 
     let scopes: Vec<String> = SCOPES.iter().map(|s| s.to_string()).collect();
 
@@ -88,7 +82,7 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
 
     eprintln!("Authentication successful!");
 
-    Ok(serde_json::to_value(account_email)?)
+    Ok(account_email.clone())
 }
 
 async fn wait_for_callback(port: u16) -> Result<(String, String)> {
