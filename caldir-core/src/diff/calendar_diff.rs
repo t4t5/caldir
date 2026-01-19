@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 
 use crate::calendar::Calendar;
-use crate::error::{CalDirError, CalDirResult};
 use crate::diff::{DiffKind, EventDiff};
+use crate::error::{CalDirError, CalDirResult};
 
 /// Represents the differences between local and remote calendar state.
 pub struct CalendarDiff {
@@ -22,7 +22,7 @@ impl CalendarDiff {
         let remote = self
             .calendar
             .remote()
-            .ok_or_else(|| CalDirError::NoRemoteConfigured(self.calendar.name.to_string()))?;
+            .ok_or_else(|| CalDirError::RemoteNotFound(self.calendar.dir_name.to_string()))?;
 
         for diff in &self.to_push {
             match diff.kind {
@@ -76,7 +76,7 @@ impl CalendarDiff {
     pub async fn from_calendar(calendar: &Calendar) -> CalDirResult<Self> {
         let remote = calendar
             .remote()
-            .ok_or_else(|| CalDirError::NoRemoteConfigured(calendar.name.to_string()))?;
+            .ok_or_else(|| CalDirError::RemoteNotFound(calendar.dir_name.to_string()))?;
 
         let remote_events = remote.events().await?;
         let local_events = calendar.events()?;

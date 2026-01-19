@@ -44,7 +44,7 @@ impl Render for EventDiff {
 
 impl Render for Calendar {
     fn render(&self) -> String {
-        format!("📅 {}", self.name)
+        format!("📅 {}", self.dir_name)
     }
 }
 

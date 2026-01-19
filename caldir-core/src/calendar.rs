@@ -15,24 +15,24 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Calendar {
-    pub name: String,
+    pub dir_name: String,
     pub config: CalendarConfig,
 }
 
 impl Calendar {
-    pub fn new(name: &str) -> Self {
+    pub fn new(dir_name: &str) -> Self {
         Calendar {
-            name: name.to_string(),
+            dir_name: dir_name.to_string(),
             config: CalendarConfig::default(),
         }
     }
 
-    pub fn load(name: &str) -> CalDirResult<Self> {
-        let calendar_dir = Self::data_dir_path(name)?;
+    pub fn load(dir_name: &str) -> CalDirResult<Self> {
+        let calendar_dir = Self::data_dir_path(dir_name)?;
         let config = CalendarConfig::load(&calendar_dir)?;
 
         Ok(Calendar {
-            name: name.to_string(),
+            dir_name: dir_name.to_string(),
             config,
         })
     }
@@ -43,7 +43,7 @@ impl Calendar {
     }
 
     pub fn data_dir(&self) -> CalDirResult<PathBuf> {
-        Self::data_dir_path(&self.name)
+        Self::data_dir_path(&self.dir_name)
     }
 
     /// Where changes get pushed to / pulled from (None if no remote configured)
@@ -115,15 +115,15 @@ impl Calendar {
 
     fn metadata(&self) -> CalendarMetadata {
         CalendarMetadata {
-            calendar_id: self.name.clone(),
-            calendar_name: self.name.clone(),
+            calendar_id: self.dir_name.clone(),
+            calendar_name: self.dir_name.clone(),
         }
     }
 }
 
 impl fmt::Display for Calendar {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.dir_name)
     }
 }
 

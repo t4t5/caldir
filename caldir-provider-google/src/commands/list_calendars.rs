@@ -49,7 +49,7 @@ pub async fn handle(params: serde_json::Value) -> Result<serde_json::Value> {
             );
 
             Calendar {
-                name: slugify(&cal.summary),
+                dir_name: slugify(&cal.summary),
                 config: CalendarConfig {
                     name: Some(cal.summary.clone()),
                     color: Some(cal.background_color.clone()),

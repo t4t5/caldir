@@ -36,7 +36,7 @@ pub enum CalDirError {
     Serialization(String),
 
     #[error("No remote configured for calendar '{0}'")]
-    NoRemoteConfigured(String),
+    RemoteNotFound(String),
 }
 
 /// Result type alias for caldir operations.

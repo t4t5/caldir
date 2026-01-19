@@ -26,7 +26,7 @@ pub async fn run(provider_name: &str) -> Result<()> {
     for calendar in calendars {
         calendar.save_config()?;
 
-        println!("  {}/ (created)", { calendar.name });
+        println!("  {}/ (created)", { calendar.dir_name });
     }
 
     println!("\nRun `caldir pull` to sync events.");
