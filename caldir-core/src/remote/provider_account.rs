@@ -1,6 +1,7 @@
 use crate::calendar::Calendar;
-use crate::protocol::Command as ProviderCommand;
-use crate::{error::CalDirResult, provider::Provider};
+use crate::error::CalDirResult;
+use crate::remote::protocol::Command as ProviderCommand;
+use crate::remote::provider::Provider;
 
 pub struct ProviderAccount {
     pub provider: Provider,

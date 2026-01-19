@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use caldir_core::{
     calendar::{Calendar, slugify},
     config::calendar_config::CalendarConfig,
-    provider::Provider,
-    remote::{Remote, RemoteConfig},
+    remote::provider::Provider,
+    remote::remote::{Remote, RemoteConfig},
 };
 use google_calendar::types::MinAccessRole;
 use serde::Deserialize;

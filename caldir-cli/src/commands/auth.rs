@@ -1,5 +1,5 @@
 use anyhow::Result;
-use caldir_core::provider::Provider;
+use caldir_core::remote::provider::Provider;
 
 pub async fn run(provider_name: &str) -> Result<()> {
     let provider = Provider::from_name(provider_name);

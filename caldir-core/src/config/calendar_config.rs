@@ -5,7 +5,7 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{CalDirError, CalDirResult};
-use crate::remote::Remote;
+use crate::remote::remote::Remote;
 
 /// Configuration stored in each calendar's .caldir/config.toml
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]

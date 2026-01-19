@@ -8,7 +8,7 @@ use crate::error::{CalDirError, CalDirResult};
 use crate::event::{Event, EventTime};
 use crate::ics::{CalendarMetadata, generate_ics, parse_event};
 use crate::local::{LocalEvent, LocalState};
-use crate::remote::Remote;
+use crate::remote::remote::Remote;
 use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};

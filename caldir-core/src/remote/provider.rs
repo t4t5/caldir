@@ -10,14 +10,14 @@
 //! provider-specific parameters from the calendar config.
 
 use crate::error::{CalDirError, CalDirResult};
-use crate::protocol::{Command as ProviderCommand, Request, Response};
-use crate::provider_account::ProviderAccount;
+use crate::remote::protocol::{Command as ProviderCommand, Request, Response};
+use crate::remote::provider_account::ProviderAccount;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
-use serde::{Deserialize, Serialize};
 
 const PROVIDER_TIMEOUT: Duration = Duration::from_secs(10);
 

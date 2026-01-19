@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use crate::constants::DEFAULT_SYNC_DAYS;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Event;
-use crate::protocol::Command as ProviderCommand;
-use crate::provider::Provider;
+use crate::remote::protocol::Command as ProviderCommand;
+use crate::remote::provider::Provider;
 use chrono::Duration;
 use serde::{Deserialize, Serialize};
 

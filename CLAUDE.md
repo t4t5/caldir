@@ -190,9 +190,9 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
 
 **CalendarDiff** — Bidirectional diff for a single calendar (`caldir_core::diff::CalendarDiff`). Created via `CalendarDiff::from_calendar(&cal).await`. Contains `to_push` and `to_pull` vectors of `EventDiff`. Call `apply_push().await` or `apply_pull()` to sync changes.
 
-**Provider** — Provider subprocess protocol (`caldir_core::provider::Provider`). Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `authenticate`, `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event`.
+**Provider** — Provider subprocess protocol (`caldir_core::remote::provider::remote::provider`). Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `authenticate`, `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event`.
 
-**ProviderAccount** — Combines a Provider with an account identifier (`caldir_core::provider_account::ProviderAccount`). Used to list all calendars for a specific authenticated account via `list_calendars()`.
+**ProviderAccount** — Combines a Provider with an account identifier (`caldir_core::remote::provider_account::remote::providerAccount`). Used to list all calendars for a specific authenticated account via `list_calendars()`.
 
 **CalendarConfig/LocalState** — Per-calendar state stored in `.caldir/` directory:
 - `CalendarConfig` (`caldir_core::config::calendar_config::CalendarConfig`) — Configuration stored in `.caldir/config.toml` (name, color, optional Remote for syncing)

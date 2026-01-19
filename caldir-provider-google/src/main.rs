@@ -8,7 +8,7 @@ mod google_event;
 mod session;
 
 use anyhow::Result;
-use caldir_core::protocol::{Command, Request, Response};
+use caldir_core::remote::protocol::{Command, Request, Response};
 use std::io::{self, BufRead, Write};
 
 #[tokio::main]

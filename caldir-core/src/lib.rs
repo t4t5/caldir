@@ -7,7 +7,4 @@ pub mod error;
 pub mod event;
 pub mod ics;
 pub mod local;
-pub mod protocol;
-pub mod provider;
-pub mod provider_account;
 pub mod remote;
