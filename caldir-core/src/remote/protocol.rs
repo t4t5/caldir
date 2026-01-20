@@ -1,28 +1,16 @@
-//! Provider protocol types.
-//!
 //! Defines the JSON protocol used for communication between caldir-cli
 //! and provider binaries over stdin/stdout.
-//!
-//! # Type-safe commands
-//!
-//! Each command is a struct that implements `ProviderCommand`, which ties
-//! the command to its expected response type at compile time:
-//!
-//! ```ignore
-//! // The return type is inferred from the command
-//! let events: Vec<Event> = provider.call(ListEvents { ... }).await?;
-//! ```
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::config::calendar_config::CalendarConfig;
 use crate::event::Event;
 
-// =============================================================================
-// Wire protocol types (used for JSON serialization)
-// =============================================================================
+pub trait ProviderCommand: Serialize {
+    type Response: DeserializeOwned;
+    fn command() -> Command;
+}
 
-/// Wire command names sent over the protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Command {
@@ -64,27 +52,6 @@ impl Response<()> {
         .unwrap()
     }
 }
-
-// =============================================================================
-// Type-safe command trait
-// =============================================================================
-
-/// Trait for type-safe provider commands.
-///
-/// Each command struct implements this trait, binding the command to its
-/// expected response type. This ensures compile-time type safety between
-/// what a provider returns and what caldir-core expects.
-pub trait ProviderCommand: Serialize {
-    /// The expected response type for this command.
-    type Response: DeserializeOwned;
-
-    /// The wire command name.
-    fn command() -> Command;
-}
-
-// =============================================================================
-// Command structs
-// =============================================================================
 
 /// Authenticate with a provider and return the account identifier.
 #[derive(Debug, Serialize, Deserialize)]

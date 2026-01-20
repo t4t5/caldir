@@ -6,7 +6,7 @@ use crate::caldir::Caldir;
 use crate::config::calendar_config::CalendarConfig;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::{Event, EventTime};
-use crate::ics::{CalendarMetadata, generate_ics, parse_event};
+use crate::ics::{generate_ics, parse_event};
 use crate::local::{LocalEvent, LocalState};
 use crate::remote::remote::Remote;
 use std::collections::HashSet;
@@ -87,7 +87,7 @@ impl Calendar {
         let dir = self.data_dir()?;
         std::fs::create_dir_all(&dir)?;
 
-        let content = generate_ics(event, &self.metadata())?;
+        let content = generate_ics(event)?;
         let filename = filename_for(event, &dir)?;
 
         std::fs::write(dir.join(filename), content)?;
@@ -111,13 +111,6 @@ impl Calendar {
 
         let synced_uids: HashSet<String> = self.events()?.into_iter().map(|e| e.event.id).collect();
         LocalState::save(&dir, &synced_uids)
-    }
-
-    fn metadata(&self) -> CalendarMetadata {
-        CalendarMetadata {
-            calendar_id: self.dir_name.clone(),
-            calendar_name: self.dir_name.clone(),
-        }
     }
 }
 

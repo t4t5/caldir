@@ -1,20 +1,12 @@
 //! ICS file generation.
 
-use super::CalendarMetadata;
 use crate::error::CalDirResult;
 use crate::event::{Event, EventStatus, EventTime, Transparency};
 use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger, ValueType};
 
 /// Generate .ics content for an event with calendar metadata
-pub fn generate_ics(event: &Event, metadata: &CalendarMetadata) -> CalDirResult<String> {
+pub fn generate_ics(event: &Event) -> CalDirResult<String> {
     let mut cal = Calendar::new();
-
-    // Add calendar-level metadata properties
-    // X-WR-CALNAME - Human-readable calendar name (de facto standard)
-    cal.append_property(Property::new("X-WR-CALNAME", &metadata.calendar_name));
-
-    // X-WR-RELCALID - Calendar identifier (de facto standard)
-    cal.append_property(Property::new("X-WR-RELCALID", &metadata.calendar_id));
 
     let mut ics_event = icalendar::Event::new();
     ics_event.uid(&event.id);
@@ -163,7 +155,6 @@ fn add_datetime_property(ics_event: &mut icalendar::Event, name: &str, time: &Ev
 mod tests {
     use super::*;
     use crate::event::{Attendee, EventStatus, ParticipationStatus};
-    use crate::ics::CalendarMetadata;
     use chrono::{NaiveDate, TimeZone, Utc};
 
     fn make_test_event() -> Event {
@@ -188,13 +179,6 @@ mod tests {
         }
     }
 
-    fn make_test_metadata() -> CalendarMetadata {
-        CalendarMetadata {
-            calendar_id: "test@example.com".to_string(),
-            calendar_name: "Test Calendar".to_string(),
-        }
-    }
-
     #[test]
     fn test_generate_ics_multiple_attendees() {
         let mut event = make_test_event();
@@ -216,7 +200,7 @@ mod tests {
             },
         ];
 
-        let ics = generate_ics(&event, &make_test_metadata()).unwrap();
+        let ics = generate_ics(&event).unwrap();
 
         // Count ATTENDEE lines - should be 3
         let attendee_count = ics.lines().filter(|l| l.starts_with("ATTENDEE")).count();
@@ -238,7 +222,7 @@ mod tests {
         event.start = EventTime::Date(NaiveDate::from_ymd_opt(2025, 3, 20).unwrap());
         event.end = EventTime::Date(NaiveDate::from_ymd_opt(2025, 3, 21).unwrap());
 
-        let ics = generate_ics(&event, &make_test_metadata()).unwrap();
+        let ics = generate_ics(&event).unwrap();
 
         // Should have VALUE=DATE parameter
         assert!(
@@ -262,7 +246,7 @@ mod tests {
             response_status: None,
         });
 
-        let ics = generate_ics(&event, &make_test_metadata()).unwrap();
+        let ics = generate_ics(&event).unwrap();
 
         // Find the ORGANIZER line
         let organizer_line = ics
