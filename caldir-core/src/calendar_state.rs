@@ -5,11 +5,11 @@ use std::{collections::HashSet, path::Path};
 use crate::error::CalDirResult;
 
 /// Tracks which events have been synced (for delete detection).
-pub struct LocalState {
+pub struct CalendarState {
     synced_uids: HashSet<String>,
 }
 
-impl LocalState {
+impl CalendarState {
     /// Load sync state from .caldir/state/synced_uids
     pub fn load(calendar_dir: &Path) -> CalDirResult<Self> {
         let path = calendar_dir.join(".caldir/state/synced_uids");

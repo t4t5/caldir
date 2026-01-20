@@ -2,21 +2,21 @@
 
 use std::path::PathBuf;
 
+use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
-use crate::config::global_config::GlobalConfig;
 use crate::error::{CalDirError, CalDirResult};
 use config::{Config, File};
 
 #[derive(Clone)]
 pub struct Caldir {
-    config: GlobalConfig,
+    config: CaldirConfig,
 }
 
 impl Caldir {
     pub fn load() -> CalDirResult<Self> {
-        let config_path = GlobalConfig::config_path()?;
+        let config_path = CaldirConfig::config_path()?;
 
-        let config: GlobalConfig = Config::builder()
+        let config: CaldirConfig = Config::builder()
             .add_source(File::from(config_path).required(false))
             .build()
             .map_err(|e| CalDirError::Config(e.to_string()))?

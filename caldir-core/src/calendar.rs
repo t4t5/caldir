@@ -3,11 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::caldir::Caldir;
-use crate::config::calendar_config::CalendarConfig;
+use crate::calendar_config::CalendarConfig;
+use crate::calendar_state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::{Event, EventTime};
 use crate::ics::{generate_ics, parse_event};
-use crate::local::{LocalEvent, LocalState};
+use crate::local_event::LocalEvent;
 use crate::remote::remote::Remote;
 use std::collections::HashSet;
 use std::fmt;
@@ -76,7 +77,7 @@ impl Calendar {
     pub fn seen_event_uids(&self) -> CalDirResult<HashSet<String>> {
         let dir = self.data_dir()?;
 
-        Ok(LocalState::load(&dir)?.synced_uids().clone())
+        Ok(CalendarState::load(&dir)?.synced_uids().clone())
     }
 
     // =========================================================================
@@ -110,7 +111,7 @@ impl Calendar {
         let dir = self.data_dir()?;
 
         let synced_uids: HashSet<String> = self.events()?.into_iter().map(|e| e.event.id).collect();
-        LocalState::save(&dir, &synced_uids)
+        CalendarState::save(&dir, &synced_uids)
     }
 }
 

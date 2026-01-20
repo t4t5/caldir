@@ -4,10 +4,8 @@
 //! In this case: google_account + google_calendar_id.
 
 use anyhow::{Context, Result};
-use caldir_core::{
-    config::calendar_config::CalendarConfig,
-    remote::{protocol::ListCalendars, provider::Provider, remote::Remote},
-};
+use caldir_core::calendar_config::CalendarConfig;
+use caldir_core::remote::{protocol::ListCalendars, provider::Provider, remote::Remote};
 use google_calendar::types::MinAccessRole;
 
 use crate::remote_config::GoogleRemoteConfig;

@@ -3,8 +3,7 @@
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::config::calendar_config::CalendarConfig;
-use crate::event::Event;
+use crate::{calendar_config::CalendarConfig, event::Event};
 
 pub trait ProviderCommand: Serialize {
     type Response: DeserializeOwned;

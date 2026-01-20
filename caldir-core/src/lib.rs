@@ -1,10 +1,12 @@
 pub mod caldir;
+pub mod caldir_config;
 pub mod calendar;
-pub mod config;
+pub mod calendar_config;
+pub mod calendar_state;
 pub mod constants;
 pub mod diff;
 pub mod error;
 pub mod event;
 pub mod ics;
-pub mod local;
+pub mod local_event;
 pub mod remote;

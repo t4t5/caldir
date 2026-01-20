@@ -17,14 +17,14 @@ fn default_caldir_path() -> PathBuf {
 /// Calendar-specific configuration (provider, account, etc.) is stored
 /// in each calendar's .caldir/config.toml file instead.
 #[derive(Deserialize, Clone)]
-pub struct GlobalConfig {
+pub struct CaldirConfig {
     #[serde(default = "default_caldir_path")]
     pub calendar_dir: PathBuf,
 
     pub default_calendar: Option<String>,
 }
 
-impl GlobalConfig {
+impl CaldirConfig {
     pub fn config_path() -> CalDirResult<PathBuf> {
         let config_dir = dirs::config_dir()
             .ok_or_else(|| CalDirError::Config("Could not determine config directory".into()))?
