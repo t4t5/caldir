@@ -45,7 +45,7 @@ impl CalendarDiff {
             }
         }
 
-        self.calendar.update_sync_state()?;
+        self.calendar.save_state()?;
 
         Ok(())
     }
@@ -68,7 +68,7 @@ impl CalendarDiff {
             }
         }
 
-        self.calendar.update_sync_state()?;
+        self.calendar.save_state()?;
 
         Ok(())
     }
@@ -80,7 +80,7 @@ impl CalendarDiff {
 
         let remote_events = remote.events().await?;
         let local_events = calendar.events()?;
-        let seen_uids = calendar.seen_event_uids()?;
+        let known_uids = calendar.state().read().known_uids;
 
         let local_by_uid: HashMap<_, _> = local_events
             .into_iter()
@@ -108,7 +108,7 @@ impl CalendarDiff {
             .filter_map(|(uid, local)| remote_by_uid.get(uid).map(|remote| (local, remote)));
 
         for (uid, local) in local_only_events {
-            if seen_uids.contains(uid) {
+            if known_uids.contains(uid) {
                 // Was synced before, now gone from remote → delete locally
                 // But only if in sync range (old events weren't fetched, so we can't know)
                 if local.is_in_sync_range() {
@@ -125,7 +125,7 @@ impl CalendarDiff {
         }
 
         for (uid, remote) in remote_only_events {
-            if seen_uids.contains(uid) {
+            if known_uids.contains(uid) {
                 // Was synced before, now gone locally -> delete on remote
                 if let Some(diff) = EventDiff::get_diff(Some(remote.clone()), None) {
                     to_push.push(diff);

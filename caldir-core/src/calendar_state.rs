@@ -1,41 +1,63 @@
 //! Sync state tracking for calendars.
 
-use std::{collections::HashSet, path::Path};
+use std::collections::HashSet;
 
-use crate::error::CalDirResult;
+use crate::{calendar::Calendar, error::CalDirResult};
 
-/// Tracks which events have been synced (for delete detection).
+const KNOWN_UIDS_FILE: &str = "known_uids";
+
 pub struct CalendarState {
-    synced_uids: HashSet<String>,
+    calendar: Calendar,
+}
+
+pub struct CalendarStateData {
+    pub known_uids: Vec<String>,
 }
 
 impl CalendarState {
-    /// Load sync state from .caldir/state/synced_uids
-    pub fn load(calendar_dir: &Path) -> CalDirResult<Self> {
-        let path = calendar_dir.join(".caldir/state/synced_uids");
-        let synced_uids = if path.exists() {
-            std::fs::read_to_string(&path)?
-                .lines()
-                .filter(|l| !l.is_empty())
-                .map(String::from)
-                .collect()
-        } else {
-            HashSet::new()
+    pub fn load(calendar: Calendar) -> CalendarState {
+        CalendarState { calendar }
+    }
+
+    fn state_dir(&self) -> CalDirResult<std::path::PathBuf> {
+        let dir = self.calendar.dir()?;
+        Ok(dir.join(".caldir/state"))
+    }
+
+    // Read .caldir/state/known_uids
+    fn known_uids(&self) -> Vec<String> {
+        let state_dir = match self.state_dir() {
+            Ok(dir) => dir,
+            Err(_) => return vec![],
         };
-        Ok(Self { synced_uids })
+
+        let path = state_dir.join(KNOWN_UIDS_FILE);
+
+        if path.exists() {
+            match std::fs::read_to_string(&path) {
+                Ok(content) => content
+                    .lines()
+                    .filter(|l| !l.is_empty())
+                    .map(String::from)
+                    .collect(),
+                Err(_) => vec![],
+            }
+        } else {
+            vec![]
+        }
     }
 
-    pub fn synced_uids(&self) -> &HashSet<String> {
-        &self.synced_uids
+    pub fn read(&self) -> CalendarStateData {
+        let known_uids = self.known_uids();
+        CalendarStateData { known_uids }
     }
 
-    /// Save sync state to .caldir/state/synced_uids (atomic write)
-    pub fn save(calendar_dir: &Path, uids: &HashSet<String>) -> CalDirResult<()> {
-        let dir = calendar_dir.join(".caldir/state");
+    pub fn save(&self, uids: &HashSet<String>) -> CalDirResult<()> {
+        let dir = self.state_dir()?;
         std::fs::create_dir_all(&dir)?;
 
-        let path = dir.join("synced_uids");
-        let temp = dir.join("synced_uids.tmp");
+        let path = dir.join(KNOWN_UIDS_FILE);
+        let temp = dir.join(KNOWN_UIDS_FILE.to_string() + ".tmp");
 
         // Sort for deterministic output
         let mut sorted: Vec<_> = uids.iter().map(|s| s.as_str()).collect();

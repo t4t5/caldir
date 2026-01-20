@@ -29,7 +29,7 @@ impl Calendar {
     }
 
     pub fn load(dir_name: &str) -> CalDirResult<Self> {
-        let calendar_dir = Self::data_dir_path(dir_name)?;
+        let calendar_dir = Self::dir_for(dir_name)?;
         let config = CalendarConfig::load(&calendar_dir)?;
 
         Ok(Calendar {
@@ -38,28 +38,40 @@ impl Calendar {
         })
     }
 
-    pub fn data_dir_path(calendar_name: &str) -> CalDirResult<PathBuf> {
+    pub fn dir_for(calendar_name: &str) -> CalDirResult<PathBuf> {
         let caldir = Caldir::load()?;
         Ok(caldir.data_path().join(calendar_name))
     }
 
-    pub fn data_dir(&self) -> CalDirResult<PathBuf> {
-        Self::data_dir_path(&self.dir_name)
+    pub fn dir(&self) -> CalDirResult<PathBuf> {
+        Self::dir_for(&self.dir_name)
     }
+
+    // STATE + CONFIG:
+
+    pub fn state(&self) -> CalendarState {
+        CalendarState::load(self.clone())
+    }
+
+    pub fn save_state(&self) -> CalDirResult<()> {
+        let known_uids: HashSet<String> = self.events()?.into_iter().map(|e| e.event.id).collect();
+        self.state().save(&known_uids)
+    }
+
+    pub fn save_config(&self) -> CalDirResult<()> {
+        self.config.save(&self.dir()?)
+    }
+
+    // EVENTS OPERATIONS:
 
     /// Where changes get pushed to / pulled from (None if no remote configured)
-    pub fn remote(&self) -> Option<Remote> {
-        self.config.remote.clone()
-    }
-
-    /// Save the calendar config to .caldir/config.toml
-    pub fn save_config(&self) -> CalDirResult<()> {
-        self.config.save(&self.data_dir()?)
+    pub fn remote(&self) -> Option<&Remote> {
+        self.config.remote.as_ref()
     }
 
     /// Load events from local directory
     pub fn events(&self) -> CalDirResult<Vec<LocalEvent>> {
-        let data_path = self.data_dir()?;
+        let data_path = self.dir()?;
 
         let entries = std::fs::read_dir(&data_path)?;
 
@@ -73,19 +85,8 @@ impl Calendar {
         Ok(local_events)
     }
 
-    /// UIDs we've seen before (for detecting deletions)
-    pub fn seen_event_uids(&self) -> CalDirResult<HashSet<String>> {
-        let dir = self.data_dir()?;
-
-        Ok(CalendarState::load(&dir)?.synced_uids().clone())
-    }
-
-    // =========================================================================
-    // Event operations
-    // =========================================================================
-
     pub fn create_event(&self, event: &Event) -> CalDirResult<()> {
-        let dir = self.data_dir()?;
+        let dir = self.dir()?;
         std::fs::create_dir_all(&dir)?;
 
         let content = generate_ics(event)?;
@@ -105,13 +106,6 @@ impl Calendar {
             std::fs::remove_file(&local.path)?;
         }
         Ok(())
-    }
-
-    pub fn update_sync_state(&self) -> CalDirResult<()> {
-        let dir = self.data_dir()?;
-
-        let synced_uids: HashSet<String> = self.events()?.into_iter().map(|e| e.event.id).collect();
-        CalendarState::save(&dir, &synced_uids)
     }
 }
 
