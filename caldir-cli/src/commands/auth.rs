@@ -25,7 +25,7 @@ pub async fn run(provider_name: &str) -> Result<()> {
 
     // Create local directories for each calendar
     for config in calendar_configs {
-        let slug = Calendar::slug_for(config.name.as_deref());
+        let slug = Calendar::unique_slug_for(config.name.as_deref())?;
 
         let calendar = Calendar {
             slug: slug.clone(),

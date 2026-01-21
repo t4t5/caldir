@@ -18,3 +18,4 @@ tokio = { version = "1", features = ["process", "io-util", "time"] }
 which = "8"
 config = "0.15"
 shellexpand = "3"
+slug = "0.1"

@@ -29,8 +29,34 @@ impl Calendar {
     }
 
     /// Generate a slug from a calendar name, or return a default
-    pub fn slug_for(name: Option<&str>) -> String {
+    fn slug_for(name: Option<&str>) -> String {
         name.map(slugify).unwrap_or_else(|| "calendar".to_string())
+    }
+
+    /// Generate a unique slug that doesn't conflict with existing calendar directories.
+    /// If the base slug exists, tries slug-2, slug-3, etc.
+    pub fn unique_slug_for(name: Option<&str>) -> CalDirResult<String> {
+        let base = Self::slug_for(name);
+        let caldir = Caldir::load()?;
+        let data_path = caldir.data_path();
+
+        // Try base slug first
+        if !data_path.join(&base).exists() {
+            return Ok(base);
+        }
+
+        // Collision - try suffixes
+        for n in 2..=100 {
+            let suffixed = format!("{}-{}", base, n);
+            if !data_path.join(&suffixed).exists() {
+                return Ok(suffixed);
+            }
+        }
+
+        Err(CalDirError::Config(format!(
+            "Too many calendar name collisions for '{}'",
+            base
+        )))
     }
 
     pub fn load(slug: &str) -> CalDirResult<Self> {
@@ -173,15 +199,6 @@ fn base_filename(event: &Event) -> String {
 }
 
 pub fn slugify(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .split('-')
-        .filter(|s| !s.is_empty())
-        .collect::<Vec<_>>()
-        .join("-")
-        .chars()
-        .take(50)
-        .collect()
+    let slug = slug::slugify(s);
+    slug.chars().take(50).collect()
 }
