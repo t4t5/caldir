@@ -7,12 +7,13 @@ use crate::calendar_config::CalendarConfig;
 use crate::calendar_event::CalendarEvent;
 use crate::calendar_state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::{Event, EventTime};
-use crate::ics::{generate_ics, parse_event};
+use crate::event::Event;
+use crate::ics::generate_ics;
 use crate::remote::remote::Remote;
+use crate::utils::slugify;
 use std::collections::HashSet;
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Calendar {
@@ -28,15 +29,14 @@ impl Calendar {
         }
     }
 
-    /// Generate a slug from a calendar name, or return a default
-    fn slug_for(name: Option<&str>) -> String {
+    fn base_slug_for(name: Option<&str>) -> String {
         name.map(slugify).unwrap_or_else(|| "calendar".to_string())
     }
 
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
     /// If the base slug exists, tries slug-2, slug-3, etc.
     pub fn unique_slug_for(name: Option<&str>) -> CalDirResult<String> {
-        let base = Self::slug_for(name);
+        let base = Self::base_slug_for(name);
         let caldir = Caldir::load()?;
         let data_path = caldir.data_path();
 
@@ -121,6 +121,8 @@ impl Calendar {
         std::fs::create_dir_all(&dir)?;
 
         let content = generate_ics(event)?;
+
+        // TODO: This should create a LocalEvent and save it:
         let filename = filename_for(event, &dir)?;
 
         std::fs::write(dir.join(filename), content)?;
@@ -144,61 +146,4 @@ impl fmt::Display for Calendar {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.slug)
     }
-}
-
-// =============================================================================
-// Filename generation
-// =============================================================================
-
-/// Generate a unique filename for an event, handling collisions.
-fn filename_for(event: &Event, dir: &Path) -> CalDirResult<String> {
-    let base = base_filename(event);
-    let stem = base.trim_end_matches(".ics");
-
-    // Try base filename first
-    if !dir.join(&base).exists() || file_has_uid(dir, &base, &event.id) {
-        return Ok(base);
-    }
-
-    // Collision - try suffixes
-    for n in 2..=100 {
-        let suffixed = format!("{}-{}.ics", stem, n);
-        if !dir.join(&suffixed).exists() || file_has_uid(dir, &suffixed, &event.id) {
-            return Ok(suffixed);
-        }
-    }
-
-    Err(CalDirError::Sync(format!(
-        "Too many filename collisions for {}",
-        base
-    )))
-}
-
-fn file_has_uid(dir: &Path, filename: &str, uid: &str) -> bool {
-    std::fs::read_to_string(dir.join(filename))
-        .ok()
-        .and_then(|content| parse_event(&content))
-        .is_some_and(|e| e.id == uid)
-}
-
-fn base_filename(event: &Event) -> String {
-    let slug = slugify(&event.summary);
-
-    if event.recurrence.is_some() {
-        return format!("_recurring__{}.ics", slug);
-    }
-
-    let date = match &event.start {
-        EventTime::Date(d) => d.format("%Y-%m-%d").to_string(),
-        EventTime::DateTimeUtc(dt) => dt.format("%Y-%m-%dT%H%M").to_string(),
-        EventTime::DateTimeFloating(dt) => dt.format("%Y-%m-%dT%H%M").to_string(),
-        EventTime::DateTimeZoned { datetime, .. } => datetime.format("%Y-%m-%dT%H%M").to_string(),
-    };
-
-    format!("{}__{}.ics", date, slug)
-}
-
-pub fn slugify(s: &str) -> String {
-    let slug = slug::slugify(s);
-    slug.chars().take(50).collect()
 }

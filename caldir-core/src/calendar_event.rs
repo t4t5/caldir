@@ -2,8 +2,9 @@
 
 use crate::constants::DEFAULT_SYNC_DAYS;
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::Event;
+use crate::event::{Event, EventTime};
 use crate::ics::parse_event;
+use crate::utils::slugify;
 use chrono::{DateTime, Duration, Utc};
 use std::path::PathBuf;
 
@@ -57,5 +58,28 @@ impl CalendarEvent {
             (Some(local_mtime), Some(remote_updated)) => local_mtime > remote_updated,
             _ => false,
         }
+    }
+
+    /// Generate the base slug for this event.
+    /// Timed events: `YYYY-MM-DDTHHMM__slug`
+    /// All-day events: `YYYY-MM-DD__slug`
+    /// Recurring events: `_recurring__slug`
+    pub fn base_slug(&self) -> String {
+        let slug = slugify(&self.event.summary);
+
+        if self.event.recurrence.is_some() {
+            return format!("_recurring__{}", slug);
+        }
+
+        let date = match &self.event.start {
+            EventTime::Date(d) => d.format("%Y-%m-%d").to_string(),
+            EventTime::DateTimeUtc(dt) => dt.format("%Y-%m-%dT%H%M").to_string(),
+            EventTime::DateTimeFloating(dt) => dt.format("%Y-%m-%dT%H%M").to_string(),
+            EventTime::DateTimeZoned { datetime, .. } => {
+                datetime.format("%Y-%m-%dT%H%M").to_string()
+            }
+        };
+
+        format!("{}__{}", date, slug)
     }
 }

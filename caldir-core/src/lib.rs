@@ -10,3 +10,4 @@ pub mod error;
 pub mod event;
 pub mod ics;
 pub mod remote;
+pub mod utils;
