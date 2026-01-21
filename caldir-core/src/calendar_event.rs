@@ -1,15 +1,15 @@
 //! Local event representation with file metadata.
 
+use crate::constants::DEFAULT_SYNC_DAYS;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Event;
 use crate::ics::parse_event;
-use crate::constants::DEFAULT_SYNC_DAYS;
 use chrono::{DateTime, Duration, Utc};
 use std::path::PathBuf;
 
 /// A local calendar event (stored as an ics file)
 #[derive(Debug, Clone)]
-pub struct LocalEvent {
+pub struct CalendarEvent {
     /// Path to the .ics file
     pub path: PathBuf,
     /// The event data
@@ -18,7 +18,7 @@ pub struct LocalEvent {
     pub modified: Option<DateTime<Utc>>,
 }
 
-impl LocalEvent {
+impl CalendarEvent {
     pub fn from_file(path: PathBuf) -> CalDirResult<Self> {
         let content = std::fs::read_to_string(&path)?;
 
@@ -32,7 +32,7 @@ impl LocalEvent {
             .and_then(|m| m.modified().ok())
             .map(DateTime::<Utc>::from);
 
-        Ok(LocalEvent {
+        Ok(CalendarEvent {
             path,
             event,
             modified,

@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::caldir::Caldir;
 use crate::calendar_config::CalendarConfig;
+use crate::calendar_event::CalendarEvent;
 use crate::calendar_state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::{Event, EventTime};
 use crate::ics::{generate_ics, parse_event};
-use crate::local_event::LocalEvent;
 use crate::remote::remote::Remote;
 use std::collections::HashSet;
 use std::fmt;
@@ -101,7 +101,7 @@ impl Calendar {
     }
 
     /// Load events from local directory
-    pub fn events(&self) -> CalDirResult<Vec<LocalEvent>> {
+    pub fn events(&self) -> CalDirResult<Vec<CalendarEvent>> {
         let data_path = self.dir()?;
 
         let entries = std::fs::read_dir(&data_path)?;
@@ -110,7 +110,7 @@ impl Calendar {
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
             .filter(|path| path.extension().is_some_and(|e| e == "ics"))
-            .filter_map(|path| LocalEvent::from_file(path).ok())
+            .filter_map(|path| CalendarEvent::from_file(path).ok())
             .collect();
 
         Ok(local_events)
