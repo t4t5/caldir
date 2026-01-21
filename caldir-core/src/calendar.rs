@@ -16,24 +16,29 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Calendar {
-    pub dir_name: String,
+    pub slug: String,
     pub config: CalendarConfig,
 }
 
 impl Calendar {
-    pub fn new(dir_name: &str) -> Self {
+    pub fn new(slug: &str) -> Self {
         Calendar {
-            dir_name: dir_name.to_string(),
+            slug: slug.to_string(),
             config: CalendarConfig::default(),
         }
     }
 
-    pub fn load(dir_name: &str) -> CalDirResult<Self> {
-        let calendar_dir = Self::dir_for(dir_name)?;
+    /// Generate a slug from a calendar name, or return a default
+    pub fn slug_for(name: Option<&str>) -> String {
+        name.map(slugify).unwrap_or_else(|| "calendar".to_string())
+    }
+
+    pub fn load(slug: &str) -> CalDirResult<Self> {
+        let calendar_dir = Self::dir_for(slug)?;
         let config = CalendarConfig::load(&calendar_dir)?;
 
         Ok(Calendar {
-            dir_name: dir_name.to_string(),
+            slug: slug.to_string(),
             config,
         })
     }
@@ -44,7 +49,7 @@ impl Calendar {
     }
 
     pub fn dir(&self) -> CalDirResult<PathBuf> {
-        Self::dir_for(&self.dir_name)
+        Self::dir_for(&self.slug)
     }
 
     // STATE + CONFIG:
@@ -111,7 +116,7 @@ impl Calendar {
 
 impl fmt::Display for Calendar {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.dir_name)
+        write!(f, "{}", self.slug)
     }
 }
 

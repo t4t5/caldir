@@ -53,12 +53,12 @@ impl Caldir {
             })
             .collect();
 
-        calendars.sort_by(|a, b| a.dir_name.cmp(&b.dir_name));
+        calendars.sort_by(|a, b| a.slug.cmp(&b.slug));
         calendars
     }
 
     pub fn default_calendar(&self) -> Option<Calendar> {
         let name = self.config.default_calendar.as_ref()?;
-        self.calendars().into_iter().find(|c| &c.dir_name == name)
+        self.calendars().into_iter().find(|c| &c.slug == name)
     }
 }

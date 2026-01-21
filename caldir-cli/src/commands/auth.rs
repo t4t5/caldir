@@ -1,5 +1,5 @@
 use anyhow::Result;
-use caldir_core::calendar::{slugify, Calendar};
+use caldir_core::calendar::Calendar;
 use caldir_core::remote::provider::Provider;
 
 pub async fn run(provider_name: &str) -> Result<()> {
@@ -25,20 +25,16 @@ pub async fn run(provider_name: &str) -> Result<()> {
 
     // Create local directories for each calendar
     for config in calendar_configs {
-        // Derive directory name from calendar name
-        let dir_name = config
-            .name
-            .as_ref()
-            .map(|n| slugify(n))
-            .unwrap_or_else(|| "calendar".to_string());
+        let slug = Calendar::slug_for(config.name.as_deref());
 
         let calendar = Calendar {
-            dir_name: dir_name.clone(),
+            slug: slug.clone(),
             config,
         };
+
         calendar.save_config()?;
 
-        println!("  {dir_name}/ (created)");
+        println!("  {slug}/ (created)");
     }
 
     println!("\nRun `caldir pull` to sync events.");
