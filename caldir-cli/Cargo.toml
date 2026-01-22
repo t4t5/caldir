@@ -37,3 +37,6 @@ url = "2"
 
 # Secure password prompting
 rpassword = "7"
+
+# Interactive prompts
+dialoguer = "0.11"

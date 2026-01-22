@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use caldir_core::calendar::Calendar;
 use caldir_core::remote::protocol::{AuthType, CredentialsData, FieldType, OAuthData};
 use caldir_core::remote::provider::Provider;
+use dialoguer::MultiSelect;
 use std::io::{self, Write};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
@@ -86,15 +87,37 @@ pub async fn run(provider_name: &str) -> Result<()> {
         return Ok(());
     }
 
-    println!("Found {} calendar(s):\n", calendar_configs.len());
+    println!("Found {} calendar(s).\n", calendar_configs.len());
 
-    // Create local directories for each calendar
-    for config in calendar_configs {
+    // Build selection items with calendar names
+    let items: Vec<String> = calendar_configs
+        .iter()
+        .map(|c| c.name.clone().unwrap_or_else(|| "Unnamed".to_string()))
+        .collect();
+
+    // Show multi-select (all selected by default)
+    let defaults: Vec<bool> = vec![true; items.len()];
+    let selections = MultiSelect::new()
+        .with_prompt("Select calendars to import (space to toggle, enter to confirm)")
+        .items(&items)
+        .defaults(&defaults)
+        .interact()?;
+
+    if selections.is_empty() {
+        println!("No calendars selected.");
+        return Ok(());
+    }
+
+    println!();
+
+    // Create only selected calendars
+    for idx in selections {
+        let config = &calendar_configs[idx];
         let slug = Calendar::unique_slug_for(config.name.as_deref())?;
 
         let calendar = Calendar {
             slug: slug.clone(),
-            config,
+            config: config.clone(),
         };
 
         calendar.save_config()?;
