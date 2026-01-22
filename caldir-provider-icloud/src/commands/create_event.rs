@@ -1,13 +1,15 @@
 //! Create a new event on iCloud Calendar.
 //!
-//! Uses CalDAV PUT to create a new .ics resource.
+//! Uses libdav PutResource to create a new .ics resource.
 
 use anyhow::{Context, Result};
 use caldir_core::event::Event;
 use caldir_core::ics::{generate_ics, parse_event};
 use caldir_core::remote::protocol::CreateEvent;
+use libdav::caldav::GetCalendarResources;
+use libdav::dav::{PutResource, mime_types};
 
-use crate::caldav::event_url;
+use crate::caldav::{create_caldav_client, event_url, url_to_href};
 use crate::remote_config::ICloudRemoteConfig;
 use crate::session::Session;
 
@@ -18,74 +20,52 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
 
     let session = Session::load(apple_id)?;
 
-    // Create event using blocking HTTP
-    let created_event = tokio::task::spawn_blocking({
-        let session = session.clone();
-        let calendar_url = calendar_url.clone();
-        let event = cmd.event.clone();
-        move || create_event_caldav(&session, &calendar_url, event)
-    })
-    .await
-    .context("Task join error")??;
+    let created_event = create_event_caldav(&session, calendar_url, cmd.event).await?;
 
     Ok(created_event)
 }
 
-/// Create event via CalDAV PUT.
-fn create_event_caldav(session: &Session, calendar_url: &str, event: Event) -> Result<Event> {
-    let client = reqwest::blocking::Client::new();
+/// Create event via CalDAV using libdav.
+async fn create_event_caldav(
+    session: &Session,
+    calendar_url: &str,
+    event: Event,
+) -> Result<Event> {
+    let (username, password) = session.credentials();
+
+    // Create CalDAV client
+    let caldav = create_caldav_client(calendar_url, username, password)?;
 
     // Generate ICS content
     let ics_content = generate_ics(&event)?;
 
-    // Build URL for the new event
-    let url = event_url(calendar_url, &event.id);
+    // Build href for the new event
+    let full_url = event_url(calendar_url, &event.id);
+    let href = url_to_href(&full_url);
 
-    let (username, password) = session.credentials();
-
-    let response = client
-        .put(&url)
-        .basic_auth(username, Some(password))
-        .header("Content-Type", "text/calendar; charset=utf-8")
-        .header("If-None-Match", "*") // Fail if resource already exists
-        .body(ics_content.clone())
-        .send()
+    // Create the resource using PUT with If-None-Match: * (fails if exists)
+    caldav
+        .request(PutResource::new(&href).create(&ics_content, mime_types::CALENDAR))
+        .await
         .context("Failed to create event")?;
 
-    let status = response.status();
-    if !status.is_success() && status.as_u16() != 201 {
-        let error_body = response.text().unwrap_or_default();
-        anyhow::bail!(
-            "Failed to create event (status {}): {}",
-            status,
-            error_body
-        );
-    }
-
     // Fetch the created event to get server-assigned values
-    // (Some CalDAV servers may modify the event)
-    let fetched_event = fetch_event(session, &url)?;
+    let calendar_href = url_to_href(calendar_url);
+    let get_response = caldav
+        .request(GetCalendarResources::new(&calendar_href).with_hrefs([&href]))
+        .await
+        .ok();
 
-    Ok(fetched_event.unwrap_or(event))
-}
-
-/// Fetch a single event by URL.
-fn fetch_event(session: &Session, url: &str) -> Result<Option<Event>> {
-    let client = reqwest::blocking::Client::new();
-    let (username, password) = session.credentials();
-
-    let response = client
-        .get(url)
-        .basic_auth(username, Some(password))
-        .header("Accept", "text/calendar")
-        .send()
-        .context("Failed to fetch created event")?;
-
-    if !response.status().is_success() {
-        return Ok(None);
+    // Try to parse the fetched event, fall back to original if fetch fails
+    if let Some(response) = get_response {
+        if let Some(resource) = response.resources.into_iter().next() {
+            if let Ok(content) = resource.content {
+                if let Some(fetched_event) = parse_event(&content.data) {
+                    return Ok(fetched_event);
+                }
+            }
+        }
     }
 
-    let ics_content = response.text().context("Failed to read event body")?;
-
-    Ok(parse_event(&ics_content))
+    Ok(event)
 }

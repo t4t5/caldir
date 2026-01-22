@@ -12,10 +12,19 @@ path = "src/main.rs"
 # Shared types
 caldir-core = { path = "../caldir-core" }
 
+# CalDAV client library
+libdav = "0.10"
+
+# HTTP client and tower service stack
+http = "1"
+hyper = { version = "1", features = ["http1", "client"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["ring", "http1", "native-tokio", "tls12", "rustls-native-certs"] }
+hyper-util = { version = "0.1", features = ["client", "client-legacy", "http1"] }
+tower-http = { version = "0.6", features = ["auth", "follow-redirect"] }
+tower = "0.5"
+
 # Async runtime
 tokio = { version = "1", features = ["full"] }
-
-# (CalDAV requests implemented directly using reqwest)
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -30,6 +39,3 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Platform-native config directories
 dirs = "6"
-
-# HTTP client for CalDAV
-reqwest = { version = "0.12", features = ["blocking"] }
