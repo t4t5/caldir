@@ -52,6 +52,19 @@ pub struct Event {
 
 impl PartialEq for Event {
     fn eq(&self, other: &Self) -> bool {
+        // Compare recurrence as sorted sets (order doesn't matter for RRULE/EXDATE)
+        let recurrence_eq = match (&self.recurrence, &other.recurrence) {
+            (Some(a), Some(b)) => {
+                let mut a_sorted = a.clone();
+                let mut b_sorted = b.clone();
+                a_sorted.sort();
+                b_sorted.sort();
+                a_sorted == b_sorted
+            }
+            (None, None) => true,
+            _ => false,
+        };
+
         self.id == other.id
             && self.summary == other.summary
             && self.description == other.description
@@ -59,7 +72,7 @@ impl PartialEq for Event {
             && self.start == other.start
             && self.end == other.end
             && self.status == other.status
-            && self.recurrence == other.recurrence
+            && recurrence_eq
             && self.original_start == other.original_start
             && self.reminders == other.reminders
             && self.transparency == other.transparency

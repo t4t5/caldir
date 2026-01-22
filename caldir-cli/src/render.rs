@@ -67,13 +67,19 @@ impl CalendarDiffRender for CalendarDiff {
             lines.push("   Local changes (to push):".dimmed().to_string());
             for diff in &self.to_push {
                 lines.push(format!("   {}", diff.render()));
+                lines.extend(render_field_diffs(diff).into_iter().map(|l| format!("      {}", l)));
             }
         }
 
         if !self.to_pull.is_empty() {
+            // Add spacing if we have both push and pull changes
+            if !self.to_push.is_empty() {
+                lines.push(String::new());
+            }
             lines.push("   Remote changes (to pull):".dimmed().to_string());
             for diff in &self.to_pull {
                 lines.push(format!("   {}", diff.render()));
+                lines.extend(render_field_diffs(diff).into_iter().map(|l| format!("      {}", l)));
             }
         }
 
@@ -103,4 +109,57 @@ impl CalendarDiffRender for CalendarDiff {
         }
         lines.join("\n")
     }
+}
+
+/// Render field-by-field differences for an EventDiff (only for updates)
+fn render_field_diffs(diff: &EventDiff) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    // Only show field diffs for updates
+    if let (Some(old), Some(new)) = (&diff.old, &diff.new) {
+        if old.id != new.id {
+            lines.push(format!("{}: {} → {}", "id".dimmed(), old.id.red(), new.id.green()));
+        }
+        if old.summary != new.summary {
+            lines.push(format!("{}: {} → {}", "summary".dimmed(), old.summary.red(), new.summary.green()));
+        }
+        if old.description != new.description {
+            lines.push(format!("{}: {:?} → {:?}", "description".dimmed(), old.description.as_ref().map(|s| s.red()), new.description.as_ref().map(|s| s.green())));
+        }
+        if old.location != new.location {
+            lines.push(format!("{}: {:?} → {:?}", "location".dimmed(), old.location.as_ref().map(|s| s.red()), new.location.as_ref().map(|s| s.green())));
+        }
+        if old.start != new.start {
+            lines.push(format!("{}: {} → {}", "start".dimmed(), old.start.to_string().red(), new.start.to_string().green()));
+        }
+        if old.end != new.end {
+            lines.push(format!("{}: {} → {}", "end".dimmed(), old.end.to_string().red(), new.end.to_string().green()));
+        }
+        if old.status != new.status {
+            lines.push(format!("{}: {:?} → {:?}", "status".dimmed(), old.status, new.status));
+        }
+        if old.recurrence != new.recurrence {
+            lines.push(format!("{}: {:?} → {:?}", "recurrence".dimmed(), old.recurrence, new.recurrence));
+        }
+        if old.original_start != new.original_start {
+            lines.push(format!("{}: {:?} → {:?}", "original_start".dimmed(), old.original_start, new.original_start));
+        }
+        if old.reminders != new.reminders {
+            lines.push(format!("{}: {:?} → {:?}", "reminders".dimmed(), old.reminders, new.reminders));
+        }
+        if old.transparency != new.transparency {
+            lines.push(format!("{}: {:?} → {:?}", "transparency".dimmed(), old.transparency, new.transparency));
+        }
+        if old.organizer != new.organizer {
+            lines.push(format!("{}: {:?} → {:?}", "organizer".dimmed(), old.organizer, new.organizer));
+        }
+        if old.attendees != new.attendees {
+            lines.push(format!("{}: {:?} → {:?}", "attendees".dimmed(), old.attendees, new.attendees));
+        }
+        if old.conference_url != new.conference_url {
+            lines.push(format!("{}: {:?} → {:?}", "conference_url".dimmed(), old.conference_url, new.conference_url));
+        }
+    }
+
+    lines
 }
