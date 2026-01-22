@@ -1,3 +1,3 @@
 [workspace]
-members = ["caldir-cli", "caldir-core", "caldir-provider-google"]
+members = ["caldir-cli", "caldir-core", "caldir-provider-google", "caldir-provider-icloud"]
 resolver = "3"

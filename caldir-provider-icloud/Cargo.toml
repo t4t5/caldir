@@ -1,0 +1,35 @@
+[package]
+name = "caldir-provider-icloud"
+version = "0.1.0"
+edition = "2024"
+description = "iCloud Calendar provider for caldir-cli"
+
+[[bin]]
+name = "caldir-provider-icloud"
+path = "src/main.rs"
+
+[dependencies]
+# Shared types
+caldir-core = { path = "../caldir-core" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# (CalDAV requests implemented directly using reqwest)
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+
+# Error handling
+anyhow = "1"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Platform-native config directories
+dirs = "6"
+
+# HTTP client for CalDAV
+reqwest = { version = "0.12", features = ["blocking"] }

@@ -31,6 +31,7 @@ test:
 # Install provider binary to PATH
 install-provider:
   cargo install --path caldir-provider-google
+  cargo install --path caldir-provider-icloud
 
 # Build and install everything
 install: install-provider

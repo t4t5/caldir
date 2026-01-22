@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use caldir_core::calendar::Calendar;
-use caldir_core::remote::protocol::{AuthType, OAuthData};
+use caldir_core::remote::protocol::{AuthType, CredentialsData, FieldType, OAuthData};
 use caldir_core::remote::provider::Provider;
+use std::io::{self, Write};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
@@ -49,8 +50,28 @@ pub async fn run(provider_name: &str) -> Result<()> {
             provider.auth_submit(credentials).await?
         }
         AuthType::Credentials => {
-            // Future: prompt for each field
-            anyhow::bail!("Credentials-based auth not yet implemented in CLI");
+            let creds_data: CredentialsData = serde_json::from_value(auth_info.data)
+                .context("Failed to parse credentials data from provider")?;
+
+            let mut credentials = serde_json::Map::new();
+
+            for field in &creds_data.fields {
+                // Show help text if available
+                if let Some(ref help) = field.help {
+                    println!("{}", help);
+                }
+
+                let value = match field.field_type {
+                    FieldType::Password => prompt_password(&field.label)?,
+                    _ => prompt_text(&field.label)?,
+                };
+
+                credentials.insert(field.id.clone(), value.into());
+            }
+
+            println!("\nValidating credentials...");
+
+            provider.auth_submit(credentials).await?
         }
     };
 
@@ -142,4 +163,21 @@ async fn wait_for_callback(port: u16) -> Result<(String, String)> {
     stream.flush().await?;
 
     Ok((code, state))
+}
+
+/// Prompt the user for text input.
+fn prompt_text(label: &str) -> Result<String> {
+    print!("{}: ", label);
+    io::stdout().flush()?;
+
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+
+    Ok(input.trim().to_string())
+}
+
+/// Prompt the user for password input (hidden).
+fn prompt_password(label: &str) -> Result<String> {
+    let prompt = format!("{}: ", label);
+    rpassword::prompt_password(&prompt).context("Failed to read password")
 }

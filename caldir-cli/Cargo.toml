@@ -34,3 +34,6 @@ open = "5"
 
 # URL parsing
 url = "2"
+
+# Secure password prompting
+rpassword = "7"
