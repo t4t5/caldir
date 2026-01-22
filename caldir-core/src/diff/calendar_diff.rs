@@ -111,8 +111,9 @@ impl CalendarDiff {
             if known_uids.contains(uid) {
                 // Was synced before, now gone from remote → delete locally
                 // But only if in sync range (old events weren't fetched, so we can't know)
-                if local.is_in_sync_range() {
-                    if let Some(diff) = EventDiff::get_diff(Some(local.event.clone()), None) {
+                #[allow(clippy::collapsible_if)]
+                if let Some(diff) = EventDiff::get_diff(Some(local.event.clone()), None) {
+                    if local.is_in_sync_range() {
                         to_pull.push(diff);
                     }
                 }
