@@ -176,9 +176,11 @@ dependencies = [
  "chrono",
  "clap",
  "indicatif",
+ "open",
  "owo-colors",
  "serde_json",
  "tokio",
+ "url",
 ]
 
 [[package]]

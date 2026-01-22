@@ -13,12 +13,62 @@ pub trait ProviderCommand: Serialize {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Command {
-    Authenticate,
+    AuthInit,
+    AuthSubmit,
     ListCalendars,
     ListEvents,
     CreateEvent,
     UpdateEvent,
     DeleteEvent,
+}
+
+// ============================================================================
+// Auth Types
+// ============================================================================
+
+/// The type of authentication the provider requires.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthType {
+    /// OAuth 2.0 redirect flow (Google, Microsoft)
+    OAuthRedirect,
+    /// Form-based credentials (iCloud app password, CalDAV)
+    Credentials,
+}
+
+/// OAuth-specific init response data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OAuthData {
+    pub authorization_url: String,
+    pub state: String,
+    pub scopes: Vec<String>,
+}
+
+/// Credentials-specific init response data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CredentialsData {
+    pub fields: Vec<CredentialField>,
+}
+
+/// A field required for credentials-based authentication.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CredentialField {
+    pub id: String,
+    pub label: String,
+    pub field_type: FieldType,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub help: Option<String>,
+}
+
+/// The type of input field for credentials.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FieldType {
+    Text,
+    Password,
+    Url,
 }
 
 /// Request sent from CLI to provider.
@@ -52,14 +102,43 @@ impl Response<()> {
     }
 }
 
-/// Authenticate with a provider and return the account identifier.
+/// Request to initialize authentication.
+/// Provider returns what auth method it needs and any required data.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Authenticate {}
+pub struct AuthInit {
+    /// For OAuth flows: the redirect URI the caller will listen on.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redirect_uri: Option<String>,
+}
 
-impl ProviderCommand for Authenticate {
+/// Response from auth initialization - varies by auth type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthInitResponse {
+    pub auth_type: AuthType,
+    /// Type-specific data (OAuthData or CredentialsData as JSON).
+    #[serde(flatten)]
+    pub data: serde_json::Value,
+}
+
+impl ProviderCommand for AuthInit {
+    type Response = AuthInitResponse;
+    fn command() -> Command {
+        Command::AuthInit
+    }
+}
+
+/// Submit gathered credentials to complete authentication.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AuthSubmit {
+    /// Gathered credentials - structure depends on auth_type.
+    #[serde(flatten)]
+    pub credentials: serde_json::Map<String, serde_json::Value>,
+}
+
+impl ProviderCommand for AuthSubmit {
     type Response = String; // Account identifier (e.g., email)
     fn command() -> Command {
-        Command::Authenticate
+        Command::AuthSubmit
     }
 }
 

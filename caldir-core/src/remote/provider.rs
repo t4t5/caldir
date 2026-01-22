@@ -11,7 +11,7 @@
 
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::protocol::{
-    Authenticate, Command, ProviderCommand, Request, Response,
+    AuthInit, AuthInitResponse, AuthSubmit, Command, ProviderCommand, Request, Response,
 };
 use crate::remote::provider_account::ProviderAccount;
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,8 @@ use tokio::process::Command as TokioCommand;
 use tokio::time::timeout;
 
 const PROVIDER_TIMEOUT: Duration = Duration::from_secs(10);
+/// No timeout for auth commands since they involve user interaction.
+const AUTH_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Provider(String);
@@ -45,8 +47,17 @@ impl Provider {
         Ok(binary_path)
     }
 
-    pub async fn authenticate(&self) -> CalDirResult<ProviderAccount> {
-        let identifier = self.call(Authenticate {}).await?;
+    /// Initialize authentication - provider returns what auth method it needs.
+    pub async fn auth_init(&self, redirect_uri: Option<String>) -> CalDirResult<AuthInitResponse> {
+        self.call_no_timeout(AuthInit { redirect_uri }).await
+    }
+
+    /// Submit gathered credentials to complete authentication.
+    pub async fn auth_submit(
+        &self,
+        credentials: serde_json::Map<String, serde_json::Value>,
+    ) -> CalDirResult<ProviderAccount> {
+        let identifier = self.call_no_timeout(AuthSubmit { credentials }).await?;
         Ok(ProviderAccount::new(self.clone(), identifier))
     }
 
@@ -58,6 +69,13 @@ impl Provider {
         timeout(PROVIDER_TIMEOUT, self.call_raw(C::command(), cmd))
             .await
             .map_err(|_| CalDirError::ProviderTimeout(PROVIDER_TIMEOUT.as_secs()))?
+    }
+
+    /// Call a typed provider command without timeout (for auth commands that involve user interaction).
+    pub async fn call_no_timeout<C: ProviderCommand>(&self, cmd: C) -> CalDirResult<C::Response> {
+        timeout(AUTH_TIMEOUT, self.call_raw(C::command(), cmd))
+            .await
+            .map_err(|_| CalDirError::ProviderTimeout(AUTH_TIMEOUT.as_secs()))?
     }
 
     /// Low-level call that sends a command with params and deserializes the response.

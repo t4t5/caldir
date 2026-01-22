@@ -28,3 +28,9 @@ owo-colors = "4"
 
 # Terminal spinners
 indicatif = "0.17"
+
+# Open URLs in browser
+open = "5"
+
+# URL parsing
+url = "2"

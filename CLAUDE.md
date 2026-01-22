@@ -133,7 +133,7 @@ caldir-core/                   # Core library (used by CLI and future GUI apps)
     error.rs            - CalDirError enum, CalDirResult type alias
     constants.rs        - DEFAULT_SYNC_DAYS
     event.rs            - Provider-neutral event types (Event, Attendee, Reminder, etc.)
-    protocol.rs         - CLI-provider communication protocol (Command enum, Request/Response)
+    protocol.rs         - CLI-provider communication protocol (Command enum, Request/Response, auth types)
     provider.rs         - Provider subprocess protocol (JSON over stdin/stdout)
     provider_account.rs - ProviderAccount (provider + account identifier for listing calendars)
     remote.rs           - Remote, RemoteConfig (remote calendar operations)
@@ -176,7 +176,7 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
     main.rs        - JSON protocol handler (reads stdin, writes stdout)
     app_config.rs  - OAuth credentials (~/.config/caldir/providers/google/app_config.toml)
     session.rs     - Token storage and refresh (~/.config/caldir/providers/google/session/)
-    commands/      - Command handlers (authenticate, list_calendars, list_events, etc.)
+    commands/      - Command handlers (auth_init, auth_submit, list_calendars, list_events, etc.)
     google_event/  - Conversion between Google API types and caldir_core types
 ```
 
@@ -190,7 +190,12 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
 
 **CalendarDiff** — Bidirectional diff for a single calendar (`caldir_core::diff::CalendarDiff`). Created via `CalendarDiff::from_calendar(&cal).await`. Contains `to_push` and `to_pull` vectors of `EventDiff`. Call `apply_push().await` or `apply_pull()` to sync changes.
 
-**Provider** — Provider subprocess protocol (`caldir_core::remote::provider::remote::provider`). Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `authenticate`, `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event`.
+**Provider** — Provider subprocess protocol (`caldir_core::remote::provider::remote::provider`). Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `auth_init`, `auth_submit`, `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event`.
+
+The two-phase auth protocol (`auth_init` + `auth_submit`) decouples auth UI from the provider:
+- `auth_init` returns auth requirements (OAuth URL + state for OAuth providers, or form fields for credential-based providers like iCloud/CalDAV)
+- The caller handles UI (CLI opens browser + TCP listener; GUI could use webview or native form)
+- `auth_submit` receives gathered credentials and completes authentication
 
 **ProviderAccount** — Combines a Provider with an account identifier (`caldir_core::remote::provider_account::remote::providerAccount`). Used to list all calendars for a specific authenticated account via `list_calendars()`.
 
