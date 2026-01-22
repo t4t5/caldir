@@ -251,6 +251,7 @@ dependencies = [
  "hyper-rustls 0.27.7",
  "hyper-util",
  "libdav",
+ "roxmltree",
  "serde",
  "serde_json",
  "tokio",

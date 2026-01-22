@@ -34,6 +34,9 @@ toml = "0.9"
 # Error handling
 anyhow = "1"
 
+# XML parsing
+roxmltree = "0.21"
+
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
