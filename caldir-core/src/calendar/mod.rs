@@ -124,7 +124,7 @@ impl Calendar {
         std::fs::create_dir_all(&dir)?;
 
         let event_slug = CalendarEvent::unique_slug_for(event, self)?;
-        let event_path = dir.join(event_slug);
+        let event_path = dir.join(format!("{}.ics", event_slug));
         let calendar_event = CalendarEvent::new(event_path, event);
 
         calendar_event.save()

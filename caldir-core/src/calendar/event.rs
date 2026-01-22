@@ -84,15 +84,15 @@ impl CalendarEvent {
         let data_path = calendar.path()?;
         let base = Self::base_slug_for(event);
 
-        // Try base slug first
-        if !data_path.join(&base).exists() {
+        // Try base slug first (check with .ics extension)
+        if !data_path.join(format!("{}.ics", base)).exists() {
             return Ok(base);
         }
 
         // Collision - try suffixes
         for n in 2..=100 {
             let suffixed = format!("{}-{}", base, n);
-            if !data_path.join(&suffixed).exists() {
+            if !data_path.join(format!("{}.ics", suffixed)).exists() {
                 return Ok(suffixed);
             }
         }
