@@ -19,14 +19,14 @@ impl CalendarState {
         CalendarState { calendar }
     }
 
-    fn state_dir(&self) -> CalDirResult<std::path::PathBuf> {
-        let dir = self.calendar.dir()?;
+    fn path(&self) -> CalDirResult<std::path::PathBuf> {
+        let dir = self.calendar.path()?;
         Ok(dir.join(".caldir/state"))
     }
 
     // Read .caldir/state/known_uids
     fn known_uids(&self) -> Vec<String> {
-        let state_dir = match self.state_dir() {
+        let state_dir = match self.path() {
             Ok(dir) => dir,
             Err(_) => return vec![],
         };
@@ -53,11 +53,11 @@ impl CalendarState {
     }
 
     pub fn save(&self, uids: &HashSet<String>) -> CalDirResult<()> {
-        let dir = self.state_dir()?;
-        std::fs::create_dir_all(&dir)?;
+        let state_dir = self.path()?;
+        std::fs::create_dir_all(&state_dir)?;
 
-        let path = dir.join(KNOWN_UIDS_FILE);
-        let temp = dir.join(KNOWN_UIDS_FILE.to_string() + ".tmp");
+        let path = state_dir.join(KNOWN_UIDS_FILE);
+        let temp = state_dir.join(KNOWN_UIDS_FILE.to_string() + ".tmp");
 
         // Sort for deterministic output
         let mut sorted: Vec<_> = uids.iter().map(|s| s.as_str()).collect();

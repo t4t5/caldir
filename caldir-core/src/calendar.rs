@@ -8,7 +8,6 @@ use crate::calendar_event::CalendarEvent;
 use crate::calendar_state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Event;
-use crate::ics::generate_ics;
 use crate::remote::remote::Remote;
 use crate::utils::slugify;
 use std::collections::HashSet;
@@ -60,7 +59,7 @@ impl Calendar {
     }
 
     pub fn load(slug: &str) -> CalDirResult<Self> {
-        let calendar_dir = Self::dir_for(slug)?;
+        let calendar_dir = Self::path_for(slug)?;
         let config = CalendarConfig::load(&calendar_dir)?;
 
         Ok(Calendar {
@@ -69,13 +68,13 @@ impl Calendar {
         })
     }
 
-    pub fn dir_for(calendar_name: &str) -> CalDirResult<PathBuf> {
+    pub fn path_for(slug: &str) -> CalDirResult<PathBuf> {
         let caldir = Caldir::load()?;
-        Ok(caldir.data_path().join(calendar_name))
+        Ok(caldir.data_path().join(slug))
     }
 
-    pub fn dir(&self) -> CalDirResult<PathBuf> {
-        Self::dir_for(&self.slug)
+    pub fn path(&self) -> CalDirResult<PathBuf> {
+        Self::path_for(&self.slug)
     }
 
     // STATE + CONFIG:
@@ -90,7 +89,7 @@ impl Calendar {
     }
 
     pub fn save_config(&self) -> CalDirResult<()> {
-        self.config.save(&self.dir()?)
+        self.config.save(&self.path()?)
     }
 
     // EVENTS OPERATIONS:
@@ -102,7 +101,7 @@ impl Calendar {
 
     /// Load events from local directory
     pub fn events(&self) -> CalDirResult<Vec<CalendarEvent>> {
-        let data_path = self.dir()?;
+        let data_path = self.path()?;
 
         let entries = std::fs::read_dir(&data_path)?;
 
@@ -117,16 +116,14 @@ impl Calendar {
     }
 
     pub fn create_event(&self, event: &Event) -> CalDirResult<()> {
-        let dir = self.dir()?;
+        let dir = self.path()?;
         std::fs::create_dir_all(&dir)?;
 
-        let content = generate_ics(event)?;
+        let event_slug = CalendarEvent::unique_slug_for(event, self)?;
+        let event_path = dir.join(event_slug);
+        let calendar_event = CalendarEvent::new(event_path, event);
 
-        // TODO: This should create a LocalEvent and save it:
-        let filename = filename_for(event, &dir)?;
-
-        std::fs::write(dir.join(filename), content)?;
-        Ok(())
+        calendar_event.save()
     }
 
     pub fn update_event(&self, event_id: &str, event: &Event) -> CalDirResult<()> {
