@@ -1,4 +1,4 @@
-use crate::calendar_config::CalendarConfig;
+use crate::calendar::config::CalendarConfig;
 use crate::error::CalDirResult;
 use crate::remote::protocol::ListCalendars;
 use crate::remote::provider::Provider;

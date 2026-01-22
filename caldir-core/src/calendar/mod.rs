@@ -1,11 +1,15 @@
 //! Calendar directory management.
 
+pub mod config;
+mod event;
+mod state;
+
 use serde::{Deserialize, Serialize};
 
 use crate::caldir::Caldir;
-use crate::calendar_config::CalendarConfig;
-use crate::calendar_event::CalendarEvent;
-use crate::calendar_state::CalendarState;
+use crate::calendar::config::CalendarConfig;
+use crate::calendar::event::CalendarEvent;
+use crate::calendar::state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Event;
 use crate::remote::Remote;
