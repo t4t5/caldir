@@ -12,12 +12,9 @@ use std::path::PathBuf;
 /// A local calendar event (stored as an ics file)
 #[derive(Debug, Clone)]
 pub struct CalendarEvent {
-    /// Path to the .ics file
-    pub path: PathBuf,
-    /// The event data
     pub event: Event,
-    /// File modification time (used for sync direction detection)
-    pub modified: Option<DateTime<Utc>>,
+    pub path: PathBuf,                   // Path to the .ics file
+    pub modified: Option<DateTime<Utc>>, // File modification time (used for sync direction detection)
 }
 
 impl CalendarEvent {
@@ -49,6 +46,7 @@ impl CalendarEvent {
         })
     }
 
+    // TODO: When saving, verify that base slug still matches. Otherwise rename file
     pub fn save(&self) -> CalDirResult<()> {
         let ics_content = crate::ics::generate_ics(&self.event)?;
         std::fs::write(&self.path, ics_content)?;
@@ -84,7 +82,7 @@ impl CalendarEvent {
 
     pub fn unique_slug_for(event: &Event, calendar: &Calendar) -> CalDirResult<String> {
         let data_path = calendar.path()?;
-        let base = Self::base_slug_for(&event);
+        let base = Self::base_slug_for(event);
 
         // Try base slug first
         if !data_path.join(&base).exists() {
