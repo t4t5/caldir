@@ -4,6 +4,7 @@ mod utils;
 
 use anyhow::Result;
 use caldir_core::caldir::Caldir;
+use caldir_core::calendar::Calendar;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -19,9 +20,21 @@ enum Commands {
     Auth {
         provider: String, // e.g. "google"
     },
-    Status,
-    Pull,
-    Push,
+    Status {
+        /// Only operate on this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+    },
+    Pull {
+        /// Only operate on this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+    },
+    Push {
+        /// Only operate on this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+    },
     New {
         title: String,
 
@@ -37,17 +50,20 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Auth { provider } => commands::auth::run(&provider).await,
-        Commands::Status => {
+        Commands::Status { calendar } => {
             require_calendars()?;
-            commands::status::run().await
+            let calendars = resolve_calendars(calendar.as_deref())?;
+            commands::status::run(calendars).await
         }
-        Commands::Pull => {
+        Commands::Pull { calendar } => {
             require_calendars()?;
-            commands::pull::run().await
+            let calendars = resolve_calendars(calendar.as_deref())?;
+            commands::pull::run(calendars).await
         }
-        Commands::Push => {
+        Commands::Push { calendar } => {
             require_calendars()?;
-            commands::push::run().await
+            let calendars = resolve_calendars(calendar.as_deref())?;
+            commands::push::run(calendars).await
         }
         Commands::New { title, start } => {
             require_calendars()?;
@@ -70,4 +86,24 @@ fn require_calendars() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn resolve_calendars(calendar_filter: Option<&str>) -> Result<Vec<Calendar>> {
+    let caldir = Caldir::load()?;
+    let all_calendars = caldir.calendars();
+
+    match calendar_filter {
+        Some(slug) => match all_calendars.into_iter().find(|c| c.slug == slug) {
+            Some(cal) => Ok(vec![cal]),
+            None => {
+                let available: Vec<_> = caldir.calendars().iter().map(|c| c.slug.clone()).collect();
+                anyhow::bail!(
+                    "Calendar '{}' not found. Available: {}",
+                    slug,
+                    available.join(", ")
+                );
+            }
+        },
+        None => Ok(all_calendars),
+    }
 }

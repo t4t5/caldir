@@ -1,14 +1,12 @@
 use anyhow::Result;
-use caldir_core::caldir::Caldir;
+use caldir_core::calendar::Calendar;
 use caldir_core::diff::CalendarDiff;
 use owo_colors::OwoColorize;
 
 use crate::render::{CalendarDiffRender, Render};
 use crate::utils::tui;
 
-pub async fn run() -> Result<()> {
-    let caldir = Caldir::load()?;
-    let calendars = caldir.calendars();
+pub async fn run(calendars: Vec<Calendar>) -> Result<()> {
 
     for (i, cal) in calendars.iter().enumerate() {
         let spinner = tui::create_spinner(cal.render());
