@@ -8,7 +8,7 @@ use crate::calendar_event::CalendarEvent;
 use crate::calendar_state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Event;
-use crate::remote::remote::Remote;
+use crate::remote::Remote;
 use crate::utils::slugify;
 use std::collections::HashSet;
 use std::fmt;

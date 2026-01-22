@@ -5,7 +5,7 @@
 
 use anyhow::{Context, Result};
 use caldir_core::calendar_config::CalendarConfig;
-use caldir_core::remote::{protocol::ListCalendars, provider::Provider, remote::Remote};
+use caldir_core::remote::{Remote, protocol::ListCalendars, provider::Provider};
 use google_calendar::types::MinAccessRole;
 
 use crate::remote_config::GoogleRemoteConfig;

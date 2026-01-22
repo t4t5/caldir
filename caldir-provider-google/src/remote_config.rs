@@ -4,7 +4,7 @@
 //! caldir-core remains provider-agnostic with its generic RemoteConfig.
 
 use anyhow::Result;
-use caldir_core::remote::remote::RemoteConfig;
+use caldir_core::remote::RemoteConfig;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
