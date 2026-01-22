@@ -4,8 +4,8 @@ use crate::event::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
 };
 use icalendar::{
-    parser::{read_calendar, unfold, Property},
     DatePerhapsTime,
+    parser::{Property, read_calendar, unfold},
 };
 
 /// Parse ICS content into an Event struct
@@ -201,15 +201,8 @@ fn parse_trigger_minutes(value: &str) -> Option<i64> {
 mod tests {
     use super::*;
     use crate::event::ParticipationStatus;
-    use crate::ics::{generate_ics, CalendarMetadata};
+    use crate::ics::generate_ics;
     use chrono::{TimeZone, Utc};
-
-    fn make_test_metadata() -> CalendarMetadata {
-        CalendarMetadata {
-            calendar_id: "test@example.com".to_string(),
-            calendar_name: "Test Calendar".to_string(),
-        }
-    }
 
     #[test]
     fn test_parse_and_generate_roundtrip_multiple_attendees() {
@@ -244,7 +237,7 @@ mod tests {
             custom_properties: vec![],
         };
 
-        let ics = generate_ics(&event, &make_test_metadata()).unwrap();
+        let ics = generate_ics(&event).unwrap();
         let parsed = parse_event(&ics).expect("Should parse generated ICS");
 
         assert_eq!(
