@@ -59,9 +59,27 @@ pub fn generate_ics(event: &Event) -> CalDirResult<String> {
     // Recurrence rules (for master events)
     if let Some(ref recurrence) = event.recurrence {
         for rule in recurrence {
-            // Each rule is like "RRULE:FREQ=WEEKLY;BYDAY=MO" or "EXDATE:20250320"
-            if let Some((key, value)) = rule.split_once(':') {
-                ics_event.add_property(key, value);
+            // Each rule is like "RRULE:FREQ=WEEKLY;BYDAY=MO" or "EXDATE;TZID=America/New_York:20250320"
+            if let Some((key_with_params, value)) = rule.split_once(':') {
+                // Check if this is an EXDATE (can have multiple properties with same name)
+                if key_with_params.starts_with("EXDATE") {
+                    // Parse parameters (e.g., "TZID=America/New_York" from "EXDATE;TZID=America/New_York")
+                    let params_str = key_with_params.strip_prefix("EXDATE").unwrap_or("");
+                    let params_str = params_str.strip_prefix(';').unwrap_or(params_str);
+
+                    let mut prop = Property::new("EXDATE", value);
+                    if !params_str.is_empty() {
+                        for param in params_str.split(';') {
+                            if let Some((param_key, param_value)) = param.split_once('=') {
+                                prop.add_parameter(param_key, param_value);
+                            }
+                        }
+                    }
+                    ics_event.append_multi_property(prop);
+                } else {
+                    // RRULE and other single-value properties
+                    ics_event.add_property(key_with_params, value);
+                }
             }
         }
     }

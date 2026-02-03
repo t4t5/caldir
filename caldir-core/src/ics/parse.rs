@@ -296,4 +296,81 @@ END:VCALENDAR";
             "Line folding should preserve the space before 'world'"
         );
     }
+
+    #[test]
+    fn test_exdate_roundtrip_preserves_tzid() {
+        let ics = r#"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:TEST
+BEGIN:VEVENT
+UID:test-123
+SUMMARY:Recurring Event
+DTSTART:20240101T100000Z
+DTEND:20240101T110000Z
+RRULE:FREQ=WEEKLY;BYDAY=MO
+EXDATE;TZID=America/New_York:20240108T100000,20240115T100000
+END:VEVENT
+END:VCALENDAR"#;
+
+        let event = parse_event(ics).expect("Should parse");
+        let generated = generate_ics(&event).expect("Should generate");
+
+        println!("Generated ICS:\n{}", generated);
+
+        let reparsed = parse_event(&generated).expect("Should reparse");
+
+        // Check that EXDATE with TZID is preserved through round-trip
+        let recurrence = reparsed.recurrence.expect("Should have recurrence");
+        assert!(
+            recurrence.iter().any(|r| r.contains("EXDATE") && r.contains("TZID=America/New_York")),
+            "Should preserve EXDATE with TZID parameter after round-trip. Got: {:?}",
+            recurrence
+        );
+    }
+
+    #[test]
+    fn test_multiple_exdate_properties_roundtrip() {
+        // Test with multiple separate EXDATE properties
+        let ics = r#"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:TEST
+BEGIN:VEVENT
+UID:test-123
+SUMMARY:Recurring Event
+DTSTART:20240101T100000Z
+DTEND:20240101T110000Z
+RRULE:FREQ=WEEKLY;BYDAY=MO
+EXDATE;TZID=America/New_York:20240108T100000
+EXDATE;TZID=America/New_York:20240115T100000
+END:VEVENT
+END:VCALENDAR"#;
+
+        let event = parse_event(ics).expect("Should parse");
+        println!("Parsed recurrence: {:?}", event.recurrence);
+
+        let generated = generate_ics(&event).expect("Should generate");
+        println!("Generated ICS:\n{}", generated);
+
+        let reparsed = parse_event(&generated).expect("Should reparse");
+        println!("Reparsed recurrence: {:?}", reparsed.recurrence);
+
+        // Check that BOTH EXDATEs are preserved as separate properties
+        let recurrence = reparsed.recurrence.expect("Should have recurrence");
+        let exdate_count = recurrence.iter().filter(|r| r.contains("EXDATE")).count();
+        assert_eq!(
+            exdate_count, 2,
+            "Should preserve both EXDATE properties. Got: {:?}",
+            recurrence
+        );
+
+        // Check that both dates are present
+        assert!(
+            recurrence.iter().any(|r| r.contains("20240108T100000")),
+            "Should have first EXDATE date"
+        );
+        assert!(
+            recurrence.iter().any(|r| r.contains("20240115T100000")),
+            "Should have second EXDATE date"
+        );
+    }
 }

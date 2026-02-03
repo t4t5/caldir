@@ -20,7 +20,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command as TokioCommand;
 use tokio::time::timeout;
 
-const PROVIDER_TIMEOUT: Duration = Duration::from_secs(10);
+const PROVIDER_TIMEOUT: Duration = Duration::from_secs(15);
 /// No timeout for auth commands since they involve user interaction.
 const AUTH_TIMEOUT: Duration = Duration::from_secs(300);
 
@@ -84,8 +84,8 @@ impl Provider {
         command: Command,
         params: P,
     ) -> CalDirResult<R> {
-        let params = serde_json::to_value(params)
-            .map_err(|e| CalDirError::Serialization(e.to_string()))?;
+        let params =
+            serde_json::to_value(params).map_err(|e| CalDirError::Serialization(e.to_string()))?;
         let request = Request { command, params };
         let request_json = serde_json::to_string(&request)
             .map_err(|e| CalDirError::Serialization(e.to_string()))?;

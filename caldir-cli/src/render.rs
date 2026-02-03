@@ -57,7 +57,8 @@ fn render_diff_list(diffs: &[EventDiff], verbose: bool, lines: &mut Vec<String>)
         // Full view: show each event
         for diff in diffs {
             lines.push(format!("   {}", diff.render()));
-            if verbose {
+            // Always show field diffs for updates when in full view
+            if diff.kind == DiffKind::Update {
                 lines.extend(render_field_diffs(diff).into_iter().map(|l| format!("      {}", l)));
             }
         }
@@ -156,10 +157,10 @@ fn render_field_diffs(diff: &EventDiff) -> Vec<String> {
             lines.push(format!("{}: {} → {}", "summary".dimmed(), old.summary.red(), new.summary.green()));
         }
         if old.description != new.description {
-            lines.push(format!("{}: {:?} → {:?}", "description".dimmed(), old.description.as_ref().map(|s| s.red()), new.description.as_ref().map(|s| s.green())));
+            lines.push(render_optional_diff("description", &old.description, &new.description));
         }
         if old.location != new.location {
-            lines.push(format!("{}: {:?} → {:?}", "location".dimmed(), old.location.as_ref().map(|s| s.red()), new.location.as_ref().map(|s| s.green())));
+            lines.push(render_optional_diff("location", &old.location, &new.location));
         }
         if old.start != new.start {
             lines.push(format!("{}: {} → {}", "start".dimmed(), old.start.to_string().red(), new.start.to_string().green()));
@@ -171,7 +172,7 @@ fn render_field_diffs(diff: &EventDiff) -> Vec<String> {
             lines.push(format!("{}: {:?} → {:?}", "status".dimmed(), old.status, new.status));
         }
         if old.recurrence != new.recurrence {
-            lines.push(format!("{}: {:?} → {:?}", "recurrence".dimmed(), old.recurrence, new.recurrence));
+            lines.extend(render_recurrence_diff(&old.recurrence, &new.recurrence));
         }
         if old.original_start != new.original_start {
             lines.push(format!("{}: {:?} → {:?}", "original_start".dimmed(), old.original_start, new.original_start));
@@ -189,8 +190,37 @@ fn render_field_diffs(diff: &EventDiff) -> Vec<String> {
             lines.push(format!("{}: {:?} → {:?}", "attendees".dimmed(), old.attendees, new.attendees));
         }
         if old.conference_url != new.conference_url {
-            lines.push(format!("{}: {:?} → {:?}", "conference_url".dimmed(), old.conference_url, new.conference_url));
+            lines.push(render_optional_diff("conference_url", &old.conference_url, &new.conference_url));
         }
+    }
+
+    lines
+}
+
+/// Render an optional string field diff
+fn render_optional_diff(field: &str, old: &Option<String>, new: &Option<String>) -> String {
+    let old_str = old.as_deref().unwrap_or("(none)");
+    let new_str = new.as_deref().unwrap_or("(none)");
+    format!("{}: {} → {}", field.dimmed(), old_str.red(), new_str.green())
+}
+
+/// Render recurrence diff showing added/removed rules
+fn render_recurrence_diff(old: &Option<Vec<String>>, new: &Option<Vec<String>>) -> Vec<String> {
+    use std::collections::HashSet;
+
+    let old_set: HashSet<_> = old.as_ref().map(|v| v.iter().collect()).unwrap_or_default();
+    let new_set: HashSet<_> = new.as_ref().map(|v| v.iter().collect()).unwrap_or_default();
+
+    let mut lines = Vec::new();
+
+    // Show removed rules
+    for rule in old_set.difference(&new_set) {
+        lines.push(format!("{} {}", "-".red(), rule.red()));
+    }
+
+    // Show added rules
+    for rule in new_set.difference(&old_set) {
+        lines.push(format!("{} {}", "+".green(), rule.green()));
     }
 
     lines

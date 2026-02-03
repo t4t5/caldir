@@ -315,45 +315,45 @@ Supports multiple accounts — run auth multiple times with different Google acc
 
 ```bash
 # Authenticate with Google Calendar (auto-creates calendar directories)
-caldir-cli auth google
+caldir auth google
 
 # Create a new local event (uses default_calendar from config)
-caldir-cli new "Meeting with Alice" --start 2025-03-20T15:00
-caldir-cli new "Team standup" --start 2025-03-20T09:00 --duration 30m
-caldir-cli new "Vacation" --start 2025-03-25 --end 2025-03-28  # all-day event
+caldir new "Meeting with Alice" --start 2025-03-20T15:00
+caldir new "Team standup" --start 2025-03-20T09:00 --duration 30m
+caldir new "Vacation" --start 2025-03-25 --end 2025-03-28  # all-day event
 
 # Create event in a specific calendar
-caldir-cli new "Sprint planning" --start 2025-03-22T10:00 --calendar work
+caldir new "Sprint planning" --start 2025-03-22T10:00 --calendar work
 
 # Pull events from all configured calendars
-caldir-cli pull
+caldir pull
 
 # Pull events from a specific date range
-caldir-cli pull --from 2024-01-01 --to 2024-12-31
+caldir pull --from 2024-01-01 --to 2024-12-31
 
 # Pull all past events (from the beginning of time)
-caldir-cli pull --from start
+caldir pull --from start
 
 # Pull with verbose output (show all events instead of compact counts)
-caldir-cli pull --verbose
+caldir pull --verbose
 
 # Push local changes to cloud (including deletions)
-caldir-cli push
+caldir push
 
 # Push with verbose output
-caldir-cli push --verbose
+caldir push --verbose
 
 # Force push even when local calendar is empty (dangerous - will delete all remote events)
-caldir-cli push --force
+caldir push --force
 
 # Show pending changes per calendar (like git status)
-caldir-cli status
+caldir status
 
 # Show status for a specific date range
-caldir-cli status --from 2024-01-01 --to 2024-12-31
+caldir status --from 2024-01-01 --to 2024-12-31
 
 # Show all events (instead of compact counts when >5 events)
-caldir-cli status --verbose
+caldir status --verbose
 ```
 
 If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed events or 1 day for all-day events.
