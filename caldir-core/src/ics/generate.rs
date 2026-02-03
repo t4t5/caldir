@@ -45,13 +45,16 @@ pub fn generate_ics(event: &Event) -> CalDirResult<String> {
         ics_event.location(loc);
     }
 
-    // Status
-    let status = match event.status {
-        EventStatus::Confirmed => "CONFIRMED",
-        EventStatus::Tentative => "TENTATIVE",
-        EventStatus::Cancelled => "CANCELLED",
-    };
-    ics_event.add_property("STATUS", status);
+    // Status - only emit if not CONFIRMED (the implied default)
+    match event.status {
+        EventStatus::Confirmed => {}
+        EventStatus::Tentative => {
+            ics_event.add_property("STATUS", "TENTATIVE");
+        }
+        EventStatus::Cancelled => {
+            ics_event.add_property("STATUS", "CANCELLED");
+        }
+    }
 
     // Recurrence rules (for master events)
     if let Some(ref recurrence) = event.recurrence {
@@ -68,12 +71,10 @@ pub fn generate_ics(event: &Event) -> CalDirResult<String> {
         add_datetime_property(&mut ics_event, "RECURRENCE-ID", original_start);
     }
 
-    // TRANSP (transparency/busy-free status)
-    let transp = match event.transparency {
-        Transparency::Opaque => "OPAQUE",
-        Transparency::Transparent => "TRANSPARENT",
-    };
-    ics_event.add_property("TRANSP", transp);
+    // TRANSP - only emit if TRANSPARENT (OPAQUE is the default)
+    if event.transparency == Transparency::Transparent {
+        ics_event.add_property("TRANSP", "TRANSPARENT");
+    }
 
     // Add alarms (VALARM components) - minimal per RFC 5545
     for reminder in &event.reminders {
@@ -117,20 +118,32 @@ pub fn generate_ics(event: &Event) -> CalDirResult<String> {
     cal.push(ics_event);
     let cal = cal.done();
 
-    // Post-process to remove DTSTAMP and UID from VALARM sections
-    // (the icalendar crate auto-adds these but they're not required by RFC 5545)
-    let output = strip_valarm_bloat(&cal.to_string());
+    // Post-process to remove unnecessary bloat from the icalendar crate's output
+    let output = strip_ics_bloat(&cal.to_string());
 
     Ok(output)
 }
 
-/// Remove DTSTAMP and UID lines from VALARM sections
-/// The icalendar crate auto-adds these but they're not required by RFC 5545 for alarms
-fn strip_valarm_bloat(ics: &str) -> String {
+/// Clean up ICS output from the icalendar crate
+/// - Replace PRODID with CALDIR (we post-process the output)
+/// - Remove CALSCALE:GREGORIAN (it's the default)
+/// - Remove DTSTAMP and UID inside VALARM sections (not required by RFC 5545)
+fn strip_ics_bloat(ics: &str) -> String {
     let mut result = String::with_capacity(ics.len());
     let mut in_valarm = false;
 
     for line in ics.lines() {
+        // Replace PRODID with CALDIR
+        if line.starts_with("PRODID:") {
+            result.push_str("PRODID:CALDIR\r\n");
+            continue;
+        }
+
+        // Skip CALSCALE:GREGORIAN (it's the default)
+        if line == "CALSCALE:GREGORIAN" {
+            continue;
+        }
+
         if line == "BEGIN:VALARM" {
             in_valarm = true;
         } else if line == "END:VALARM" {

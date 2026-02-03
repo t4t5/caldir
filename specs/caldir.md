@@ -13,8 +13,12 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 **Why:** Required by spec. Always 2.0 for iCalendar.
 
 ### `PRODID`
-**Value:** Set by icalendar crate (something like `-//icalendar-rs//EN`)
-**Why:** Required by spec. Identifies the product that created the file. We let the library handle this.
+**Value:** `CALDIR`
+**Why:** Required by spec. Identifies the product that created the file.
+
+### `CALSCALE`
+**Value:** Omitted (stripped from output)
+**Why:** GREGORIAN is the default per RFC 5545. Omitting it reduces file size without losing information.
 
 ### `SOURCE`
 **Standard:** RFC 7986
@@ -85,12 +89,12 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 #### `STATUS`
 **What:** Event status.
 **Values:** `CONFIRMED`, `TENTATIVE`, `CANCELLED`
-**How caldir uses it:** Maps directly from provider status.
+**How caldir uses it:** Maps directly from provider status. Only emitted for TENTATIVE or CANCELLED—CONFIRMED is the implied default and is omitted to reduce file size.
 
 #### `TRANSP`
 **What:** Transparency—whether the event blocks time on your calendar.
 **Values:** `OPAQUE` (busy) or `TRANSPARENT` (free)
-**How caldir uses it:** Maps from Google's transparency field. Defaults to OPAQUE.
+**How caldir uses it:** Maps from Google's transparency field. Only emitted when TRANSPARENT—OPAQUE is the RFC 5545 default and is omitted.
 **Why it matters:** Affects free/busy scheduling. Birthday events are typically TRANSPARENT.
 
 ---
@@ -157,21 +161,17 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 ```
 BEGIN:VALARM
 ACTION:DISPLAY
+DESCRIPTION:Reminder
 TRIGGER:-PT10M
-DESCRIPTION:Event title
-UID:{event_id}_alarm_{minutes}
-DTSTAMP:{same as event}
 END:VALARM
 ```
 
 **Fields we use:**
 - `ACTION:DISPLAY` - Always display type (not email/audio)
 - `TRIGGER` - Minutes before event (e.g., `-PT10M` = 10 min before)
-- `DESCRIPTION` - Uses event summary
-- `UID` - Deterministic ID based on event ID + reminder offset (see below)
-- `DTSTAMP` - Same timestamp as the parent event
+- `DESCRIPTION` - Generic "Reminder" text (required by RFC 5545 for DISPLAY alarms)
 
-**Deterministic alarm UIDs:** The icalendar crate generates random UUIDs for VALARM components by default. This would cause every ICS regeneration to differ, breaking sync comparison. We explicitly set deterministic UIDs using the pattern `{event_id}_alarm_{minutes}` (e.g., `abc123_alarm_10`). This ensures the same alarm always gets the same UID.
+**Minimal by design:** RFC 5545 only requires ACTION, TRIGGER, and DESCRIPTION for display alarms. We omit UID and DTSTAMP (which the icalendar crate would auto-add) via post-processing since they're not required and add bloat.
 
 **Tradeoff:** Google has both "default reminders" (calendar-level) and "override reminders" (event-level). We only sync override reminders. If an event uses default reminders, it won't have any VALARM in the ICS file.
 
@@ -196,7 +196,7 @@ ICS files must be generated deterministically for sync to work correctly. If the
 
 ### Sources of Non-Determinism
 
-The icalendar crate can introduce non-determinism in two ways:
+The icalendar crate can introduce non-determinism by auto-generating fields:
 
 1. **Auto-generated DTSTAMP** - If no DTSTAMP is set, the crate uses `Utc::now()`
 2. **Auto-generated UID** - If no UID is set, the crate generates a random UUID
@@ -206,16 +206,14 @@ The icalendar crate can introduce non-determinism in two ways:
 **At generation time:**
 - Event UID: Set from provider's event ID (deterministic)
 - Event DTSTAMP: Set from provider's `updated` timestamp when available
-- Alarm UID: Set to `{event_id}_alarm_{minutes}` (deterministic)
-- Alarm DTSTAMP: Set to same value as event DTSTAMP
+
+**Post-processing:**
+- Strip CALSCALE:GREGORIAN (it's the default, no need to emit)
+- Strip UID and DTSTAMP from VALARM components (not required by RFC 5545)
 
 **At comparison time:**
-- Filter out DTSTAMP lines before comparing content
-- This handles the edge case where DTSTAMP falls back to `Utc::now()`
-
-This two-layer approach ensures:
-- Most fields are deterministic at generation time
-- The few remaining non-deterministic fields are ignored during comparison
+- Sync uses file mtime (local) vs `updated` field from API (remote)
+- Event content comparison uses our custom PartialEq which excludes `updated`, `sequence`, and `custom_properties`
 
 ---
 
