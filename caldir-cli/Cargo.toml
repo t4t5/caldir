@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 description = "CLI for interacting with your local caldir directory and syncing with external calendar providers"
 
+[[bin]]
+name = "caldir"
+path = "src/main.rs"
+
 [dependencies]
 # Async runtime
 tokio = { version = "1", features = ["full"] }
