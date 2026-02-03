@@ -16,24 +16,7 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 **Value:** `CALDIR`
 **Why:** Required by spec. Identifies the product that created the file.
 
-### `CALSCALE`
-**Value:** Omitted (stripped from output)
-**Why:** GREGORIAN is the default per RFC 5545. Omitting it reduces file size without losing information.
-
-### `SOURCE`
-**Standard:** RFC 7986
-**Value:** `https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}`
-**Why:** URL identifying the calendar source. The provider can be inferred from the domain. Used by push to know where to send updates.
-
-### `X-WR-CALNAME`
-**Standard:** De facto (Google/Apple/Microsoft)
-**Value:** Human-readable calendar name (e.g., "Personal Calendar")
-**Why:** Useful metadata for display. Widely supported across calendar apps.
-
-### `X-WR-RELCALID`
-**Standard:** De facto (Google/Apple/Microsoft)
-**Value:** Calendar identifier (e.g., "user@gmail.com")
-**Why:** Used by push to identify which calendar to update. Combined with tokens.json account mapping, this enables multi-calendar sync.
+**Omitted:** `CALSCALE` (GREGORIAN is the default), `SOURCE` (remote info lives in `.caldir/config.toml` instead).
 
 ---
 
@@ -185,8 +168,7 @@ END:VALARM
 
 #### `X-GOOGLE-CONFERENCE`
 **What:** Google-specific extension for conference links.
-**How caldir uses it:** We output the same URL as both `URL` and `X-GOOGLE-CONFERENCE` for compatibility.
-**Tradeoff:** This is redundant, but ensures Google Calendar recognizes the conference link if you ever push back.
+**How caldir uses it:** Preserved in `custom_properties` when pulled from Google, enabling round-trip sync. We don't actively generate this field—only `URL` is set from the conference URL.
 
 ---
 
@@ -241,13 +223,15 @@ These are valid iCalendar fields we intentionally don't use:
 
 caldir uses semantic filenames instead of UUIDs:
 
-**Regular events:** `{date}__{slug}_{id}.ics`
-- Example: `2025-03-20T1500__team-standup_abc12345.ics`
-- Example (all-day): `2025-03-21__company-offsite_def67890.ics`
+**Regular events:** `{date}__{slug}.ics`
+- Example: `2025-03-20T1500__team-standup.ics`
+- Example (all-day): `2025-03-21__company-offsite.ics`
 
-**Recurring masters:** `_recurring__{slug}_{id}.ics`
-- Example: `_recurring__weekly-standup_abc12345.ics`
+**Recurring masters:** `_recurring__{slug}.ics`
+- Example: `_recurring__weekly-standup.ics`
 - No date prefix because the master represents all occurrences
+
+**Collision handling:** If multiple events have the same date/time and slug, a numeric suffix is added (`-2`, `-3`, etc.)
 
 **Why:**
 - Human-readable at a glance
@@ -276,27 +260,27 @@ caldir uses semantic filenames instead of UUIDs:
 
 ## Sync State File
 
-### `.caldir-sync`
+### `.caldir/state/known_uids`
 
-Each calendar directory contains a `.caldir-sync` file that tracks which event UIDs have been synced with the remote provider.
+Each calendar directory contains a `.caldir/state/known_uids` file that tracks which event UIDs have been synced with the remote provider.
 
-**Format:** JSON file with a `synced_uids` array:
-```json
-{
-  "synced_uids": ["abc123", "def456", "ghi789"]
-}
+**Format:** Plaintext file, one UID per line (sorted alphabetically for deterministic output):
+```
+abc123
+def456
+ghi789
 ```
 
 **Why:** Enables the sync logic to distinguish between:
-- **Locally-created events** (UID not in synced_uids) → candidates for pushing to cloud
-- **Remotely-deleted events** (UID in synced_uids, but missing from remote) → candidates for local deletion
+- **Locally-created events** (UID not in known_uids) → candidates for pushing to cloud
+- **Remotely-deleted events** (UID in known_uids, but missing from remote) → candidates for local deletion
 
 Without this state, a local-only event is ambiguous: was it created locally and needs to be pushed, or was it pulled from the cloud and then deleted remotely?
 
 **Lifecycle:**
-- After `pull`: UIDs of all fetched events are added to synced_uids
-- After `push` (create): Newly created event UIDs are added to synced_uids
-- After `pull` (delete): Removed UIDs are deleted from synced_uids
+- After `pull`: UIDs of all fetched events are added to known_uids
+- After `push` (create): Newly created event UIDs are added to known_uids
+- After `pull` (delete): Removed UIDs are deleted from known_uids
 
 ---
 
