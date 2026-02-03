@@ -75,16 +75,10 @@ pub fn generate_ics(event: &Event) -> CalDirResult<String> {
     };
     ics_event.add_property("TRANSP", transp);
 
-    // Add alarms (VALARM components)
-    // We set deterministic UIDs and DSTAMPs to avoid random generation by the icalendar crate
+    // Add alarms (VALARM components) - minimal per RFC 5545
     for reminder in &event.reminders {
         let trigger = Trigger::before_start(chrono::Duration::minutes(reminder.minutes));
-        let mut alarm = Alarm::display(&event.summary, trigger);
-        // Deterministic alarm UID from event ID and reminder minutes
-        let alarm_uid = format!("{}_alarm_{}", event.id, reminder.minutes);
-        alarm.add_property("UID", &alarm_uid);
-        // Use same DTSTAMP as the event (or a fixed timestamp) for determinism
-        alarm.add_property("DTSTAMP", &dtstamp);
+        let alarm = Alarm::display("Reminder", trigger);
         ics_event.alarm(alarm);
     }
 
@@ -123,7 +117,36 @@ pub fn generate_ics(event: &Event) -> CalDirResult<String> {
     cal.push(ics_event);
     let cal = cal.done();
 
-    Ok(cal.to_string())
+    // Post-process to remove DTSTAMP and UID from VALARM sections
+    // (the icalendar crate auto-adds these but they're not required by RFC 5545)
+    let output = strip_valarm_bloat(&cal.to_string());
+
+    Ok(output)
+}
+
+/// Remove DTSTAMP and UID lines from VALARM sections
+/// The icalendar crate auto-adds these but they're not required by RFC 5545 for alarms
+fn strip_valarm_bloat(ics: &str) -> String {
+    let mut result = String::with_capacity(ics.len());
+    let mut in_valarm = false;
+
+    for line in ics.lines() {
+        if line == "BEGIN:VALARM" {
+            in_valarm = true;
+        } else if line == "END:VALARM" {
+            in_valarm = false;
+        }
+
+        // Skip DTSTAMP and UID lines inside VALARM
+        if in_valarm && (line.starts_with("DTSTAMP:") || line.starts_with("UID:")) {
+            continue;
+        }
+
+        result.push_str(line);
+        result.push_str("\r\n");
+    }
+
+    result
 }
 
 /// Add a datetime property with proper formatting based on EventTime variant
@@ -234,6 +257,44 @@ mod tests {
             ics.contains("DTEND;VALUE=DATE:20250321"),
             "DTEND should have VALUE=DATE parameter. ICS:\n{}",
             ics
+        );
+    }
+
+    #[test]
+    fn test_generate_ics_alarm_is_minimal() {
+        use crate::event::Reminder;
+        let mut event = make_test_event();
+        event.reminders = vec![Reminder { minutes: 30 }];
+
+        let ics = generate_ics(&event).unwrap();
+        println!("Generated ICS:\n{}", ics);
+
+        // Should have VALARM
+        assert!(ics.contains("BEGIN:VALARM"), "Should have VALARM");
+        assert!(ics.contains("ACTION:DISPLAY"), "Should have ACTION:DISPLAY");
+        assert!(ics.contains("TRIGGER"), "Should have TRIGGER");
+        assert!(
+            ics.contains("DESCRIPTION:Reminder"),
+            "Should have generic DESCRIPTION:Reminder"
+        );
+        // Should NOT have UID or DTSTAMP inside VALARM (they're not required)
+        let valarm_section: String = ics
+            .split("BEGIN:VALARM")
+            .nth(1)
+            .unwrap()
+            .split("END:VALARM")
+            .next()
+            .unwrap()
+            .to_string();
+        assert!(
+            !valarm_section.contains("UID:"),
+            "VALARM should not have UID. Got:\n{}",
+            valarm_section
+        );
+        assert!(
+            !valarm_section.contains("DTSTAMP:"),
+            "VALARM should not have DTSTAMP. Got:\n{}",
+            valarm_section
         );
     }
 
