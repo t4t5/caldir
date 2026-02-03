@@ -334,8 +334,14 @@ caldir-cli pull --from 2024-01-01 --to 2024-12-31
 # Pull all past events (from the beginning of time)
 caldir-cli pull --from start
 
+# Pull with verbose output (show all events instead of compact counts)
+caldir-cli pull --verbose
+
 # Push local changes to cloud (including deletions)
 caldir-cli push
+
+# Push with verbose output
+caldir-cli push --verbose
 
 # Force push even when local calendar is empty (dangerous - will delete all remote events)
 caldir-cli push --force
@@ -346,7 +352,7 @@ caldir-cli status
 # Show status for a specific date range
 caldir-cli status --from 2024-01-01 --to 2024-12-31
 
-# Show which properties changed for each modified event
+# Show all events (instead of compact counts when >5 events)
 caldir-cli status --verbose
 ```
 

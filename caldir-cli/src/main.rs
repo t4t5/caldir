@@ -33,6 +33,10 @@ enum Commands {
         /// Show events until this date (YYYY-MM-DD)
         #[arg(long)]
         to: Option<String>,
+
+        /// Show all events (instead of compact view when >5 events)
+        #[arg(short, long)]
+        verbose: bool,
     },
     Pull {
         /// Only operate on this calendar (by slug)
@@ -46,11 +50,19 @@ enum Commands {
         /// Pull events until this date (YYYY-MM-DD)
         #[arg(long)]
         to: Option<String>,
+
+        /// Show all events (instead of compact view when >5 events)
+        #[arg(short, long)]
+        verbose: bool,
     },
     Push {
         /// Only operate on this calendar (by slug)
         #[arg(short, long)]
         calendar: Option<String>,
+
+        /// Show all events (instead of compact view when >5 events)
+        #[arg(short, long)]
+        verbose: bool,
     },
     New {
         title: String,
@@ -67,24 +79,24 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Auth { provider } => commands::auth::run(&provider).await,
-        Commands::Status { calendar, from, to } => {
+        Commands::Status { calendar, from, to, verbose } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             let range = DateRange::from_args(from.as_deref(), to.as_deref())
                 .map_err(|e| anyhow::anyhow!(e))?;
-            commands::status::run(calendars, range).await
+            commands::status::run(calendars, range, verbose).await
         }
-        Commands::Pull { calendar, from, to } => {
+        Commands::Pull { calendar, from, to, verbose } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             let range = DateRange::from_args(from.as_deref(), to.as_deref())
                 .map_err(|e| anyhow::anyhow!(e))?;
-            commands::pull::run(calendars, range).await
+            commands::pull::run(calendars, range, verbose).await
         }
-        Commands::Push { calendar } => {
+        Commands::Push { calendar, verbose } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
-            commands::push::run(calendars).await
+            commands::push::run(calendars, verbose).await
         }
         Commands::New { title, start } => {
             require_calendars()?;

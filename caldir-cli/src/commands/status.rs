@@ -7,7 +7,7 @@ use owo_colors::OwoColorize;
 use crate::render::{CalendarDiffRender, Render};
 use crate::utils::tui;
 
-pub async fn run(calendars: Vec<Calendar>, range: DateRange) -> Result<()> {
+pub async fn run(calendars: Vec<Calendar>, range: DateRange, verbose: bool) -> Result<()> {
 
     for (i, cal) in calendars.iter().enumerate() {
         let spinner = tui::create_spinner(cal.render());
@@ -17,7 +17,7 @@ pub async fn run(calendars: Vec<Calendar>, range: DateRange) -> Result<()> {
         println!("{}", cal.render());
 
         match result {
-            Ok(diff) => println!("{}", diff.render()),
+            Ok(diff) => println!("{}", diff.render(verbose)),
             Err(e) => println!("   {}", e.to_string().red()),
         }
 

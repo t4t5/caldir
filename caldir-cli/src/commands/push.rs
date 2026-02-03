@@ -7,7 +7,7 @@ use owo_colors::OwoColorize;
 use crate::render::{CalendarDiffRender, Render};
 use crate::utils::tui;
 
-pub async fn run(calendars: Vec<Calendar>) -> Result<()> {
+pub async fn run(calendars: Vec<Calendar>, verbose: bool) -> Result<()> {
     let range = DateRange::default();
 
     let mut diffs = Vec::new();
@@ -21,7 +21,7 @@ pub async fn run(calendars: Vec<Calendar>) -> Result<()> {
 
         match result {
             Ok(diff) => {
-                println!("{}", diff.render_push());
+                println!("{}", diff.render_push(verbose));
                 diff.apply_push().await?;
                 diffs.push(diff);
             }

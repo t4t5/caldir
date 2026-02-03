@@ -48,15 +48,57 @@ impl Render for Calendar {
     }
 }
 
+/// Threshold for compact view (show counts instead of individual events)
+const COMPACT_THRESHOLD: usize = 5;
+
+/// Render a list of diffs, using compact view if there are many events and verbose is false
+fn render_diff_list(diffs: &[EventDiff], verbose: bool, lines: &mut Vec<String>) {
+    if verbose || diffs.len() <= COMPACT_THRESHOLD {
+        // Full view: show each event
+        for diff in diffs {
+            lines.push(format!("   {}", diff.render()));
+            if verbose {
+                lines.extend(render_field_diffs(diff).into_iter().map(|l| format!("      {}", l)));
+            }
+        }
+    } else {
+        // Compact view: show counts by diff kind
+        let creates = diffs.iter().filter(|d| d.kind == DiffKind::Create).count();
+        let updates = diffs.iter().filter(|d| d.kind == DiffKind::Update).count();
+        let deletes = diffs.iter().filter(|d| d.kind == DiffKind::Delete).count();
+
+        if creates > 0 {
+            let label = format!("({} new {})", creates, pluralize("event", creates));
+            lines.push(format!("   {} {}", "+".green(), label.green()));
+        }
+        if updates > 0 {
+            let label = format!("({} changed {})", updates, pluralize("event", updates));
+            lines.push(format!("   {} {}", "~".yellow(), label.yellow()));
+        }
+        if deletes > 0 {
+            let label = format!("({} deleted {})", deletes, pluralize("event", deletes));
+            lines.push(format!("   {} {}", "-".red(), label.red()));
+        }
+    }
+}
+
+/// Simple pluralization helper
+fn pluralize(word: &str, count: usize) -> &str {
+    if count == 1 { word } else { match word {
+        "event" => "events",
+        _ => word,
+    }}
+}
+
 /// Extended rendering for CalendarDiff with directional output
 pub trait CalendarDiffRender {
-    fn render(&self) -> String;
-    fn render_pull(&self) -> String;
-    fn render_push(&self) -> String;
+    fn render(&self, verbose: bool) -> String;
+    fn render_pull(&self, verbose: bool) -> String;
+    fn render_push(&self, verbose: bool) -> String;
 }
 
 impl CalendarDiffRender for CalendarDiff {
-    fn render(&self) -> String {
+    fn render(&self, verbose: bool) -> String {
         if self.is_empty() {
             return "   No changes".dimmed().to_string();
         }
@@ -65,10 +107,7 @@ impl CalendarDiffRender for CalendarDiff {
 
         if !self.to_push.is_empty() {
             lines.push("   Local changes (to push):".dimmed().to_string());
-            for diff in &self.to_push {
-                lines.push(format!("   {}", diff.render()));
-                lines.extend(render_field_diffs(diff).into_iter().map(|l| format!("      {}", l)));
-            }
+            render_diff_list(&self.to_push, verbose, &mut lines);
         }
 
         if !self.to_pull.is_empty() {
@@ -77,36 +116,29 @@ impl CalendarDiffRender for CalendarDiff {
                 lines.push(String::new());
             }
             lines.push("   Remote changes (to pull):".dimmed().to_string());
-            for diff in &self.to_pull {
-                lines.push(format!("   {}", diff.render()));
-                lines.extend(render_field_diffs(diff).into_iter().map(|l| format!("      {}", l)));
-            }
+            render_diff_list(&self.to_pull, verbose, &mut lines);
         }
 
         lines.join("\n")
     }
 
-    fn render_pull(&self) -> String {
+    fn render_pull(&self, verbose: bool) -> String {
         if self.to_pull.is_empty() {
             return "   No changes to pull".dimmed().to_string();
         }
 
         let mut lines = Vec::new();
-        for diff in &self.to_pull {
-            lines.push(format!("   {}", diff.render()));
-        }
+        render_diff_list(&self.to_pull, verbose, &mut lines);
         lines.join("\n")
     }
 
-    fn render_push(&self) -> String {
+    fn render_push(&self, verbose: bool) -> String {
         if self.to_push.is_empty() {
             return "   No changes to push".dimmed().to_string();
         }
 
         let mut lines = Vec::new();
-        for diff in &self.to_push {
-            lines.push(format!("   {}", diff.render()));
-        }
+        render_diff_list(&self.to_push, verbose, &mut lines);
         lines.join("\n")
     }
 }
