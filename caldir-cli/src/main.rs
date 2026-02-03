@@ -5,6 +5,7 @@ mod utils;
 use anyhow::Result;
 use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
+use caldir_core::date_range::DateRange;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -24,11 +25,27 @@ enum Commands {
         /// Only operate on this calendar (by slug)
         #[arg(short, long)]
         calendar: Option<String>,
+
+        /// Show events from this date (YYYY-MM-DD, or "start" for all past events)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Show events until this date (YYYY-MM-DD)
+        #[arg(long)]
+        to: Option<String>,
     },
     Pull {
         /// Only operate on this calendar (by slug)
         #[arg(short, long)]
         calendar: Option<String>,
+
+        /// Pull events from this date (YYYY-MM-DD, or "start" for all past events)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Pull events until this date (YYYY-MM-DD)
+        #[arg(long)]
+        to: Option<String>,
     },
     Push {
         /// Only operate on this calendar (by slug)
@@ -50,15 +67,19 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Auth { provider } => commands::auth::run(&provider).await,
-        Commands::Status { calendar } => {
+        Commands::Status { calendar, from, to } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
-            commands::status::run(calendars).await
+            let range = DateRange::from_args(from.as_deref(), to.as_deref())
+                .map_err(|e| anyhow::anyhow!(e))?;
+            commands::status::run(calendars, range).await
         }
-        Commands::Pull { calendar } => {
+        Commands::Pull { calendar, from, to } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
-            commands::pull::run(calendars).await
+            let range = DateRange::from_args(from.as_deref(), to.as_deref())
+                .map_err(|e| anyhow::anyhow!(e))?;
+            commands::pull::run(calendars, range).await
         }
         Commands::Push { calendar } => {
             require_calendars()?;

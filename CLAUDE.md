@@ -328,6 +328,12 @@ caldir-cli new "Sprint planning" --start 2025-03-22T10:00 --calendar work
 # Pull events from all configured calendars
 caldir-cli pull
 
+# Pull events from a specific date range
+caldir-cli pull --from 2024-01-01 --to 2024-12-31
+
+# Pull all past events (from the beginning of time)
+caldir-cli pull --from start
+
 # Push local changes to cloud (including deletions)
 caldir-cli push
 
@@ -336,6 +342,9 @@ caldir-cli push --force
 
 # Show pending changes per calendar (like git status)
 caldir-cli status
+
+# Show status for a specific date range
+caldir-cli status --from 2024-01-01 --to 2024-12-31
 
 # Show which properties changed for each modified event
 caldir-cli status --verbose

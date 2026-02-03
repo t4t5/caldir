@@ -2,6 +2,7 @@ pub mod caldir;
 pub mod caldir_config;
 pub mod calendar;
 pub mod constants;
+pub mod date_range;
 pub mod diff;
 pub mod error;
 pub mod event;

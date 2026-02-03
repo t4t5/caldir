@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use crate::calendar::Calendar;
+use crate::date_range::DateRange;
 use crate::diff::{DiffKind, EventDiff};
 use crate::error::{CalDirError, CalDirResult};
 
@@ -73,12 +74,12 @@ impl CalendarDiff {
         Ok(())
     }
 
-    pub async fn from_calendar(calendar: &Calendar) -> CalDirResult<Self> {
+    pub async fn from_calendar(calendar: &Calendar, range: &DateRange) -> CalDirResult<Self> {
         let remote = calendar
             .remote()
             .ok_or_else(|| CalDirError::RemoteNotFound(calendar.slug.to_string()))?;
 
-        let remote_events = remote.events().await?;
+        let remote_events = remote.events(range).await?;
         let local_events = calendar.events()?;
         let known_uids = calendar.state().read().known_uids;
 

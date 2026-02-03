@@ -2,6 +2,8 @@
 default:
   @just --list
 
+# Test app commands:
+
 cli +args:
   cargo run -p caldir-cli -- {{ args }}
 
@@ -20,7 +22,7 @@ push:
 new +args:
   @just cli new {{ args }}
 
-# Cargo
+# Dev tools:
 
 check:
   cargo check --workspace && cargo clippy --workspace

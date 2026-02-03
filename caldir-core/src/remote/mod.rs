@@ -4,12 +4,11 @@ pub mod provider_account;
 
 use std::collections::HashMap;
 
-use crate::constants::DEFAULT_SYNC_DAYS;
+use crate::date_range::DateRange;
 use crate::error::CalDirResult;
 use crate::event::Event;
 use crate::remote::protocol::{CreateEvent, DeleteEvent, ListEvents, UpdateEvent};
 use crate::remote::provider::Provider;
-use chrono::Duration;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -42,16 +41,12 @@ impl Remote {
         Remote { provider, config }
     }
 
-    pub async fn events(&self) -> CalDirResult<Vec<Event>> {
-        let now = chrono::Utc::now();
-        let from = (now - Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
-        let to = (now + Duration::days(DEFAULT_SYNC_DAYS)).to_rfc3339();
-
+    pub async fn events(&self, range: &DateRange) -> CalDirResult<Vec<Event>> {
         self.provider
             .call(ListEvents {
                 remote_config: self.remote_config(),
-                from,
-                to,
+                from: range.from_rfc3339(),
+                to: range.to_rfc3339(),
             })
             .await
     }
