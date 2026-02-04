@@ -1,7 +1,8 @@
 //! ICS file parsing using the icalendar crate's parser.
 
 use crate::event::{
-    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
+    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder,
+    Transparency,
 };
 use icalendar::{
     DatePerhapsTime,
@@ -52,17 +53,14 @@ pub fn parse_event(content: &str) -> Option<Event> {
         .unwrap_or(Transparency::Opaque);
 
     // Recurrence (RRULE, EXDATE)
-    let recurrence: Vec<String> = vevent
+    let rrule = vevent.find_prop("RRULE").map(|p| p.val.to_string());
+    let exdates: Vec<EventTime> = vevent
         .properties
         .iter()
-        .filter(|p| p.name == "RRULE" || p.name == "EXDATE")
-        .map(format_property)
+        .filter(|p| p.name == "EXDATE")
+        .flat_map(parse_exdate_property)
         .collect();
-    let recurrence = if recurrence.is_empty() {
-        None
-    } else {
-        Some(recurrence)
-    };
+    let recurrence = rrule.map(|rrule| Recurrence { rrule, exdates });
 
     // RECURRENCE-ID for instance overrides
     let original_start = vevent
@@ -137,21 +135,57 @@ fn to_event_time(dpt: DatePerhapsTime) -> EventTime {
     }
 }
 
-/// Format a property back to ICS format with params (e.g., "EXDATE;TZID=America/New_York:...")
-fn format_property(prop: &Property) -> String {
-    if prop.params.is_empty() {
-        format!("{}:{}", prop.name, prop.val)
-    } else {
-        let params: Vec<String> = prop
-            .params
-            .iter()
-            .map(|p| match &p.val {
-                Some(v) => format!("{}={}", p.key, v),
-                None => p.key.to_string(),
-            })
-            .collect();
-        format!("{};{}:{}", prop.name, params.join(";"), prop.val)
-    }
+/// Parse an EXDATE property into a list of EventTime values.
+///
+/// Handles:
+/// - TZID parameter: `EXDATE;TZID=America/New_York:20240108T100000`
+/// - VALUE=DATE: `EXDATE;VALUE=DATE:20240108`
+/// - UTC: `EXDATE:20240108T100000Z`
+/// - Floating: `EXDATE:20240108T100000`
+/// - Comma-separated values: `EXDATE;TZID=...:20240108T100000,20240115T100000`
+fn parse_exdate_property(prop: &Property) -> Vec<EventTime> {
+    let tzid = prop
+        .params
+        .iter()
+        .find(|p| p.key == "TZID")
+        .and_then(|p| p.val.as_ref().map(|v| v.to_string()));
+
+    let is_date = prop
+        .params
+        .iter()
+        .any(|p| p.key == "VALUE" && p.val.as_ref().map(|v| v.as_ref()) == Some("DATE"));
+
+    let val_str = prop.val.as_ref();
+    val_str
+        .split(',')
+        .filter_map(|s| {
+            let s = s.trim();
+            if s.is_empty() {
+                return None;
+            }
+            if is_date {
+                chrono::NaiveDate::parse_from_str(s, "%Y%m%d")
+                    .ok()
+                    .map(EventTime::Date)
+            } else if let Some(ref tz) = tzid {
+                chrono::NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%S")
+                    .ok()
+                    .map(|dt| EventTime::DateTimeZoned {
+                        datetime: dt,
+                        tzid: tz.clone(),
+                    })
+            } else if s.ends_with('Z') {
+                let s = s.trim_end_matches('Z');
+                chrono::NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%S")
+                    .ok()
+                    .map(|dt| EventTime::DateTimeUtc(dt.and_utc()))
+            } else {
+                chrono::NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%S")
+                    .ok()
+                    .map(EventTime::DateTimeFloating)
+            }
+        })
+        .collect()
 }
 
 /// Parse ATTENDEE/ORGANIZER property
@@ -265,13 +299,17 @@ END:VCALENDAR"#;
         let event = parse_event(ics).expect("Should parse");
 
         let recurrence = event.recurrence.expect("Should have recurrence");
-        assert!(
-            recurrence
-                .iter()
-                .any(|r| r.contains("TZID=America/New_York")),
-            "Should preserve TZID parameter. Got: {:?}",
-            recurrence
-        );
+        assert_eq!(recurrence.rrule, "FREQ=WEEKLY;BYDAY=MO");
+        assert_eq!(recurrence.exdates.len(), 2);
+        // Both exdates should be zoned with America/New_York
+        for exdate in &recurrence.exdates {
+            match exdate {
+                EventTime::DateTimeZoned { tzid, .. } => {
+                    assert_eq!(tzid, "America/New_York");
+                }
+                other => panic!("Expected DateTimeZoned, got {:?}", other),
+            }
+        }
     }
 
     #[test]
@@ -321,11 +359,16 @@ END:VCALENDAR"#;
 
         // Check that EXDATE with TZID is preserved through round-trip
         let recurrence = reparsed.recurrence.expect("Should have recurrence");
-        assert!(
-            recurrence.iter().any(|r| r.contains("EXDATE") && r.contains("TZID=America/New_York")),
-            "Should preserve EXDATE with TZID parameter after round-trip. Got: {:?}",
-            recurrence
-        );
+        assert_eq!(recurrence.rrule, "FREQ=WEEKLY;BYDAY=MO");
+        assert_eq!(recurrence.exdates.len(), 2, "Should have 2 exdates after round-trip");
+        for exdate in &recurrence.exdates {
+            match exdate {
+                EventTime::DateTimeZoned { tzid, .. } => {
+                    assert_eq!(tzid, "America/New_York");
+                }
+                other => panic!("Expected DateTimeZoned, got {:?}", other),
+            }
+        }
     }
 
     #[test]
@@ -354,23 +397,24 @@ END:VCALENDAR"#;
         let reparsed = parse_event(&generated).expect("Should reparse");
         println!("Reparsed recurrence: {:?}", reparsed.recurrence);
 
-        // Check that BOTH EXDATEs are preserved as separate properties
+        // Check that BOTH EXDATEs are preserved
         let recurrence = reparsed.recurrence.expect("Should have recurrence");
-        let exdate_count = recurrence.iter().filter(|r| r.contains("EXDATE")).count();
+        assert_eq!(recurrence.rrule, "FREQ=WEEKLY;BYDAY=MO");
         assert_eq!(
-            exdate_count, 2,
-            "Should preserve both EXDATE properties. Got: {:?}",
-            recurrence
+            recurrence.exdates.len(), 2,
+            "Should preserve both EXDATE values. Got: {:?}",
+            recurrence.exdates
         );
 
-        // Check that both dates are present
+        // Check that both dates are present as zoned datetimes
+        let dates: Vec<String> = recurrence.exdates.iter().map(|e| format!("{}", e)).collect();
         assert!(
-            recurrence.iter().any(|r| r.contains("20240108T100000")),
-            "Should have first EXDATE date"
+            dates.iter().any(|d| d.contains("2024-01-08")),
+            "Should have first EXDATE date. Got: {:?}", dates
         );
         assert!(
-            recurrence.iter().any(|r| r.contains("20240115T100000")),
-            "Should have second EXDATE date"
+            dates.iter().any(|d| d.contains("2024-01-15")),
+            "Should have second EXDATE date. Got: {:?}", dates
         );
     }
 }

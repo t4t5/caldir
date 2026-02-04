@@ -8,6 +8,28 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+/// Typed recurrence data for a master event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Recurrence {
+    /// RRULE value (after "RRULE:"), e.g. "FREQ=WEEKLY;BYDAY=MO"
+    pub rrule: String,
+    /// Exception dates (EXDATE)
+    pub exdates: Vec<EventTime>,
+}
+
+impl PartialEq for Recurrence {
+    fn eq(&self, other: &Self) -> bool {
+        if self.rrule != other.rrule {
+            return false;
+        }
+        let mut a = self.exdates.clone();
+        let mut b = other.exdates.clone();
+        a.sort_by(|x, y| format!("{:?}", x).cmp(&format!("{:?}", y)));
+        b.sort_by(|x, y| format!("{:?}", x).cmp(&format!("{:?}", y)));
+        a == b
+    }
+}
+
 /// A calendar event (provider-neutral)
 ///
 /// `PartialEq` compares content fields only, ignoring sync metadata
@@ -23,8 +45,8 @@ pub struct Event {
     pub status: EventStatus,
 
     // Recurrence fields
-    /// RRULE, EXDATE lines for master events
-    pub recurrence: Option<Vec<String>>,
+    /// Typed recurrence data (RRULE + EXDATEs) for master events
+    pub recurrence: Option<Recurrence>,
     /// Original start time for this instance (used for RECURRENCE-ID)
     pub original_start: Option<EventTime>,
 
@@ -52,19 +74,6 @@ pub struct Event {
 
 impl PartialEq for Event {
     fn eq(&self, other: &Self) -> bool {
-        // Compare recurrence as sorted sets (order doesn't matter for RRULE/EXDATE)
-        let recurrence_eq = match (&self.recurrence, &other.recurrence) {
-            (Some(a), Some(b)) => {
-                let mut a_sorted = a.clone();
-                let mut b_sorted = b.clone();
-                a_sorted.sort();
-                b_sorted.sort();
-                a_sorted == b_sorted
-            }
-            (None, None) => true,
-            _ => false,
-        };
-
         self.id == other.id
             && self.summary == other.summary
             && self.description == other.description
@@ -72,7 +81,7 @@ impl PartialEq for Event {
             && self.start == other.start
             && self.end == other.end
             && self.status == other.status
-            && recurrence_eq
+            && self.recurrence == other.recurrence
             && self.original_start == other.original_start
             && self.reminders == other.reminders
             && self.transparency == other.transparency

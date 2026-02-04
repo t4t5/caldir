@@ -1,6 +1,7 @@
 use anyhow::{bail, Result};
 use caldir_core::event::{
-    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Reminder, Transparency,
+    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder,
+    Transparency,
 };
 
 pub trait FromGoogle {
@@ -41,11 +42,7 @@ impl FromGoogle for Event {
             _ => EventStatus::Confirmed,
         };
 
-        let recurrence = if event.recurrence.is_empty() {
-            None
-        } else {
-            Some(event.recurrence)
-        };
+        let recurrence = parse_google_recurrence(&event.recurrence);
 
         let original_start = if let Some(ref orig) = event.original_start_time {
             if let Some(dt) = orig.date_time {
@@ -143,6 +140,73 @@ impl FromGoogle for Event {
             },
             custom_properties,
         })
+    }
+}
+
+/// Parse Google's recurrence Vec<String> into a typed Recurrence.
+///
+/// Google returns entries like:
+/// - `"RRULE:FREQ=WEEKLY;BYDAY=MO"`
+/// - `"EXDATE;TZID=America/New_York:20240108T100000"`
+/// - `"EXDATE:20240108T100000Z"`
+fn parse_google_recurrence(entries: &[String]) -> Option<Recurrence> {
+    let rrule = entries
+        .iter()
+        .find(|s| s.starts_with("RRULE:"))
+        .map(|s| s.strip_prefix("RRULE:").unwrap().to_string())?;
+
+    let exdates: Vec<EventTime> = entries
+        .iter()
+        .filter(|s| s.starts_with("EXDATE"))
+        .filter_map(|s| {
+            // Format: "EXDATE;TZID=America/New_York:20240108T100000" or "EXDATE:20240108T100000Z"
+            let (params_part, value) = s.split_once(':')?;
+            let params_str = params_part.strip_prefix("EXDATE").unwrap_or("");
+            let params_str = params_str.strip_prefix(';').unwrap_or(params_str);
+
+            let tzid = params_str
+                .split(';')
+                .find_map(|p| p.strip_prefix("TZID=").map(|v| v.to_string()));
+
+            let is_date = params_str
+                .split(';')
+                .any(|p| p == "VALUE=DATE");
+
+            Some(
+                value
+                    .split(',')
+                    .filter_map(|s| parse_google_exdate(s.trim(), &tzid, is_date))
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .flatten()
+        .collect();
+
+    Some(Recurrence { rrule, exdates })
+}
+
+/// Parse a single EXDATE value string into an EventTime.
+fn parse_google_exdate(s: &str, tzid: &Option<String>, is_date: bool) -> Option<EventTime> {
+    if is_date {
+        chrono::NaiveDate::parse_from_str(s, "%Y%m%d")
+            .ok()
+            .map(EventTime::Date)
+    } else if let Some(tz) = tzid {
+        chrono::NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%S")
+            .ok()
+            .map(|dt| EventTime::DateTimeZoned {
+                datetime: dt,
+                tzid: tz.clone(),
+            })
+    } else if s.ends_with('Z') {
+        let s = s.trim_end_matches('Z');
+        chrono::NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%S")
+            .ok()
+            .map(|dt| EventTime::DateTimeUtc(dt.and_utc()))
+    } else {
+        chrono::NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%S")
+            .ok()
+            .map(EventTime::DateTimeFloating)
     }
 }
 

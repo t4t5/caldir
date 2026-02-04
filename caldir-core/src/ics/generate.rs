@@ -58,29 +58,9 @@ pub fn generate_ics(event: &Event) -> CalDirResult<String> {
 
     // Recurrence rules (for master events)
     if let Some(ref recurrence) = event.recurrence {
-        for rule in recurrence {
-            // Each rule is like "RRULE:FREQ=WEEKLY;BYDAY=MO" or "EXDATE;TZID=America/New_York:20250320"
-            if let Some((key_with_params, value)) = rule.split_once(':') {
-                // Check if this is an EXDATE (can have multiple properties with same name)
-                if key_with_params.starts_with("EXDATE") {
-                    // Parse parameters (e.g., "TZID=America/New_York" from "EXDATE;TZID=America/New_York")
-                    let params_str = key_with_params.strip_prefix("EXDATE").unwrap_or("");
-                    let params_str = params_str.strip_prefix(';').unwrap_or(params_str);
-
-                    let mut prop = Property::new("EXDATE", value);
-                    if !params_str.is_empty() {
-                        for param in params_str.split(';') {
-                            if let Some((param_key, param_value)) = param.split_once('=') {
-                                prop.add_parameter(param_key, param_value);
-                            }
-                        }
-                    }
-                    ics_event.append_multi_property(prop);
-                } else {
-                    // RRULE and other single-value properties
-                    ics_event.add_property(key_with_params, value);
-                }
-            }
+        ics_event.add_property("RRULE", &recurrence.rrule);
+        for exdate in &recurrence.exdates {
+            add_exdate_property(&mut ics_event, exdate);
         }
     }
 
@@ -201,6 +181,31 @@ fn add_datetime_property(ics_event: &mut icalendar::Event, name: &str, time: &Ev
             let mut prop = Property::new(name, datetime.format("%Y%m%dT%H%M%S").to_string());
             prop.add_parameter("TZID", tzid);
             ics_event.append_property(prop);
+        }
+    }
+}
+
+/// Add an EXDATE property for a single exception date
+fn add_exdate_property(ics_event: &mut icalendar::Event, time: &EventTime) {
+    match time {
+        EventTime::Date(d) => {
+            let mut prop = Property::new("EXDATE", d.format("%Y%m%d").to_string());
+            prop.append_parameter(ValueType::Date);
+            ics_event.append_multi_property(prop);
+        }
+        EventTime::DateTimeUtc(dt) => {
+            let prop = Property::new("EXDATE", dt.format("%Y%m%dT%H%M%SZ").to_string());
+            ics_event.append_multi_property(prop);
+        }
+        EventTime::DateTimeFloating(dt) => {
+            let prop = Property::new("EXDATE", dt.format("%Y%m%dT%H%M%S").to_string());
+            ics_event.append_multi_property(prop);
+        }
+        EventTime::DateTimeZoned { datetime, tzid } => {
+            let mut prop =
+                Property::new("EXDATE", datetime.format("%Y%m%dT%H%M%S").to_string());
+            prop.add_parameter("TZID", tzid);
+            ics_event.append_multi_property(prop);
         }
     }
 }

@@ -302,23 +302,49 @@ fn render_optional_diff(field: &str, old: &Option<String>, new: &Option<String>)
     )
 }
 
-/// Render recurrence diff showing added/removed rules
-fn render_recurrence_diff(old: &Option<Vec<String>>, new: &Option<Vec<String>>) -> Vec<String> {
-    use std::collections::HashSet;
-
-    let old_set: HashSet<_> = old.as_ref().map(|v| v.iter().collect()).unwrap_or_default();
-    let new_set: HashSet<_> = new.as_ref().map(|v| v.iter().collect()).unwrap_or_default();
-
+/// Render recurrence diff showing RRULE and EXDATE changes
+fn render_recurrence_diff(
+    old: &Option<caldir_core::event::Recurrence>,
+    new: &Option<caldir_core::event::Recurrence>,
+) -> Vec<String> {
     let mut lines = Vec::new();
 
-    // Show removed rules
-    for rule in old_set.difference(&new_set) {
-        lines.push(format!("{} {}", "-".red(), rule.red()));
-    }
-
-    // Show added rules
-    for rule in new_set.difference(&old_set) {
-        lines.push(format!("{} {}", "+".green(), rule.green()));
+    match (old, new) {
+        (Some(old_rec), Some(new_rec)) => {
+            if old_rec.rrule != new_rec.rrule {
+                lines.push(format!(
+                    "{}: {} → {}",
+                    "rrule".dimmed(),
+                    old_rec.rrule.red(),
+                    new_rec.rrule.green()
+                ));
+            }
+            // Show exdate changes
+            use std::collections::HashSet;
+            let old_set: HashSet<_> =
+                old_rec.exdates.iter().map(|e| format!("{}", e)).collect();
+            let new_set: HashSet<_> =
+                new_rec.exdates.iter().map(|e| format!("{}", e)).collect();
+            for ex in old_set.difference(&new_set) {
+                lines.push(format!("{} exdate {}", "-".red(), ex.red()));
+            }
+            for ex in new_set.difference(&old_set) {
+                lines.push(format!("{} exdate {}", "+".green(), ex.green()));
+            }
+        }
+        (None, Some(new_rec)) => {
+            lines.push(format!("{} rrule {}", "+".green(), new_rec.rrule.green()));
+            for ex in &new_rec.exdates {
+                lines.push(format!("{} exdate {}", "+".green(), ex.to_string().green()));
+            }
+        }
+        (Some(old_rec), None) => {
+            lines.push(format!("{} rrule {}", "-".red(), old_rec.rrule.red()));
+            for ex in &old_rec.exdates {
+                lines.push(format!("{} exdate {}", "-".red(), ex.to_string().red()));
+            }
+        }
+        (None, None) => {}
     }
 
     lines

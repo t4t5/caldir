@@ -1,4 +1,6 @@
-use caldir_core::event::{Attendee, Event, EventStatus, EventTime, ParticipationStatus, Transparency};
+use caldir_core::event::{
+    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Transparency,
+};
 
 pub trait ToGoogle {
     fn to_google(&self) -> google_calendar::types::Event;
@@ -39,7 +41,11 @@ impl ToGoogle for Event {
         let attendees: Vec<google_calendar::types::EventAttendee> =
             self.attendees.iter().map(attendee_to_google).collect();
 
-        let recurrence = self.recurrence.clone().unwrap_or_default();
+        let recurrence = self
+            .recurrence
+            .as_ref()
+            .map(recurrence_to_google)
+            .unwrap_or_default();
 
         let original_start_time = self.original_start.as_ref().map(event_time_to_google);
 
@@ -103,6 +109,27 @@ fn event_time_to_google(time: &EventTime) -> google_calendar::types::EventDateTi
             date_time: Some(datetime.and_utc()),
             time_zone: tzid.clone(),
         },
+    }
+}
+
+/// Convert a typed Recurrence into Google's Vec<String> format.
+fn recurrence_to_google(rec: &Recurrence) -> Vec<String> {
+    let mut result = vec![format!("RRULE:{}", rec.rrule)];
+    for exdate in &rec.exdates {
+        result.push(format_exdate_for_google(exdate));
+    }
+    result
+}
+
+/// Format a single EventTime as an EXDATE string for Google Calendar API.
+fn format_exdate_for_google(time: &EventTime) -> String {
+    match time {
+        EventTime::Date(d) => format!("EXDATE;VALUE=DATE:{}", d.format("%Y%m%d")),
+        EventTime::DateTimeUtc(dt) => format!("EXDATE:{}", dt.format("%Y%m%dT%H%M%SZ")),
+        EventTime::DateTimeFloating(dt) => format!("EXDATE:{}", dt.format("%Y%m%dT%H%M%S")),
+        EventTime::DateTimeZoned { datetime, tzid } => {
+            format!("EXDATE;TZID={}:{}", tzid, datetime.format("%Y%m%dT%H%M%S"))
+        }
     }
 }
 
