@@ -19,9 +19,8 @@ pub async fn run(calendars: Vec<Calendar>, range: DateRange, verbose: bool) -> R
 
         match result {
             Ok(diff) => {
-                println!("{}", diff.render_pull(verbose));
+                println!("{}", diff.render_sync(verbose));
                 diff.apply_pull()?;
-                println!("{}", diff.render_push(verbose));
                 diff.apply_push().await?;
                 diffs.push(diff);
             }
