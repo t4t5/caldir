@@ -64,6 +64,23 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
+    Sync {
+        /// Only operate on this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+
+        /// Sync events from this date (YYYY-MM-DD, or "start" for all past events)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Sync events until this date (YYYY-MM-DD)
+        #[arg(long)]
+        to: Option<String>,
+
+        /// Show all events (instead of compact view when >5 events)
+        #[arg(short, long)]
+        verbose: bool,
+    },
     New {
         title: String,
 
@@ -97,6 +114,13 @@ async fn main() -> Result<()> {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             commands::push::run(calendars, verbose).await
+        }
+        Commands::Sync { calendar, from, to, verbose } => {
+            require_calendars()?;
+            let calendars = resolve_calendars(calendar.as_deref())?;
+            let range = DateRange::from_args(from.as_deref(), to.as_deref())
+                .map_err(|e| anyhow::anyhow!(e))?;
+            commands::sync::run(calendars, range, verbose).await
         }
         Commands::New { title, start } => {
             require_calendars()?;
