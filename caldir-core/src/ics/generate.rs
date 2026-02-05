@@ -9,7 +9,7 @@ pub fn generate_ics(event: &Event) -> CalDirResult<String> {
     let mut cal = Calendar::new();
 
     let mut ics_event = icalendar::Event::new();
-    ics_event.uid(&event.id);
+    ics_event.uid(&event.uid);
     ics_event.summary(&event.summary);
 
     // DTSTAMP - required by RFC 5545, use updated timestamp or current time
@@ -65,8 +65,8 @@ pub fn generate_ics(event: &Event) -> CalDirResult<String> {
     }
 
     // RECURRENCE-ID (for instance overrides of recurring events)
-    if let Some(ref original_start) = event.original_start {
-        add_datetime_property(&mut ics_event, "RECURRENCE-ID", original_start);
+    if let Some(ref recurrence_id) = event.recurrence_id {
+        add_datetime_property(&mut ics_event, "RECURRENCE-ID", recurrence_id);
     }
 
     // TRANSP - only emit if TRANSPARENT (OPAQUE is the default)
@@ -218,7 +218,7 @@ mod tests {
 
     fn make_test_event() -> Event {
         Event {
-            id: "test-event-123".to_string(),
+            uid: "test-event-123@caldir".to_string(),
             summary: "Test Event".to_string(),
             description: None,
             location: None,
@@ -226,7 +226,7 @@ mod tests {
             end: EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2025, 3, 20, 16, 0, 0).unwrap()),
             status: EventStatus::Confirmed,
             recurrence: None,
-            original_start: None,
+            recurrence_id: None,
             reminders: vec![],
             transparency: Transparency::Opaque,
             organizer: None,

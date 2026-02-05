@@ -96,14 +96,24 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Auth { provider } => commands::auth::run(&provider).await,
-        Commands::Status { calendar, from, to, verbose } => {
+        Commands::Status {
+            calendar,
+            from,
+            to,
+            verbose,
+        } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             let range = DateRange::from_args(from.as_deref(), to.as_deref())
                 .map_err(|e| anyhow::anyhow!(e))?;
             commands::status::run(calendars, range, verbose).await
         }
-        Commands::Pull { calendar, from, to, verbose } => {
+        Commands::Pull {
+            calendar,
+            from,
+            to,
+            verbose,
+        } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             let range = DateRange::from_args(from.as_deref(), to.as_deref())
@@ -115,7 +125,12 @@ async fn main() -> Result<()> {
             let calendars = resolve_calendars(calendar.as_deref())?;
             commands::push::run(calendars, verbose).await
         }
-        Commands::Sync { calendar, from, to, verbose } => {
+        Commands::Sync {
+            calendar,
+            from,
+            to,
+            verbose,
+        } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             let range = DateRange::from_args(from.as_deref(), to.as_deref())
@@ -136,9 +151,9 @@ fn require_calendars() -> Result<()> {
         anyhow::bail!(
             "No calendars found.\n\n\
             Connect your first calendar with:\n  \
-            caldir-cli auth <provider>\n\n\
+            caldir auth <provider>\n\n\
             Example:\n  \
-            caldir-cli auth google"
+            caldir auth google"
         );
     }
 

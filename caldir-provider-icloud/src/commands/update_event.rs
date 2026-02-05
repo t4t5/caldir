@@ -39,8 +39,8 @@ async fn update_event_caldav(
     // Generate ICS content
     let ics_content = generate_ics(&event)?;
 
-    // Build href for the event
-    let full_url = event_url(calendar_url, &event.id);
+    // Build href for the event (use uid as the filename, per CalDAV convention)
+    let full_url = event_url(calendar_url, &event.uid);
     let href = url_to_href(&full_url);
 
     // Get current etag for conditional update

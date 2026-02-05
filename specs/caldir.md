@@ -26,8 +26,8 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 
 #### `UID`
 **What:** Unique identifier for the event.
-**How caldir uses it:** We use the provider's event ID (e.g., Google's event ID). This is unique per event.
-**Tradeoff:** Google provides both `id` (unique per event instance) and `iCalUID` (same for all instances of a recurring event). We use `id` because it makes sync easier—each file maps to exactly one ID. The downside is that instance overrides don't share a UID with their master, which is technically how iCalendar expects it to work. We compensate with `RECURRENCE-ID`.
+**How caldir uses it:** We use the RFC 5545 UID (Google's `iCalUID`, CalDAV's `UID`). For recurring events, the master and all instance overrides share the same UID, linked via `RECURRENCE-ID`.
+**Provider-specific IDs:** Provider-specific event IDs (e.g., Google's `id`) are stored in custom properties like `X-GOOGLE-EVENT-ID` for API calls, but the ICS UID is always the RFC 5545 UID.
 
 #### `DTSTAMP`
 **What:** Timestamp of when the ICS was created/modified.
@@ -98,7 +98,7 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 #### `RECURRENCE-ID`
 **What:** Identifies which occurrence of a recurring event this is (for instance overrides).
 **Example:** `RECURRENCE-ID:20250320T150000Z`
-**How caldir uses it:** Set when an event has `original_start` (meaning it's a modified instance of a recurring event).
+**How caldir uses it:** Set when an event has `recurrence_id` (meaning it's a modified instance of a recurring event).
 **Why:** Lets calendar apps know this file modifies a specific occurrence of a recurring series.
 
 ---
@@ -165,6 +165,10 @@ END:VALARM
 #### `URL`
 **What:** Standard URL field.
 **How caldir uses it:** Set to the video conference URL (Google Meet, etc.) if present.
+
+#### `X-GOOGLE-EVENT-ID`
+**What:** Google-specific extension storing Google's internal event ID.
+**How caldir uses it:** Stored in `custom_properties` when pulled from Google. Used for API calls (updates, deletes) since Google's API requires its own event ID, not the RFC 5545 UID.
 
 #### `X-GOOGLE-CONFERENCE`
 **What:** Google-specific extension for conference links.
@@ -245,10 +249,13 @@ caldir uses semantic filenames instead of UUIDs:
 
 ### Google Calendar
 - We use `single_events=false` to get RRULE instead of expanded instances
+- Google's event `id` is stored as `X-GOOGLE-EVENT-ID` for API calls; the ICS `UID` is Google's `iCalUID`
 - Conference data comes from `conferenceData.entryPoints[type=video].uri`
 - Reminders come from `reminders.overrides` (not default reminders)
 
-### Future: Apple/iCloud
+### Apple/iCloud (CalDAV)
+- Uses standard CalDAV protocol with app-specific passwords
+- The ICS `UID` is used directly for CalDAV API calls (no separate provider ID needed)
 - May need to preserve `X-APPLE-STRUCTURED-LOCATION` for rich location data
 - `X-APPLE-TRAVEL-ADVISORY-BEHAVIOR` controls travel time calculations
 
@@ -260,27 +267,33 @@ caldir uses semantic filenames instead of UUIDs:
 
 ## Sync State File
 
-### `.caldir/state/known_uids`
+### `.caldir/state/known_event_ids`
 
-Each calendar directory contains a `.caldir/state/known_uids` file that tracks which event UIDs have been synced with the remote provider.
+Each calendar directory contains a `.caldir/state/known_event_ids` file that tracks which events have been synced with the remote provider.
 
-**Format:** Plaintext file, one UID per line (sorted alphabetically for deterministic output):
+**Format:** Plaintext file, one event ID per line (sorted alphabetically for deterministic output):
 ```
-abc123
-def456
-ghi789
+abc123@google.com
+abc123@google.com__20250317T100000Z
+def456@icloud.com
 ```
+
+Event IDs use the RFC 5545 identity:
+- Non-recurring events: `{uid}` (e.g., `abc123@google.com`)
+- Recurring event instances: `{uid}__{recurrence_id}` (e.g., `abc123@google.com__20250317T100000Z`)
+
+The double underscore (`__`) separator distinguishes the recurrence_id from the uid.
 
 **Why:** Enables the sync logic to distinguish between:
-- **Locally-created events** (UID not in known_uids) → candidates for pushing to cloud
-- **Remotely-deleted events** (UID in known_uids, but missing from remote) → candidates for local deletion
+- **Locally-created events** (event ID not in known_event_ids) → candidates for pushing to cloud
+- **Remotely-deleted events** (event ID in known_event_ids, but missing from remote) → candidates for local deletion
 
 Without this state, a local-only event is ambiguous: was it created locally and needs to be pushed, or was it pulled from the cloud and then deleted remotely?
 
 **Lifecycle:**
-- After `pull`: UIDs of all fetched events are added to known_uids
-- After `push` (create): Newly created event UIDs are added to known_uids
-- After `pull` (delete): Removed UIDs are deleted from known_uids
+- After `pull`: Event IDs of all fetched events are added to known_event_ids
+- After `push` (create): Newly created event IDs are added to known_event_ids
+- After `pull` (delete): Removed event IDs are deleted from known_event_ids
 
 ---
 

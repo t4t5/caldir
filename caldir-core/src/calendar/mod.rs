@@ -2,7 +2,7 @@
 
 pub mod config;
 mod event;
-mod state;
+pub mod state;
 
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +11,7 @@ use crate::calendar::config::CalendarConfig;
 use crate::calendar::event::CalendarEvent;
 use crate::calendar::state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::Event;
+use crate::event::{Event, EventTime};
 use crate::remote::Remote;
 use crate::utils::slugify;
 use std::collections::HashSet;
@@ -88,8 +88,13 @@ impl Calendar {
     }
 
     pub fn save_state(&self) -> CalDirResult<()> {
-        let known_uids: HashSet<String> = self.events()?.into_iter().map(|e| e.event.id).collect();
-        self.state().save(&known_uids)
+        // Track event IDs (uid + recurrence_id) for sync state
+        let known_event_ids: HashSet<String> = self
+            .events()?
+            .into_iter()
+            .map(|e| state::event_id(&e.event.uid, e.event.recurrence_id.as_ref()))
+            .collect();
+        self.state().save(&known_event_ids)
     }
 
     pub fn save_config(&self) -> CalDirResult<()> {
@@ -130,13 +135,23 @@ impl Calendar {
         calendar_event.save()
     }
 
-    pub fn update_event(&self, event_id: &str, event: &Event) -> CalDirResult<()> {
-        self.delete_event(event_id)?;
+    /// Update a local event file by finding it via uid and replacing its content.
+    /// For recurring event instances, also matches on recurrence_id.
+    pub fn update_event(&self, uid: &str, event: &Event) -> CalDirResult<()> {
+        self.delete_event_by_uid(uid, event.recurrence_id.as_ref())?;
         self.create_event(event)
     }
 
-    pub fn delete_event(&self, event_id: &str) -> CalDirResult<()> {
-        if let Some(local) = self.events()?.into_iter().find(|e| e.event.id == event_id) {
+    /// Delete a local event file by uid.
+    /// For recurring event instances, also matches on recurrence_id.
+    pub fn delete_event_by_uid(
+        &self,
+        uid: &str,
+        recurrence_id: Option<&EventTime>,
+    ) -> CalDirResult<()> {
+        if let Some(local) = self.events()?.into_iter().find(|e| {
+            e.event.uid == uid && e.event.recurrence_id.as_ref() == recurrence_id
+        }) {
             std::fs::remove_file(&local.path)?;
         }
         Ok(())

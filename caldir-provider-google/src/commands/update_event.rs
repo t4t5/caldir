@@ -16,11 +16,20 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
 
     let google_event = cmd.event.to_google();
 
+    // Get Google's event ID from custom properties
+    let google_event_id = cmd
+        .event
+        .custom_properties
+        .iter()
+        .find(|(k, _)| k == "X-GOOGLE-EVENT-ID")
+        .map(|(_, v)| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("Cannot update event without X-GOOGLE-EVENT-ID"))?;
+
     let response = client
         .events()
         .update(
             calendar_id,
-            &cmd.event.id,
+            google_event_id,
             0,
             0,
             false,

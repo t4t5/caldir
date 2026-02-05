@@ -181,14 +181,6 @@ fn render_field_diffs(diff: &EventDiff) -> Vec<String> {
 
     // Only show field diffs for updates
     if let (Some(old), Some(new)) = (&diff.old, &diff.new) {
-        if old.id != new.id {
-            lines.push(format!(
-                "{}: {} → {}",
-                "id".dimmed(),
-                old.id.red(),
-                new.id.green()
-            ));
-        }
         if old.summary != new.summary {
             lines.push(format!(
                 "{}: {} → {}",
@@ -238,12 +230,12 @@ fn render_field_diffs(diff: &EventDiff) -> Vec<String> {
         if old.recurrence != new.recurrence {
             lines.extend(render_recurrence_diff(&old.recurrence, &new.recurrence));
         }
-        if old.original_start != new.original_start {
+        if old.recurrence_id != new.recurrence_id {
             lines.push(format!(
                 "{}: {:?} → {:?}",
-                "original_start".dimmed(),
-                old.original_start,
-                new.original_start
+                "recurrence_id".dimmed(),
+                old.recurrence_id,
+                new.recurrence_id
             ));
         }
         if old.reminders != new.reminders {

@@ -63,7 +63,7 @@ pub fn parse_event(content: &str) -> Option<Event> {
     let recurrence = rrule.map(|rrule| Recurrence { rrule, exdates });
 
     // RECURRENCE-ID for instance overrides
-    let original_start = vevent
+    let recurrence_id = vevent
         .find_prop("RECURRENCE-ID")
         .and_then(|p| DatePerhapsTime::try_from(p).ok())
         .map(to_event_time);
@@ -89,7 +89,7 @@ pub fn parse_event(content: &str) -> Option<Event> {
         })
         .collect();
 
-    // Custom X- properties
+    // Custom X- properties (preserved for round-tripping provider-specific data)
     let custom_properties: Vec<(String, String)> = vevent
         .properties
         .iter()
@@ -98,7 +98,7 @@ pub fn parse_event(content: &str) -> Option<Event> {
         .collect();
 
     Some(Event {
-        id: uid,
+        uid,
         summary,
         description,
         location,
@@ -106,7 +106,7 @@ pub fn parse_event(content: &str) -> Option<Event> {
         end,
         status,
         recurrence,
-        original_start,
+        recurrence_id,
         reminders,
         transparency,
         organizer,
@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn test_parse_and_generate_roundtrip_multiple_attendees() {
         let event = Event {
-            id: "test-event-123".to_string(),
+            uid: "test-event-123@caldir".to_string(),
             summary: "Test Event".to_string(),
             description: None,
             location: None,
@@ -249,7 +249,7 @@ mod tests {
             end: EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2025, 3, 20, 16, 0, 0).unwrap()),
             status: EventStatus::Confirmed,
             recurrence: None,
-            original_start: None,
+            recurrence_id: None,
             reminders: vec![],
             transparency: Transparency::Opaque,
             organizer: None,

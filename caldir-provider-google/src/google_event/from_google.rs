@@ -44,7 +44,7 @@ impl FromGoogle for Event {
 
         let recurrence = parse_google_recurrence(&event.recurrence);
 
-        let original_start = if let Some(ref orig) = event.original_start_time {
+        let recurrence_id = if let Some(ref orig) = event.original_start_time {
             if let Some(dt) = orig.date_time {
                 Some(EventTime::DateTimeUtc(dt))
             } else {
@@ -101,12 +101,14 @@ impl FromGoogle for Event {
         });
 
         let mut custom_properties = Vec::new();
+        // Store Google's event ID for API calls (updates, deletes)
+        custom_properties.push(("X-GOOGLE-EVENT-ID".to_string(), event.id));
         if let Some(ref url) = conference_url {
             custom_properties.push(("X-GOOGLE-CONFERENCE".to_string(), url.clone()));
         }
 
         Ok(Event {
-            id: event.id,
+            uid: event.i_cal_uid,
             summary: event.summary,
             description: if event.description.is_empty() {
                 None
@@ -122,7 +124,7 @@ impl FromGoogle for Event {
             end,
             status,
             recurrence,
-            original_start,
+            recurrence_id,
             reminders,
             transparency,
             organizer,

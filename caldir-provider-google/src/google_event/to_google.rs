@@ -47,10 +47,19 @@ impl ToGoogle for Event {
             .map(recurrence_to_google)
             .unwrap_or_default();
 
-        let original_start_time = self.original_start.as_ref().map(event_time_to_google);
+        let original_start_time = self.recurrence_id.as_ref().map(event_time_to_google);
+
+        // Get Google's event ID from custom properties (if available)
+        let google_event_id = self
+            .custom_properties
+            .iter()
+            .find(|(k, _)| k == "X-GOOGLE-EVENT-ID")
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default();
 
         google_calendar::types::Event {
-            id: self.id.clone(),
+            id: google_event_id,
+            i_cal_uid: self.uid.clone(),
             summary: self.summary.clone(),
             description: self.description.clone().unwrap_or_default(),
             location: self.location.clone().unwrap_or_default(),

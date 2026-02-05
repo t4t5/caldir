@@ -36,7 +36,10 @@ impl PartialEq for Recurrence {
 /// (`updated`, `sequence`, `custom_properties`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Event {
-    pub id: String,
+    /// RFC 5545 UID - unique identifier shared across recurring event instances.
+    /// Always present. For recurring events, the master and all instance overrides
+    /// share the same uid, linked via recurrence_id.
+    pub uid: String,
     pub summary: String,
     pub description: Option<String>,
     pub location: Option<String>,
@@ -47,8 +50,10 @@ pub struct Event {
     // Recurrence fields
     /// Typed recurrence data (RRULE + EXDATEs) for master events
     pub recurrence: Option<Recurrence>,
-    /// Original start time for this instance (used for RECURRENCE-ID)
-    pub original_start: Option<EventTime>,
+    /// RECURRENCE-ID: Original start time for this instance.
+    /// Present on instance overrides to identify which occurrence is modified.
+    /// The shared uid links this override back to its master event.
+    pub recurrence_id: Option<EventTime>,
 
     // Alarms & Availability
     pub reminders: Vec<Reminder>,
@@ -74,7 +79,7 @@ pub struct Event {
 
 impl PartialEq for Event {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.uid == other.uid
             && self.summary == other.summary
             && self.description == other.description
             && self.location == other.location
@@ -82,7 +87,7 @@ impl PartialEq for Event {
             && self.end == other.end
             && self.status == other.status
             && self.recurrence == other.recurrence
-            && self.original_start == other.original_start
+            && self.recurrence_id == other.recurrence_id
             && self.reminders == other.reminders
             && self.transparency == other.transparency
             && self.organizer == other.organizer
@@ -103,10 +108,10 @@ impl fmt::Display for Event {
 
 impl Event {
     pub fn new(summary: String, start: EventTime, end: EventTime) -> Self {
-        let event_id = format!("local-{}", uuid::Uuid::new_v4());
+        let uid = format!("{}@caldir", uuid::Uuid::new_v4());
 
         Event {
-            id: event_id,
+            uid,
             summary,
             description: None,
             location: None,
@@ -114,7 +119,7 @@ impl Event {
             end,
             status: EventStatus::Confirmed,
             recurrence: None,
-            original_start: None,
+            recurrence_id: None,
             reminders: Vec::new(),
             transparency: Transparency::Opaque,
             organizer: None,

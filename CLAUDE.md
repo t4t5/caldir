@@ -77,7 +77,7 @@ Each calendar has a `.caldir/` directory (similar to `.git/`) for local state an
   .caldir/
     config.toml    # remote provider configuration
     state/
-      synced_uids  # plaintext, one UID per line
+      known_event_ids  # plaintext, one event ID per line
   2025-03-20T1500__meeting.ics
   ...
 ```
@@ -92,7 +92,7 @@ google_calendar_id = "primary"
 
 This is created automatically by `caldir auth google`. Like `.git/config`, it contains the "remote" settings for syncing. The config fields (except `provider`) are returned by the provider's `list_calendars` command, so the CLI remains provider-agnostic.
 
-**synced_uids** — Tracks which event UIDs have been synced. This is used for **delete detection**: if a UID is in `synced_uids` but has no corresponding local file, the event was deleted locally and should be deleted from the remote on the next `push`.
+**known_event_ids** — Tracks which events have been synced using their RFC 5545 identity: `{uid}` for non-recurring events, or `{uid}__{recurrence_id}` for recurring event instances. This is used for **delete detection**: if an event ID is in `known_event_ids` but has no corresponding local file, the event was deleted locally and should be deleted from the remote on the next `push`.
 
 The sync state is updated automatically after each `pull` or `push` operation. If deleted, the next `pull` will re-download all events and recreate it.
 
@@ -118,9 +118,9 @@ The core CLI is completely provider-agnostic — it just passes provider-prefixe
 
 **Current providers**:
 - `caldir-provider-google` — Google Calendar (OAuth + REST API)
+- `caldir-provider-icloud` — Apple iCloud (CalDAV + app-specific passwords)
 
 **Future providers** (not yet implemented):
-- `caldir-provider-icloud` — Apple iCloud
 - `caldir-provider-outlook` — Microsoft Graph API
 - `caldir-provider-caldav` — Generic CalDAV servers
 
@@ -145,7 +145,7 @@ caldir-core/                   # Core library (used by CLI and future GUI apps)
       calendar_config.rs - CalendarConfig (name, color, remote in .caldir/config.toml)
     local/
       mod.rs
-      state.rs        - LocalState (.caldir/state/synced_uids)
+      state.rs        - LocalState (.caldir/state/known_event_ids)
       event.rs        - LocalEvent (event + file metadata)
     ics/
       mod.rs
@@ -199,9 +199,9 @@ The two-phase auth protocol (`auth_init` + `auth_submit`) decouples auth UI from
 
 **ProviderAccount** — Combines a Provider with an account identifier (`caldir_core::remote::provider_account::remote::providerAccount`). Used to list all calendars for a specific authenticated account via `list_calendars()`.
 
-**CalendarConfig/LocalState** — Per-calendar state stored in `.caldir/` directory:
+**CalendarConfig/CalendarState** — Per-calendar state stored in `.caldir/` directory:
 - `CalendarConfig` (`caldir_core::config::calendar_config::CalendarConfig`) — Configuration stored in `.caldir/config.toml` (name, color, optional Remote for syncing)
-- `LocalState` (`caldir_core::local::LocalState`) — Sync state stored in `.caldir/state/synced_uids` (tracks synced UIDs for delete detection)
+- `CalendarState` (`caldir_core::calendar::state::CalendarState`) — Sync state stored in `.caldir/state/known_event_ids` (tracks synced event IDs for delete detection)
 
 **ics/** — Pure ICS format (RFC 5545) in `caldir_core::ics`. Generates compliant `.ics` files from `Event` structs, parses properties from existing files. Provider-neutral.
 
@@ -218,7 +218,7 @@ Events include these properties (when available from the provider):
 - **Availability**: TRANSP (opaque/transparent for busy/free)
 - **Meeting data**: conference/video call URLs
 - **Sync metadata**: LAST-MODIFIED, SEQUENCE, DTSTAMP
-- **Custom properties**: provider-specific fields (e.g., X-GOOGLE-CONFERENCE) preserved for round-tripping
+- **Custom properties**: provider-specific fields (e.g., X-GOOGLE-EVENT-ID, X-GOOGLE-CONFERENCE) preserved for round-tripping
 
 ### Push Flow for New Events
 
@@ -227,14 +227,27 @@ When `push` creates a new event on Google Calendar:
 1. Parse local `.ics` file to get the Event
 2. Call Google Calendar API to create the event
 3. Google returns the created event with:
-   - Google-assigned event ID (replaces `local-{uuid}`)
+   - Google-assigned event ID (stored as `X-GOOGLE-EVENT-ID` in custom properties)
    - Google-added fields (organizer, default reminders, etc.)
 4. Write the Google-returned event back to local file:
    - Filename based on event date/time and title (with collision suffix if needed)
-   - All Google-added fields preserved (ORGANIZER, VALARM, etc.)
-5. Update sync state with the new Google-assigned event ID
+   - All Google-added fields preserved (ORGANIZER, VALARM, X-GOOGLE-EVENT-ID, etc.)
+5. Update sync state with the event's RFC 5545 identity (uid + recurrence_id)
 
 This ensures the local file exactly matches the remote state after push, preventing false "modified" status on subsequent syncs.
+
+### Universal Event Identity
+
+Events are identified by their RFC 5545 identity: `(uid, recurrence_id)`. This works across all providers:
+
+- **UID**: The RFC 5545 UID property (e.g., `abc123@google.com`)
+- **recurrence_id**: For recurring event instance overrides, identifies which occurrence (e.g., `20250317T100000Z`)
+
+Provider-specific IDs are stored in custom properties:
+- **Google**: `X-GOOGLE-EVENT-ID` — Google's internal event ID, used for API calls
+- **CalDAV (iCloud)**: Uses the UID directly for API calls
+
+The sync state file tracks `{uid}` or `{uid}__{recurrence_id}` for delete detection.
 
 ## Filename Convention
 

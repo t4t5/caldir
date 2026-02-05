@@ -2,10 +2,12 @@
 
 use std::collections::HashMap;
 
+use crate::calendar::state::event_id;
 use crate::calendar::Calendar;
 use crate::date_range::DateRange;
 use crate::diff::{DiffKind, EventDiff};
 use crate::error::{CalDirError, CalDirResult};
+use crate::event::Event;
 
 /// Represents the differences between local and remote calendar state.
 pub struct CalendarDiff {
@@ -30,18 +32,20 @@ impl CalendarDiff {
                 DiffKind::Create => {
                     let event = diff.new.as_ref().expect("Create must have new event");
                     let created = remote.create_event(event).await?;
-                    // Update local file with remote-assigned ID and fields
-                    self.calendar.update_event(&event.id, &created)?;
+                    // Update local file with remote-assigned ID and fields (find by uid)
+                    self.calendar.update_event(&event.uid, &created)?;
                 }
                 DiffKind::Update => {
                     let event = diff.new.as_ref().expect("Update must have new event");
                     let updated = remote.update_event(event).await?;
-                    // Update local file with any remote changes
-                    self.calendar.update_event(&event.id, &updated)?;
+                    // Update local file with any remote changes (find by uid)
+                    self.calendar.update_event(&event.uid, &updated)?;
                 }
                 DiffKind::Delete => {
                     let event = diff.old.as_ref().expect("Delete must have old event");
-                    remote.delete_event(&event.id).await?;
+                    // Get provider-specific event ID for deletion
+                    let provider_event_id = get_provider_event_id(event);
+                    remote.delete_event(&provider_event_id).await?;
                 }
             }
         }
@@ -60,11 +64,12 @@ impl CalendarDiff {
                 }
                 DiffKind::Update => {
                     let event = diff.new.as_ref().expect("Update must have new event");
-                    self.calendar.update_event(&event.id, event)?;
+                    self.calendar.update_event(&event.uid, event)?;
                 }
                 DiffKind::Delete => {
                     let event = diff.old.as_ref().expect("Delete must have old event");
-                    self.calendar.delete_event(&event.id)?;
+                    self.calendar
+                        .delete_event_by_uid(&event.uid, event.recurrence_id.as_ref())?;
                 }
             }
         }
@@ -81,35 +86,30 @@ impl CalendarDiff {
 
         let remote_events = remote.events(range).await?;
         let local_events = calendar.events()?;
-        let known_uids = calendar.state().read().known_uids;
+        let known_event_ids = calendar.state().read().known_event_ids;
 
-        let local_by_uid: HashMap<_, _> = local_events
+        // Build lookup maps by event key (uid, recurrence_id)
+        let local_by_key: HashMap<_, _> = local_events
             .into_iter()
-            .map(|e| (e.event.id.clone(), e))
+            .map(|e| (event_key(&e.event), e))
             .collect();
 
-        let remote_by_uid: HashMap<_, _> = remote_events
+        let remote_by_key: HashMap<_, _> = remote_events
             .into_iter()
-            .map(|e| (e.id.clone(), e))
+            .map(|e| (event_key(&e), e))
             .collect();
 
         let mut to_push = Vec::new();
         let mut to_pull = Vec::new();
 
-        let local_only_events = local_by_uid
-            .iter()
-            .filter(|(uid, _)| !remote_by_uid.contains_key(*uid));
+        // Local events not on remote
+        for (key, local) in &local_by_key {
+            if remote_by_key.contains_key(key) {
+                continue; // Will handle in shared_events below
+            }
 
-        let remote_only_events = remote_by_uid
-            .iter()
-            .filter(|(uid, _)| !local_by_uid.contains_key(*uid));
-
-        let shared_events = local_by_uid
-            .iter()
-            .filter_map(|(uid, local)| remote_by_uid.get(uid).map(|remote| (local, remote)));
-
-        for (uid, local) in local_only_events {
-            if known_uids.contains(uid) {
+            let event_id_str = event_id(&local.event.uid, local.event.recurrence_id.as_ref());
+            if known_event_ids.contains(&event_id_str) {
                 // Was synced before, now gone from remote → delete locally
                 // But only if in sync range (old events weren't fetched, so we can't know)
                 #[allow(clippy::collapsible_if)]
@@ -119,15 +119,21 @@ impl CalendarDiff {
                     }
                 }
             } else {
-                // Never synced -> create on remote
+                // Never synced -> new local event, push to create
                 if let Some(diff) = EventDiff::get_diff(None, Some(local.event.clone())) {
                     to_push.push(diff);
                 }
             }
         }
 
-        for (uid, remote) in remote_only_events {
-            if known_uids.contains(uid) {
+        // Remote events not in local
+        for (key, remote) in &remote_by_key {
+            if local_by_key.contains_key(key) {
+                continue; // Will handle in shared_events below
+            }
+
+            let event_id_str = event_id(&remote.uid, remote.recurrence_id.as_ref());
+            if known_event_ids.contains(&event_id_str) {
                 // Was synced before, now gone locally -> delete on remote
                 if let Some(diff) = EventDiff::get_diff(Some(remote.clone()), None) {
                     to_push.push(diff);
@@ -140,25 +146,28 @@ impl CalendarDiff {
             }
         }
 
-        for (local, remote) in shared_events {
-            if local.event == *remote {
-                continue;
-            }
-
-            // Content differs - use timestamps to determine direction
-            if local.is_newer_than(remote) {
-                // Local was modified more recently -> push
-                if let Some(diff) =
-                    EventDiff::get_diff(Some(remote.clone()), Some(local.event.clone()))
-                {
-                    to_push.push(diff);
+        // Events that exist both locally and remotely
+        for (key, local) in &local_by_key {
+            if let Some(remote) = remote_by_key.get(key) {
+                if local.event == *remote {
+                    continue;
                 }
-            } else {
-                // Remote was modified more recently -> pull
-                if let Some(diff) =
-                    EventDiff::get_diff(Some(local.event.clone()), Some(remote.clone()))
-                {
-                    to_pull.push(diff);
+
+                // Content differs - use timestamps to determine direction
+                if local.is_newer_than(remote) {
+                    // Local was modified more recently -> push
+                    if let Some(diff) =
+                        EventDiff::get_diff(Some(remote.clone()), Some(local.event.clone()))
+                    {
+                        to_push.push(diff);
+                    }
+                } else {
+                    // Remote was modified more recently -> pull
+                    if let Some(diff) =
+                        EventDiff::get_diff(Some(local.event.clone()), Some(remote.clone()))
+                    {
+                        to_pull.push(diff);
+                    }
                 }
             }
         }
@@ -175,4 +184,40 @@ impl CalendarDiff {
             to_pull,
         })
     }
+}
+
+/// Create a key for event lookup: (uid, formatted recurrence_id)
+fn event_key(event: &Event) -> (String, Option<String>) {
+    (
+        event.uid.clone(),
+        event.recurrence_id.as_ref().map(format_event_time),
+    )
+}
+
+/// Format an EventTime as a string suitable for event key.
+fn format_event_time(time: &crate::event::EventTime) -> String {
+    match time {
+        crate::event::EventTime::Date(d) => d.format("%Y%m%d").to_string(),
+        crate::event::EventTime::DateTimeUtc(dt) => dt.format("%Y%m%dT%H%M%SZ").to_string(),
+        crate::event::EventTime::DateTimeFloating(dt) => dt.format("%Y%m%dT%H%M%S").to_string(),
+        crate::event::EventTime::DateTimeZoned { datetime, .. } => {
+            datetime.format("%Y%m%dT%H%M%S").to_string()
+        }
+    }
+}
+
+/// Get provider-specific event ID for API calls (deletion, updates).
+/// For Google: X-GOOGLE-EVENT-ID from custom_properties
+/// For CalDAV (iCloud): uses the UID directly
+fn get_provider_event_id(event: &Event) -> String {
+    // Check for Google-specific event ID first
+    if let Some((_, google_id)) = event
+        .custom_properties
+        .iter()
+        .find(|(k, _)| k == "X-GOOGLE-EVENT-ID")
+    {
+        return google_id.clone();
+    }
+    // Fall back to UID (used by CalDAV providers like iCloud)
+    event.uid.clone()
 }
