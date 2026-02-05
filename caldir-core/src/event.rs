@@ -140,6 +140,15 @@ impl Event {
         };
         format!("{}{}", self.start, recurring)
     }
+
+    /// Returns the unique identifier for this event based on RFC 5545 identity.
+    /// Format: `{uid}` for non-recurring events, `{uid}__{recurrence_id}` for instances.
+    pub fn unique_id(&self) -> String {
+        match &self.recurrence_id {
+            Some(rid) => format!("{}__{}", self.uid, rid.to_ics_string()),
+            None => self.uid.clone(),
+        }
+    }
 }
 
 /// An event attendee (also used for organizer)
@@ -236,6 +245,18 @@ impl EventTime {
     /// Check if this is an all-day date (not a datetime)
     pub fn is_date(&self) -> bool {
         matches!(self, EventTime::Date(_))
+    }
+
+    /// Format as ICS datetime string (for RECURRENCE-ID)
+    pub fn to_ics_string(&self) -> String {
+        match self {
+            EventTime::Date(d) => d.format("%Y%m%d").to_string(),
+            EventTime::DateTimeUtc(dt) => dt.format("%Y%m%dT%H%M%SZ").to_string(),
+            EventTime::DateTimeFloating(dt) => dt.format("%Y%m%dT%H%M%S").to_string(),
+            EventTime::DateTimeZoned { datetime, .. } => {
+                datetime.format("%Y%m%dT%H%M%S").to_string()
+            }
+        }
     }
 }
 

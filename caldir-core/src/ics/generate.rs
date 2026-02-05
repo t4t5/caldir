@@ -162,50 +162,29 @@ fn strip_ics_bloat(ics: &str) -> String {
 
 /// Add a datetime property with proper formatting based on EventTime variant
 fn add_datetime_property(ics_event: &mut icalendar::Event, name: &str, time: &EventTime) {
-    match time {
-        EventTime::Date(d) => {
-            let mut prop = Property::new(name, d.format("%Y%m%d").to_string());
-            prop.append_parameter(ValueType::Date);
-            ics_event.append_property(prop);
-        }
-        EventTime::DateTimeUtc(dt) => {
-            // UTC datetime with Z suffix
-            ics_event.add_property(name, dt.format("%Y%m%dT%H%M%SZ").to_string());
-        }
-        EventTime::DateTimeFloating(dt) => {
-            // Floating datetime (no Z, no TZID)
-            ics_event.add_property(name, dt.format("%Y%m%dT%H%M%S").to_string());
-        }
-        EventTime::DateTimeZoned { datetime, tzid } => {
-            // Datetime with TZID parameter
-            let mut prop = Property::new(name, datetime.format("%Y%m%dT%H%M%S").to_string());
-            prop.add_parameter("TZID", tzid);
-            ics_event.append_property(prop);
-        }
-    }
+    let mut prop = Property::new(name, time.to_ics_string());
+    add_time_parameters(&mut prop, time);
+    ics_event.append_property(prop);
 }
 
 /// Add an EXDATE property for a single exception date
 fn add_exdate_property(ics_event: &mut icalendar::Event, time: &EventTime) {
+    let mut prop = Property::new("EXDATE", time.to_ics_string());
+    add_time_parameters(&mut prop, time);
+    ics_event.append_multi_property(prop);
+}
+
+/// Add VALUE=DATE or TZID parameters to a property based on EventTime variant
+fn add_time_parameters(prop: &mut Property, time: &EventTime) {
     match time {
-        EventTime::Date(d) => {
-            let mut prop = Property::new("EXDATE", d.format("%Y%m%d").to_string());
+        EventTime::Date(_) => {
             prop.append_parameter(ValueType::Date);
-            ics_event.append_multi_property(prop);
         }
-        EventTime::DateTimeUtc(dt) => {
-            let prop = Property::new("EXDATE", dt.format("%Y%m%dT%H%M%SZ").to_string());
-            ics_event.append_multi_property(prop);
-        }
-        EventTime::DateTimeFloating(dt) => {
-            let prop = Property::new("EXDATE", dt.format("%Y%m%dT%H%M%S").to_string());
-            ics_event.append_multi_property(prop);
-        }
-        EventTime::DateTimeZoned { datetime, tzid } => {
-            let mut prop =
-                Property::new("EXDATE", datetime.format("%Y%m%dT%H%M%S").to_string());
+        EventTime::DateTimeZoned { tzid, .. } => {
             prop.add_parameter("TZID", tzid);
-            ics_event.append_multi_property(prop);
+        }
+        EventTime::DateTimeUtc(_) | EventTime::DateTimeFloating(_) => {
+            // No additional parameters needed
         }
     }
 }

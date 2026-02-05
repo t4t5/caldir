@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use crate::event::EventTime;
+use crate::event::Event;
 use crate::{calendar::Calendar, error::CalDirResult};
 
 const KNOWN_EVENT_IDS_FILE: &str = "known_event_ids";
@@ -13,25 +13,6 @@ pub struct CalendarState {
 
 pub struct CalendarStateData {
     pub known_event_ids: Vec<String>,
-}
-
-/// Format an event identifier from (uid, recurrence_id).
-/// Returns "uid" for non-recurring events, or "uid__recurrence_id" for recurring instances.
-pub fn event_id(uid: &str, recurrence_id: Option<&EventTime>) -> String {
-    match recurrence_id {
-        Some(rid) => format!("{}__{}", uid, format_event_time(rid)),
-        None => uid.to_string(),
-    }
-}
-
-/// Format an EventTime as a string suitable for event ID (matches ICS format).
-fn format_event_time(time: &EventTime) -> String {
-    match time {
-        EventTime::Date(d) => d.format("%Y%m%d").to_string(),
-        EventTime::DateTimeUtc(dt) => dt.format("%Y%m%dT%H%M%SZ").to_string(),
-        EventTime::DateTimeFloating(dt) => dt.format("%Y%m%dT%H%M%S").to_string(),
-        EventTime::DateTimeZoned { datetime, .. } => datetime.format("%Y%m%dT%H%M%S").to_string(),
-    }
 }
 
 impl CalendarState {
@@ -73,9 +54,8 @@ impl CalendarState {
     }
 
     /// Check if an event has been synced (is in the known_event_ids set).
-    pub fn is_synced(&self, uid: &str, recurrence_id: Option<&EventTime>) -> bool {
-        let id = event_id(uid, recurrence_id);
-        self.known_event_ids().contains(&id)
+    pub fn is_synced(&self, event: &Event) -> bool {
+        self.known_event_ids().contains(&event.unique_id())
     }
 
     pub fn save(&self, event_ids: &HashSet<String>) -> CalDirResult<()> {

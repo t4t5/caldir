@@ -2,7 +2,7 @@
 
 pub mod config;
 mod event;
-pub mod state;
+mod state;
 
 use serde::{Deserialize, Serialize};
 
@@ -92,7 +92,7 @@ impl Calendar {
         let known_event_ids: HashSet<String> = self
             .events()?
             .into_iter()
-            .map(|e| state::event_id(&e.event.uid, e.event.recurrence_id.as_ref()))
+            .map(|e| e.event.unique_id())
             .collect();
         self.state().save(&known_event_ids)
     }

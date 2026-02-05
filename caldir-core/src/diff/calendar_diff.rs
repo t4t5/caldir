@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 
-use crate::calendar::state::event_id;
 use crate::calendar::Calendar;
 use crate::date_range::DateRange;
 use crate::diff::{DiffKind, EventDiff};
@@ -108,8 +107,7 @@ impl CalendarDiff {
                 continue; // Will handle in shared_events below
             }
 
-            let event_id_str = event_id(&local.event.uid, local.event.recurrence_id.as_ref());
-            if known_event_ids.contains(&event_id_str) {
+            if known_event_ids.contains(&local.event.unique_id()) {
                 // Was synced before, now gone from remote → delete locally
                 // But only if in sync range (old events weren't fetched, so we can't know)
                 #[allow(clippy::collapsible_if)]
@@ -132,8 +130,7 @@ impl CalendarDiff {
                 continue; // Will handle in shared_events below
             }
 
-            let event_id_str = event_id(&remote.uid, remote.recurrence_id.as_ref());
-            if known_event_ids.contains(&event_id_str) {
+            if known_event_ids.contains(&remote.unique_id()) {
                 // Was synced before, now gone locally -> delete on remote
                 if let Some(diff) = EventDiff::get_diff(Some(remote.clone()), None) {
                     to_push.push(diff);
@@ -190,20 +187,8 @@ impl CalendarDiff {
 fn event_key(event: &Event) -> (String, Option<String>) {
     (
         event.uid.clone(),
-        event.recurrence_id.as_ref().map(format_event_time),
+        event.recurrence_id.as_ref().map(|t| t.to_ics_string()),
     )
-}
-
-/// Format an EventTime as a string suitable for event key.
-fn format_event_time(time: &crate::event::EventTime) -> String {
-    match time {
-        crate::event::EventTime::Date(d) => d.format("%Y%m%d").to_string(),
-        crate::event::EventTime::DateTimeUtc(dt) => dt.format("%Y%m%dT%H%M%SZ").to_string(),
-        crate::event::EventTime::DateTimeFloating(dt) => dt.format("%Y%m%dT%H%M%S").to_string(),
-        crate::event::EventTime::DateTimeZoned { datetime, .. } => {
-            datetime.format("%Y%m%dT%H%M%S").to_string()
-        }
-    }
 }
 
 /// Get provider-specific event ID for API calls (deletion, updates).
