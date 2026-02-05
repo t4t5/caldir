@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use caldir_core::event::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder,
     Transparency,
@@ -107,11 +107,7 @@ impl FromGoogle for Event {
 
         Ok(Event {
             id: event.id,
-            summary: if event.summary.is_empty() {
-                "(No title)".to_string()
-            } else {
-                event.summary
-            },
+            summary: event.summary,
             description: if event.description.is_empty() {
                 None
             } else {
@@ -168,9 +164,7 @@ fn parse_google_recurrence(entries: &[String]) -> Option<Recurrence> {
                 .split(';')
                 .find_map(|p| p.strip_prefix("TZID=").map(|v| v.to_string()));
 
-            let is_date = params_str
-                .split(';')
-                .any(|p| p == "VALUE=DATE");
+            let is_date = params_str.split(';').any(|p| p == "VALUE=DATE");
 
             Some(
                 value
