@@ -138,20 +138,18 @@ impl Calendar {
     /// Update a local event file by finding it via uid and replacing its content.
     /// For recurring event instances, also matches on recurrence_id.
     pub fn update_event(&self, uid: &str, event: &Event) -> CalDirResult<()> {
-        self.delete_event_by_uid(uid, event.recurrence_id.as_ref())?;
+        self.delete_event(uid, event.recurrence_id.as_ref())?;
         self.create_event(event)
     }
 
-    /// Delete a local event file by uid.
+    /// Delete a local event file by id
     /// For recurring event instances, also matches on recurrence_id.
-    pub fn delete_event_by_uid(
-        &self,
-        uid: &str,
-        recurrence_id: Option<&EventTime>,
-    ) -> CalDirResult<()> {
-        if let Some(local) = self.events()?.into_iter().find(|e| {
-            e.event.uid == uid && e.event.recurrence_id.as_ref() == recurrence_id
-        }) {
+    pub fn delete_event(&self, uid: &str, recurrence_id: Option<&EventTime>) -> CalDirResult<()> {
+        if let Some(local) = self
+            .events()?
+            .into_iter()
+            .find(|e| e.event.uid == uid && e.event.recurrence_id.as_ref() == recurrence_id)
+        {
             std::fs::remove_file(&local.path)?;
         }
         Ok(())

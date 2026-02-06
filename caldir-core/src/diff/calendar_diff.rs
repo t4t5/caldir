@@ -68,7 +68,7 @@ impl CalendarDiff {
                 DiffKind::Delete => {
                     let event = diff.old.as_ref().expect("Delete must have old event");
                     self.calendar
-                        .delete_event_by_uid(&event.uid, event.recurrence_id.as_ref())?;
+                        .delete_event(&event.uid, event.recurrence_id.as_ref())?;
                 }
             }
         }
