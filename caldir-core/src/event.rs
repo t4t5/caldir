@@ -258,6 +258,18 @@ impl EventTime {
             }
         }
     }
+
+    /// Format as ISO 8601 string (for JSON/JavaScript compatibility)
+    pub fn to_iso_string(&self) -> String {
+        match self {
+            EventTime::Date(d) => d.format("%Y-%m-%d").to_string(),
+            EventTime::DateTimeUtc(dt) => dt.to_rfc3339(),
+            EventTime::DateTimeFloating(dt) => format!("{}Z", dt.format("%Y-%m-%dT%H:%M:%S")),
+            EventTime::DateTimeZoned { datetime, .. } => {
+                format!("{}Z", datetime.format("%Y-%m-%dT%H:%M:%S"))
+            }
+        }
+    }
 }
 
 impl fmt::Display for EventTime {
