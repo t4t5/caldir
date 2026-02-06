@@ -6,8 +6,8 @@ use anyhow::{Context, Result};
 use caldir_core::event::Event;
 use caldir_core::ics::{generate_ics, parse_event};
 use caldir_core::remote::protocol::CreateEvent;
+use http::Request;
 use libdav::caldav::GetCalendarResources;
-use libdav::dav::{PutResource, mime_types};
 
 use crate::caldav::{create_caldav_client, event_url, url_to_href};
 use crate::remote_config::ICloudRemoteConfig;
@@ -25,7 +25,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     Ok(created_event)
 }
 
-/// Create event via CalDAV using libdav.
+/// Create event via CalDAV using a raw PUT request (with debug output).
 async fn create_event_caldav(
     session: &Session,
     calendar_url: &str,
@@ -43,11 +43,29 @@ async fn create_event_caldav(
     let full_url = event_url(calendar_url, &event.uid);
     let href = url_to_href(&full_url);
 
-    // Create the resource using PUT with If-None-Match: * (fails if exists)
-    caldav
-        .request(PutResource::new(&href).create(&ics_content, mime_types::CALENDAR))
+    // Use request_raw instead of libdav's PutResource to avoid a duplicate
+    // Content-Type header. WebDavClient::request() sets a default
+    // "Content-Type: application/xml", then PutResource appends
+    // "Content-Type: text/calendar" — iCloud rejects the duplicate with 501.
+    let uri = caldav.relative_uri(&href)?;
+    let request = Request::builder()
+        .method(http::Method::PUT)
+        .uri(&uri)
+        .header("Content-Type", "text/calendar")
+        .header("If-None-Match", "*")
+        .body(ics_content)?;
+
+    let (parts, _body) = caldav
+        .request_raw(request)
         .await
         .context("Failed to create event")?;
+
+    if !parts.status.is_success() {
+        anyhow::bail!(
+            "Failed to create event: server returned {}",
+            parts.status
+        );
+    }
 
     // Fetch the created event to get server-assigned values
     let calendar_href = url_to_href(calendar_url);

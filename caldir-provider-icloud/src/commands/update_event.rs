@@ -1,13 +1,12 @@
 //! Update an existing event on iCloud Calendar.
-//!
-//! Uses libdav PutResource to update an existing .ics resource.
 
 use anyhow::{Context, Result};
 use caldir_core::event::Event;
 use caldir_core::ics::{generate_ics, parse_event};
 use caldir_core::remote::protocol::UpdateEvent;
+use http::Request;
 use libdav::caldav::GetCalendarResources;
-use libdav::dav::{GetEtag, PutResource, mime_types};
+use libdav::dav::GetEtag;
 
 use crate::caldav::{create_caldav_client, event_url, url_to_href};
 use crate::remote_config::ICloudRemoteConfig;
@@ -49,11 +48,27 @@ async fn update_event_caldav(
         .await
         .context("Failed to get event etag - event may not exist")?;
 
-    // Update the resource using PUT with If-Match (conditional update)
-    caldav
-        .request(PutResource::new(&href).update(&ics_content, mime_types::CALENDAR, &etag_response.etag))
+    // Use request_raw instead of libdav's PutResource to avoid a duplicate
+    // Content-Type header (see create_event.rs for details).
+    let uri = caldav.relative_uri(&href)?;
+    let request = Request::builder()
+        .method(http::Method::PUT)
+        .uri(&uri)
+        .header("Content-Type", "text/calendar")
+        .header("If-Match", &etag_response.etag)
+        .body(ics_content)?;
+
+    let (parts, _body) = caldav
+        .request_raw(request)
         .await
         .context("Failed to update event")?;
+
+    if !parts.status.is_success() {
+        anyhow::bail!(
+            "Failed to update event: server returned {}",
+            parts.status
+        );
+    }
 
     // Fetch the updated event to get server-assigned values
     let calendar_href = url_to_href(calendar_url);
