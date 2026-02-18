@@ -245,6 +245,33 @@ caldir uses semantic filenames instead of UUIDs:
 
 ---
 
+## Account Identifier Convention
+
+Providers that have an account concept (e.g., Google, iCloud) should include a `{provider}_account` field in their remote config. This allows caldir consumers (like GUI apps) to group calendars by account for display purposes.
+
+```toml
+# Google calendar — has an account
+[remote]
+provider = "google"
+google_account = "me@gmail.com"
+google_calendar_id = "primary"
+
+# iCloud calendar — has an account
+[remote]
+provider = "icloud"
+icloud_account = "me@icloud.com"
+icloud_calendar_url = "https://caldav.icloud.com/..."
+
+# Plain CalDAV — no account
+[remote]
+provider = "caldav"
+caldav_url = "https://example.com/dav/calendar"
+```
+
+The `Remote::account_identifier()` method in caldir-core extracts this by looking up `{provider}_account` in the config. Returns `None` for providers without accounts.
+
+---
+
 ## Provider-Specific Notes
 
 ### Google Calendar

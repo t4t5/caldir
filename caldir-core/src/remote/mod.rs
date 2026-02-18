@@ -41,6 +41,17 @@ impl Remote {
         Remote { provider, config }
     }
 
+    /// Returns the account identifier for this remote, if present.
+    ///
+    /// Looks for a `{provider}_account` field in the config (e.g., `google_account`,
+    /// `icloud_account`). Providers that have an account concept should include this
+    /// field in their remote config. Providers without accounts (e.g., plain CalDAV
+    /// servers) simply omit it.
+    pub fn account_identifier(&self) -> Option<&str> {
+        let key = format!("{}_account", self.provider.name());
+        self.config.0.get(&key).and_then(|v| v.as_str())
+    }
+
     pub async fn events(&self, range: &DateRange) -> CalDirResult<Vec<Event>> {
         self.provider
             .call(ListEvents {

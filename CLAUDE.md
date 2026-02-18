@@ -299,6 +299,8 @@ google_calendar_id = "work@group.calendar.google.com"
 
 These files are created automatically by `caldir auth google`. The provider returns the config fields to save (name, color, remote settings), so the CLI doesn't need to know about provider-specific field names. Calendars without `.caldir/config.toml` are treated as local-only (not synced).
 
+**Account identifier convention**: Providers with an account concept include a `{provider}_account` field in their remote config (e.g., `google_account`, `icloud_account`). `Remote::account_identifier()` extracts this for grouping calendars by account. Providers without accounts (e.g., plain CalDAV) simply omit the field.
+
 ### Provider Credentials
 
 Provider credentials and tokens are managed by each provider in its own directory:
