@@ -4,6 +4,11 @@ pub mod config;
 mod event;
 mod state;
 
+use std::collections::HashMap;
+use std::fmt;
+use std::path::PathBuf;
+
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::caldir::Caldir;
@@ -12,10 +17,9 @@ use crate::calendar::event::CalendarEvent;
 use crate::calendar::state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::{Event, EventTime};
+use crate::recurrence::expand_recurring_event;
 use crate::remote::Remote;
 use crate::utils::slugify;
-use std::fmt;
-use std::path::PathBuf;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Calendar {
@@ -111,6 +115,72 @@ impl Calendar {
             .collect();
 
         Ok(local_events)
+    }
+
+    /// Load events in the given date range, expanding recurring events into instances.
+    ///
+    /// Returns individual event instances (not master recurring events). Instance overrides
+    /// from disk replace their corresponding generated occurrences.
+    pub fn events_in_range(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> CalDirResult<Vec<Event>> {
+        let all_events = self.events()?;
+
+        // Classify events into singles, masters, and overrides
+        let mut singles: Vec<Event> = Vec::new();
+        let mut masters: Vec<Event> = Vec::new();
+        // uid → (recurrence_id ICS string → override Event)
+        let mut overrides: HashMap<String, HashMap<String, Event>> = HashMap::new();
+
+        for ce in all_events {
+            let event = ce.event;
+            if event.recurrence.is_some() {
+                masters.push(event);
+            } else if let Some(ref rid) = event.recurrence_id {
+                overrides
+                    .entry(event.uid.clone())
+                    .or_default()
+                    .insert(rid.to_ics_string(), event);
+            } else {
+                singles.push(event);
+            }
+        }
+
+        let mut result: Vec<Event> = Vec::new();
+
+        // Include singles that fall in range
+        for event in singles {
+            if let Some(start_utc) = event.start.to_utc() {
+                if start_utc >= from && start_utc <= to {
+                    result.push(event);
+                }
+            }
+        }
+
+        // Expand each master into instances within range
+        for master in &masters {
+            let uid_overrides = overrides.remove(&master.uid).unwrap_or_default();
+            let instances = expand_recurring_event(master, from, to, &uid_overrides)?;
+            result.extend(instances);
+        }
+
+        // Include orphaned overrides (override whose master is missing) if in range
+        for (_uid, orphans) in overrides {
+            for (_rid, event) in orphans {
+                if let Some(start_utc) = event.start.to_utc() {
+                    if start_utc >= from && start_utc <= to {
+                        result.push(event);
+                    }
+                }
+            }
+        }
+
+        // Sort by start time
+        result.sort_by(|a, b| a.start.to_utc().cmp(&b.start.to_utc()));
+
+        Ok(result)
     }
 
     pub fn create_event(&self, event: &Event) -> CalDirResult<()> {
