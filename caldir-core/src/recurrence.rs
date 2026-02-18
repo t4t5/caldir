@@ -11,20 +11,79 @@ use rrule::RRuleSet;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::{Event, EventTime, Recurrence};
 
+/// Ensure the UNTIL parameter in an RRULE string matches the DTSTART timezone convention.
+///
+/// The rrule crate validates that DTSTART and UNTIL use the same timezone form:
+/// - UTC DTSTART → UNTIL must end with Z
+/// - Floating DTSTART → UNTIL must not have Z
+/// - Zoned DTSTART (TZID) → UNTIL must be expressed in the same named timezone (no Z)
+///
+/// RFC 5545 specifies UNTIL in UTC when DTSTART is zoned, but the rrule crate
+/// requires them to match. For zoned events, we convert the UTC UNTIL to the
+/// DTSTART's timezone.
+fn normalize_rrule_until(rrule: &str, start: &EventTime) -> String {
+    rrule
+        .split(';')
+        .map(|part| {
+            if !part.starts_with("UNTIL=") {
+                return part.to_string();
+            }
+            let value = &part[6..];
+
+            match start {
+                EventTime::DateTimeUtc(_) => {
+                    // DTSTART is UTC — UNTIL must also end with Z
+                    if !value.ends_with('Z') {
+                        if value.contains('T') {
+                            format!("UNTIL={}Z", value)
+                        } else {
+                            format!("UNTIL={}T235959Z", value)
+                        }
+                    } else {
+                        part.to_string()
+                    }
+                }
+                EventTime::DateTimeZoned { .. } => {
+                    // DTSTART has a named timezone — rrule crate expects UNTIL in UTC
+                    if !value.ends_with('Z') {
+                        if value.contains('T') {
+                            format!("UNTIL={}Z", value)
+                        } else {
+                            format!("UNTIL={}T235959Z", value)
+                        }
+                    } else {
+                        part.to_string()
+                    }
+                }
+                _ => {
+                    // Date / Floating — UNTIL must not have Z
+                    if value.ends_with('Z') {
+                        format!("UNTIL={}", value.trim_end_matches('Z'))
+                    } else {
+                        part.to_string()
+                    }
+                }
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
 /// Build an iCalendar-format RRULE string for the rrule crate parser.
 fn build_rrule_string(start: &EventTime, recurrence: &Recurrence) -> String {
     let mut lines = Vec::new();
 
-    // DTSTART — the rrule crate needs a datetime, so all-day dates become midnight UTC
+    // DTSTART — Date and Floating stay floating (no Z) so they match
+    // their RRULE's UNTIL format. UTC keeps Z. Zoned keeps TZID.
     let dtstart = match start {
         EventTime::Date(d) => {
-            format!("DTSTART:{}T000000Z", d.format("%Y%m%d"))
+            format!("DTSTART:{}T000000", d.format("%Y%m%d"))
         }
         EventTime::DateTimeUtc(dt) => {
             format!("DTSTART:{}", dt.format("%Y%m%dT%H%M%SZ"))
         }
         EventTime::DateTimeFloating(dt) => {
-            format!("DTSTART:{}Z", dt.format("%Y%m%dT%H%M%S"))
+            format!("DTSTART:{}", dt.format("%Y%m%dT%H%M%S"))
         }
         EventTime::DateTimeZoned { datetime, tzid } => {
             format!(
@@ -36,18 +95,19 @@ fn build_rrule_string(start: &EventTime, recurrence: &Recurrence) -> String {
     };
     lines.push(dtstart);
 
-    // RRULE
-    lines.push(format!("RRULE:{}", recurrence.rrule));
+    // RRULE — normalize UNTIL to match DTSTART's timezone convention
+    let rrule = normalize_rrule_until(&recurrence.rrule, start);
+    lines.push(format!("RRULE:{}", rrule));
 
-    // EXDATE lines
+    // EXDATE lines — must also match DTSTART's timezone convention
     for exdate in &recurrence.exdates {
         let exdate_str = match exdate {
-            EventTime::Date(d) => format!("EXDATE:{}T000000Z", d.format("%Y%m%d")),
+            EventTime::Date(d) => format!("EXDATE:{}T000000", d.format("%Y%m%d")),
             EventTime::DateTimeUtc(dt) => {
                 format!("EXDATE:{}", dt.format("%Y%m%dT%H%M%SZ"))
             }
             EventTime::DateTimeFloating(dt) => {
-                format!("EXDATE:{}Z", dt.format("%Y%m%dT%H%M%S"))
+                format!("EXDATE:{}", dt.format("%Y%m%dT%H%M%S"))
             }
             EventTime::DateTimeZoned { datetime, tzid } => {
                 format!(
@@ -167,4 +227,53 @@ pub fn expand_recurring_event(
     }
 
     Ok(events)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+
+    /// Reproduce the exact failing event from disk:
+    /// DTSTART;TZID=Europe/Stockholm:19680508T000000
+    /// RRULE:FREQ=YEARLY;UNTIL=20080507T120000Z
+    #[test]
+    fn test_zoned_dtstart_with_utc_until() {
+        let start = EventTime::DateTimeZoned {
+            datetime: NaiveDateTime::new(
+                NaiveDate::from_ymd_opt(1968, 5, 8).unwrap(),
+                NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
+            ),
+            tzid: "Europe/Stockholm".to_string(),
+        };
+        let recurrence = Recurrence {
+            rrule: "FREQ=YEARLY;UNTIL=20080507T120000Z".to_string(),
+            exdates: vec![],
+        };
+
+        let rrule_str = build_rrule_string(&start, &recurrence);
+        eprintln!("Generated rrule string:\n{}", rrule_str);
+
+        // This is the line that was failing:
+        let result: Result<RRuleSet, _> = rrule_str.parse();
+        assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+    }
+
+    /// Reproduce the all-day event case:
+    /// DTSTART;VALUE=DATE:20080508
+    /// RRULE:FREQ=YEARLY;UNTIL=20220507
+    #[test]
+    fn test_allday_dtstart_with_date_until() {
+        let start = EventTime::Date(NaiveDate::from_ymd_opt(2008, 5, 8).unwrap());
+        let recurrence = Recurrence {
+            rrule: "FREQ=YEARLY;UNTIL=20220507".to_string(),
+            exdates: vec![],
+        };
+
+        let rrule_str = build_rrule_string(&start, &recurrence);
+        eprintln!("Generated rrule string:\n{}", rrule_str);
+
+        let result: Result<RRuleSet, _> = rrule_str.parse();
+        assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+    }
 }
