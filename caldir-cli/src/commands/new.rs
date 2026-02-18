@@ -22,6 +22,10 @@ pub fn run(summary: String, start: String) -> Result<()> {
                 summary,
                 EventTime::DateTimeFloating(start_dt),
                 EventTime::DateTimeFloating(end_dt),
+                None,
+                None,
+                None,
+                Vec::new(),
             );
 
             cal.create_event(&event)?;

@@ -107,20 +107,28 @@ impl fmt::Display for Event {
 }
 
 impl Event {
-    pub fn new(summary: String, start: EventTime, end: EventTime) -> Self {
+    pub fn new(
+        summary: String,
+        start: EventTime,
+        end: EventTime,
+        description: Option<String>,
+        location: Option<String>,
+        recurrence: Option<Recurrence>,
+        reminders: Vec<Reminder>,
+    ) -> Self {
         let uid = format!("{}@caldir", uuid::Uuid::new_v4());
 
         Event {
             uid,
             summary,
-            description: None,
-            location: None,
+            description,
+            location,
             start,
             end,
             status: EventStatus::Confirmed,
-            recurrence: None,
+            recurrence,
             recurrence_id: None,
-            reminders: Vec::new(),
+            reminders,
             transparency: Transparency::Opaque,
             organizer: None,
             attendees: Vec::new(),
