@@ -14,7 +14,6 @@ use crate::error::{CalDirError, CalDirResult};
 use crate::event::{Event, EventTime};
 use crate::remote::Remote;
 use crate::utils::slugify;
-use std::collections::HashSet;
 use std::fmt;
 use std::path::PathBuf;
 
@@ -85,16 +84,6 @@ impl Calendar {
 
     pub fn state(&self) -> CalendarState {
         CalendarState::load(self.clone())
-    }
-
-    pub fn save_state(&self) -> CalDirResult<()> {
-        // Track event IDs (uid + recurrence_id) for sync state
-        let known_event_ids: HashSet<String> = self
-            .events()?
-            .into_iter()
-            .map(|e| e.event.unique_id())
-            .collect();
-        self.state().save(&known_event_ids)
     }
 
     pub fn save_config(&self) -> CalDirResult<()> {

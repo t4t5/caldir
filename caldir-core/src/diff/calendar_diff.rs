@@ -1,6 +1,6 @@
 //! Calendar diff computation and application.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::calendar::Calendar;
 use crate::date_range::DateRange;
@@ -26,6 +26,9 @@ impl CalendarDiff {
             .remote()
             .ok_or_else(|| CalDirError::RemoteNotFound(self.calendar.slug.to_string()))?;
 
+        let mut known_ids: HashSet<String> =
+            self.calendar.state().read().known_event_ids.into_iter().collect();
+
         for diff in &self.to_push {
             match diff.kind {
                 DiffKind::Create => {
@@ -33,6 +36,7 @@ impl CalendarDiff {
                     let created = remote.create_event(event).await?;
                     // Update local file with remote-assigned ID and fields (find by uid)
                     self.calendar.update_event(&event.uid, &created)?;
+                    known_ids.insert(created.unique_id());
                 }
                 DiffKind::Update => {
                     let event = diff.new.as_ref().expect("Update must have new event");
@@ -45,21 +49,26 @@ impl CalendarDiff {
                     // Get provider-specific event ID for deletion
                     let provider_event_id = get_provider_event_id(event);
                     remote.delete_event(&provider_event_id).await?;
+                    known_ids.remove(&event.unique_id());
                 }
             }
         }
 
-        self.calendar.save_state()?;
+        self.calendar.state().save(&known_ids)?;
 
         Ok(())
     }
 
     pub fn apply_pull(&self) -> CalDirResult<()> {
+        let mut known_ids: HashSet<String> =
+            self.calendar.state().read().known_event_ids.into_iter().collect();
+
         for diff in &self.to_pull {
             match diff.kind {
                 DiffKind::Create => {
                     let event = diff.new.as_ref().expect("Create must have new event");
                     self.calendar.create_event(event)?;
+                    known_ids.insert(event.unique_id());
                 }
                 DiffKind::Update => {
                     let event = diff.new.as_ref().expect("Update must have new event");
@@ -69,11 +78,12 @@ impl CalendarDiff {
                     let event = diff.old.as_ref().expect("Delete must have old event");
                     self.calendar
                         .delete_event(&event.uid, event.recurrence_id.as_ref())?;
+                    known_ids.remove(&event.unique_id());
                 }
             }
         }
 
-        self.calendar.save_state()?;
+        self.calendar.state().save(&known_ids)?;
 
         Ok(())
     }

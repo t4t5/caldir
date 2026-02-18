@@ -29,7 +29,7 @@ pub fn run(summary: String, start: String) -> Result<()> {
             println!("{}", format!("Created: {}", event.summary).green());
         }
         None => {
-            println!("{}", "No default calendar set.".red());
+            println!("{}", "Default calendar not found.".red());
         }
     }
 
