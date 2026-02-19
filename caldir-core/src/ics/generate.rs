@@ -192,7 +192,7 @@ fn add_time_parameters(prop: &mut Property, time: &EventTime) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::event::{Attendee, EventStatus, ParticipationStatus};
+    use crate::event::{Attendee, EventStatus, ParticipationStatus, Reminders};
     use chrono::{NaiveDate, TimeZone, Utc};
 
     fn make_test_event() -> Event {
@@ -206,7 +206,7 @@ mod tests {
             status: EventStatus::Confirmed,
             recurrence: None,
             recurrence_id: None,
-            reminders: vec![],
+            reminders: Reminders(vec![]),
             transparency: Transparency::Opaque,
             organizer: None,
             attendees: vec![],
@@ -277,9 +277,9 @@ mod tests {
 
     #[test]
     fn test_generate_ics_alarm_is_minimal() {
-        use crate::event::Reminder;
+        use crate::event::{Reminder, Reminders};
         let mut event = make_test_event();
-        event.reminders = vec![Reminder { minutes: 30 }];
+        event.reminders = Reminders(vec![Reminder { minutes: 30 }]);
 
         let ics = generate_ics(&event).unwrap();
         println!("Generated ICS:\n{}", ics);

@@ -1,7 +1,7 @@
 //! ICS file parsing using the icalendar crate's parser.
 
 use crate::event::{
-    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder,
+    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder, Reminders,
     Transparency,
 };
 use icalendar::{
@@ -107,7 +107,7 @@ pub fn parse_event(content: &str) -> Option<Event> {
         status,
         recurrence,
         recurrence_id,
-        reminders,
+        reminders: Reminders(reminders),
         transparency,
         organizer,
         attendees,
@@ -250,7 +250,7 @@ mod tests {
             status: EventStatus::Confirmed,
             recurrence: None,
             recurrence_id: None,
-            reminders: vec![],
+            reminders: Reminders(vec![]),
             transparency: Transparency::Opaque,
             organizer: None,
             attendees: vec![

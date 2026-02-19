@@ -56,7 +56,7 @@ pub struct Event {
     pub recurrence_id: Option<EventTime>,
 
     // Alarms & Availability
-    pub reminders: Vec<Reminder>,
+    pub reminders: Reminders,
     /// Whether event blocks time (OPAQUE) or is free (TRANSPARENT)
     pub transparency: Transparency,
 
@@ -128,7 +128,7 @@ impl Event {
             status: EventStatus::Confirmed,
             recurrence,
             recurrence_id: None,
-            reminders,
+            reminders: Reminders(reminders),
             transparency: Transparency::Opaque,
             organizer: None,
             attendees: Vec::new(),
@@ -205,6 +205,49 @@ impl ParticipationStatus {
 pub struct Reminder {
     /// Minutes before the event to trigger
     pub minutes: i64,
+}
+
+/// A collection of reminders with order-independent equality.
+///
+/// Reminder order is not meaningful — `[10, 30]` and `[30, 10]` are equal.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Reminders(pub Vec<Reminder>);
+
+impl PartialEq for Reminders {
+    fn eq(&self, other: &Self) -> bool {
+        let mut a = self.0.clone();
+        let mut b = other.0.clone();
+        a.sort_by_key(|r| r.minutes);
+        b.sort_by_key(|r| r.minutes);
+        a == b
+    }
+}
+
+impl std::ops::Deref for Reminders {
+    type Target = Vec<Reminder>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for Reminders {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl FromIterator<Reminder> for Reminders {
+    fn from_iter<I: IntoIterator<Item = Reminder>>(iter: I) -> Self {
+        Reminders(iter.into_iter().collect())
+    }
+}
+
+impl<'a> IntoIterator for &'a Reminders {
+    type Item = &'a Reminder;
+    type IntoIter = std::slice::Iter<'a, Reminder>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
 }
 
 /// Event transparency (busy/free status)

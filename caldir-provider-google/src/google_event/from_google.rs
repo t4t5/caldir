@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use caldir_core::event::{
-    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder,
+    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder, Reminders,
     Transparency,
 };
 
@@ -60,7 +60,7 @@ impl FromGoogle for Event {
                 .map(|r| Reminder { minutes: r.minutes })
                 .collect()
         } else {
-            Vec::new()
+            Reminders(vec![])
         };
 
         let transparency = if event.transparency == "transparent" {
