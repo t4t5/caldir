@@ -201,6 +201,16 @@ impl Calendar {
         self.create_event(event)
     }
 
+    /// Find the master recurring event for a given uid.
+    pub fn master_event_for(&self, uid: &str) -> CalDirResult<Option<Event>> {
+        let master = self
+            .events()?
+            .into_iter()
+            .find(|ce| ce.event.uid == uid && ce.event.recurrence.is_some())
+            .map(|ce| ce.event);
+        Ok(master)
+    }
+
     /// Delete a local event file by id
     /// For recurring event instances, also matches on recurrence_id.
     pub fn delete_event(&self, uid: &str, recurrence_id: Option<&EventTime>) -> CalDirResult<()> {
