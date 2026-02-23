@@ -18,9 +18,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    #[command(about = "Connect to a remote calendar provider (e.g., Google Calendar)")]
     Auth {
         provider: String, // e.g. "google"
     },
+    #[command(about = "Check if any events have changed (local and remote)")]
     Status {
         /// Only operate on this calendar (by slug)
         #[arg(short, long)]
@@ -38,6 +40,7 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
+    #[command(about = "Pull changes from remote calendars into local caldir")]
     Pull {
         /// Only operate on this calendar (by slug)
         #[arg(short, long)]
@@ -55,6 +58,7 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
+    #[command(about = "Push changes from local caldir to remote calendars")]
     Push {
         /// Only operate on this calendar (by slug)
         #[arg(short, long)]
@@ -64,6 +68,7 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
+    #[command(about = "Sync changes between caldir and remote calendars (push + pull)")]
     Sync {
         /// Only operate on this calendar (by slug)
         #[arg(short, long)]
@@ -81,6 +86,7 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
+    #[command(about = "Create a new event in caldir")]
     New {
         title: String,
 
