@@ -22,18 +22,20 @@ impl ToGoogle for Event {
             Transparency::Transparent => "transparent".to_string(),
         };
 
-        let reminders = if self.reminders.is_empty() {
+        let valid_reminders: Vec<_> = self
+            .reminders
+            .iter()
+            .filter(|r| r.minutes > 0)
+            .map(|r| google_calendar::types::EventReminder {
+                method: "popup".to_string(),
+                minutes: r.minutes,
+            })
+            .collect();
+        let reminders = if valid_reminders.is_empty() {
             None
         } else {
             Some(google_calendar::types::Reminders {
-                overrides: self
-                    .reminders
-                    .iter()
-                    .map(|r| google_calendar::types::EventReminder {
-                        method: "popup".to_string(),
-                        minutes: r.minutes,
-                    })
-                    .collect(),
+                overrides: valid_reminders,
                 use_default: false,
             })
         };
