@@ -90,7 +90,19 @@ The config file is created with all options commented out -- open it to see what
 
 Every event is a standard [RFC 5545](https://tools.ietf.org/html/rfc5545) `.ics` file. You can open them in any calendar app, move them around, or sync them with other tools. caldir is just a directory convention and a sync tool -- there's no lock-in.
 
-## How is it different from pimsync?
+## Comparison to other tools
 
-- **Human-readable filenames**: pimsync uses UUIDs (`a1b2c3d4.ics`). caldir parses events to generate meaningful names (`2025-01-15T0900__standup.ics`).
-- **Native APIs**: pimsync is CalDAV-only. Caldir providers can connect directly to APIs like Google Calendar and Microsoft Graph, so that you can keep using your existing calendar setup!
+|  | **caldir** | **[vdirsyncer]** | **[pimsync]** | **[calendula]** |
+|---|---|---|---|---|
+| **Filenames** | Human-readable (`2025-01-15T0900__standup.ics`) | UUID-based | UUID-based | UUID-based |
+| **Sync model** | Git-like push/pull | Bidirectional pair sync | Bidirectional pair sync | No sync |
+| **Google Calendar** | Native REST API | CalDAV | [Not yet](https://whynothugo.nl/journal/2025/03/04/design-for-google-caldav-support-in-pimsync/) | CalDAV |
+| **Language** | Rust | Python | Rust | Rust |
+
+**Human-readable filenames** — vdirsyncer, pimsync, and calendula all follow the [vdir spec](https://vdirsyncer.pimutils.org/en/stable/vdir.html), which uses opaque IDs as filenames. caldir generates names like `2025-01-15T0900__standup.ics` so that `ls` shows your schedule, files sort chronologically, and AI assistants can understand your calendar by reading the directory.
+
+**Provider plugins** — vdirsyncer, pimsync, and calendula are all built around CalDAV, which means adding support for providers with non-standard APIs (like Google) is difficult. caldir uses a plugin architecture where providers are separate binaries (`caldir-provider-google`, `caldir-provider-icloud`, etc.), so anyone can add support for a new calendar service without touching the core.
+
+[vdirsyncer]: https://github.com/pimutils/vdirsyncer
+[pimsync]: https://git.sr.ht/~whynothugo/pimsync
+[calendula]: https://github.com/pimalaya/calendula
