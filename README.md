@@ -38,15 +38,9 @@ Claude: *reads files directly* "You had 12 meetings..."
 
 ## Quick start
 
-Make sure you have [Rust and Cargo](https://rust-lang.org/learn/get-started/) installed.
-
 ```bash
-# Install the CLI
-cargo install --path caldir-cli
-
-# Install the provider for your calendar service
-cargo install --path caldir-provider-google   # Google Calendar
-cargo install --path caldir-provider-icloud   # Apple iCloud
+# Install caldir
+curl -sSf https://caldir.org/install.sh | sh
 
 # Connect and follow the instructions in the CLI:
 caldir auth google    # or: caldir auth icloud
@@ -56,6 +50,18 @@ caldir sync
 
 # Your calendar is now in ~/calendar
 ```
+
+<details>
+<summary>Install from source</summary>
+
+Make sure you have [Rust and Cargo](https://rust-lang.org/learn/get-started/) installed.
+
+```bash
+cargo install --path caldir-cli
+cargo install --path caldir-provider-google   # Google Calendar
+cargo install --path caldir-provider-icloud   # Apple iCloud
+```
+</details>
 
 ## Viewing events
 
