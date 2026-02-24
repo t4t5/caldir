@@ -37,7 +37,7 @@
       overflow-x: auto;
       white-space: nowrap;
     }
-    .install .prompt { color: #888; }
+    .install::before { content: "$ "; color: #888; user-select: none; }
     .or {
       color: #999;
       font-size: 0.9rem;
@@ -77,7 +77,7 @@
     <h1>caldir</h1>
     <p class="tagline">"file over app" for calendars.</p>
 
-    <div class="install"><span class="prompt">$ </span>curl -sSf https://caldir.org/install.sh | sh</div>
+    <div class="install">curl -sSf https://caldir.org/install.sh | sh</div>
 
     <p>Plaintext is the ultimate LLM interface. Your calendar should be something you can <code>ls</code>, <code>grep</code>, and reason about locally.</p>
 
