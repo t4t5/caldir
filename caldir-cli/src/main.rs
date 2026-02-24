@@ -6,6 +6,7 @@ use anyhow::Result;
 use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
 use caldir_core::date_range::DateRange;
+use chrono::{Datelike, Local, Utc};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -100,6 +101,18 @@ enum Commands {
         #[arg(long)]
         to: Option<String>,
     },
+    #[command(about = "Show today's events")]
+    Today {
+        /// Only show events from this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+    },
+    #[command(about = "Show this week's events (through Sunday)")]
+    Week {
+        /// Only show events from this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+    },
     #[command(about = "Create a new event in caldir")]
     New {
         title: String,
@@ -177,6 +190,32 @@ async fn main() -> Result<()> {
                 .transpose()
                 .map_err(|e| anyhow::anyhow!(e))?;
             commands::events::run(calendars, from_dt, to_dt)
+        }
+        Commands::Today { calendar } => {
+            require_calendars()?;
+            let calendars = resolve_calendars(calendar.as_deref())?;
+            let now = Utc::now();
+            let end_of_today = Local::now()
+                .date_naive()
+                .and_hms_opt(23, 59, 59)
+                .unwrap()
+                .and_utc();
+            commands::events::run(calendars, Some(now), Some(end_of_today))
+        }
+        Commands::Week { calendar } => {
+            require_calendars()?;
+            let calendars = resolve_calendars(calendar.as_deref())?;
+            let now = Utc::now();
+            let today = Local::now().date_naive();
+            // num_days_from_monday(): Mon=0, Tue=1, ..., Sun=6
+            let days_until_sunday = (6 - today.weekday().num_days_from_monday()) % 7;
+            // If today is Sunday, show through next Sunday
+            let days_until_sunday = if days_until_sunday == 0 { 7 } else { days_until_sunday };
+            let end_of_sunday = (today + chrono::Duration::days(days_until_sunday as i64))
+                .and_hms_opt(23, 59, 59)
+                .unwrap()
+                .and_utc();
+            commands::events::run(calendars, Some(now), Some(end_of_sunday))
         }
         Commands::New { title, start } => {
             require_calendars()?;
