@@ -109,6 +109,11 @@ impl Session {
 
         let path = self.path()?;
 
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory {}", parent.display()))?;
+        }
+
         std::fs::write(&path, contents)
             .with_context(|| format!("Failed to write session to {}", path.display()))?;
 
