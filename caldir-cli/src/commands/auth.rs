@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
 use caldir_core::remote::protocol::{AuthType, CredentialsData, FieldType, OAuthData, SetupData};
 use caldir_core::remote::provider::Provider;
@@ -158,7 +159,12 @@ pub async fn run(provider_name: &str) -> Result<()> {
         println!("  {slug}/ (created)");
     }
 
-    println!("\nRun `caldir pull` to sync events.");
+    let caldir = Caldir::load()?;
+    println!(
+        "\nCalendars saved to {}",
+        caldir.data_path().display()
+    );
+    println!("Run `caldir pull` to sync events.");
 
     Ok(())
 }
