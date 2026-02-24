@@ -86,6 +86,20 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
+    #[command(about = "List upcoming events across all calendars")]
+    Events {
+        /// Only show events from this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+
+        /// Show events from this date (YYYY-MM-DD)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Show events until this date (YYYY-MM-DD)
+        #[arg(long)]
+        to: Option<String>,
+    },
     #[command(about = "Create a new event in caldir")]
     New {
         title: String,
@@ -142,6 +156,27 @@ async fn main() -> Result<()> {
             let range = DateRange::from_args(from.as_deref(), to.as_deref())
                 .map_err(|e| anyhow::anyhow!(e))?;
             commands::sync::run(calendars, range, verbose).await
+        }
+        Commands::Events {
+            calendar,
+            from,
+            to,
+        } => {
+            require_calendars()?;
+            let calendars = resolve_calendars(calendar.as_deref())?;
+            use caldir_core::date_range::{parse_date_start, parse_date_end};
+            // Only parse dates if explicitly provided; events command has its own defaults
+            let from_dt = from
+                .as_deref()
+                .map(parse_date_start)
+                .transpose()
+                .map_err(|e| anyhow::anyhow!(e))?;
+            let to_dt = to
+                .as_deref()
+                .map(parse_date_end)
+                .transpose()
+                .map_err(|e| anyhow::anyhow!(e))?;
+            commands::events::run(calendars, from_dt, to_dt)
         }
         Commands::New { title, start } => {
             require_calendars()?;

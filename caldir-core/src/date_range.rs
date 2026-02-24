@@ -63,14 +63,14 @@ impl DateRange {
 }
 
 /// Parse YYYY-MM-DD as start of day in UTC
-fn parse_date_start(s: &str) -> Result<DateTime<Utc>, String> {
+pub fn parse_date_start(s: &str) -> Result<DateTime<Utc>, String> {
     let date = NaiveDate::parse_from_str(s, "%Y-%m-%d")
         .map_err(|_| format!("Invalid date format '{}'. Expected YYYY-MM-DD", s))?;
     Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc())
 }
 
 /// Parse YYYY-MM-DD as end of day in UTC
-fn parse_date_end(s: &str) -> Result<DateTime<Utc>, String> {
+pub fn parse_date_end(s: &str) -> Result<DateTime<Utc>, String> {
     let date = NaiveDate::parse_from_str(s, "%Y-%m-%d")
         .map_err(|_| format!("Invalid date format '{}'. Expected YYYY-MM-DD", s))?;
     Ok(date.and_hms_opt(23, 59, 59).unwrap().and_utc())
