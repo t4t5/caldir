@@ -32,4 +32,31 @@ impl CaldirConfig {
 
         Ok(config_dir.join("config.toml"))
     }
+
+    /// Create a default config file with all options commented out.
+    pub fn create_default_config(path: &std::path::Path) -> CalDirResult<()> {
+        let contents = format!(
+            "\
+# caldir configuration
+
+# Where your calendars live:
+# calendar_dir = \"{}\"
+
+# Default calendar for new events:
+# default_calendar = \"personal\"
+",
+            DEFAULT_CALDIR_PATH
+        );
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                CalDirError::Config(format!("Could not create config directory: {e}"))
+            })?;
+        }
+
+        std::fs::write(path, contents)
+            .map_err(|e| CalDirError::Config(format!("Could not write config file: {e}")))?;
+
+        Ok(())
+    }
 }

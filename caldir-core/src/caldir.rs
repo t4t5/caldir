@@ -16,6 +16,10 @@ impl Caldir {
     pub fn load() -> CalDirResult<Self> {
         let config_path = CaldirConfig::config_path()?;
 
+        if !config_path.exists() {
+            CaldirConfig::create_default_config(&config_path)?;
+        }
+
         let config: CaldirConfig = Config::builder()
             .add_source(File::from(config_path).required(false))
             .build()
