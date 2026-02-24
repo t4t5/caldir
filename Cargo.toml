@@ -1,3 +1,8 @@
 [workspace]
 members = ["caldir-cli", "caldir-core", "caldir-provider-google", "caldir-provider-icloud"]
 resolver = "3"
+
+[workspace.package]
+license = "MIT"
+repository = "https://github.com/t4t5/caldir"
+homepage = "https://caldir.org"

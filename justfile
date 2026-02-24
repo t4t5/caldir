@@ -38,3 +38,7 @@ install-provider:
 # Build and install everything
 install: install-provider
   cargo install --path caldir-cli
+
+# Serve website locally
+serve:
+  npx serve website -l 3000

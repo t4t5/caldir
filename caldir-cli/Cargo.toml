@@ -3,6 +3,11 @@ name = "caldir-cli"
 version = "0.1.0"
 edition = "2024"
 description = "CLI for interacting with your local caldir directory and syncing with external calendar providers"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["calendar", "cli", "ics", "sync"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "caldir"
@@ -25,7 +30,7 @@ anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 
 # Core library
-caldir-core = { path = "../caldir-core" }
+caldir-core = { path = "../caldir-core", version = "0.1.0" }
 
 # Colored output
 owo-colors = "4"

@@ -3,6 +3,11 @@ name = "caldir-provider-google"
 version = "0.1.0"
 edition = "2024"
 description = "Google Calendar provider for caldir-cli"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["calendar", "google", "ics", "sync"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "caldir-provider-google"
@@ -10,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Shared types
-caldir-core = { path = "../caldir-core" }
+caldir-core = { path = "../caldir-core", version = "0.1.0" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

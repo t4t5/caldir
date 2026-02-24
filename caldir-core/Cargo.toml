@@ -3,6 +3,11 @@ name = "caldir-core"
 version = "0.1.0"
 edition = "2024"
 description = "Shared types for caldir ecosystem (Event, protocol types)"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["calendar", "ics", "caldav", "sync"]
+categories = ["data-structures"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
