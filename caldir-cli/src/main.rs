@@ -11,6 +11,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
+#[command(version)]
 #[command(about = "Interact with your caldir events and sync to remote calendars")]
 struct Cli {
     #[command(subcommand)]
@@ -121,6 +122,8 @@ enum Commands {
         #[arg(short, long)]
         start: String,
     },
+    #[command(about = "Show configuration paths and calendar info")]
+    Config,
 }
 
 #[tokio::main]
@@ -221,6 +224,7 @@ async fn main() -> Result<()> {
             require_calendars()?;
             commands::new::run(title, start)
         }
+        Commands::Config => commands::config::run(),
     }
 }
 

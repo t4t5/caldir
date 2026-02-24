@@ -16,6 +16,7 @@ use crate::remote::protocol::{
 };
 use crate::remote::provider_account::ProviderAccount;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command as TokioCommand;
@@ -27,6 +28,12 @@ const AUTH_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Provider(String);
+
+impl fmt::Display for Provider {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl Provider {
     pub fn from_name(name: &str) -> Self {
