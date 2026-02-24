@@ -42,7 +42,8 @@ Make sure you have [Rust and Cargo](https://rust-lang.org/learn/get-started/) in
 
 ```bash
 # Install the CLI and the Google provider (if you use Google Calendar)
-cargo install caldir-cli caldir-provider-google
+cargo install --path caldir-cli
+cargo install --path caldir-provider-google
 
 # Connect with Google and follow the instructions in the CLI:
 caldir auth google
