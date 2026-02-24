@@ -57,6 +57,15 @@ caldir sync
 # Your calendar is now in ~/calendar
 ```
 
+## Viewing events
+
+```bash
+caldir events              # Next 3 days
+caldir today               # Today's events
+caldir week                # This week (through Sunday)
+caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
+```
+
 ## How sync works
 
 caldir uses a git-like push/pull model:
