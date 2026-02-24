@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use caldir_core::calendar::Calendar;
-use caldir_core::remote::protocol::{AuthType, CredentialsData, FieldType, OAuthData};
+use caldir_core::remote::protocol::{AuthType, CredentialsData, FieldType, OAuthData, SetupData};
 use caldir_core::remote::provider::Provider;
 use dialoguer::MultiSelect;
 use std::io::{self, Write};
@@ -17,7 +17,37 @@ pub async fn run(provider_name: &str) -> Result<()> {
     println!("Authenticating with {provider_name}...\n");
 
     // Phase 1: Get auth requirements from provider
-    let auth_info = provider.auth_init(Some(redirect_uri.clone())).await?;
+    let mut auth_info = provider.auth_init(Some(redirect_uri.clone())).await?;
+
+    // Handle one-time setup if provider needs it
+    if matches!(auth_info.auth_type, AuthType::NeedsSetup) {
+        let setup_data: SetupData = serde_json::from_value(auth_info.data)
+            .context("Failed to parse setup data from provider")?;
+
+        println!("{}\n", setup_data.instructions);
+
+        let mut fields = serde_json::Map::new();
+
+        for field in &setup_data.fields {
+            if let Some(ref help) = field.help {
+                println!("{}", help);
+            }
+
+            let value = match field.field_type {
+                FieldType::Password => prompt_password(&field.label)?,
+                _ => prompt_text(&field.label)?,
+            };
+
+            fields.insert(field.id.clone(), value.into());
+        }
+
+        provider.setup_submit(fields).await?;
+
+        println!("\nSetup complete. Continuing with authentication...\n");
+
+        // Retry auth_init now that setup is done
+        auth_info = provider.auth_init(Some(redirect_uri.clone())).await?;
+    }
 
     let provider_account = match auth_info.auth_type {
         AuthType::OAuthRedirect => {
@@ -73,6 +103,9 @@ pub async fn run(provider_name: &str) -> Result<()> {
             println!("\nValidating credentials...");
 
             provider.auth_submit(credentials).await?
+        }
+        AuthType::NeedsSetup => {
+            anyhow::bail!("Provider still requires setup after setup_submit — this is a provider bug");
         }
     };
 

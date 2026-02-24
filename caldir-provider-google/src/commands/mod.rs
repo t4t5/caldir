@@ -4,4 +4,5 @@ pub mod create_event;
 pub mod delete_event;
 pub mod list_calendars;
 pub mod list_events;
+pub mod setup_submit;
 pub mod update_event;

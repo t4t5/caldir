@@ -11,7 +11,7 @@ mod session;
 use anyhow::Result;
 use caldir_core::remote::protocol::{
     AuthInit, AuthSubmit, Command, CreateEvent, DeleteEvent, ListCalendars, ListEvents,
-    ProviderCommand, Request, Response, UpdateEvent,
+    ProviderCommand, Request, Response, SetupSubmit, UpdateEvent,
 };
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -73,6 +73,9 @@ async fn handle_request(request: Request) -> Result<serde_json::Value> {
         }
         Command::AuthSubmit => {
             dispatch::<AuthSubmit, _, _>(request.params, commands::auth_submit::handle).await
+        }
+        Command::SetupSubmit => {
+            dispatch::<SetupSubmit, _, _>(request.params, commands::setup_submit::handle).await
         }
         Command::ListCalendars => {
             dispatch::<ListCalendars, _, _>(request.params, commands::list_calendars::handle).await

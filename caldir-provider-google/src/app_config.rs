@@ -25,16 +25,20 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
+    fn path() -> Result<PathBuf> {
+        Ok(base_dir()?.join("app_config.toml"))
+    }
+
+    pub fn exists() -> Result<bool> {
+        Ok(Self::path()?.exists())
+    }
+
     pub fn load() -> Result<Self> {
-        let path = base_dir()?.join("app_config.toml");
+        let path = Self::path()?;
 
         if !path.exists() {
             anyhow::bail!(
-                "Google app config not found.\n\n\
-            Create {} with:\n\n\
-            client_id = \"your-client-id.apps.googleusercontent.com\"\n\
-            client_secret = \"your-client-secret\"\n\n\
-            See https://console.cloud.google.com/apis/credentials for setup.",
+                "Google app config not found at {}. Run `caldir auth google` to set up.",
                 path.display()
             );
         }
@@ -46,5 +50,22 @@ impl AppConfig {
             .with_context(|| format!("Failed to parse app_config from {}", path.display()))?;
 
         Ok(app_config)
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = Self::path()?;
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory {}", parent.display()))?;
+        }
+
+        let contents = toml::to_string_pretty(self)
+            .context("Failed to serialize app config")?;
+
+        std::fs::write(&path, contents)
+            .with_context(|| format!("Failed to write app_config to {}", path.display()))?;
+
+        Ok(())
     }
 }

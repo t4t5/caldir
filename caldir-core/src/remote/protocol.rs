@@ -15,6 +15,7 @@ pub trait ProviderCommand: Serialize {
 pub enum Command {
     AuthInit,
     AuthSubmit,
+    SetupSubmit,
     ListCalendars,
     ListEvents,
     CreateEvent,
@@ -34,6 +35,8 @@ pub enum AuthType {
     OAuthRedirect,
     /// Form-based credentials (iCloud app password, CalDAV)
     Credentials,
+    /// Provider needs one-time setup before auth can proceed.
+    NeedsSetup,
 }
 
 /// OAuth-specific init response data.
@@ -47,6 +50,13 @@ pub struct OAuthData {
 /// Credentials-specific init response data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialsData {
+    pub fields: Vec<CredentialField>,
+}
+
+/// Setup data returned when provider needs one-time configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetupData {
+    pub instructions: String,
     pub fields: Vec<CredentialField>,
 }
 
@@ -139,6 +149,20 @@ impl ProviderCommand for AuthSubmit {
     type Response = String; // Account identifier (e.g., email)
     fn command() -> Command {
         Command::AuthSubmit
+    }
+}
+
+/// Submit setup configuration (one-time provider setup).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetupSubmit {
+    #[serde(flatten)]
+    pub fields: serde_json::Map<String, serde_json::Value>,
+}
+
+impl ProviderCommand for SetupSubmit {
+    type Response = ();
+    fn command() -> Command {
+        Command::SetupSubmit
     }
 }
 

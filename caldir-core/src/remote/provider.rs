@@ -12,6 +12,7 @@
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::protocol::{
     AuthInit, AuthInitResponse, AuthSubmit, Command, ProviderCommand, Request, Response,
+    SetupSubmit,
 };
 use crate::remote::provider_account::ProviderAccount;
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,14 @@ impl Provider {
     ) -> CalDirResult<ProviderAccount> {
         let identifier = self.call_no_timeout(AuthSubmit { credentials }).await?;
         Ok(ProviderAccount::new(self.clone(), identifier))
+    }
+
+    /// Submit one-time setup configuration to the provider.
+    pub async fn setup_submit(
+        &self,
+        fields: serde_json::Map<String, serde_json::Value>,
+    ) -> CalDirResult<()> {
+        self.call_no_timeout(SetupSubmit { fields }).await
     }
 
     /// Call a typed provider command and return the result.

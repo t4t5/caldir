@@ -73,6 +73,9 @@ async fn handle_request(request: Request) -> Result<serde_json::Value> {
         Command::AuthSubmit => {
             dispatch::<AuthSubmit, _, _>(request.params, commands::auth_submit::handle).await
         }
+        Command::SetupSubmit => {
+            anyhow::bail!("iCloud provider does not require setup")
+        }
         Command::ListCalendars => {
             dispatch::<ListCalendars, _, _>(request.params, commands::list_calendars::handle).await
         }
