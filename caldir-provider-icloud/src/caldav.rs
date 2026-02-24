@@ -101,8 +101,8 @@ impl<'a> GetCalendarResourcesInRange<'a> {
 /// A fetched calendar resource with its ICS data.
 #[derive(Debug)]
 pub struct CalendarResource {
-    pub href: String,
-    pub etag: Option<String>,
+    pub _href: String,
+    pub _etag: Option<String>,
     pub data: String,
 }
 
@@ -193,7 +193,7 @@ fn parse_calendar_resources(body: &[u8]) -> std::result::Result<Vec<CalendarReso
 
         // Only include resources that have calendar data
         if let Some(data) = data {
-            resources.push(CalendarResource { href, etag, data });
+            resources.push(CalendarResource { _href: href, _etag: etag, data });
         }
     }
 
