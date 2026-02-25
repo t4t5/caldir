@@ -23,10 +23,11 @@ To connect to Google Calendar, you need to create OAuth credentials:\n\
 \n\
   1. Go to https://console.cloud.google.com/apis/credentials\n\
   2. Create a new project (or select an existing one)\n\
-  3. Click \"Create credentials\" → \"OAuth client ID\"\n\
-  4. Choose \"Desktop app\" as the application type\n\
-  5. Pick a name (e.g., \"Caldir\")\n\
-  6. Copy the client ID and client secret below"
+  3. Add your own account as a test user in the \"Audience\" tab
+  4. Click \"Create credentials\" → \"OAuth client ID\"\n\
+  5. Choose \"Desktop app\" as the application type\n\
+  6. Pick a name (e.g., \"Caldir\")\n\
+  7. Copy the client ID and client secret below"
                 .to_string(),
             fields: vec![
                 CredentialField {
