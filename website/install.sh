@@ -33,10 +33,17 @@ main() {
   echo "Detecting platform: ${target}"
 
   # Fetch latest version from GitHub API
-  version=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed 's/.*"tag_name": *"//;s/".*//')
+  # Try the API first, fall back to the releases redirect for rate-limited IPs
+  api_response=$(curl -sSf "https://api.github.com/repos/${REPO}/releases/latest" 2>&1) || true
+  version=$(echo "$api_response" | grep '"tag_name"' | sed 's/.*"tag_name": *"//;s/".*//')
 
   if [ -z "$version" ]; then
-    echo "Error: could not determine latest version" >&2
+    # Fallback: use the redirect from /releases/latest to extract the version
+    version=$(curl -sSfI "https://github.com/${REPO}/releases/latest" 2>&1 | grep -i '^location:' | sed 's|.*/tag/||;s/[[:space:]]*$//')
+  fi
+
+  if [ -z "$version" ]; then
+    echo "Error: could not determine latest version (GitHub API may be rate-limiting your IP)" >&2
     exit 1
   fi
 
