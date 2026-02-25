@@ -12,6 +12,7 @@ use crate::remote::Remote;
 pub struct CalendarConfig {
     pub name: Option<String>,
     pub color: Option<String>,
+    pub read_only: Option<bool>,
     pub remote: Option<Remote>,
 }
 

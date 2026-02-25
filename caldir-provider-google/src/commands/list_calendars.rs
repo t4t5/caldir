@@ -28,10 +28,15 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
         .map(|cal| {
             let remote_config = GoogleRemoteConfig::new(account_email, &cal.id);
             let remote = Remote::new(Provider::from_name("google"), remote_config.into());
+            let read_only = match cal.access_role.as_str() {
+                "writer" | "owner" => false,
+                _ => true,
+            };
 
             CalendarConfig {
                 name: Some(cal.summary.clone()),
                 color: Some(cal.background_color.clone()),
+                read_only: Some(read_only),
                 remote: Some(remote),
             }
         })

@@ -203,7 +203,7 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
 
     // Create only selected calendars
     let mut created_slugs = Vec::new();
-    for idx in selections {
+    for &idx in &selections {
         let config = &calendar_configs[idx];
         let slug = Calendar::unique_slug_for(config.name.as_deref())?;
 
@@ -220,9 +220,17 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
 
     let mut caldir = Caldir::load()?;
 
-    // Set the first created calendar as default if none is configured yet
-    if let Some(first_slug) = created_slugs.first() {
-        caldir.set_default_calendar_if_unset(first_slug)?;
+    // Set the first writable calendar as default if none is configured yet
+    let first_writable = selections.iter().enumerate().find_map(|(i, &idx)| {
+        let config = &calendar_configs[idx];
+        if config.read_only != Some(true) {
+            Some(created_slugs[i].clone())
+        } else {
+            None
+        }
+    });
+    if let Some(slug) = first_writable {
+        caldir.set_default_calendar_if_unset(&slug)?;
     }
 
     println!("\nCalendars saved to {}", caldir.data_path().display());

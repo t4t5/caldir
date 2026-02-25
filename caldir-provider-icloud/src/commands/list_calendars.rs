@@ -101,6 +101,7 @@ async fn list_calendars_caldav(session: &Session) -> Result<Vec<CalendarConfig>>
         configs.push(CalendarConfig {
             name: Some(display_name),
             color,
+            read_only: None,
             remote: Some(remote),
         });
     }
