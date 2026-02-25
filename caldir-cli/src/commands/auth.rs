@@ -161,7 +161,9 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
             provider.auth_submit(credentials).await?
         }
         AuthType::NeedsSetup => {
-            anyhow::bail!("Provider still requires setup after setup_submit — this is a provider bug");
+            anyhow::bail!(
+                "Provider still requires setup after setup_submit — this is a provider bug"
+            );
         }
     };
 
@@ -200,6 +202,7 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     println!();
 
     // Create only selected calendars
+    let mut created_slugs = Vec::new();
     for idx in selections {
         let config = &calendar_configs[idx];
         let slug = Calendar::unique_slug_for(config.name.as_deref())?;
@@ -210,15 +213,19 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
         };
 
         calendar.save_config()?;
+        created_slugs.push(slug.clone());
 
         println!("  {slug}/ (created)");
     }
 
-    let caldir = Caldir::load()?;
-    println!(
-        "\nCalendars saved to {}",
-        caldir.data_path().display()
-    );
+    let mut caldir = Caldir::load()?;
+
+    // Set the first created calendar as default if none is configured yet
+    if let Some(first_slug) = created_slugs.first() {
+        caldir.set_default_calendar_if_unset(first_slug)?;
+    }
+
+    println!("\nCalendars saved to {}", caldir.data_path().display());
     println!("Run `caldir pull` to sync events.");
 
     Ok(())

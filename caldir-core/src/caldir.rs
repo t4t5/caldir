@@ -65,4 +65,15 @@ impl Caldir {
         let name = self.config.default_calendar.as_ref()?;
         self.calendars().into_iter().find(|c| &c.slug == name)
     }
+
+    /// Set the default calendar if one isn't already configured.
+    /// Returns true if the default was set.
+    pub fn set_default_calendar_if_unset(&mut self, slug: &str) -> CalDirResult<bool> {
+        if self.config.default_calendar.is_some() {
+            return Ok(false);
+        }
+        self.config.default_calendar = Some(slug.to_string());
+        self.config.save()?;
+        Ok(true)
+    }
 }
