@@ -19,7 +19,7 @@ pub async fn handle(_cmd: AuthInit) -> Result<AuthInitResponse> {
         },
         CredentialField {
             id: "app_password".to_string(),
-            label: "App Password".to_string(),
+            label: "App-Specific Password".to_string(),
             field_type: FieldType::Password,
             required: true,
             help: Some(
