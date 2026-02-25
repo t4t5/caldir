@@ -73,11 +73,17 @@
     a:hover { text-decoration: underline; }
     .links { margin-top: 2rem; }
     .links a { margin-right: 1.5rem; }
+    .title { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.25rem; }
+    .title h1 { margin: 0; }
+    .logo { width: 36px; height: 36px; display: block; }
   </style>
 </head>
 <body>
   <main>
-    <h1>caldir</h1>
+    <div class="title">
+      <img class="logo" src="./logo.svg" alt="caldir logo">
+      <h1>caldir</h1>
+    </div>
     <p class="tagline">"file over app" for calendars.</p>
 
     <div class="install">curl -sSf https://caldir.org/install.sh | sh</div>
