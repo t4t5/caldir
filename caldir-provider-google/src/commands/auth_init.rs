@@ -10,7 +10,10 @@ use url::Url;
 
 use crate::app_config::AppConfig;
 
-pub const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
+pub const SCOPES: &[&str] = &[
+    "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+    "https://www.googleapis.com/auth/calendar.events.owned",
+];
 
 pub async fn handle(cmd: AuthInit) -> Result<AuthInitResponse> {
     let redirect_uri = cmd
