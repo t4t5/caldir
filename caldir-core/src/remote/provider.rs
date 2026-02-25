@@ -56,8 +56,11 @@ impl Provider {
     }
 
     /// Initialize authentication - provider returns what auth method it needs.
-    pub async fn auth_init(&self, redirect_uri: Option<String>) -> CalDirResult<AuthInitResponse> {
-        self.call_no_timeout(AuthInit { redirect_uri }).await
+    pub async fn auth_init(
+        &self,
+        options: serde_json::Map<String, serde_json::Value>,
+    ) -> CalDirResult<AuthInitResponse> {
+        self.call_no_timeout(AuthInit { options }).await
     }
 
     /// Submit gathered credentials to complete authentication.

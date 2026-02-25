@@ -2,7 +2,8 @@
 
 use anyhow::Result;
 use caldir_core::remote::protocol::{
-    AuthInit, AuthInitResponse, AuthType, CredentialField, FieldType, OAuthData, SetupData,
+    AuthInit, AuthInitResponse, AuthType, CredentialField, FieldType, HostedOAuthData, OAuthData,
+    SetupData,
 };
 use google_calendar::Client;
 use url::Url;
@@ -13,46 +14,74 @@ pub const SCOPES: &[&str] = &["https://www.googleapis.com/auth/calendar"];
 
 pub async fn handle(cmd: AuthInit) -> Result<AuthInitResponse> {
     let redirect_uri = cmd
-        .redirect_uri
-        .ok_or_else(|| anyhow::anyhow!("redirect_uri is required for OAuth"))?;
+        .options
+        .get("redirect_uri")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("redirect_uri is required for OAuth"))?
+        .to_string();
+
+    let hosted = cmd
+        .options
+        .get("hosted")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     if !AppConfig::exists()? {
-        let setup_data = SetupData {
-            instructions: "\
+        if hosted {
+            // No local app_config.toml — use hosted OAuth via caldir.org
+            let port = Url::parse(&redirect_uri)?
+                .port()
+                .ok_or_else(|| anyhow::anyhow!("Could not extract port from redirect_uri"))?;
+
+            let hosted_data = HostedOAuthData {
+                url: format!("https://caldir.org/auth/google/start?port={}", port),
+            };
+
+            return Ok(AuthInitResponse {
+                auth_type: AuthType::HostedOAuth,
+                data: serde_json::to_value(hosted_data)?,
+            });
+        } else {
+            // User wants to provide their own credentials
+            let setup_data = SetupData {
+                instructions: "\
 To connect to Google Calendar, you need to create OAuth credentials:\n\
 \n\
   1. Go to https://console.cloud.google.com/apis/credentials\n\
   2. Create a new project (or select an existing one)\n\
-  3. Add your own account as a test user in the \"Audience\" tab
-  4. Click \"Create credentials\" → \"OAuth client ID\"\n\
-  5. Choose \"Desktop app\" as the application type\n\
-  6. Pick a name (e.g., \"Caldir\")\n\
-  7. Copy the client ID and client secret below"
-                .to_string(),
-            fields: vec![
-                CredentialField {
-                    id: "client_id".to_string(),
-                    label: "Client ID".to_string(),
-                    field_type: FieldType::Text,
-                    required: true,
-                    help: None,
-                },
-                CredentialField {
-                    id: "client_secret".to_string(),
-                    label: "Client secret".to_string(),
-                    field_type: FieldType::Text,
-                    required: true,
-                    help: None,
-                },
-            ],
-        };
+  3. Enable the Google Calendar API for your project: https://console.developers.google.com/apis/api/calendar-json.googleapis.com\n\
+  4. Add your own account as a test user in the \"Audience\" tab\n\
+  5. Click \"Create credentials\" → \"OAuth client ID\"\n\
+  6. Choose \"Desktop app\" as the application type\n\
+  7. Pick a name (e.g., \"Caldir\")\n\
+  8. Copy the client ID and client secret below"
+                    .to_string(),
+                fields: vec![
+                    CredentialField {
+                        id: "client_id".to_string(),
+                        label: "Client ID".to_string(),
+                        field_type: FieldType::Text,
+                        required: true,
+                        help: None,
+                    },
+                    CredentialField {
+                        id: "client_secret".to_string(),
+                        label: "Client secret".to_string(),
+                        field_type: FieldType::Text,
+                        required: true,
+                        help: None,
+                    },
+                ],
+            };
 
-        return Ok(AuthInitResponse {
-            auth_type: AuthType::NeedsSetup,
-            data: serde_json::to_value(setup_data)?,
-        });
+            return Ok(AuthInitResponse {
+                auth_type: AuthType::NeedsSetup,
+                data: serde_json::to_value(setup_data)?,
+            });
+        }
     }
 
+    // Self-hosted path: user has their own OAuth credentials
     let app_config = AppConfig::load()?;
 
     let client = Client::new(

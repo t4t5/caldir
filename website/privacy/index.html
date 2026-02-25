@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy Policy — caldir</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      color: #1a1a1a;
+      background: #fafafa;
+      line-height: 1.6;
+    }
+    main {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 80px 24px;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+    h2 {
+      font-size: 1.3rem;
+      margin-top: 2rem;
+      margin-bottom: 0.5rem;
+    }
+    p { margin-bottom: 1rem; }
+    a { color: #0969da; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .back {
+      display: inline-block;
+      margin-bottom: 2rem;
+      color: #666;
+    }
+    .updated {
+      color: #666;
+      font-size: 0.9rem;
+      margin-bottom: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="/">&larr; caldir.org</a>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: February 2026</p>
+
+    <h2>What caldir does</h2>
+    <p>caldir is an open-source command-line tool that syncs your calendar between cloud providers (like Google Calendar) and local <code>.ics</code> files on your computer. All calendar data is stored locally on your filesystem.</p>
+
+    <h2>What caldir.org processes</h2>
+    <p>caldir.org provides an OAuth relay service so you can authenticate with Google Calendar without creating your own Google Cloud project. During authentication:</p>
+    <p><strong>caldir.org temporarily processes:</strong></p>
+    <p>Your OAuth authorization code and tokens pass through caldir.org during the initial authentication and when refreshing expired access tokens. These are relayed directly to and from Google's servers and are <strong>never stored, logged, or retained</strong> on caldir.org.</p>
+
+    <h2>What data is accessed</h2>
+    <p>caldir requests access to your Google Calendar data (the <code>calendar</code> scope). This includes reading and writing calendar events. This data is synced directly between Google's API and your local filesystem — it does not pass through caldir.org.</p>
+
+    <h2>Where your data lives</h2>
+    <p>All calendar data and authentication tokens are stored locally on your computer:</p>
+    <p>Calendar events are saved as <code>.ics</code> files in your calendar directory (e.g., <code>~/calendar/</code>). OAuth tokens are stored in <code>~/.config/caldir/providers/google/session/</code>.</p>
+
+    <h2>Third parties</h2>
+    <p>caldir does not share your data with any third parties. The only external services involved are the calendar providers you choose to sync with (e.g., Google Calendar).</p>
+
+    <h2>Self-hosted alternative</h2>
+    <p>If you prefer not to use the caldir.org relay, you can create your own Google Cloud project and provide your own OAuth credentials. In this mode, caldir.org is not involved at all.</p>
+
+    <h2>Contact</h2>
+    <p>For questions about this privacy policy, open an issue on <a href="https://github.com/t4t5/caldir">GitHub</a>.</p>
+  </main>
+</body>
+</html>

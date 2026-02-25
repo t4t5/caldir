@@ -1,7 +1,11 @@
+use std::collections::HashMap;
+
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
-use caldir_core::remote::protocol::{AuthType, CredentialsData, FieldType, OAuthData, SetupData};
+use caldir_core::remote::protocol::{
+    AuthType, CredentialsData, FieldType, HostedOAuthData, OAuthData, SetupData,
+};
 use caldir_core::remote::provider::Provider;
 use dialoguer::MultiSelect;
 use std::io::{self, Write};
@@ -10,7 +14,17 @@ use tokio::net::TcpListener;
 
 const DEFAULT_REDIRECT_PORT: u16 = 8085;
 
-pub async fn run(provider_name: &str) -> Result<()> {
+fn build_auth_options(hosted: bool) -> serde_json::Map<String, serde_json::Value> {
+    let port = DEFAULT_REDIRECT_PORT;
+    let redirect_uri = format!("http://localhost:{}/callback", port);
+
+    let mut options = serde_json::Map::new();
+    options.insert("redirect_uri".into(), redirect_uri.into());
+    options.insert("hosted".into(), hosted.into());
+    options
+}
+
+pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     let provider = Provider::from_name(provider_name);
     let port = DEFAULT_REDIRECT_PORT;
     let redirect_uri = format!("http://localhost:{}/callback", port);
@@ -18,7 +32,7 @@ pub async fn run(provider_name: &str) -> Result<()> {
     println!("Authenticating with {provider_name}...\n");
 
     // Phase 1: Get auth requirements from provider
-    let mut auth_info = provider.auth_init(Some(redirect_uri.clone())).await?;
+    let mut auth_info = provider.auth_init(build_auth_options(hosted)).await?;
 
     // Handle one-time setup if provider needs it
     if matches!(auth_info.auth_type, AuthType::NeedsSetup) {
@@ -47,7 +61,7 @@ pub async fn run(provider_name: &str) -> Result<()> {
         println!("\nSetup complete. Continuing with authentication...\n");
 
         // Retry auth_init now that setup is done
-        auth_info = provider.auth_init(Some(redirect_uri.clone())).await?;
+        auth_info = provider.auth_init(build_auth_options(hosted)).await?;
     }
 
     let provider_account = match auth_info.auth_type {
@@ -64,10 +78,17 @@ pub async fn run(provider_name: &str) -> Result<()> {
             }
 
             // Wait for OAuth callback
-            let (code, state) = wait_for_callback(port).await?;
+            let params = wait_for_callback(port).await?;
+
+            let code = params
+                .get("code")
+                .ok_or_else(|| anyhow::anyhow!("No code in callback"))?;
+            let state = params
+                .get("state")
+                .ok_or_else(|| anyhow::anyhow!("No state in callback"))?;
 
             // Validate state
-            if state != oauth.state {
+            if state != &oauth.state {
                 anyhow::bail!("OAuth state mismatch - possible CSRF attack");
             }
 
@@ -75,9 +96,43 @@ pub async fn run(provider_name: &str) -> Result<()> {
 
             // Phase 2: Submit credentials to complete auth
             let mut credentials = serde_json::Map::new();
-            credentials.insert("code".into(), code.into());
-            credentials.insert("state".into(), state.into());
+            credentials.insert("code".into(), code.clone().into());
+            credentials.insert("state".into(), state.clone().into());
             credentials.insert("redirect_uri".into(), redirect_uri.into());
+
+            provider.auth_submit(credentials).await?
+        }
+        AuthType::HostedOAuth => {
+            let hosted: HostedOAuthData = serde_json::from_value(auth_info.data)
+                .context("Failed to parse hosted OAuth data from provider")?;
+
+            println!("Open this URL in your browser to authenticate:\n");
+            println!("{}\n", hosted.url);
+
+            // Try to open the browser automatically
+            if open::that(&hosted.url).is_err() {
+                println!("(Could not open browser automatically, please copy the URL above)");
+            }
+
+            // Wait for callback with tokens (server already exchanged the code)
+            let params = wait_for_callback(port).await?;
+
+            let access_token = params
+                .get("access_token")
+                .ok_or_else(|| anyhow::anyhow!("No access_token in callback"))?;
+            let refresh_token = params
+                .get("refresh_token")
+                .ok_or_else(|| anyhow::anyhow!("No refresh_token in callback"))?;
+            let expires_in = params
+                .get("expires_in")
+                .ok_or_else(|| anyhow::anyhow!("No expires_in in callback"))?;
+
+            println!("\nReceived tokens, completing authentication...");
+
+            let mut credentials = serde_json::Map::new();
+            credentials.insert("access_token".into(), access_token.clone().into());
+            credentials.insert("refresh_token".into(), refresh_token.clone().into());
+            credentials.insert("expires_in".into(), expires_in.clone().into());
 
             provider.auth_submit(credentials).await?
         }
@@ -169,7 +224,8 @@ pub async fn run(provider_name: &str) -> Result<()> {
     Ok(())
 }
 
-async fn wait_for_callback(port: u16) -> Result<(String, String)> {
+/// Wait for an HTTP callback on localhost and return all query parameters.
+async fn wait_for_callback(port: u16) -> Result<HashMap<String, String>> {
     let address = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(&address)
         .await
@@ -187,7 +243,7 @@ async fn wait_for_callback(port: u16) -> Result<(String, String)> {
         .await
         .context("Failed to read OAuth callback request line")?;
 
-    // Parse the request to get the code and state
+    // Parse the request to extract query parameters
     let url_part = request_line
         .split_whitespace()
         .nth(1)
@@ -195,17 +251,7 @@ async fn wait_for_callback(port: u16) -> Result<(String, String)> {
 
     let url = url::Url::parse(&format!("http://localhost{}", url_part))?;
 
-    let code = url
-        .query_pairs()
-        .find(|(k, _)| k == "code")
-        .map(|(_, v)| v.to_string())
-        .ok_or_else(|| anyhow::anyhow!("No code in callback"))?;
-
-    let state = url
-        .query_pairs()
-        .find(|(k, _)| k == "state")
-        .map(|(_, v)| v.to_string())
-        .ok_or_else(|| anyhow::anyhow!("No state in callback"))?;
+    let params: HashMap<String, String> = url.query_pairs().into_owned().collect();
 
     // Send a response to the browser
     let response = "HTTP/1.1 200 OK\r\n\
@@ -224,7 +270,7 @@ async fn wait_for_callback(port: u16) -> Result<(String, String)> {
         .context("Failed to write OAuth callback response")?;
     stream.flush().await?;
 
-    Ok((code, state))
+    Ok(params)
 }
 
 /// Prompt the user for text input.
