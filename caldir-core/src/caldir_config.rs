@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{CalDirError, CalDirResult};
 
-static DEFAULT_CALDIR_PATH: &str = "~/calendar";
+static DEFAULT_CALDIR_PATH: &str = "~/caldir";
 
 fn default_caldir_path() -> PathBuf {
     PathBuf::from(DEFAULT_CALDIR_PATH)
