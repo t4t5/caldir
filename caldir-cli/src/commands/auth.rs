@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
+use caldir_core::date_range::DateRange;
 use caldir_core::remote::protocol::{
     AuthType, CredentialsData, FieldType, HostedOAuthData, OAuthData, SetupData,
 };
@@ -233,8 +234,18 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
         caldir.set_default_calendar_if_unset(&slug)?;
     }
 
-    println!("\nCalendars saved to {}", caldir.display_path().display());
-    println!("Run `caldir pull` to sync events.");
+    println!("\nCalendars saved to {}\n", caldir.display_path().display());
+
+    // Load the newly created calendars and do an initial pull
+    let calendars: Vec<Calendar> = created_slugs
+        .iter()
+        .filter_map(|slug| Calendar::load(slug).ok())
+        .collect();
+
+    if !calendars.is_empty() {
+        println!("Pulling events...\n");
+        super::pull::run(calendars, DateRange::default(), false).await?;
+    }
 
     Ok(())
 }
