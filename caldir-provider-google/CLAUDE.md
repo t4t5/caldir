@@ -23,6 +23,6 @@ The Google provider supports two authentication modes:
 
 **Hosted auth (default):** When no `app_config.toml` exists, `auth_init` returns `HostedOAuth` pointing to `caldir.org/auth/google/start`. The caldir.org relay handles the OAuth flow (holding client_id/secret server-side), exchanges the authorization code for tokens, and redirects them to the local CLI. Token refresh goes through `caldir.org/auth/google/refresh`. Sessions are saved with `auth_mode = "hosted"`.
 
-**Self-hosted auth (fallback):** When the user provides their own `app_config.toml` with client_id/secret, `auth_init` returns `OAuthRedirect` with a direct Google authorization URL. The CLI exchanges the code for tokens locally. Sessions are saved with `auth_mode = "local"`.
+**Self-hosted auth (`--hosted=false`):** When the user runs `caldir auth google --hosted=false` and no `app_config.toml` exists, `auth_init` returns `NeedsSetup` with instructions for creating Google Cloud OAuth credentials. After setup, or when `app_config.toml` already exists, it returns `OAuthRedirect` with a direct Google authorization URL. The CLI exchanges the code for tokens locally. Sessions are saved with `auth_mode = "local"`.
 
 Both modes store tokens locally in `~/.config/caldir/providers/google/session/`. The `auth_mode` field in the session file determines how tokens are refreshed — hosted sessions refresh via caldir.org, local sessions refresh directly with Google using the user's client_id/secret.

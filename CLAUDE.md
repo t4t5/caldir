@@ -111,8 +111,8 @@ Providers are separate binaries that communicate with caldir-cli via JSON over s
 **Discovery**: caldir-cli looks for executables named `caldir-provider-{name}` in PATH.
 
 **Provider autonomy**: Each provider manages its own state in `~/.config/caldir/providers/{name}/`. For example, the Google provider stores:
-- `app_config.toml` — OAuth client_id/secret (user creates via Google Cloud Console)
-- `session/{account}.toml` — Access/refresh tokens per authenticated account
+- `app_config.toml` — OAuth client_id/secret (only for self-hosted auth via `--hosted=false`)
+- `session/{account}.toml` — Access/refresh tokens per authenticated account (includes `auth_mode` field: `"hosted"` or `"local"`)
 
 The core CLI is completely provider-agnostic — it just passes provider-prefixed config fields (like `google_account`) to the provider binary.
 
@@ -307,19 +307,16 @@ Provider credentials and tokens are managed by each provider in its own director
 
 ```
 ~/.config/caldir/providers/google/
-  app_config.toml              # OAuth client_id/secret
+  app_config.toml              # OAuth client_id/secret (only for --hosted=false)
   session/
     me@gmail.com.toml          # Access/refresh tokens (auto-refreshed)
 ```
 
-To set up Google Calendar, create `~/.config/caldir/providers/google/app_config.toml`:
+**Hosted auth (default):** Just run `caldir auth google`. OAuth is handled via caldir.org — no setup needed. Tokens are refreshed through caldir.org when they expire.
 
-```toml
-client_id = "your-client-id.apps.googleusercontent.com"
-client_secret = "your-client-secret"
-```
+**Self-hosted auth:** For users who want to use their own Google Cloud credentials, run `caldir auth google --hosted=false`. This will prompt you to create OAuth credentials in Google Cloud Console and save them as `app_config.toml`. Tokens are refreshed directly with Google.
 
-Then run `caldir auth google` to authenticate. This will:
+Both modes will:
 1. Open a browser for OAuth
 2. Fetch all calendars from your account
 3. Create a directory for each calendar with `.caldir/config.toml`
@@ -329,8 +326,11 @@ Supports multiple accounts — run auth multiple times with different Google acc
 ## Commands
 
 ```bash
-# Authenticate with Google Calendar (auto-creates calendar directories)
+# Authenticate with Google Calendar (hosted OAuth via caldir.org)
 caldir auth google
+
+# Authenticate with your own Google Cloud credentials
+caldir auth google --hosted=false
 
 # Create a new local event (uses default_calendar from config)
 caldir new "Meeting with Alice" --start 2025-03-20T15:00
