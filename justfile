@@ -41,4 +41,4 @@ install: install-provider
 
 # Serve website locally
 serve:
-  npx serve website -l 3000
+  npx serve website/static -l 3000
