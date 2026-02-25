@@ -23,6 +23,10 @@ enum Commands {
     #[command(about = "Connect to a remote calendar provider (e.g., Google Calendar)")]
     Auth {
         provider: String, // e.g. "google"
+
+        /// Use hosted OAuth via caldir.org (default: true). Pass --hosted=false to use your own credentials.
+        #[arg(long, default_value_t = true)]
+        hosted: bool,
     },
     #[command(about = "Check if any events have changed (local and remote)")]
     Status {
@@ -131,7 +135,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Auth { provider } => commands::auth::run(&provider).await,
+        Commands::Auth { provider, hosted } => commands::auth::run(&provider, hosted).await,
         Commands::Status {
             calendar,
             from,

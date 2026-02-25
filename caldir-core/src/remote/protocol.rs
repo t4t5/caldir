@@ -33,6 +33,8 @@ pub enum Command {
 pub enum AuthType {
     /// OAuth 2.0 redirect flow (Google, Microsoft)
     OAuthRedirect,
+    /// Hosted OAuth flow via caldir.org relay (no local client_id/secret needed)
+    HostedOAuth,
     /// Form-based credentials (iCloud app password, CalDAV)
     Credentials,
     /// Provider needs one-time setup before auth can proceed.
@@ -45,6 +47,12 @@ pub struct OAuthData {
     pub authorization_url: String,
     pub state: String,
     pub scopes: Vec<String>,
+}
+
+/// Hosted OAuth init response data (caldir.org relay).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostedOAuthData {
+    pub url: String,
 }
 
 /// Credentials-specific init response data.
@@ -114,11 +122,11 @@ impl Response<()> {
 
 /// Request to initialize authentication.
 /// Provider returns what auth method it needs and any required data.
+/// The `options` map carries provider-specific hints (e.g., `redirect_uri`, `hosted`).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthInit {
-    /// For OAuth flows: the redirect URI the caller will listen on.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub redirect_uri: Option<String>,
+    #[serde(default)]
+    pub options: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Response from auth initialization - varies by auth type.

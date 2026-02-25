@@ -7,6 +7,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_config::{AppConfig, base_dir};
 
+const HOSTED_REFRESH_URL: &str = "https://caldir.org/auth/google/refresh";
+
+/// Whether this session was created via hosted (caldir.org) or local (self-hosted) OAuth.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthMode {
+    #[default]
+    Local,
+    Hosted,
+}
+
 pub struct Session {
     account_email: String,
     data: SessionData,
@@ -17,6 +28,8 @@ pub struct SessionData {
     access_token: String,
     refresh_token: String,
     expires_at: DateTime<Utc>,
+    #[serde(default)]
+    auth_mode: AuthMode,
 }
 
 impl From<&AccessToken> for SessionData {
@@ -27,6 +40,20 @@ impl From<&AccessToken> for SessionData {
             access_token: tokens.access_token.clone(),
             refresh_token: tokens.refresh_token.clone(),
             expires_at,
+            auth_mode: AuthMode::Local,
+        }
+    }
+}
+
+impl SessionData {
+    pub fn from_tokens(access_token: String, refresh_token: String, expires_in: i64) -> Self {
+        let expires_at = Utc::now() + Duration::seconds(expires_in);
+
+        SessionData {
+            access_token,
+            refresh_token,
+            expires_at,
+            auth_mode: AuthMode::Hosted,
         }
     }
 }
@@ -45,21 +72,38 @@ impl Session {
     }
 
     pub fn client(&self) -> Result<Client> {
-        let app_config = AppConfig::load()?;
+        match self.data.auth_mode {
+            AuthMode::Hosted => {
+                // Hosted mode: no local client_id/secret needed for API calls
+                Ok(Client::new(
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    self.data.access_token.clone(),
+                    self.data.refresh_token.clone(),
+                ))
+            }
+            AuthMode::Local => {
+                let app_config = AppConfig::load()?;
 
-        Ok(Client::new(
-            app_config.client_id,
-            app_config.client_secret,
-            String::new(),
-            self.data.access_token.clone(),
-            self.data.refresh_token.clone(),
-        ))
+                Ok(Client::new(
+                    app_config.client_id,
+                    app_config.client_secret,
+                    String::new(),
+                    self.data.access_token.clone(),
+                    self.data.refresh_token.clone(),
+                ))
+            }
+        }
     }
 
-    pub fn new(account_email: &str, session_data: &SessionData) -> Result<Self> {
+    pub fn new(account_email: &str, session_data: &SessionData, auth_mode: AuthMode) -> Result<Self> {
+        let mut data = session_data.clone();
+        data.auth_mode = auth_mode;
+
         let session = Session {
             account_email: account_email.to_string(),
-            data: session_data.clone(),
+            data,
         };
         Ok(session)
     }
@@ -133,6 +177,48 @@ impl Session {
     }
 
     async fn refresh(&mut self) -> Result<()> {
+        match self.data.auth_mode {
+            AuthMode::Hosted => self.refresh_hosted().await,
+            AuthMode::Local => self.refresh_local().await,
+        }
+    }
+
+    async fn refresh_hosted(&mut self) -> Result<()> {
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(HOSTED_REFRESH_URL)
+            .json(&serde_json::json!({
+                "refresh_token": self.data.refresh_token,
+            }))
+            .send()
+            .await
+            .context("Failed to send refresh request to caldir.org")?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Failed to refresh token via caldir.org: {}", error_text);
+        }
+
+        #[derive(Deserialize)]
+        struct RefreshResponse {
+            access_token: String,
+            expires_in: i64,
+        }
+
+        let refresh_data: RefreshResponse = response
+            .json()
+            .await
+            .context("Failed to parse refresh response from caldir.org")?;
+
+        self.data.access_token = refresh_data.access_token;
+        self.data.expires_at = Utc::now() + Duration::seconds(refresh_data.expires_in);
+        self.save()?;
+
+        Ok(())
+    }
+
+    async fn refresh_local(&mut self) -> Result<()> {
         let app_config = AppConfig::load()?;
 
         let client = Client::new(
