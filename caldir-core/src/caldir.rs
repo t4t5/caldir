@@ -37,6 +37,12 @@ impl Caldir {
         PathBuf::from(full_path_str)
     }
 
+    /// Returns the calendar directory path in display-friendly form,
+    /// keeping `~` instead of expanding to the full home directory.
+    pub fn display_path(&self) -> PathBuf {
+        self.config.calendar_dir.clone()
+    }
+
     /// Discover calendars by scanning calendar_dir for subdirectories
     /// with .caldir/config.toml files.
     pub fn calendars(&self) -> Vec<Calendar> {

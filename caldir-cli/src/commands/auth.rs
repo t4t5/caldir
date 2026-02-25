@@ -233,7 +233,7 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
         caldir.set_default_calendar_if_unset(&slug)?;
     }
 
-    println!("\nCalendars saved to {}", caldir.data_path().display());
+    println!("\nCalendars saved to {}", caldir.display_path().display());
     println!("Run `caldir pull` to sync events.");
 
     Ok(())
