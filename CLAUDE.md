@@ -96,7 +96,7 @@ This is created automatically by `caldir connect google`. Like `.git/config`, it
 
 The sync state is updated automatically after each `pull` or `push` operation. If deleted, the next `pull` will re-download all events and recreate it.
 
-**Safety feature**: If you accidentally delete all local files (empty calendar) and run `push`, caldir-cli will refuse to delete all remote events unless you use `--force`.
+**Safety feature**: If you accidentally delete all local files (empty calendar) and run `push`, caldir-cli will refuse to delete all remote events. Run `caldir pull` to restore them.
 
 ### Provider Plugin Architecture
 
@@ -354,9 +354,6 @@ caldir push
 
 # Push with verbose output
 caldir push --verbose
-
-# Force push even when local calendar is empty (dangerous - will delete all remote events)
-caldir push --force
 
 # Show pending changes per calendar (like git status)
 caldir status

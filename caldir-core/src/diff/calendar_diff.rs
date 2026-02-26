@@ -21,6 +21,20 @@ impl CalendarDiff {
     }
 
     pub async fn apply_push(&self) -> CalDirResult<()> {
+        // Safety: refuse to push if it would only delete events and nothing remains locally.
+        // This catches the case where someone accidentally deletes all local .ics files.
+        let all_deletes = !self.to_push.is_empty()
+            && self.to_push.iter().all(|d| d.kind == DiffKind::Delete);
+        let local_empty = self.calendar.events()?.is_empty();
+        if all_deletes && local_empty {
+            return Err(CalDirError::Sync(format!(
+                "Refusing to delete all {} remote events for '{}' — local calendar is empty. \
+                 If you deleted files by accident, run `caldir pull` to restore them.",
+                self.to_push.len(),
+                self.calendar.slug,
+            )));
+        }
+
         let remote = self
             .calendar
             .remote()
