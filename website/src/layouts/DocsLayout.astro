@@ -79,4 +79,10 @@ const nextLink = currentIndex < docsLinks.length - 1 ? docsLinks[currentIndex + 
     border-radius: 0;
     font-size: inherit;
   }
+
+  @media (max-width: 767px) {
+    main :global(pre code) {
+      font-size: 0.8rem;
+    }
+  }
 </style>
