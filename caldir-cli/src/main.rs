@@ -143,6 +143,20 @@ enum Commands {
         #[arg(short = 'C', long)]
         calendar: Option<String>,
     },
+    #[command(about = "Discard unpushed local changes (restore to remote state)")]
+    Discard {
+        /// Only operate on this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+
+        /// Show all events (instead of compact view when >5 events)
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+    },
     #[command(about = "Show configuration paths and calendar info")]
     Config,
     #[command(about = "Update caldir and installed providers to the latest version")]
@@ -258,6 +272,15 @@ async fn main() -> Result<()> {
             require_calendars()?;
             let calendars = resolve_calendars(None)?;
             commands::new::run(title, start, end, duration, location, calendar, calendars)
+        }
+        Commands::Discard {
+            calendar,
+            verbose,
+            force,
+        } => {
+            require_calendars()?;
+            let calendars = resolve_calendars(calendar.as_deref())?;
+            commands::discard::run(calendars, verbose, force).await
         }
         Commands::Config => commands::config::run(),
         Commands::Update => commands::update::run().await,

@@ -59,6 +59,31 @@ impl CalendarDiff {
         Ok(())
     }
 
+    /// Discard local changes by reversing `to_push` diffs.
+    /// Create → delete the local file, Update → rewrite with remote version, Delete → recreate from remote.
+    pub fn apply_discard(&self) -> CalDirResult<()> {
+        for diff in &self.to_push {
+            match diff.kind {
+                DiffKind::Create => {
+                    let event = diff.new.as_ref().expect("Create must have new event");
+                    self.calendar
+                        .delete_event(&event.uid, event.recurrence_id.as_ref())?;
+                }
+                DiffKind::Update => {
+                    let old = diff.old.as_ref().expect("Update must have old event");
+                    let new = diff.new.as_ref().expect("Update must have new event");
+                    self.calendar.update_event(&new.uid, old)?;
+                }
+                DiffKind::Delete => {
+                    let event = diff.old.as_ref().expect("Delete must have old event");
+                    self.calendar.create_event(event)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn apply_pull(&self) -> CalDirResult<()> {
         let mut known_ids: HashSet<String> =
             self.calendar.state().read().known_event_ids.into_iter().collect();

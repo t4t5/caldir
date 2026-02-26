@@ -105,6 +105,7 @@ pub trait CalendarDiffRender {
     fn render_sync(&self, verbose: bool) -> String;
     fn render_pull(&self, verbose: bool) -> String;
     fn render_push(&self, verbose: bool) -> String;
+    fn render_discard(&self, verbose: bool) -> String;
 }
 
 fn render_bidirectional(
@@ -170,6 +171,17 @@ impl CalendarDiffRender for CalendarDiff {
         }
 
         let mut lines = Vec::new();
+        render_diff_list(&self.to_push, verbose, &mut lines);
+        lines.join("\n")
+    }
+
+    fn render_discard(&self, verbose: bool) -> String {
+        if self.to_push.is_empty() {
+            return "   Nothing to discard".dimmed().to_string();
+        }
+
+        let mut lines = Vec::new();
+        lines.push(format!("   {}:", "Local changes (to discard)").dimmed().to_string());
         render_diff_list(&self.to_push, verbose, &mut lines);
         lines.join("\n")
     }

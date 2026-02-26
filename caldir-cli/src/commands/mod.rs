@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod config;
+pub mod discard;
 pub mod events;
 pub mod new;
 pub mod pull;
