@@ -1,6 +1,6 @@
 [package]
 name = "caldir-cli"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "CLI for interacting with your local caldir directory and syncing with external calendar providers"
 license.workspace = true
@@ -32,7 +32,7 @@ fuzzydate = "0.4"
 humantime = "2"
 
 # Core library
-caldir-core = { path = "../caldir-core", version = "0.2.0" }
+caldir-core = { path = "../caldir-core", version = "0.3.0" }
 
 # Colored output
 owo-colors = "4"
