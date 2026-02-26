@@ -37,9 +37,6 @@ caldir pull --from 2024-01-01 --to 2024-12-31
 
 # Pull all past events
 caldir pull --from start
-
-# Verbose output (show all events instead of compact counts)
-caldir pull --verbose
 ```
 
 ## `caldir push`
@@ -48,12 +45,6 @@ Upload local changes to the remote, including deletions.
 
 ```bash
 caldir push
-
-# Verbose output
-caldir push --verbose
-
-# Force push even when local calendar is empty
-caldir push --force
 ```
 
 ## `caldir sync`
