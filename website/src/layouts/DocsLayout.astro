@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
 import DocsSidebar from "../components/DocsSidebar.astro";
+import { docsLinks } from "../data/docs-links";
 
 interface Props {
   title: string;
@@ -8,10 +9,43 @@ interface Props {
 }
 
 const { title, currentSlug } = Astro.props;
+const currentTitle = docsLinks.find((l) => l.slug === currentSlug)?.title ?? "Docs";
+const currentIndex = docsLinks.findIndex((l) => l.slug === currentSlug);
+const prevLink = currentIndex > 0 ? docsLinks[currentIndex - 1] : null;
+const nextLink = currentIndex < docsLinks.length - 1 ? docsLinks[currentIndex + 1] : null;
 ---
 
 <BaseLayout title={`${title} — caldir docs`}>
   <div class="max-w-5xl mx-auto px-6 py-12 md:py-20 md:flex md:gap-12">
+    <nav class="md:hidden mb-8 text-sm">
+      <div class="flex items-center justify-between">
+        <a href="/" class="text-muted hover:text-text">&larr; caldir.org</a>
+        <details class="group relative">
+          <summary class="cursor-pointer list-none flex items-center gap-1.5 text-link font-medium">
+            {currentTitle}
+            <svg class="w-4 h-4 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7" /></svg>
+          </summary>
+          <div class="fixed inset-0 group-open:block hidden" onclick="this.parentElement.removeAttribute('open')"></div>
+          <ul class="absolute right-0 mt-2 space-y-1.5 bg-bg border border-code-bg rounded-lg p-4 shadow-sm min-w-48 z-10">
+            {docsLinks.map((link) => (
+              <li class="list-none">
+                <a
+                  href={`/docs/${link.slug}`}
+                  class:list={[
+                    "block py-0.5 whitespace-nowrap",
+                    currentSlug === link.slug
+                      ? "text-link font-medium"
+                      : "text-muted hover:text-text",
+                  ]}
+                >
+                  {link.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </details>
+      </div>
+    </nav>
     <DocsSidebar currentSlug={currentSlug} />
     <main class="min-w-0 flex-1 prose prose-neutral max-w-none
       prose-headings:font-semibold
@@ -19,6 +53,21 @@ const { title, currentSlug } = Astro.props;
       prose-code:bg-code-bg prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:before:content-none prose-code:after:content-none
       prose-pre:bg-terminal-bg prose-pre:text-terminal-text">
       <slot />
+
+      {(prevLink || nextLink) && (
+        <nav class="not-prose mt-12 pt-6 border-t border-code-bg flex justify-between text-sm">
+          {prevLink ? (
+            <a href={`/docs/${prevLink.slug}`} class="text-muted hover:text-text">
+              &larr; {prevLink.title}
+            </a>
+          ) : <span />}
+          {nextLink && (
+            <a href={`/docs/${nextLink.slug}`} class="text-link hover:underline ml-auto">
+              {nextLink.title} &rarr;
+            </a>
+          )}
+        </nav>
+      )}
     </main>
   </div>
 </BaseLayout>

@@ -1,25 +1,18 @@
 ---
+import { docsLinks } from "../data/docs-links";
+
 interface Props {
   currentSlug?: string;
 }
 
 const { currentSlug } = Astro.props;
-
-const links = [
-  { slug: "what-is-caldir", title: "What is caldir?" },
-  { slug: "getting-started", title: "Getting started" },
-  { slug: "sync", title: "Sync" },
-  { slug: "commands", title: "Commands" },
-  { slug: "configuration", title: "Configuration" },
-  { slug: "providers", title: "Providers" },
-];
 ---
 
 <aside class="hidden md:block w-48 shrink-0">
   <nav class="sticky top-20">
     <a href="/" class="text-muted text-sm mb-6 block hover:text-text">&larr; caldir.org</a>
     <ul class="space-y-1.5">
-      {links.map((link) => (
+      {docsLinks.map((link) => (
         <li>
           <a
             href={`/docs/${link.slug}`}
