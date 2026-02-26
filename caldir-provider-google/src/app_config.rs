@@ -38,7 +38,7 @@ impl AppConfig {
 
         if !path.exists() {
             anyhow::bail!(
-                "Google app config not found at {}. Run `caldir auth google` to set up.",
+                "Google app config not found at {}. Run `caldir connect google` to set up.",
                 path.display()
             );
         }

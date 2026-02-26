@@ -90,7 +90,7 @@ google_account = "me@gmail.com"
 google_calendar_id = "primary"
 ```
 
-This is created automatically by `caldir auth google`. Like `.git/config`, it contains the "remote" settings for syncing. The config fields (except `provider`) are returned by the provider's `list_calendars` command, so the CLI remains provider-agnostic.
+This is created automatically by `caldir connect google`. Like `.git/config`, it contains the "remote" settings for syncing. The config fields (except `provider`) are returned by the provider's `list_calendars` command, so the CLI remains provider-agnostic.
 
 **known_event_ids** — Tracks which events have been synced using their RFC 5545 identity: `{uid}` for non-recurring events, or `{uid}__{recurrence_id}` for recurring event instances. This is used for **delete detection**: if an event ID is in `known_event_ids` but has no corresponding local file, the event was deleted locally and should be deleted from the remote on the next `push`.
 
@@ -133,7 +133,7 @@ caldir-core/                   # Core library (used by CLI and future GUI apps)
     error.rs            - CalDirError enum, CalDirResult type alias
     constants.rs        - DEFAULT_SYNC_DAYS
     event.rs            - Provider-neutral event types (Event, Attendee, Reminder, etc.)
-    protocol.rs         - CLI-provider communication protocol (Command enum, Request/Response, auth types)
+    protocol.rs         - CLI-provider communication protocol (Command enum, Request/Response, connect types)
     provider.rs         - Provider subprocess protocol (JSON over stdin/stdout)
     provider_account.rs - ProviderAccount (provider + account identifier for listing calendars)
     remote.rs           - Remote, RemoteConfig (remote calendar operations)
@@ -164,7 +164,7 @@ caldir-cli/                    # Thin CLI layer (TUI rendering only)
     render.rs    - Render trait for colored terminal output
     commands/
       mod.rs
-      auth.rs    - Authentication flow
+      connect.rs - Connect to remote provider
       pull.rs    - Pull remote → local
       push.rs    - Push local → remote
       status.rs  - Show pending changes
@@ -176,7 +176,7 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
     main.rs        - JSON protocol handler (reads stdin, writes stdout)
     app_config.rs  - OAuth credentials (~/.config/caldir/providers/google/app_config.toml)
     session.rs     - Token storage and refresh (~/.config/caldir/providers/google/session/)
-    commands/      - Command handlers (auth_init, auth_submit, list_calendars, list_events, etc.)
+    commands/      - Command handlers (connect, list_calendars, list_events, etc.)
     google_event/  - Conversion between Google API types and caldir_core types
 ```
 
@@ -190,12 +190,9 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
 
 **CalendarDiff** — Bidirectional diff for a single calendar (`caldir_core::diff::CalendarDiff`). Created via `CalendarDiff::from_calendar(&cal).await`. Contains `to_push` and `to_pull` vectors of `EventDiff`. Call `apply_push().await` or `apply_pull()` to sync changes.
 
-**Provider** — Provider subprocess protocol (`caldir_core::remote::provider::remote::provider`). Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `auth_init`, `auth_submit`, `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event`.
+**Provider** — Provider subprocess protocol (`caldir_core::remote::provider::remote::provider`). Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `connect`, `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event`.
 
-The two-phase auth protocol (`auth_init` + `auth_submit`) decouples auth UI from the provider:
-- `auth_init` returns auth requirements (OAuth URL + state for OAuth providers, or form fields for credential-based providers like iCloud/CalDAV)
-- The caller handles UI (CLI opens browser + TCP listener; GUI could use webview or native form)
-- `auth_submit` receives gathered credentials and completes authentication
+The `connect` command drives a multi-step state machine. The CLI calls `connect` in a loop — each call returns either `NeedsInput` (with a step kind: `OAuthRedirect`, `HostedOAuth`, `Credentials`, or `NeedsSetup`) or `Done` with the account identifier. The CLI handles UI for each step (opening browser, prompting for credentials, etc.) and sends the gathered data back in the next `connect` call. This decouples auth UI from the provider while keeping the protocol simple — one command, called repeatedly until complete.
 
 **ProviderAccount** — Combines a Provider with an account identifier (`caldir_core::remote::provider_account::remote::providerAccount`). Used to list all calendars for a specific authenticated account via `list_calendars()`.
 
@@ -297,7 +294,7 @@ google_account = "me@gmail.com"
 google_calendar_id = "work@group.calendar.google.com"
 ```
 
-These files are created automatically by `caldir auth google`. The provider returns the config fields to save (name, color, remote settings), so the CLI doesn't need to know about provider-specific field names. Calendars without `.caldir/config.toml` are treated as local-only (not synced).
+These files are created automatically by `caldir connect google`. The provider returns the config fields to save (name, color, remote settings), so the CLI doesn't need to know about provider-specific field names. Calendars without `.caldir/config.toml` are treated as local-only (not synced).
 
 **Account identifier convention**: Providers with an account concept include a `{provider}_account` field in their remote config (e.g., `google_account`, `icloud_account`). `Remote::account_identifier()` extracts this for grouping calendars by account. Providers without accounts (e.g., plain CalDAV) simply omit the field.
 
@@ -312,25 +309,25 @@ Provider credentials and tokens are managed by each provider in its own director
     me@gmail.com.toml          # Access/refresh tokens (auto-refreshed)
 ```
 
-**Hosted auth (default):** Just run `caldir auth google`. OAuth is handled via caldir.org — no setup needed. Tokens are refreshed through caldir.org when they expire.
+**Hosted auth (default):** Just run `caldir connect google`. OAuth is handled via caldir.org — no setup needed. Tokens are refreshed through caldir.org when they expire.
 
-**Self-hosted auth:** For users who want to use their own Google Cloud credentials, run `caldir auth google --hosted=false`. This will prompt you to create OAuth credentials in Google Cloud Console and save them as `app_config.toml`. Tokens are refreshed directly with Google.
+**Self-hosted auth:** For users who want to use their own Google Cloud credentials, run `caldir connect google --hosted=false`. This will prompt you to create OAuth credentials in Google Cloud Console and save them as `app_config.toml`. Tokens are refreshed directly with Google.
 
 Both modes will:
 1. Open a browser for OAuth
 2. Fetch all calendars from your account
 3. Create a directory for each calendar with `.caldir/config.toml`
 
-Supports multiple accounts — run auth multiple times with different Google accounts.
+Supports multiple accounts — run connect multiple times with different Google accounts.
 
 ## Commands
 
 ```bash
-# Authenticate with Google Calendar (hosted OAuth via caldir.org)
-caldir auth google
+# Connect to Google Calendar (hosted OAuth via caldir.org)
+caldir connect google
 
-# Authenticate with your own Google Cloud credentials
-caldir auth google --hosted=false
+# Connect with your own Google Cloud credentials
+caldir connect google --hosted=false
 
 # Create a new local event (uses default_calendar from config)
 caldir new "Meeting with Alice" --start 2025-03-20T15:00

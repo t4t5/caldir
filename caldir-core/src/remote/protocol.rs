@@ -13,9 +13,7 @@ pub trait ProviderCommand: Serialize {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Command {
-    AuthInit,
-    AuthSubmit,
-    SetupSubmit,
+    Connect,
     ListCalendars,
     ListEvents,
     CreateEvent,
@@ -24,13 +22,13 @@ pub enum Command {
 }
 
 // ============================================================================
-// Auth Types
+// Connect Types
 // ============================================================================
 
-/// The type of authentication the provider requires.
+/// What the provider needs from the CLI in this step.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum AuthType {
+pub enum ConnectStepKind {
     /// OAuth 2.0 redirect flow (Google, Microsoft)
     OAuthRedirect,
     /// Hosted OAuth flow via caldir.org relay (no local client_id/secret needed)
@@ -41,7 +39,7 @@ pub enum AuthType {
     NeedsSetup,
 }
 
-/// OAuth-specific init response data.
+/// OAuth-specific data for the OAuthRedirect step.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OAuthData {
     pub authorization_url: String,
@@ -49,26 +47,26 @@ pub struct OAuthData {
     pub scopes: Vec<String>,
 }
 
-/// Hosted OAuth init response data (caldir.org relay).
+/// Hosted OAuth data for the HostedOAuth step.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HostedOAuthData {
     pub url: String,
 }
 
-/// Credentials-specific init response data.
+/// Credentials data for the Credentials step.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialsData {
     pub fields: Vec<CredentialField>,
 }
 
-/// Setup data returned when provider needs one-time configuration.
+/// Setup data for the NeedsSetup step.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetupData {
     pub instructions: String,
     pub fields: Vec<CredentialField>,
 }
 
-/// A field required for credentials-based authentication.
+/// A field required for credentials or setup.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CredentialField {
     pub id: String,
@@ -120,57 +118,39 @@ impl Response<()> {
     }
 }
 
-/// Request to initialize authentication.
-/// Provider returns what auth method it needs and any required data.
-/// The `options` map carries provider-specific hints (e.g., `redirect_uri`, `hosted`).
+/// Request to advance the connect flow.
+///
+/// First call: `options` contains provider-specific hints (e.g., `redirect_uri`, `hosted`).
+/// Subsequent calls: `data` contains gathered credentials/setup fields from the previous step.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AuthInit {
+pub struct Connect {
     #[serde(default)]
     pub options: serde_json::Map<String, serde_json::Value>,
+    #[serde(default)]
+    pub data: serde_json::Map<String, serde_json::Value>,
 }
 
-/// Response from auth initialization - varies by auth type.
+/// Response from the connect command.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AuthInitResponse {
-    pub auth_type: AuthType,
-    /// Type-specific data (OAuthData or CredentialsData as JSON).
-    #[serde(flatten)]
-    pub data: serde_json::Value,
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ConnectResponse {
+    /// Provider needs more input from the user.
+    NeedsInput {
+        step: ConnectStepKind,
+        /// Step-specific data (OAuthData, CredentialsData, SetupData, etc.)
+        #[serde(flatten)]
+        data: serde_json::Value,
+    },
+    /// Connection complete.
+    Done {
+        account_identifier: String,
+    },
 }
 
-impl ProviderCommand for AuthInit {
-    type Response = AuthInitResponse;
+impl ProviderCommand for Connect {
+    type Response = ConnectResponse;
     fn command() -> Command {
-        Command::AuthInit
-    }
-}
-
-/// Submit gathered credentials to complete authentication.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AuthSubmit {
-    /// Gathered credentials - structure depends on auth_type.
-    #[serde(flatten)]
-    pub credentials: serde_json::Map<String, serde_json::Value>,
-}
-
-impl ProviderCommand for AuthSubmit {
-    type Response = String; // Account identifier (e.g., email)
-    fn command() -> Command {
-        Command::AuthSubmit
-    }
-}
-
-/// Submit setup configuration (one-time provider setup).
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SetupSubmit {
-    #[serde(flatten)]
-    pub fields: serde_json::Map<String, serde_json::Value>,
-}
-
-impl ProviderCommand for SetupSubmit {
-    type Response = ();
-    fn command() -> Command {
-        Command::SetupSubmit
+        Command::Connect
     }
 }
 

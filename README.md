@@ -43,7 +43,7 @@ Claude: *reads files directly* "You had 12 meetings..."
 curl -sSf https://caldir.org/install.sh | sh
 
 # Connect and follow the instructions in the CLI:
-caldir auth google    # or: caldir auth icloud
+caldir connect google    # or: caldir connect icloud
 
 # Sync your calendar events
 caldir sync

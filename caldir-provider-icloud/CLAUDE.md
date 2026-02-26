@@ -9,15 +9,14 @@ iCloud Calendar provider for caldir-cli using CalDAV protocol.
 Providers let the user read and write calendar data on a remote host (e.g. iCloud Calendar).
 
 Providers should be as minimal as possible and implement the following actions:
-- `auth_init` — Returns auth requirements (credential fields for Apple ID + app password)
-- `auth_submit` — Validates credentials and discovers CalDAV endpoints
+- `connect` — Multi-step connection flow (returns `NeedsInput` or `Done`)
 - `list_calendars`
 - `list_events`
 - `create_event`
 - `update_event`
 - `delete_event`
 
-The two-phase auth protocol (`auth_init` + `auth_submit`) decouples auth UI from the provider, allowing different frontends (CLI, GUI) to control the user experience while supporting different auth mechanisms (OAuth, app passwords, CalDAV credentials).
+The `connect` command drives a state machine: the CLI calls it in a loop, each time sending back data gathered from the previous step. This decouples auth UI from the provider, allowing different frontends (CLI, GUI) to control the user experience while supporting different auth mechanisms (OAuth, app passwords, CalDAV credentials).
 
 There should be *no* stateful side effects from the logic in provider libraries. They should only take JSON data IN and return JSON data out.
 
@@ -27,7 +26,7 @@ iCloud requires app-specific passwords for third-party apps. Users must:
 1. Go to https://account.apple.com/sign-in
 2. Sign in and navigate to Sign-In and Security → App-Specific Passwords
 3. Generate a new password named "caldir"
-4. Use this 16-character password when running `caldir auth icloud`
+4. Use this 16-character password when running `caldir connect icloud`
 
 This is a security requirement from Apple - regular Apple ID passwords cannot be used for CalDAV access.
 
@@ -62,8 +61,7 @@ src/
 ├── caldav.rs            # CalDAV client helpers
 └── commands/
     ├── mod.rs
-    ├── auth_init.rs     # Return credential field requirements
-    ├── auth_submit.rs   # Validate credentials, discover endpoints
+    ├── connect.rs       # Connect flow (credential fields → validate → done)
     ├── list_calendars.rs
     ├── list_events.rs
     ├── create_event.rs
@@ -73,7 +71,7 @@ src/
 
 ## CalDAV Request/Response Flow
 
-### Authentication (auth_submit)
+### Authentication (connect)
 
 1. PROPFIND on `caldav.icloud.com/` with `current-user-principal` property
 2. Parse response to get principal URL (e.g., `/123456789/principal/`)

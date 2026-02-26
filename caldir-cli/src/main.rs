@@ -21,7 +21,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     #[command(about = "Connect to a remote calendar provider (e.g., Google Calendar)")]
-    Auth {
+    Connect {
         provider: String, // e.g. "google"
 
         /// Use hosted OAuth via caldir.org (default: true). Pass --hosted=false to use your own credentials.
@@ -168,7 +168,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Auth { provider, hosted } => commands::auth::run(&provider, hosted).await,
+        Commands::Connect { provider, hosted } => commands::connect::run(&provider, hosted).await,
         Commands::Status {
             calendar,
             from,
@@ -294,9 +294,9 @@ fn require_calendars() -> Result<()> {
         anyhow::bail!(
             "No calendars found.\n\n\
             Connect your first calendar with:\n  \
-            caldir auth <provider>\n\n\
+            caldir connect <provider>\n\n\
             Example:\n  \
-            caldir auth google"
+            caldir connect google"
         );
     }
 

@@ -1,4 +1,4 @@
-pub mod auth;
+pub mod connect;
 pub mod config;
 pub mod discard;
 pub mod events;

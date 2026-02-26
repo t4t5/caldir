@@ -11,8 +11,7 @@
 
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::protocol::{
-    AuthInit, AuthInitResponse, AuthSubmit, Command, ProviderCommand, Request, Response,
-    SetupSubmit,
+    Command, Connect, ConnectResponse, ProviderCommand, Request, Response,
 };
 use crate::remote::provider_account::ProviderAccount;
 use serde::{Deserialize, Serialize};
@@ -55,29 +54,21 @@ impl Provider {
         Ok(binary_path)
     }
 
-    /// Initialize authentication - provider returns what auth method it needs.
-    pub async fn auth_init(
+    /// Advance the connect flow by one step.
+    ///
+    /// Returns `ConnectResponse::NeedsInput` if the provider needs more data,
+    /// or `ConnectResponse::Done` with the account identifier when complete.
+    pub async fn connect(
         &self,
         options: serde_json::Map<String, serde_json::Value>,
-    ) -> CalDirResult<AuthInitResponse> {
-        self.call_no_timeout(AuthInit { options }).await
+        data: serde_json::Map<String, serde_json::Value>,
+    ) -> CalDirResult<ConnectResponse> {
+        self.call_no_timeout(Connect { options, data }).await
     }
 
-    /// Submit gathered credentials to complete authentication.
-    pub async fn auth_submit(
-        &self,
-        credentials: serde_json::Map<String, serde_json::Value>,
-    ) -> CalDirResult<ProviderAccount> {
-        let identifier = self.call_no_timeout(AuthSubmit { credentials }).await?;
-        Ok(ProviderAccount::new(self.clone(), identifier))
-    }
-
-    /// Submit one-time setup configuration to the provider.
-    pub async fn setup_submit(
-        &self,
-        fields: serde_json::Map<String, serde_json::Value>,
-    ) -> CalDirResult<()> {
-        self.call_no_timeout(SetupSubmit { fields }).await
+    /// Wrap a `ConnectResponse::Done` into a `ProviderAccount`.
+    pub fn provider_account(&self, identifier: String) -> ProviderAccount {
+        ProviderAccount::new(self.clone(), identifier)
     }
 
     /// Call a typed provider command and return the result.
