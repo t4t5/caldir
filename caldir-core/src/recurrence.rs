@@ -162,10 +162,10 @@ pub fn expand_recurring_event(
     })?;
 
     // Convert range boundaries to rrule's Tz type.
-    // Subtract/add 1 second to make the range inclusive (after/before are exclusive).
+    // The rrule crate's `all()` uses inclusive boundaries on both ends.
     let tz: rrule::Tz = Utc.into();
-    let after = (range_start - Duration::seconds(1)).with_timezone(&tz);
-    let before = (range_end + Duration::seconds(1)).with_timezone(&tz);
+    let after = range_start.with_timezone(&tz);
+    let before = range_end.with_timezone(&tz);
 
     let result = rrule_set.after(after).before(before).all(365);
 

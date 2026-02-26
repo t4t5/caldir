@@ -206,7 +206,9 @@ async fn main() -> Result<()> {
                 .date_naive()
                 .and_hms_opt(23, 59, 59)
                 .unwrap()
-                .and_utc();
+                .and_local_timezone(Local)
+                .unwrap()
+                .with_timezone(&Utc);
             commands::events::run(calendars, Some(now), Some(end_of_today))
         }
         Commands::Week { calendar } => {
@@ -221,7 +223,9 @@ async fn main() -> Result<()> {
             let end_of_sunday = (today + chrono::Duration::days(days_until_sunday as i64))
                 .and_hms_opt(23, 59, 59)
                 .unwrap()
-                .and_utc();
+                .and_local_timezone(Local)
+                .unwrap()
+                .with_timezone(&Utc);
             commands::events::run(calendars, Some(now), Some(end_of_sunday))
         }
         Commands::New { title, start } => {
