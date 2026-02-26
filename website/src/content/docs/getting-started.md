@@ -60,11 +60,3 @@ After pulling, you'll have a directory structure like:
     2025-03-25T0900__dentist.ics
     2025-03-26T1400__sprint-planning.ics
 ```
-
-Each event is a standard `.ics` file with a human-readable filename. You can open them in any calendar app, `cat` them, or let your AI assistant read them directly.
-
-## What's next
-
-- Read about [the philosophy behind caldir](/docs/what-is-caldir)
-- Learn about the [push/pull sync model](/docs/sync)
-- See all available [commands](/docs/commands)

@@ -46,8 +46,6 @@ caldir pull --from 2024-01-01 --to 2024-12-31
 
 When you delete a local `.ics` file and run `push`, the event is also deleted from the remote. This is tracked via the sync state file (`.caldir/state/known_event_ids`).
 
-**Safety feature**: if you accidentally delete all local files (empty calendar) and run `push`, caldir will refuse to delete all remote events. Run `caldir pull` to restore them.
-
 ## Sync state
 
 Each calendar tracks which events have been synced in `.caldir/state/known_event_ids`. This is a plaintext file with one event ID per line, using the RFC 5545 identity:

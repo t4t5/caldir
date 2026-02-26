@@ -40,4 +40,4 @@ That way you can reason locally, automate freely, and you're never locked in.
 
 ## Standard .ics files
 
-Every event is a standard [RFC 5545](https://tools.ietf.org/html/rfc5545) `.ics` file. You can open them in any calendar app, move them around, or sync them with other tools. There's no new format — just directories, files, and conventions.
+Every event is a standard [RFC 5545](https://tools.ietf.org/html/rfc5545) `.ics` file. You can open them in any calendar app, move them around, or sync them with other tools.
