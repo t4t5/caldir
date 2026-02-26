@@ -13,7 +13,7 @@ Calendars should work the same way. Instead of living behind APIs and OAuth flow
 **caldir** is a convention: your calendar is a directory of `.ics` files, one event per file, with human-readable filenames. Each calendar is a subdirectory:
 
 ```
-~/calendar/
+~/caldir/
   personal/
     2025-03-20T1500__client-call.ics
     2025-03-21__offsite.ics
@@ -44,7 +44,7 @@ caldir takes a different approach to filenames:
 **Why human-readable filenames matter:**
 
 1. **`ls` shows your schedule** — No need for a special viewer to see what's on your calendar
-2. **grep works** — `ls ~/calendar/work/ | grep 2025-03` shows March events
+2. **grep works** — `ls ~/caldir/work/ | grep 2025-03` shows March events
 3. **LLM-friendly** — AI assistants can read your calendar directory and understand it immediately
 4. **Sorting works** — Files sort chronologically by default
 5. **Tab completion** — Start typing the date to find events
@@ -73,7 +73,7 @@ The tool supports bidirectional sync between cloud and local:
 Each calendar has a `.caldir/` directory (similar to `.git/`) for local state and configuration:
 
 ```
-~/calendar/personal/
+~/caldir/personal/
   .caldir/
     config.toml    # remote provider configuration
     state/
@@ -264,7 +264,7 @@ Global settings live at `~/.config/caldir/config.toml`:
 
 ```toml
 # Where calendar subdirectories live
-calendar_dir = "~/calendar"
+calendar_dir = "~/caldir"
 
 # Default calendar for new events (used when --calendar not specified)
 default_calendar = "personal"
@@ -275,7 +275,7 @@ default_calendar = "personal"
 Each calendar stores its configuration in `.caldir/config.toml` (similar to `.git/config`):
 
 ```toml
-# ~/calendar/personal/.caldir/config.toml
+# ~/caldir/personal/.caldir/config.toml
 name = "Personal"
 color = "#4285f4"
 
@@ -284,7 +284,7 @@ provider = "google"
 google_account = "me@gmail.com"
 google_calendar_id = "primary"
 
-# ~/calendar/work/.caldir/config.toml
+# ~/caldir/work/.caldir/config.toml
 name = "Work"
 color = "#0b8043"
 

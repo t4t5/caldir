@@ -8,11 +8,15 @@ order: 4
 
 ## Global config
 
-Global settings live at `~/.config/caldir/config.toml` (Linux), `~/Library/Application Support/caldir/config.toml` (macOS), or `%APPDATA%/caldir/config.toml` (Windows).
+Global settings live in:
+
+- `~/.config/caldir/config.toml` (Linux)
+- `~/Library/Application Support/caldir/config.toml` (macOS)
+- `%APPDATA%/caldir/config.toml` (Windows)
 
 ```toml
 # Where calendar subdirectories live
-calendar_dir = "~/calendar"
+calendar_dir = "~/caldir"
 
 # Default calendar for new events (used when --calendar not specified)
 default_calendar = "personal"
@@ -22,10 +26,10 @@ The config file is created with all options commented out on first run — open 
 
 ## Per-calendar config
 
-Each calendar stores its configuration in `.caldir/config.toml`:
+Each calendar stores its configuration in a local `config.toml`:
 
 ```toml
-# ~/calendar/personal/.caldir/config.toml
+# ~/caldir/personal/.caldir/config.toml
 name = "Personal"
 color = "#4285f4"
 
@@ -44,7 +48,7 @@ Calendars without `.caldir/config.toml` are treated as local-only (not synced).
 Each calendar has a `.caldir/` directory (similar to `.git/`) for configuration and sync state:
 
 ```
-~/calendar/personal/
+~/caldir/personal/
   .caldir/
     config.toml           # Remote provider configuration
     state/

@@ -3,7 +3,7 @@
 The "file over app" philosophy for calendars.
 
 ```
-~/calendar/
+~/caldir/
   work/
     2025-01-15T0900__standup.ics
     2025-01-15T1400__sprint-planning.ics
@@ -17,17 +17,17 @@ Your calendar shouldn't live behind proprietary apps or APIs. When it's just fil
 
 **You can see it**
 ```bash
-ls ~/calendar/work/2025-01*
+ls ~/caldir/work/2025-01*
 ```
 
 **You can search it**
 ```bash
-grep -l "alice" ~/calendar/**/*.ics
+grep -l "alice" ~/caldir/**/*.ics
 ```
 
 **You can version it**
 ```bash
-cd ~/calendar && git log
+cd ~/caldir && git log
 ```
 
 **AI can read it**
@@ -48,7 +48,7 @@ caldir connect google    # or: caldir connect icloud
 # Sync your calendar events
 caldir sync
 
-# Your calendar is now in ~/calendar
+# Your calendar is now in ~/caldir
 ```
 
 <details>
@@ -85,7 +85,7 @@ caldir uses a git-like push/pull model:
 
 caldir touches two places on your system:
 
-- **`~/calendar/`** -- your events, one `.ics` file per event, organized into calendar subdirectories
+- **`~/caldir/`** -- your events, one `.ics` file per event, organized into calendar subdirectories
 - **`<config_dir>/caldir/`** -- global config (`config.toml`, auto-created on first run) and provider credentials
 
 `<config_dir>` is `~/.config` on Linux, `~/Library/Application Support` on macOS, and `%APPDATA%` on Windows.

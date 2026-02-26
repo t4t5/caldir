@@ -83,6 +83,11 @@ caldir status --verbose
 Create a new local event.
 
 ```bash
+# Interactive mode (prompts for details)
+caldir new
+
+# Or pass arguments directly:
+
 # Timed event (defaults to 1 hour)
 caldir new "Meeting with Alice" --start 2025-03-20T15:00
 

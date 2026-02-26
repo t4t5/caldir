@@ -37,7 +37,7 @@ caldir connect google
 caldir connect icloud
 ```
 
-This opens your browser for authentication, fetches your calendars, and creates a local directory for each one under `~/calendar/`.
+This opens your browser for authentication, fetches your calendars, and creates a local directory for each one under `~/caldir/`.
 
 ## Sync your events
 
@@ -45,14 +45,14 @@ This opens your browser for authentication, fetches your calendars, and creates 
 # Pull remote events to local
 caldir pull
 
-# Your calendar is now in ~/calendar/
-ls ~/calendar/
+# Your calendar is now in ~/caldir/
+ls ~/caldir/
 ```
 
 After pulling, you'll have a directory structure like:
 
 ```
-~/calendar/
+~/caldir/
   personal/
     2025-03-20T1500__client-call.ics
     2025-03-21__offsite.ics
@@ -65,6 +65,6 @@ Each event is a standard `.ics` file with a human-readable filename. You can ope
 
 ## What's next
 
+- Read about [the philosophy behind caldir](/docs/what-is-caldir)
 - Learn about the [push/pull sync model](/docs/sync)
 - See all available [commands](/docs/commands)
-- Understand the [filename convention](/docs/filename-convention)

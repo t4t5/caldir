@@ -240,7 +240,7 @@ caldir uses semantic filenames instead of UUIDs:
 **Why:**
 - Human-readable at a glance
 - Sortable by date in file browsers
-- `ls ~/calendar` shows you your schedule
+- `ls ~/caldir` shows you your schedule
 - LLMs can reason about your calendar without parsing ICS
 
 ---
