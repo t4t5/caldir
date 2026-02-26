@@ -28,8 +28,7 @@ pub async fn run(calendars: Vec<Calendar>, verbose: bool, force: bool) -> Result
     }
 
     let batch = BatchDiff(diffs);
-    let (created, updated, deleted) = batch.push_counts();
-    let total = created + updated + deleted;
+    let total = batch.push_total();
 
     if total == 0 {
         println!("{}", "Nothing to discard".dimmed());
@@ -73,8 +72,9 @@ pub async fn run(calendars: Vec<Calendar>, verbose: bool, force: bool) -> Result
     }
 
     println!(
-        "\nDiscarded: {} created, {} updated, {} deleted",
-        created, updated, deleted
+        "\nDiscarded {} {}",
+        total,
+        if total == 1 { "change" } else { "changes" }
     );
 
     Ok(())

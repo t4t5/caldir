@@ -28,4 +28,9 @@ impl BatchDiff {
     pub fn push_counts(&self) -> (usize, usize, usize) {
         Self::count_by_kind(self.0.iter().flat_map(|d| &d.to_push))
     }
+
+    pub fn push_total(&self) -> usize {
+        let (c, u, d) = self.push_counts();
+        c + u + d
+    }
 }
