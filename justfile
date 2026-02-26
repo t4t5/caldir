@@ -41,4 +41,4 @@ install: install-provider
 
 # Serve website locally
 serve:
-  npx serve website/static -l 3000
+  cd website && npm run dev

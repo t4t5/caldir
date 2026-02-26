@@ -1,3 +1,6 @@
 target
 event-examples
 other-libs
+website/node_modules
+website/dist
+website/.astro

@@ -1,0 +1,33 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout title="caldir - your calendar as a directory">
+  <main class="max-w-[640px] mx-auto px-6 py-20">
+    <div class="flex items-center gap-3 mb-1">
+      <img class="w-9 h-9 block" src="/logo.svg" alt="caldir logo">
+      <h1 class="text-[2rem] font-bold">caldir</h1>
+    </div>
+    <p class="text-muted text-lg mb-8">"file over app" for calendars.</p>
+
+    <div class="bg-terminal-bg text-terminal-text px-5 py-4 rounded-lg font-mono text-[0.95rem] mb-4 overflow-x-auto whitespace-nowrap before:content-['$_'] before:text-terminal-muted before:select-none">curl -sSf https://caldir.org/install.sh | sh</div>
+
+    <p class="mb-4">Plaintext is the ultimate interface. Your calendar should be something you and your LLM can <code class="bg-code-bg px-1.5 py-0.5 rounded text-sm">ls</code>, <code class="bg-code-bg px-1.5 py-0.5 rounded text-sm">grep</code>, and reason about locally.</p>
+
+    <p class="mb-4"><strong>caldir</strong> syncs with Google Calendar and iCloud, keeping a local directory of human-readable <code class="bg-code-bg px-1.5 py-0.5 rounded text-sm">.ics</code> files that sort chronologically and work with any tool.</p>
+
+    <pre class="bg-code-bg px-6 py-5 rounded-lg font-mono text-[0.85rem] leading-[1.7] mb-8 overflow-x-auto"><span class="text-link">~/calendar/</span>
+  <span class="text-link">gmail/</span>
+    <span class="text-text">2025-03-20T1500__client-call.ics</span>
+    <span class="text-text">2025-03-21__offsite.ics</span>
+  <span class="text-link">icloud/</span>
+    <span class="text-text">2025-03-25T0900__dentist.ics</span>
+    <span class="text-text">2025-03-26T1400__sprint-planning.ics</span></pre>
+
+    <div class="mt-8 flex gap-6">
+      <a class="text-link hover:underline" href="https://github.com/t4t5/caldir">GitHub</a>
+      <a class="text-link hover:underline" href="/docs">Docs</a>
+      <a class="text-link hover:underline" href="/privacy">Privacy</a>
+    </div>
+  </main>
+</BaseLayout>

@@ -1,0 +1,33 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+import DocsSidebar from "../components/DocsSidebar.astro";
+
+interface Props {
+  title: string;
+  currentSlug?: string;
+}
+
+const { title, currentSlug } = Astro.props;
+---
+
+<BaseLayout title={`${title} — caldir docs`}>
+  <div class="max-w-5xl mx-auto px-6 py-12 md:py-20 md:flex md:gap-12">
+    <DocsSidebar currentSlug={currentSlug} />
+    <main class="min-w-0 flex-1 prose prose-neutral max-w-none
+      prose-headings:font-semibold
+      prose-a:text-link prose-a:no-underline prose-a:hover:underline
+      prose-code:bg-code-bg prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:before:content-none prose-code:after:content-none
+      prose-pre:bg-terminal-bg prose-pre:text-terminal-text">
+      <slot />
+    </main>
+  </div>
+</BaseLayout>
+
+<style>
+  main :global(pre code) {
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+  }
+</style>

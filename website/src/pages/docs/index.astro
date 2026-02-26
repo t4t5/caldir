@@ -1,0 +1,21 @@
+---
+import DocsLayout from "../../layouts/DocsLayout.astro";
+import { getCollection } from "astro:content";
+
+const docs = await getCollection("docs");
+const sorted = docs.sort((a, b) => a.data.order - b.data.order);
+---
+
+<DocsLayout title="Documentation">
+  <h1>Documentation</h1>
+  <p>Learn how to use caldir to manage your calendar as a local directory of human-readable files.</p>
+
+  <ul>
+    {sorted.map((doc) => (
+      <li>
+        <a href={`/docs/${doc.id}`}>{doc.data.title}</a>
+        <span class="text-muted"> — {doc.data.description}</span>
+      </li>
+    ))}
+  </ul>
+</DocsLayout>

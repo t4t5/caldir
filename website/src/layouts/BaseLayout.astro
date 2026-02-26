@@ -1,0 +1,33 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = "Plaintext is the ultimate LLM interface. Store your calendar as a local directory of human-readable .ics files." } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title}</title>
+  <meta property="og:title" content={title}>
+  <meta property="og:description" content={description}>
+  <meta property="og:image" content="https://caldir.org/og.png">
+  <meta property="og:url" content="https://caldir.org">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="/favicon-black.ico">
+  <link rel="icon" href="/favicon-black.ico" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="/favicon-white.ico" media="(prefers-color-scheme: dark)">
+</head>
+<body class="bg-bg text-text font-sans leading-relaxed">
+  <slot />
+</body>
+</html>
+
+<style>
+  @import "../styles/global.css";
+</style>
