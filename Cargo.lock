@@ -200,6 +200,8 @@ dependencies = [
  "clap",
  "dialoguer",
  "flate2",
+ "fuzzydate",
+ "humantime",
  "indicatif",
  "open",
  "owo-colors",
@@ -857,6 +859,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuzzydate"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51ddfc7f800df80b58d70db49cd96a1567c372c65bc8e4fa1ba728a9741426a2"
+dependencies = [
+ "chrono",
+ "lazy_static",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1052,6 +1065,12 @@ name = "httpdate"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
+
+[[package]]
+name = "humantime"
+version = "2.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "135b12329e5e3ce057a9f972339ea52bc954fe1e9358ef27f95e89716fbc5424"
 
 [[package]]
 name = "hyper"

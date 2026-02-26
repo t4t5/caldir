@@ -28,6 +28,8 @@ anyhow = "1"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
+fuzzydate = "0.4"
+humantime = "2"
 
 # Core library
 caldir-core = { path = "../caldir-core", version = "0.2.0" }

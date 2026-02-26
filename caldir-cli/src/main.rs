@@ -120,11 +120,28 @@ enum Commands {
     },
     #[command(about = "Create a new event in caldir")]
     New {
-        title: String,
+        /// Event title
+        title: Option<String>,
 
-        /// Start date/time (e.g., "2025-03-20T15:00")
+        /// Start date/time (natural language, e.g. "tomorrow 6pm")
         #[arg(short, long)]
-        start: String,
+        start: Option<String>,
+
+        /// End date/time (natural language)
+        #[arg(short, long)]
+        end: Option<String>,
+
+        /// Duration (e.g. "30m", "2 hours")
+        #[arg(short, long)]
+        duration: Option<String>,
+
+        /// Location
+        #[arg(short, long)]
+        location: Option<String>,
+
+        /// Calendar slug (defaults to default_calendar from config)
+        #[arg(short = 'C', long)]
+        calendar: Option<String>,
     },
     #[command(about = "Show configuration paths and calendar info")]
     Config,
@@ -230,9 +247,17 @@ async fn main() -> Result<()> {
                 .with_timezone(&Utc);
             commands::events::run(calendars, Some(now), Some(end_of_sunday))
         }
-        Commands::New { title, start } => {
+        Commands::New {
+            title,
+            start,
+            end,
+            duration,
+            location,
+            calendar,
+        } => {
             require_calendars()?;
-            commands::new::run(title, start)
+            let calendars = resolve_calendars(None)?;
+            commands::new::run(title, start, end, duration, location, calendar, calendars)
         }
         Commands::Config => commands::config::run(),
         Commands::Update => commands::update::run().await,
