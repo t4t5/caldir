@@ -24,8 +24,8 @@ impl PartialEq for Recurrence {
         }
         let mut a = self.exdates.clone();
         let mut b = other.exdates.clone();
-        a.sort_by(|x, y| format!("{:?}", x).cmp(&format!("{:?}", y)));
-        b.sort_by(|x, y| format!("{:?}", x).cmp(&format!("{:?}", y)));
+        a.sort_by_key(|x| x.to_utc());
+        b.sort_by_key(|x| x.to_utc());
         a == b
     }
 }
