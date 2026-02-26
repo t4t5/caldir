@@ -234,15 +234,20 @@ async fn main() -> Result<()> {
         Commands::Today { calendar } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
-            let now = Utc::now();
-            let end_of_today = Local::now()
-                .date_naive()
+            let today = Local::now().date_naive();
+            let start_of_today = today
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_local_timezone(Local)
+                .unwrap()
+                .with_timezone(&Utc);
+            let end_of_today = today
                 .and_hms_opt(23, 59, 59)
                 .unwrap()
                 .and_local_timezone(Local)
                 .unwrap()
                 .with_timezone(&Utc);
-            commands::events::run(calendars, Some(now), Some(end_of_today))
+            commands::events::run(calendars, Some(start_of_today), Some(end_of_today))
         }
         Commands::Week { calendar } => {
             require_calendars()?;
