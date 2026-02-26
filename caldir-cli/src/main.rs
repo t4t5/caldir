@@ -128,6 +128,8 @@ enum Commands {
     },
     #[command(about = "Show configuration paths and calendar info")]
     Config,
+    #[command(about = "Update caldir and installed providers to the latest version")]
+    Update,
 }
 
 #[tokio::main]
@@ -233,6 +235,7 @@ async fn main() -> Result<()> {
             commands::new::run(title, start)
         }
         Commands::Config => commands::config::run(),
+        Commands::Update => commands::update::run().await,
     }
 }
 
