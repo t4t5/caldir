@@ -6,9 +6,15 @@ use owo_colors::OwoColorize;
 
 
 pub fn run(calendars: Vec<Calendar>, from: Option<DateTime<Utc>>, to: Option<DateTime<Utc>>) -> Result<()> {
-    let now = Utc::now();
-    let from = from.unwrap_or(now);
-    let to = to.unwrap_or(now + Duration::days(3));
+    let start_of_today = chrono::Local::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_local_timezone(chrono::Local)
+        .unwrap()
+        .with_timezone(&Utc);
+    let from = from.unwrap_or(start_of_today);
+    let to = to.unwrap_or(start_of_today + Duration::days(3));
 
     let mut all_events: Vec<(String, caldir_core::event::Event)> = Vec::new();
 

@@ -252,8 +252,13 @@ async fn main() -> Result<()> {
         Commands::Week { calendar } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
-            let now = Utc::now();
             let today = Local::now().date_naive();
+            let start_of_today = today
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+                .and_local_timezone(Local)
+                .unwrap()
+                .with_timezone(&Utc);
             // num_days_from_monday(): Mon=0, Tue=1, ..., Sun=6
             let days_until_sunday = (6 - today.weekday().num_days_from_monday()) % 7;
             // If today is Sunday, show through next Sunday
@@ -264,7 +269,7 @@ async fn main() -> Result<()> {
                 .and_local_timezone(Local)
                 .unwrap()
                 .with_timezone(&Utc);
-            commands::events::run(calendars, Some(now), Some(end_of_sunday))
+            commands::events::run(calendars, Some(start_of_today), Some(end_of_sunday))
         }
         Commands::New {
             title,
