@@ -20,6 +20,8 @@ This installs the `caldir` CLI and the Google Calendar and iCloud provider plugi
 Make sure you have [Rust and Cargo](https://rust-lang.org/learn/get-started/) installed.
 
 ```bash
+git clone https://github.com/t4t5/caldir
+cd caldir
 cargo install --path caldir-cli
 cargo install --path caldir-provider-google   # Google Calendar
 cargo install --path caldir-provider-icloud   # Apple iCloud
