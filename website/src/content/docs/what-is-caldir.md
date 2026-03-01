@@ -10,11 +10,11 @@ caldir is a convention and a sync tool. Your calendar is a directory of `.ics` f
 
 ```
 ~/caldir/
-  home/
-    2025-03-25T0900__dentist.ics
-  work/
-    2025-03-20T1500__client-call.ics
-    2025-03-26T1400__sprint-planning.ics
+├── home/
+│   └── 2025-03-25T0900__dentist.ics
+└── work/
+    ├── 2025-03-20T1500__client-call.ics
+    └── 2025-03-26T1400__sprint-planning.ics
 ```
 
 It can sync bidirectionally with providers like Google Calendar and iCloud, so your events stay up to date in both directions.
