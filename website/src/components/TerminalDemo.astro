@@ -1,0 +1,130 @@
+<div class="bg-terminal-bg text-terminal-text rounded-lg font-mono text-[0.85rem] max-md:text-[0.75rem] overflow-hidden">
+  <div class="px-5 py-4 min-h-[13.5rem] max-md:min-h-[11.5rem]">
+    <div id="terminal-lines"></div>
+  </div>
+</div>
+
+<style is:global>
+  #terminal-cursor {
+    display: inline-block;
+    width: 0.5em;
+    height: 1.15em;
+    background: var(--color-terminal-text);
+    vertical-align: text-bottom;
+    position: relative;
+    top: -2px;
+    margin-left: 1px;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+  .t-line {
+    white-space: pre;
+    line-height: 1.7;
+    min-height: 1.7em;
+  }
+  .t-bold { font-weight: 700; }
+  .t-dim { color: var(--color-terminal-muted); }
+  .t-green { color: #4ade80; }
+  .t-prompt { color: var(--color-terminal-muted); user-select: none; }
+</style>
+
+<script>
+  const sequences = [
+    {
+      command: "caldir week",
+      lines: [
+        '<span class="t-bold">Today</span>',
+        "  09:00 Standup " + '<span class="t-dim">[work]</span>',
+        "  14:00 Sprint planning " + '<span class="t-dim">[work]</span>',
+        "\u00a0",
+        '<span class="t-bold">Tomorrow</span>',
+        "  10:00 Coffee with Alice " + '<span class="t-dim">[personal]</span>',
+        "  15:00 Client call " + '<span class="t-dim">[work]</span>',
+      ],
+    },
+    {
+      command: "ls ~/calendar/work/",
+      lines: [
+        "2026-03-01T0900__standup.ics",
+        "2026-03-01T1400__sprint-planning.ics",
+        "2026-03-02T1500__client-call.ics",
+        "2026-03-04__team-offsite.ics",
+      ],
+    },
+    {
+      command: 'caldir new "Lunch with Sara" --start fri 12pm',
+      lines: ['<span class="t-green">  Created: Lunch with Sara</span>'],
+    },
+  ];
+
+  const CHAR_MS = 25;
+  const PAUSE_AFTER_CMD = 300;
+  const LINE_DELAY = 60;
+  const READ_PAUSE = 3000;
+
+  const container = document.getElementById("terminal-lines")!;
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  function addLine(html = "") {
+    const el = document.createElement("div");
+    el.className = "t-line";
+    if (html) el.innerHTML = html;
+    container.appendChild(el);
+    return el;
+  }
+
+  function promptLine() {
+    const line = addLine();
+    line.innerHTML =
+      '<span class="t-prompt">$ </span><span id="terminal-cursor"></span>';
+    return line;
+  }
+
+  async function typeCmd(cmd: string) {
+    // Replace the idle prompt with a typing prompt
+    container.innerHTML = "";
+    const line = addLine();
+    line.innerHTML = '<span class="t-prompt">$ </span>';
+    const text = document.createElement("span");
+    const cursor = document.createElement("span");
+    cursor.id = "terminal-cursor";
+    line.append(text, cursor);
+    for (const ch of cmd) {
+      text.textContent += ch;
+      await sleep(CHAR_MS);
+    }
+    cursor.remove();
+  }
+
+  async function showLines(lines: string[]) {
+    for (const html of lines) {
+      addLine(html);
+      await sleep(LINE_DELAY);
+    }
+  }
+
+  function clear() {
+    container.innerHTML = "";
+  }
+
+  (async () => {
+    // Show idle prompt on load
+    promptLine();
+    await sleep(1000);
+
+    while (true) {
+      for (const seq of sequences) {
+        await typeCmd(seq.command);
+        await sleep(PAUSE_AFTER_CMD);
+        await showLines(seq.lines);
+        await sleep(READ_PAUSE);
+        clear();
+        promptLine();
+        await sleep(800);
+      }
+    }
+  })();
+</script>
