@@ -34,15 +34,19 @@
   const scenes = [
     [
       {
-        command: "caldir week",
+        command: "caldir pull",
         lines: [
-          '<span class="t-bold">Today</span>',
-          "  09:00 Standup " + '<span class="t-dim">[work]</span>',
-          "  14:00 Sprint planning " + '<span class="t-dim">[work]</span>',
-          "\u00a0",
-          '<span class="t-bold">Tomorrow</span>',
-          "  10:00 Coffee with Alice " + '<span class="t-dim">[personal]</span>',
-          "  15:00 Client call " + '<span class="t-dim">[work]</span>',
+          '<span class="t-green">Pulled 5 events</span> <span class="t-dim">from Google Calendar</span>',
+        ],
+      },
+      {
+        command: "ls ~/caldir/work/",
+        lines: [
+          "2026-03-02T0900__standup.ics",
+          "2026-03-02T1400__sprint-planning.ics",
+          "2026-03-03T1000__one-on-one.ics",
+          "2026-03-04T1100__design-review.ics",
+          "2026-03-06T1200__team-lunch.ics",
         ],
       },
     ],
@@ -63,7 +67,7 @@
     ],
     [
       {
-        command: "grep -r 'sprint' ~/calendar/",
+        command: "grep -r 'sprint' ~/caldir/",
         lines: [
           "work/2026-03-01T1400__sprint-planning.ics:SUMMARY:Sprint planning",
           "work/2026-03-08T1400__sprint-review.ics:SUMMARY:Sprint review",
