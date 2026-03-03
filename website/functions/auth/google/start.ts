@@ -21,7 +21,7 @@ async function hmacSign(data: string, secret: string): Promise<string> {
 
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
-  "https://www.googleapis.com/auth/calendar.events.owned",
+  "https://www.googleapis.com/auth/calendar.events",
 ];
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {

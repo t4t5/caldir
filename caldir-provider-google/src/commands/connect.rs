@@ -20,7 +20,7 @@ use crate::session::{AuthMode, Session, SessionData};
 
 pub const SCOPES: &[&str] = &[
     "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
-    "https://www.googleapis.com/auth/calendar.events.owned",
+    "https://www.googleapis.com/auth/calendar.events",
 ];
 
 pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
