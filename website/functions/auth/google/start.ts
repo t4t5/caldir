@@ -44,7 +44,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     client_id: context.env.GOOGLE_CLIENT_ID,
     redirect_uri: "https://caldir.org/auth/google/callback",
     response_type: "code",
-    scope: "https://www.googleapis.com/auth/calendar",
+    scope: "https://www.googleapis.com/auth/calendar.calendarlist.readonly https://www.googleapis.com/auth/calendar.events.owned",
     access_type: "offline",
     prompt: "consent",
     state,
