@@ -83,4 +83,4 @@ Edit all relevant `Cargo.toml` files:
 
 Then run `cargo check` to validate and update `Cargo.lock`.
 
-Do NOT create a git commit or git tag — the user will handle that themselves.
+Do NOT create a git commit or git tag — a GitHub Action automatically creates the tag on push.
