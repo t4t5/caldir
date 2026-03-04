@@ -292,6 +292,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "caldir-provider-outlook"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caldir-core",
+ "chrono",
+ "dirs",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
+ "url",
+]
+
+[[package]]
 name = "cc"
 version = "1.2.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
