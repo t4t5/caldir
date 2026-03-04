@@ -92,13 +92,21 @@ src/
 3. Parse VCALENDAR data from each response
 4. Convert to Event structs using caldir-core ICS parser
 
-### Create/Update Event
+### Create Event
 
 1. Generate ICS content from Event using caldir-core
 2. PUT to `{calendar_url}/{event_uid}.ics`
-3. Fetch the created/updated event to get server modifications
+3. Fetch the created event to get server modifications
+
+### Update Event
+
+1. Generate ICS content from Event using caldir-core
+2. Find event's href and etag: try `{calendar_url}/{event_uid}.ics` first, fall back to UID-based REPORT query (for servers with non-standard resource filenames)
+3. PUT to the found href with `If-Match` etag for conditional update
+4. Fetch the updated event to get server modifications
 
 ### Delete Event
 
-1. DELETE `{calendar_url}/{event_uid}.ics`
-2. Accept 204 (success) or 404 (already deleted)
+1. Find event's href: try `{calendar_url}/{event_uid}.ics` first, fall back to UID-based REPORT query
+2. DELETE the found href
+3. Accept not-found (event already deleted) as success

@@ -57,8 +57,9 @@ The tool supports bidirectional sync between cloud and local:
 - `status` — Shows pending changes in both directions
 
 **Sync direction detection** uses timestamp comparison and sync state:
-- If local file mtime > remote `updated` → push candidate (local was modified)
+- If local file mtime > remote `updated` (LAST-MODIFIED) → push candidate (local was modified)
 - If remote `updated` > local file mtime → pull candidate (remote was modified)
+- If remote has no `updated` timestamp and content differs → push candidate (local assumed newer, since identical content wouldn't trigger a comparison)
 - Local-only events not in sync state → new events to push
 - Remote-only events not in sync state → new events to pull
 - Events in sync state but missing locally → deleted locally, delete from remote on push

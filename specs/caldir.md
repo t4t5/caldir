@@ -107,8 +107,8 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 
 #### `LAST-MODIFIED`
 **What:** When the event was last changed.
-**How caldir uses it:** From provider's `updated` timestamp.
-**Why it matters:** Essential for future two-way sync—determines which version wins in conflicts.
+**How caldir uses it:** Parsed from ICS into the `Event.updated` field. Compared against local file mtime to determine sync direction (push vs pull). If absent from the remote response, local is assumed newer.
+**Why it matters:** Determines which version wins when content differs between local and remote.
 
 #### `SEQUENCE`
 **What:** Revision number. Increments each time the event is modified.

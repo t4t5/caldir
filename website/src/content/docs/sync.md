@@ -23,6 +23,7 @@ Sync direction is determined by comparing timestamps and sync state:
 |---|---|
 | Local file mtime > remote `updated` | Push (local was modified) |
 | Remote `updated` > local file mtime | Pull (remote was modified) |
+| Remote has no `updated` and content differs | Push (local assumed newer) |
 | Local-only event, not in sync state | New event to push |
 | Remote-only event, not in sync state | New event to pull |
 | In sync state but missing locally | Deleted locally — delete from remote on push |
