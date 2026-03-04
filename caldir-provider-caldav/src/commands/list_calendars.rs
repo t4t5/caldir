@@ -1,11 +1,12 @@
-//! List iCloud Calendars (name + config) for a given account.
+//! List CalDAV calendars for a given account.
 
 use anyhow::Result;
 use caldir_core::calendar::config::CalendarConfig;
 use caldir_core::remote::{protocol::ListCalendars, provider::Provider, Remote};
 use caldir_provider_caldav::ops;
 
-use crate::remote_config::ICloudRemoteConfig;
+use crate::constants::PROVIDER_NAME;
+use crate::remote_config::CaldavRemoteConfig;
 use crate::session::Session;
 
 pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
@@ -15,24 +16,17 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
     let raw_calendars =
         ops::list_calendars_raw(username, password, &session.calendar_home_url).await?;
 
+    let account_id = Session::account_identifier(&session.username, &session.server_url);
+
     let configs = raw_calendars
         .into_iter()
         .map(|cal| {
-            // iCloud returns colors as #RRGGBBAA, convert to #RRGGBB
-            let color = cal.color.map(|c| {
-                if c.len() == 9 && c.starts_with('#') {
-                    c[..7].to_string()
-                } else {
-                    c
-                }
-            });
-
-            let remote_config = ICloudRemoteConfig::new(&session.apple_id, &cal.url);
-            let remote = Remote::new(Provider::from_name("icloud"), remote_config.into());
+            let remote_config = CaldavRemoteConfig::new(&account_id, &cal.url);
+            let remote = Remote::new(Provider::from_name(PROVIDER_NAME), remote_config.into());
 
             CalendarConfig {
                 name: Some(cal.name),
-                color,
+                color: cal.color,
                 read_only: None,
                 remote: Some(remote),
             }

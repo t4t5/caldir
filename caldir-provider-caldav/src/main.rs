@@ -1,3 +1,5 @@
+//! Generic CalDAV provider for caldir-cli.
+//!
 //! This binary implements the caldir provider protocol, communicating
 //! with caldir-cli via JSON over stdin/stdout.
 
@@ -49,9 +51,6 @@ async fn process_request(line: &str) -> String {
 }
 
 /// Dispatch a command to its handler with compile-time type safety.
-///
-/// This ensures the handler returns the correct type as specified by
-/// the command's `ProviderCommand::Response` associated type.
 async fn dispatch<C, F, Fut>(params: serde_json::Value, handler: F) -> Result<serde_json::Value>
 where
     C: ProviderCommand + DeserializeOwned,

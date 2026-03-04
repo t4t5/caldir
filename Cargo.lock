@@ -237,6 +237,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "caldir-provider-caldav"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caldir-core",
+ "chrono",
+ "dirs",
+ "http 1.4.0",
+ "hyper 1.8.1",
+ "hyper-rustls 0.27.7",
+ "hyper-util",
+ "libdav",
+ "roxmltree",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
+ "tower",
+ "tower-http",
+ "url",
+]
+
+[[package]]
 name = "caldir-provider-google"
 version = "0.2.2"
 dependencies = [
@@ -260,20 +283,12 @@ version = "0.1.2"
 dependencies = [
  "anyhow",
  "caldir-core",
- "chrono",
+ "caldir-provider-caldav",
  "dirs",
- "http 1.4.0",
- "hyper 1.8.1",
- "hyper-rustls 0.27.7",
- "hyper-util",
- "libdav",
- "roxmltree",
  "serde",
  "serde_json",
  "tokio",
  "toml",
- "tower",
- "tower-http",
 ]
 
 [[package]]

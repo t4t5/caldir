@@ -1,0 +1,56 @@
+[package]
+name = "caldir-provider-caldav"
+version = "0.1.0"
+edition = "2024"
+description = "Generic CalDAV provider for caldir-cli"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["calendar", "caldav", "sync"]
+categories = ["command-line-utilities"]
+
+[lib]
+name = "caldir_provider_caldav"
+path = "src/lib.rs"
+
+[[bin]]
+name = "caldir-provider-caldav"
+path = "src/main.rs"
+
+[dependencies]
+# Shared types
+caldir-core = { path = "../caldir-core", version = "0.3.1" }
+
+# CalDAV client library
+libdav = "0.10"
+
+# HTTP client and tower service stack
+http = "1"
+hyper = { version = "1", features = ["http1", "client"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["ring", "http1", "native-tokio", "tls12", "rustls-native-certs"] }
+hyper-util = { version = "0.1", features = ["client", "client-legacy", "http1"] }
+tower-http = { version = "0.6", features = ["auth", "follow-redirect"] }
+tower = "0.5"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.9"
+
+# Error handling
+anyhow = "1"
+
+# XML parsing
+roxmltree = "0.21"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Platform-native config directories
+dirs = "6"
+
+# URL parsing
+url = "2"
