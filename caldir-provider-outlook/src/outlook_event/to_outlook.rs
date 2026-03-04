@@ -90,11 +90,11 @@ fn event_time_to_graph(time: &EventTime) -> DateTimeTimeZone {
             time_zone: "UTC".to_string(),
         },
         EventTime::DateTimeUtc(dt) => DateTimeTimeZone {
-            date_time: dt.format("%Y-%m-%dT%H:%M:%S%.7f").to_string(),
+            date_time: dt.format("%Y-%m-%dT%H:%M:%S.0000000").to_string(),
             time_zone: "UTC".to_string(),
         },
         EventTime::DateTimeFloating(dt) => DateTimeTimeZone {
-            date_time: dt.format("%Y-%m-%dT%H:%M:%S%.7f").to_string(),
+            date_time: dt.format("%Y-%m-%dT%H:%M:%S.0000000").to_string(),
             time_zone: "UTC".to_string(),
         },
         EventTime::DateTimeZoned { datetime, tzid } => DateTimeTimeZone {
