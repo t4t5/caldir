@@ -89,6 +89,12 @@ pub fn parse_event(content: &str) -> Option<Event> {
         })
         .collect();
 
+    // LAST-MODIFIED → updated timestamp (used for sync direction detection)
+    let updated = vevent
+        .find_prop("LAST-MODIFIED")
+        .and_then(|p| chrono::NaiveDateTime::parse_from_str(p.val.as_ref(), "%Y%m%dT%H%M%SZ").ok())
+        .map(|dt| dt.and_utc());
+
     // Custom X- properties (preserved for round-tripping provider-specific data)
     let custom_properties: Vec<(String, String)> = vevent
         .properties
@@ -112,7 +118,7 @@ pub fn parse_event(content: &str) -> Option<Event> {
         organizer,
         attendees,
         conference_url,
-        updated: None,
+        updated,
         sequence,
         custom_properties,
     })

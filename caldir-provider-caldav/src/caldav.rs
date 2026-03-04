@@ -209,6 +209,101 @@ fn parse_calendar_resources(body: &[u8]) -> std::result::Result<Vec<CalendarReso
     Ok(resources)
 }
 
+// ============================================================================
+// Custom CalDAV request to find an event by UID
+// ============================================================================
+
+/// Result of looking up a CalDAV resource by UID.
+pub struct EventLocation {
+    pub href: String,
+    pub etag: String,
+}
+
+/// Request to find a calendar resource by its UID property.
+///
+/// Uses a CalDAV calendar-query REPORT with a prop-filter on UID.
+/// Returns the href and etag of the matching resource.
+pub struct FindEventByUid<'a> {
+    collection_href: &'a str,
+    uid: &'a str,
+}
+
+impl<'a> FindEventByUid<'a> {
+    pub fn new(collection_href: &'a str, uid: &'a str) -> Self {
+        Self {
+            collection_href,
+            uid,
+        }
+    }
+}
+
+impl DavRequest for FindEventByUid<'_> {
+    type Response = EventLocation;
+    type ParseError = ParseResponseError;
+    type Error<E> = libdav::dav::WebDavError<E>;
+
+    fn prepare_request(&self) -> std::result::Result<PreparedRequest, http::Error> {
+        let body = format!(
+            r#"<C:calendar-query xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+    <prop>
+        <getetag/>
+    </prop>
+    <C:filter>
+        <C:comp-filter name="VCALENDAR">
+            <C:comp-filter name="VEVENT">
+                <C:prop-filter name="UID">
+                    <C:text-match collation="i;octet">{}</C:text-match>
+                </C:prop-filter>
+            </C:comp-filter>
+        </C:comp-filter>
+    </C:filter>
+</C:calendar-query>"#,
+            self.uid
+        );
+
+        Ok(PreparedRequest {
+            method: Method::from_bytes(b"REPORT")?,
+            path: self.collection_href.to_string(),
+            body,
+            headers: vec![("Depth".to_string(), "1".to_string())],
+        })
+    }
+
+    fn parse_response(
+        &self,
+        parts: &http::response::Parts,
+        body: &[u8],
+    ) -> std::result::Result<Self::Response, ParseResponseError> {
+        if !parts.status.is_success() {
+            return Err(ParseResponseError::BadStatusCode(parts.status));
+        }
+
+        let text = std::str::from_utf8(body)?;
+        let doc = roxmltree::Document::parse(text)?;
+        let root = doc.root_element();
+
+        for response in root.descendants().filter(|n| n.tag_name().name() == "response") {
+            let href = response
+                .descendants()
+                .find(|n| n.tag_name().name() == "href")
+                .and_then(|n| n.text());
+            let etag = response
+                .descendants()
+                .find(|n| n.tag_name().name() == "getetag")
+                .and_then(|n| n.text());
+
+            if let (Some(href), Some(etag)) = (href, etag) {
+                return Ok(EventLocation {
+                    href: href.to_string(),
+                    etag: etag.to_string(),
+                });
+            }
+        }
+
+        Err(ParseResponseError::BadStatusCode(http::StatusCode::NOT_FOUND))
+    }
+}
+
 /// Format a date string for CalDAV time-range queries.
 ///
 /// Input: RFC3339 format (e.g., "2025-01-01T00:00:00Z", "2025-01-01T00:00:00+00:00", or "2025-01-01")

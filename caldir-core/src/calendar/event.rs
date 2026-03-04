@@ -66,6 +66,11 @@ impl CalendarEvent {
     }
 
     /// Check if local file was modified after the remote event was updated.
+    ///
+    /// If the remote has no LAST-MODIFIED timestamp (some CalDAV servers omit it),
+    /// we assume the local version is newer — if the content were identical we
+    /// wouldn't be comparing in the first place, so a local edit is the most
+    /// likely explanation.
     pub fn is_newer_than(&self, other_event: &Event) -> bool {
         let this_update_time = match self.modified {
             Some(mtime) => mtime,
@@ -74,7 +79,8 @@ impl CalendarEvent {
 
         let other_update_time = match other_event.updated {
             Some(updated) => updated,
-            None => return false,
+            // Remote has no timestamp — assume local is newer (see doc comment)
+            None => return true,
         };
 
         this_update_time > other_update_time

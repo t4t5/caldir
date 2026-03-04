@@ -8,12 +8,12 @@ use caldir_core::event::Event;
 use caldir_core::ics::{generate_ics, parse_event};
 use http::Request;
 use libdav::caldav::{FindCalendarHomeSet, FindCalendars, GetCalendarResources};
-use libdav::dav::{GetEtag, GetProperty};
+use libdav::dav::GetProperty;
 use libdav::names;
 
 use crate::caldav::{
     absolute_url, create_caldav_client, event_url, format_caldav_datetime, url_to_href,
-    GetCalendarResourcesInRange,
+    FindEventByUid, GetCalendarResourcesInRange,
 };
 
 /// Discovered CalDAV endpoints from the connect flow.
@@ -231,7 +231,8 @@ pub async fn create_event(
 
 /// Update an existing event on a CalDAV calendar.
 ///
-/// Gets the current etag for conditional update, then uses a raw PUT request.
+/// Finds the event's server-assigned href by UID (not all servers use {uid}.ics),
+/// then uses a conditional PUT with the current etag.
 /// Fetches the updated event back to get server-assigned values.
 pub async fn update_event(
     username: &str,
@@ -243,22 +244,21 @@ pub async fn update_event(
 
     let ics_content = generate_ics(&event)?;
 
-    let full_url = event_url(calendar_url, &event.uid);
-    let href = url_to_href(&full_url);
+    let calendar_href = url_to_href(calendar_url);
 
-    // Get current etag for conditional update
-    let etag_response = caldav
-        .request(GetEtag::new(&href))
+    // Find the event's actual href and etag by UID (servers may use arbitrary filenames)
+    let location = caldav
+        .request(FindEventByUid::new(&calendar_href, &event.uid))
         .await
-        .context("Failed to get event etag - event may not exist")?;
+        .context("Failed to find event on server - it may have been deleted")?;
 
     // Use request_raw to avoid duplicate Content-Type header (see create_event).
-    let uri = caldav.relative_uri(&href)?;
+    let uri = caldav.relative_uri(&location.href)?;
     let request = Request::builder()
         .method(http::Method::PUT)
         .uri(&uri)
         .header("Content-Type", "text/calendar")
-        .header("If-Match", &etag_response.etag)
+        .header("If-Match", &location.etag)
         .body(ics_content)?;
 
     let (parts, _body) = caldav
@@ -274,9 +274,8 @@ pub async fn update_event(
     }
 
     // Fetch the updated event to get server-assigned values
-    let calendar_href = url_to_href(calendar_url);
     let get_response = caldav
-        .request(GetCalendarResources::new(&calendar_href).with_hrefs([&href]))
+        .request(GetCalendarResources::new(&calendar_href).with_hrefs([&location.href]))
         .await
         .ok();
 
@@ -293,7 +292,8 @@ pub async fn update_event(
 
 /// Delete an event from a CalDAV calendar.
 ///
-/// Treats 404 (already deleted) as success.
+/// Finds the event's server-assigned href by UID, then deletes it.
+/// Treats "not found" (event already deleted) as success.
 pub async fn delete_event(
     username: &str,
     password: &str,
@@ -301,9 +301,20 @@ pub async fn delete_event(
     event_id: &str,
 ) -> Result<()> {
     let caldav = create_caldav_client(calendar_url, username, password)?;
+    let calendar_href = url_to_href(calendar_url);
 
-    let full_url = event_url(calendar_url, event_id);
-    let href = url_to_href(&full_url);
+    // Find the event's actual href by UID
+    let location = caldav
+        .request(FindEventByUid::new(&calendar_href, event_id))
+        .await;
+
+    let href = match location {
+        Ok(loc) => loc.href,
+        Err(_) => {
+            // Event not found on server — treat as already deleted
+            return Ok(());
+        }
+    };
 
     let result = caldav
         .request(libdav::dav::Delete::new(&href).force())
