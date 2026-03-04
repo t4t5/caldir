@@ -45,9 +45,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
         );
         session.save()?;
 
-        return Ok(ConnectResponse::Done {
-            account_identifier,
-        });
+        return Ok(ConnectResponse::Done { account_identifier });
     }
 
     // Init step: return credential field requirements
@@ -57,7 +55,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
             label: "CalDAV Server URL".to_string(),
             field_type: FieldType::Url,
             required: true,
-            help: Some("e.g. https://mail.runbox.com/caldav".to_string()),
+            help: Some("e.g. https://caldav.fastmail.com/".to_string()),
         },
         CredentialField {
             id: "username".to_string(),
