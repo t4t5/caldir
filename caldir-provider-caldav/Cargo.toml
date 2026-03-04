@@ -19,7 +19,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Shared types
-caldir-core = { path = "../caldir-core", version = "0.3.1" }
+caldir-core = { path = "../caldir-core", version = "0.3.2" }
 
 # CalDAV client library
 libdav = "0.10"
