@@ -120,9 +120,6 @@ The core CLI is completely provider-agnostic — it just passes provider-prefixe
 **Current providers**:
 - `caldir-provider-google` — Google Calendar (OAuth + REST API)
 - `caldir-provider-icloud` — Apple iCloud (CalDAV + app-specific passwords)
-
-**Future providers** (not yet implemented):
-- `caldir-provider-outlook` — Microsoft Graph API
 - `caldir-provider-caldav` — Generic CalDAV servers
 
 ## Module Architecture
