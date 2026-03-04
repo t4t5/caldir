@@ -8,12 +8,12 @@ use caldir_core::event::Event;
 use caldir_core::ics::{generate_ics, parse_event};
 use http::Request;
 use libdav::caldav::{FindCalendarHomeSet, FindCalendars, GetCalendarResources};
-use libdav::dav::GetProperty;
+use libdav::dav::{GetEtag, GetProperty};
 use libdav::names;
 
 use crate::caldav::{
     absolute_url, create_caldav_client, event_url, format_caldav_datetime, url_to_href,
-    FindEventByUid, GetCalendarResourcesInRange,
+    EventLocation, FindEventByUid, GetCalendarResourcesInRange,
 };
 
 /// Discovered CalDAV endpoints from the connect flow.
@@ -231,8 +231,8 @@ pub async fn create_event(
 
 /// Update an existing event on a CalDAV calendar.
 ///
-/// Finds the event's server-assigned href by UID (not all servers use {uid}.ics),
-/// then uses a conditional PUT with the current etag.
+/// Tries the standard `{uid}.ics` URL first (works for iCloud and most servers),
+/// then falls back to a UID-based REPORT query for servers that use non-standard hrefs.
 /// Fetches the updated event back to get server-assigned values.
 pub async fn update_event(
     username: &str,
@@ -243,14 +243,10 @@ pub async fn update_event(
     let caldav = create_caldav_client(calendar_url, username, password)?;
 
     let ics_content = generate_ics(&event)?;
-
     let calendar_href = url_to_href(calendar_url);
 
-    // Find the event's actual href and etag by UID (servers may use arbitrary filenames)
-    let location = caldav
-        .request(FindEventByUid::new(&calendar_href, &event.uid))
-        .await
-        .context("Failed to find event on server - it may have been deleted")?;
+    // Try {uid}.ics first (most servers), fall back to UID-based REPORT query
+    let location = find_event_location(&caldav, &calendar_href, calendar_url, &event.uid).await?;
 
     // Use request_raw to avoid duplicate Content-Type header (see create_event).
     let uri = caldav.relative_uri(&location.href)?;
@@ -292,7 +288,7 @@ pub async fn update_event(
 
 /// Delete an event from a CalDAV calendar.
 ///
-/// Finds the event's server-assigned href by UID, then deletes it.
+/// Tries the standard `{uid}.ics` URL first, falls back to UID-based REPORT query.
 /// Treats "not found" (event already deleted) as success.
 pub async fn delete_event(
     username: &str,
@@ -303,10 +299,8 @@ pub async fn delete_event(
     let caldav = create_caldav_client(calendar_url, username, password)?;
     let calendar_href = url_to_href(calendar_url);
 
-    // Find the event's actual href by UID
-    let location = caldav
-        .request(FindEventByUid::new(&calendar_href, event_id))
-        .await;
+    // Find the event's actual href (try {uid}.ics first, then UID-based REPORT)
+    let location = find_event_location(&caldav, &calendar_href, calendar_url, event_id).await;
 
     let href = match location {
         Ok(loc) => loc.href,
@@ -331,4 +325,31 @@ pub async fn delete_event(
             }
         }
     }
+}
+
+/// Find an event's href and etag on the server.
+///
+/// First tries the conventional `{uid}.ics` URL (works for iCloud, most CalDAV servers).
+/// If that returns 404, falls back to a UID-based calendar-query REPORT (for servers
+/// like Runbox/Sabre that use server-assigned filenames).
+async fn find_event_location(
+    caldav: &crate::caldav::CalDavClient_,
+    calendar_href: &str,
+    calendar_url: &str,
+    uid: &str,
+) -> Result<EventLocation> {
+    // Fast path: try {uid}.ics directly
+    let uid_href = url_to_href(&event_url(calendar_url, uid));
+    if let Ok(etag_response) = caldav.request(GetEtag::new(&uid_href)).await {
+        return Ok(EventLocation {
+            href: uid_href,
+            etag: etag_response.etag,
+        });
+    }
+
+    // Fallback: query by UID (handles servers with non-standard resource filenames)
+    caldav
+        .request(FindEventByUid::new(calendar_href, uid))
+        .await
+        .context("Failed to find event on server - it may have been deleted")
 }
