@@ -7,6 +7,16 @@ use serde::{Deserialize, Serialize};
 use crate::app_config::{AppConfig, base_dir};
 
 const TOKEN_ENDPOINT: &str = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+const HOSTED_REFRESH_URL: &str = "https://caldir.org/auth/outlook/refresh";
+
+/// Whether this session was created via hosted (caldir.org) or local (self-hosted) OAuth.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AuthMode {
+    #[default]
+    Local,
+    Hosted,
+}
 
 pub struct Session {
     account_email: String,
@@ -18,6 +28,8 @@ pub struct SessionData {
     pub access_token: String,
     pub refresh_token: String,
     pub expires_at: DateTime<Utc>,
+    #[serde(default)]
+    pub auth_mode: AuthMode,
 }
 
 impl SessionData {
@@ -31,6 +43,21 @@ impl SessionData {
             access_token,
             refresh_token,
             expires_at,
+            auth_mode: AuthMode::Local,
+        }
+    }
+
+    pub fn from_hosted_tokens(
+        access_token: String,
+        refresh_token: String,
+        expires_in: i64,
+    ) -> Self {
+        let expires_at = Utc::now() + TimeDelta::seconds(expires_in);
+        SessionData {
+            access_token,
+            refresh_token,
+            expires_at,
+            auth_mode: AuthMode::Hosted,
         }
     }
 }
@@ -51,10 +78,12 @@ impl Session {
         &self.data.access_token
     }
 
-    pub fn new(account_email: &str, session_data: SessionData) -> Self {
+    pub fn new(account_email: &str, session_data: SessionData, auth_mode: AuthMode) -> Self {
+        let mut data = session_data;
+        data.auth_mode = auth_mode;
         Session {
             account_email: account_email.to_string(),
-            data: session_data,
+            data,
         }
     }
 
@@ -115,6 +144,52 @@ impl Session {
     }
 
     async fn refresh(&mut self) -> Result<()> {
+        match self.data.auth_mode {
+            AuthMode::Hosted => self.refresh_hosted().await,
+            AuthMode::Local => self.refresh_local().await,
+        }
+    }
+
+    async fn refresh_hosted(&mut self) -> Result<()> {
+        let client = reqwest::Client::new();
+
+        let response = client
+            .post(HOSTED_REFRESH_URL)
+            .json(&serde_json::json!({
+                "refresh_token": self.data.refresh_token,
+            }))
+            .send()
+            .await
+            .context("Failed to send refresh request to caldir.org")?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Failed to refresh Outlook token via caldir.org: {}", error_text);
+        }
+
+        #[derive(Deserialize)]
+        struct RefreshResponse {
+            access_token: String,
+            refresh_token: String,
+            expires_in: i64,
+        }
+
+        let refresh_data: RefreshResponse = response
+            .json()
+            .await
+            .context("Failed to parse refresh response from caldir.org")?;
+
+        self.data = SessionData::from_hosted_tokens(
+            refresh_data.access_token,
+            refresh_data.refresh_token,
+            refresh_data.expires_in,
+        );
+        self.save()?;
+
+        Ok(())
+    }
+
+    async fn refresh_local(&mut self) -> Result<()> {
         let app_config = AppConfig::load()?;
 
         let client = reqwest::Client::new();

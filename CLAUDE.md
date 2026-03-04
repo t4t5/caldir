@@ -339,6 +339,9 @@ caldir connect google
 # Connect with your own Google Cloud credentials
 caldir connect google --hosted=false
 
+# Connect to Microsoft Outlook Calendar (Azure AD app credentials)
+caldir connect outlook
+
 # Create a new local event (uses default_calendar from config)
 caldir new "Meeting with Alice" --start 2025-03-20T15:00
 caldir new "Team standup" --start 2025-03-20T09:00 --duration 30m
