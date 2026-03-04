@@ -1,6 +1,6 @@
 [package]
 name = "caldir-core"
-version = "0.3.2"
+version = "0.4.0"
 edition = "2024"
 description = "Shared types for caldir ecosystem (Event, protocol types)"
 license.workspace = true
