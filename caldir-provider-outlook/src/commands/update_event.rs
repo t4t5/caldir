@@ -2,6 +2,7 @@ use anyhow::Result;
 use caldir_core::event::Event;
 use caldir_core::remote::protocol::UpdateEvent;
 
+use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
 use crate::graph_client::GraphClient;
 use crate::graph_types::GraphEvent;
 use crate::outlook_event::from_outlook::from_outlook;
@@ -18,9 +19,9 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
         .event
         .custom_properties
         .iter()
-        .find(|(k, _)| k == "X-OUTLOOK-EVENT-ID")
+        .find(|(k, _)| k == PROVIDER_EVENT_ID_PROPERTY)
         .map(|(_, v)| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("Cannot update event without X-OUTLOOK-EVENT-ID"))?;
+        .ok_or_else(|| anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}"))?;
 
     let body = to_outlook(&cmd.event);
 

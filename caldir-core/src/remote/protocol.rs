@@ -214,12 +214,12 @@ impl ProviderCommand for UpdateEvent {
     }
 }
 
-/// Delete an event by ID.
+/// Delete an event.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeleteEvent {
     #[serde(flatten)]
     pub remote_config: serde_json::Map<String, serde_json::Value>,
-    pub event_id: String,
+    pub event: Event,
 }
 
 impl ProviderCommand for DeleteEvent {

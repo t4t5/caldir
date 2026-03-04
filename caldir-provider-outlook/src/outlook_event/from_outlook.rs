@@ -7,6 +7,7 @@ use caldir_core::event::{
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 
+use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
 use crate::graph_types::GraphEvent;
 
 pub fn from_outlook(event: GraphEvent) -> Result<Event> {
@@ -118,7 +119,7 @@ pub fn from_outlook(event: GraphEvent) -> Result<Event> {
         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&Utc));
 
-    let custom_properties = vec![("X-OUTLOOK-EVENT-ID".to_string(), event.id)];
+    let custom_properties = vec![(PROVIDER_EVENT_ID_PROPERTY.to_string(), event.id)];
 
     Ok(Event {
         uid: event.i_cal_uid,

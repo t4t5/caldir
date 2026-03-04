@@ -3,6 +3,7 @@ use caldir_core::event::Event;
 use caldir_core::remote::protocol::UpdateEvent;
 use google_calendar::types::SendUpdates;
 
+use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::Session;
@@ -21,9 +22,9 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
         .event
         .custom_properties
         .iter()
-        .find(|(k, _)| k == "X-GOOGLE-EVENT-ID")
+        .find(|(k, _)| k == PROVIDER_EVENT_ID_PROPERTY)
         .map(|(_, v)| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("Cannot update event without X-GOOGLE-EVENT-ID"))?;
+        .ok_or_else(|| anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}"))?;
 
     let response = client
         .events()

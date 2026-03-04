@@ -12,5 +12,5 @@ pub async fn handle(cmd: DeleteEvent) -> Result<()> {
     let session = Session::load(&config.icloud_account)?;
     let (username, password) = session.credentials();
 
-    ops::delete_event(username, password, &config.icloud_calendar_url, &cmd.event_id).await
+    ops::delete_event(username, password, &config.icloud_calendar_url, &cmd.event.uid).await
 }

@@ -60,9 +60,7 @@ impl CalendarDiff {
                 }
                 DiffKind::Delete => {
                     let event = diff.old.as_ref().expect("Delete must have old event");
-                    // Get provider-specific event ID for deletion
-                    let provider_event_id = get_provider_event_id(event);
-                    remote.delete_event(&provider_event_id).await?;
+                    remote.delete_event(event).await?;
                     known_ids.remove(&event.unique_id());
                 }
             }
@@ -240,18 +238,3 @@ fn event_key(event: &Event) -> (String, Option<String>) {
     )
 }
 
-/// Get provider-specific event ID for API calls (deletion, updates).
-/// For Google: X-GOOGLE-EVENT-ID from custom_properties
-/// For CalDAV (iCloud): uses the UID directly
-fn get_provider_event_id(event: &Event) -> String {
-    // Check for Google-specific event ID first
-    if let Some((_, google_id)) = event
-        .custom_properties
-        .iter()
-        .find(|(k, _)| k == "X-GOOGLE-EVENT-ID")
-    {
-        return google_id.clone();
-    }
-    // Fall back to UID (used by CalDAV providers like iCloud)
-    event.uid.clone()
-}

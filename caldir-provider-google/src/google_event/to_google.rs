@@ -2,6 +2,8 @@ use caldir_core::event::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Transparency,
 };
 
+use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
+
 pub trait ToGoogle {
     fn to_google(&self) -> google_calendar::types::Event;
 }
@@ -55,7 +57,7 @@ impl ToGoogle for Event {
         let google_event_id = self
             .custom_properties
             .iter()
-            .find(|(k, _)| k == "X-GOOGLE-EVENT-ID")
+            .find(|(k, _)| k == PROVIDER_EVENT_ID_PROPERTY)
             .map(|(_, v)| v.clone())
             .unwrap_or_default();
 

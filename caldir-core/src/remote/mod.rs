@@ -80,11 +80,11 @@ impl Remote {
             .await
     }
 
-    pub async fn delete_event(&self, event_id: &str) -> CalDirResult<()> {
+    pub async fn delete_event(&self, event: &Event) -> CalDirResult<()> {
         self.provider
             .call(DeleteEvent {
                 remote_config: self.remote_config(),
-                event_id: event_id.to_string(),
+                event: event.clone(),
             })
             .await
     }
