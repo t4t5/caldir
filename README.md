@@ -74,28 +74,45 @@ caldir week                # This week (until end of Sunday)
 caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
 ```
 
-## How sync works
-
-caldir syncs through **providers** — small plugin binaries that talk to calendar services.
-
-Current caldir providers:
-- [Google](https://github.com/caldir/caldir/tree/main/caldir-provider-google)
-- [iCloud](https://github.com/caldir/caldir/tree/main/caldir-provider-icloud)
-- [Outlook](https://github.com/caldir/caldir/tree/main/caldir-provider-outlook)
-- [CalDAV](https://github.com/caldir/caldir/tree/main/caldir-provider-caldav)
-
-A provider is just an executable named `caldir-provider-{name}` that speaks JSON over stdin/stdout. Anyone can write one.
+## Syncing
 
 - `caldir pull` -- download remote changes to local
 - `caldir push` -- upload local changes to remote (including deletions)
 - `caldir sync` -- both, in one command
 - `caldir status` -- show pending changes in either direction
 
-## Where things live
+caldir syncs through **providers** — small plugin binaries that talk to calendar services. It
+currently supports:
 
-- **`~/caldir/`** -- your events, one `.ics` file per event, organized into calendar subdirectories
-- **`<config_dir>/caldir/`** -- global config (`config.toml`, auto-created on first run) and provider credentials
+- [Google](https://github.com/caldir/caldir/tree/main/caldir-provider-google)
+- [iCloud](https://github.com/caldir/caldir/tree/main/caldir-provider-icloud)
+- [Outlook](https://github.com/caldir/caldir/tree/main/caldir-provider-outlook)
+- [CalDAV](https://github.com/caldir/caldir/tree/main/caldir-provider-caldav)
 
-## Standard .ics files
+A provider is just an executable named `caldir-provider-{name}` that speaks JSON over stdin/stdout. Anyone can create one.
 
-Every event is a standard [RFC 5545](https://tools.ietf.org/html/rfc5545) `.ics` file. You can open them in any calendar app, move them around, or sync them with other tools. caldir is just a directory convention and a sync tool. There's no lock-in.
+## Configuration
+
+**Caldir's global settings** are stored in in your system's config directory:
+
+```toml
+# ~/.config/caldir/config.toml (Linux)
+# ~/Library/Application Support/caldir/config.toml (macOS)
+calendar_dir = "~/caldir"
+default_calendar = "personal"
+```
+
+**Your calendar-specific settings** are stored in each calendar's directory:
+
+```toml
+# ~/caldir/personal/.caldir/config.toml
+name = "Personal"
+color = "#4285f4"
+
+[remote]
+provider = "google"
+google_account = "me@gmail.com"
+google_calendar_id = "primary"
+```
+
+For more details, check out the [full documentation](https://caldir.org/docs).
