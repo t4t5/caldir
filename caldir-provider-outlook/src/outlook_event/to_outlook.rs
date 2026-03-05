@@ -1,9 +1,11 @@
 //! Convert caldir Event to Microsoft Graph event JSON.
 
 use caldir_core::event::{Event, EventTime, ParticipationStatus, Transparency};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::graph_types::{DateTimeTimeZone, PatternedRecurrence, RecurrencePattern, RecurrenceRange};
+use crate::graph_types::{
+    DateTimeTimeZone, PatternedRecurrence, RecurrencePattern, RecurrenceRange,
+};
 
 pub fn to_outlook(event: &Event) -> Value {
     let mut body = json!({
@@ -13,7 +15,10 @@ pub fn to_outlook(event: &Event) -> Value {
         "isAllDay": event.start.is_date(),
     });
 
-    let obj = body.as_object_mut().unwrap();
+    // Safety: json!({...}) always returns Value::Object
+    let Some(obj) = body.as_object_mut() else {
+        return body;
+    };
 
     if let Some(ref desc) = event.description {
         obj.insert(
@@ -23,10 +28,7 @@ pub fn to_outlook(event: &Event) -> Value {
     }
 
     if let Some(ref loc) = event.location {
-        obj.insert(
-            "location".to_string(),
-            json!({ "displayName": loc }),
-        );
+        obj.insert("location".to_string(), json!({ "displayName": loc }));
     }
 
     // ShowAs / transparency
@@ -142,7 +144,11 @@ fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<PatternedRecurrenc
         "WEEKLY" => {
             let days: Vec<String> = byday
                 .iter()
-                .filter_map(|d| rrule_day_to_outlook(d.trim_start_matches(|c: char| c.is_ascii_digit() || c == '-')))
+                .filter_map(|d| {
+                    rrule_day_to_outlook(
+                        d.trim_start_matches(|c: char| c.is_ascii_digit() || c == '-'),
+                    )
+                })
                 .map(String::from)
                 .collect();
             ("weekly".to_string(), days, String::new(), 0, 0)
@@ -167,8 +173,16 @@ fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<PatternedRecurrenc
                 let (index, days) = parse_relative_byday(&byday);
                 ("relativeYearly".to_string(), days, index, 0, bymonth)
             } else {
-                let dom = if bymonthday > 0 { bymonthday } else { extract_day_of_month(start) };
-                let m = if bymonth > 0 { bymonth } else { extract_month(start) };
+                let dom = if bymonthday > 0 {
+                    bymonthday
+                } else {
+                    extract_day_of_month(start)
+                };
+                let m = if bymonth > 0 {
+                    bymonth
+                } else {
+                    extract_month(start)
+                };
                 ("absoluteYearly".to_string(), vec![], String::new(), dom, m)
             }
         }
@@ -239,9 +253,7 @@ fn parse_relative_byday(byday: &[&str]) -> (String, Vec<String>) {
 }
 
 fn split_byday_prefix(s: &str) -> (&str, &str) {
-    let pos = s
-        .find(|c: char| c.is_ascii_alphabetic())
-        .unwrap_or(s.len());
+    let pos = s.find(|c: char| c.is_ascii_alphabetic()).unwrap_or(s.len());
     (&s[..pos], &s[pos..])
 }
 

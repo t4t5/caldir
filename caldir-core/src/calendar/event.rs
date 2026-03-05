@@ -46,7 +46,6 @@ impl CalendarEvent {
         })
     }
 
-    // TODO: When saving, verify that base slug still matches. Otherwise rename file
     pub fn save(&self) -> CalDirResult<()> {
         let ics_content = crate::ics::generate_ics(&self.event)?;
         std::fs::write(&self.path, ics_content)?;

@@ -196,15 +196,15 @@ fn has_time_component(input: &str) -> bool {
     // Check for am/pm patterns like "6pm", "6 pm", "11am"
     let bytes = lower.as_bytes();
     for (i, &b) in bytes.iter().enumerate() {
-        if b == b'a' || b == b'p' {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'm' {
-                // Check that there's a digit before (possibly with space)
-                if i > 0 && bytes[i - 1].is_ascii_digit() {
-                    return true;
-                }
-                if i > 1 && bytes[i - 1] == b' ' && bytes[i - 2].is_ascii_digit() {
-                    return true;
-                }
+        if (b == b'a' || b == b'p')
+            && i + 1 < bytes.len() && bytes[i + 1] == b'm'
+        {
+            // Check that there's a digit before (possibly with space)
+            if i > 0 && bytes[i - 1].is_ascii_digit() {
+                return true;
+            }
+            if i > 1 && bytes[i - 1] == b' ' && bytes[i - 2].is_ascii_digit() {
+                return true;
             }
         }
     }
@@ -228,10 +228,10 @@ fn has_time_component(input: &str) -> bool {
         }
     }
     // Also handle "at" at the start
-    if let Some(after) = lower.strip_prefix("at ") {
-        if after.starts_with(|c: char| c.is_ascii_digit()) {
-            return true;
-        }
+    if let Some(after) = lower.strip_prefix("at ")
+        && after.starts_with(|c: char| c.is_ascii_digit())
+    {
+        return true;
     }
 
     false
@@ -288,11 +288,11 @@ fn default_end(start: &EventTime) -> EventTime {
 }
 
 /// Resolve which calendar to use.
-fn resolve_calendar<'a>(
+fn resolve_calendar(
     slug: Option<String>,
-    calendars: &'a [Calendar],
+    calendars: &[Calendar],
     interactive: bool,
-) -> Result<&'a Calendar> {
+) -> Result<&Calendar> {
     if let Some(slug) = slug {
         return calendars.iter().find(|c| c.slug == slug).ok_or_else(|| {
             let available: Vec<_> = calendars.iter().map(|c| c.slug.as_str()).collect();
@@ -311,10 +311,10 @@ fn resolve_calendar<'a>(
 
     // Try the default calendar
     let caldir = Caldir::load()?;
-    if let Some(default) = caldir.default_calendar() {
-        if let Some(cal) = calendars.iter().find(|c| c.slug == default.slug) {
-            return Ok(cal);
-        }
+    if let Some(default) = caldir.default_calendar()
+        && let Some(cal) = calendars.iter().find(|c| c.slug == default.slug)
+    {
+        return Ok(cal);
     }
 
     // Multiple calendars, no default — ask if interactive

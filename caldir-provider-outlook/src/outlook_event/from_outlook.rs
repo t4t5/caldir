@@ -11,16 +11,8 @@ use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
 use crate::graph_types::GraphEvent;
 
 pub fn from_outlook(event: GraphEvent) -> Result<Event> {
-    let start = parse_event_time(
-        event.start.as_ref(),
-        event.is_all_day,
-        "start",
-    )?;
-    let end = parse_event_time(
-        event.end.as_ref(),
-        event.is_all_day,
-        "end",
-    )?;
+    let start = parse_event_time(event.start.as_ref(), event.is_all_day, "start")?;
+    let end = parse_event_time(event.end.as_ref(), event.is_all_day, "end")?;
 
     let status = if event.is_cancelled {
         EventStatus::Cancelled
@@ -40,9 +32,11 @@ pub fn from_outlook(event: GraphEvent) -> Result<Event> {
         .transpose()?;
 
     // For exception instances, original_start serves as recurrence_id
-    let recurrence_id = event.original_start.as_ref().map(|orig| {
-        parse_datetime_timezone(&orig.date_time, &orig.time_zone, event.is_all_day)
-    }).transpose()?;
+    let recurrence_id = event
+        .original_start
+        .as_ref()
+        .map(|orig| parse_datetime_timezone(&orig.date_time, &orig.time_zone, event.is_all_day))
+        .transpose()?;
 
     let reminders = if event.reminder_minutes_before_start > 0 {
         Reminders(vec![Reminder {
@@ -102,16 +96,13 @@ pub fn from_outlook(event: GraphEvent) -> Result<Event> {
         }
     });
 
-    let location = event
-        .location
-        .as_ref()
-        .and_then(|l| {
-            if l.display_name.is_empty() {
-                None
-            } else {
-                Some(l.display_name.clone())
-            }
-        });
+    let location = event.location.as_ref().and_then(|l| {
+        if l.display_name.is_empty() {
+            None
+        } else {
+            Some(l.display_name.clone())
+        }
+    });
 
     let updated = event
         .last_modified_date_time
@@ -161,7 +152,9 @@ fn parse_datetime_timezone(
         let date_str = &datetime_str[..10]; // "2025-03-20"
         let date = NaiveDate::parse_from_str(date_str, "%Y-%m-%d")
             .or_else(|_| NaiveDate::parse_from_str(datetime_str, "%Y-%m-%dT%H:%M:%S%.f"))
-            .map_err(|e| anyhow::anyhow!("Failed to parse all-day date '{}': {}", datetime_str, e))?;
+            .map_err(|e| {
+                anyhow::anyhow!("Failed to parse all-day date '{}': {}", datetime_str, e)
+            })?;
         return Ok(EventTime::Date(date));
     }
 
@@ -240,9 +233,7 @@ fn outlook_to_participation_status(status: &str) -> Option<ParticipationStatus> 
 }
 
 /// Convert Graph PatternedRecurrence to an RRULE string + exdates.
-fn recurrence_from_outlook(
-    rec: &crate::graph_types::PatternedRecurrence,
-) -> Result<Recurrence> {
+fn recurrence_from_outlook(rec: &crate::graph_types::PatternedRecurrence) -> Result<Recurrence> {
     let pattern = &rec.pattern;
     let range = &rec.range;
 
@@ -288,14 +279,20 @@ fn recurrence_from_outlook(
 
     // BYMONTHDAY
     if pattern.day_of_month > 0
-        && matches!(pattern.pattern_type.as_str(), "absoluteMonthly" | "absoluteYearly")
+        && matches!(
+            pattern.pattern_type.as_str(),
+            "absoluteMonthly" | "absoluteYearly"
+        )
     {
         parts.push(format!("BYMONTHDAY={}", pattern.day_of_month));
     }
 
     // BYMONTH
     if pattern.month > 0
-        && matches!(pattern.pattern_type.as_str(), "absoluteYearly" | "relativeYearly")
+        && matches!(
+            pattern.pattern_type.as_str(),
+            "absoluteYearly" | "relativeYearly"
+        )
     {
         parts.push(format!("BYMONTH={}", pattern.month));
     }
