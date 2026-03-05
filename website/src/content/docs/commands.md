@@ -25,6 +25,8 @@ This authenticates with the provider, fetches your calendars, and creates a loca
 
 You can connect multiple accounts by running the command multiple times.
 
+---
+
 ## `caldir pull`
 
 Download remote changes to local.
@@ -42,9 +44,11 @@ caldir pull --from start
 caldir pull --calendar work
 ```
 
+---
+
 ## `caldir push`
 
-Upload local changes to the remote, including deletions.
+Upload local changes to the remote.
 
 ```bash
 caldir push
@@ -53,9 +57,14 @@ caldir push
 caldir push --calendar work
 ```
 
+If you delete a local `.ics` file and run `push`, the event is also deleted from the remote.
+
+
+---
+
 ## `caldir sync`
 
-Pull then push in one command.
+Pull then push in one command. By default, only events within **365 days** of today (past and future) are synced. You can override this with `--from` and `--to`.
 
 ```bash
 caldir sync
@@ -66,6 +75,8 @@ caldir sync --from 2024-01-01 --to 2024-12-31
 # Sync only one calendar
 caldir sync --calendar work
 ```
+
+---
 
 ## `caldir status`
 
@@ -83,6 +94,8 @@ caldir status --from 2024-01-01 --to 2024-12-31
 # Status for one calendar
 caldir status --calendar work
 ```
+
+---
 
 ## `caldir new`
 
@@ -112,6 +125,8 @@ caldir new "Sprint planning" --start 2025-03-22T10:00 --calendar work
 
 If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed events or 1 day for all-day events.
 
+---
+
 ## `caldir events`
 
 View upcoming events.
@@ -125,6 +140,8 @@ caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
 # Events from one calendar
 caldir events --calendar work
 ```
+
+---
 
 ## `caldir discard`
 
@@ -140,6 +157,8 @@ caldir discard --calendar work
 caldir discard --force
 ```
 
+---
+
 ## `caldir config`
 
 Show configuration paths and calendar info.
@@ -147,6 +166,8 @@ Show configuration paths and calendar info.
 ```bash
 caldir config
 ```
+
+---
 
 ## `caldir update`
 

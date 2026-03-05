@@ -1,7 +1,7 @@
 ---
 title: Configuration
 description: Global and per-calendar configuration
-order: 4
+order: 5
 ---
 
 # Configuration

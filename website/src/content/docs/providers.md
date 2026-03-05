@@ -1,7 +1,7 @@
 ---
 title: Providers
 description: Provider plugin architecture for Google, iCloud, Outlook, and CalDAV
-order: 5
+order: 4
 ---
 
 # Providers
