@@ -117,11 +117,23 @@ fn event_time_to_google(time: &EventTime) -> google_calendar::types::EventDateTi
             date_time: Some(dt.and_utc()),
             time_zone: String::new(),
         },
-        EventTime::DateTimeZoned { datetime, tzid } => google_calendar::types::EventDateTime {
-            date: None,
-            date_time: Some(datetime.and_utc()),
-            time_zone: tzid.clone(),
-        },
+        EventTime::DateTimeZoned { datetime, tzid } => {
+            // Convert wall clock time in the given timezone to actual UTC instant
+            let utc_dt = if let Ok(tz) = tzid.parse::<chrono_tz::Tz>() {
+                datetime
+                    .and_local_timezone(tz)
+                    .single()
+                    .map(|zoned| zoned.with_timezone(&chrono::Utc))
+                    .unwrap_or_else(|| datetime.and_utc())
+            } else {
+                datetime.and_utc()
+            };
+            google_calendar::types::EventDateTime {
+                date: None,
+                date_time: Some(utc_dt),
+                time_zone: tzid.clone(),
+            }
+        }
     }
 }
 

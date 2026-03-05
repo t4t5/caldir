@@ -166,14 +166,19 @@ fn expand_abbreviations(input: &str) -> String {
 
 /// Parse a natural language date/time string into an EventTime.
 /// If the input contains time tokens (am/pm, HH:MM, noon, midnight, "at"),
-/// returns DateTimeFloating. Otherwise returns Date (all-day).
+/// returns DateTimeZoned with the system timezone. Otherwise returns Date (all-day).
 fn parse_datetime(input: &str) -> Result<EventTime> {
     let expanded = expand_abbreviations(input);
     let dt = fuzzydate::parse(&expanded)
         .map_err(|_| anyhow::anyhow!("Could not parse date/time: \"{}\"", input))?;
 
     if has_time_component(input) {
-        Ok(EventTime::DateTimeFloating(dt))
+        let tzid = iana_time_zone::get_timezone()
+            .unwrap_or_else(|_| "UTC".to_string());
+        Ok(EventTime::DateTimeZoned {
+            datetime: dt,
+            tzid,
+        })
     } else {
         Ok(EventTime::Date(dt.date()))
     }
@@ -407,9 +412,9 @@ mod tests {
     // --- parse_datetime ---
 
     #[test]
-    fn parse_datetime_timed_returns_floating() {
+    fn parse_datetime_timed_returns_zoned() {
         let result = parse_datetime("tomorrow 3pm").unwrap();
-        assert!(matches!(result, EventTime::DateTimeFloating(_)));
+        assert!(matches!(result, EventTime::DateTimeZoned { .. }));
     }
 
     #[test]
@@ -421,7 +426,7 @@ mod tests {
     #[test]
     fn parse_datetime_abbreviation_works() {
         let result = parse_datetime("sat 3pm").unwrap();
-        assert!(matches!(result, EventTime::DateTimeFloating(_)));
+        assert!(matches!(result, EventTime::DateTimeZoned { .. }));
     }
 
     #[test]
@@ -554,6 +559,6 @@ mod tests {
                 .unwrap(),
         );
         let end = parse_end("until tomorrow 5pm", &start).unwrap();
-        assert!(matches!(end, EventTime::DateTimeFloating(_)));
+        assert!(matches!(end, EventTime::DateTimeZoned { .. }));
     }
 }

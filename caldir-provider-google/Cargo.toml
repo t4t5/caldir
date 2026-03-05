@@ -36,6 +36,7 @@ anyhow = "1"
 
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
 
 # Open URLs in browser
 open = "5"

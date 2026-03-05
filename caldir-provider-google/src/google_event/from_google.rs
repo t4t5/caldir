@@ -16,7 +16,7 @@ impl FromGoogle for Event {
     fn from_google(event: google_calendar::types::Event) -> Result<Self> {
         let start = if let Some(ref start) = event.start {
             if let Some(dt) = start.date_time {
-                EventTime::DateTimeUtc(dt)
+                utc_to_zoned(dt, &start.time_zone)
             } else if let Some(d) = start.date {
                 EventTime::Date(d)
             } else {
@@ -28,7 +28,7 @@ impl FromGoogle for Event {
 
         let end = if let Some(ref end) = event.end {
             if let Some(dt) = end.date_time {
-                EventTime::DateTimeUtc(dt)
+                utc_to_zoned(dt, &end.time_zone)
             } else if let Some(d) = end.date {
                 EventTime::Date(d)
             } else {
@@ -206,6 +206,21 @@ fn parse_google_exdate(s: &str, tzid: &Option<String>, is_date: bool) -> Option<
             .ok()
             .map(EventTime::DateTimeFloating)
     }
+}
+
+/// Convert a UTC datetime to a zoned datetime using Google's timezone field.
+/// Falls back to DateTimeUtc if no timezone is provided or the timezone is invalid.
+fn utc_to_zoned(dt: chrono::DateTime<chrono::Utc>, time_zone: &str) -> EventTime {
+    if !time_zone.is_empty()
+        && let Ok(tz) = time_zone.parse::<chrono_tz::Tz>()
+    {
+        let zoned = dt.with_timezone(&tz);
+        return EventTime::DateTimeZoned {
+            datetime: zoned.naive_local(),
+            tzid: time_zone.to_string(),
+        };
+    }
+    EventTime::DateTimeUtc(dt)
 }
 
 fn google_to_participation_status(google_status: &str) -> Option<ParticipationStatus> {
