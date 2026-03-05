@@ -73,12 +73,22 @@ pub fn run(
         Vec::new(),
     );
 
-    calendar.create_event(&event)?;
+    let path = calendar.create_event(&event)?;
+
+    let display_path = if let Ok(home) = std::env::var("HOME") {
+        if let Ok(relative) = path.strip_prefix(&home) {
+            format!("~/{}", relative.display())
+        } else {
+            path.display().to_string()
+        }
+    } else {
+        path.display().to_string()
+    };
 
     if interactive {
         println!();
     }
-    println!("{}", format!("  Created: {}", event.summary).green());
+    println!("{}", format!("  Created: {}", display_path).green());
 
     Ok(())
 }

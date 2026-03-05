@@ -185,22 +185,24 @@ impl Calendar {
         Ok(result)
     }
 
-    pub fn create_event(&self, event: &Event) -> CalDirResult<()> {
+    pub fn create_event(&self, event: &Event) -> CalDirResult<PathBuf> {
         let dir = self.path()?;
         std::fs::create_dir_all(&dir)?;
 
         let event_slug = CalendarEvent::unique_slug_for(event, self)?;
         let event_path = dir.join(format!("{}.ics", event_slug));
-        let calendar_event = CalendarEvent::new(event_path, event);
+        let calendar_event = CalendarEvent::new(event_path.clone(), event);
 
-        calendar_event.save()
+        calendar_event.save()?;
+        Ok(event_path)
     }
 
     /// Update a local event file by finding it via uid and replacing its content.
     /// For recurring event instances, also matches on recurrence_id.
     pub fn update_event(&self, uid: &str, event: &Event) -> CalDirResult<()> {
         self.delete_event(uid, event.recurrence_id.as_ref())?;
-        self.create_event(event)
+        self.create_event(event)?;
+        Ok(())
     }
 
     /// Find the master recurring event for a given uid.
