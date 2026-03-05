@@ -4,36 +4,38 @@ The "file over app" philosophy for calendars.
 
 ```
 ~/caldir/
-  work/
-    2025-01-15T0900__standup.ics
-    2025-01-15T1400__sprint-planning.ics
-  personal/
-    2025-01-18__birthday-party.ics
+├── home/
+│   └── 2025-03-25T0900__dentist.ics
+└── work/
+    ├── 2025-03-20T1500__client-call.ics
+    └── 2025-03-26T1400__sprint-planning.ics
 ```
 
 ## Why?
 
-Your calendar shouldn't live behind proprietary apps or APIs. When it's just files:
-
-**You can see it**
-```bash
-ls ~/caldir/work/2025-01*
-```
+Calendars already have an open format, `.ics` files, but they're hidden behind APIs and proprietary sync layers. caldir puts your calendar on disk where it's useful:
 
 **You can search it**
 ```bash
 grep -l "alice" ~/caldir/**/*.ics
 ```
 
-**You can version it**
+**You can script it**
 ```bash
-cd ~/caldir && git log
+# Daily schedule in your terminal
+echo "Today:" && ls ~/caldir/*/$(date +%Y-%m-%d)*
 ```
 
-**AI can read it**
+**Your AI agent can manage it**
+```bash
+claude "Move my Thursday meetings to Friday"
+# Claude reads, renames, and edits the .ics files directly
 ```
-You: "How many meetings did I have last week?"
-Claude: *reads files directly* "You had 12 meetings..."
+
+**Your data is portable**
+```bash
+caldir connect google
+mv ~/caldir/outlook/*.ics ~/caldir/google/
 ```
 
 ## Quick start
@@ -43,7 +45,7 @@ Claude: *reads files directly* "You had 12 meetings..."
 curl -sSf https://caldir.org/install.sh | sh
 
 # Connect and follow the instructions in the CLI:
-caldir connect google    # or: caldir connect icloud
+caldir connect google    # (or "caldir connect icloud", "caldir connect caldav"...)
 
 # Sync your calendar events
 caldir sync
@@ -66,15 +68,23 @@ cargo install --path caldir-provider-icloud   # Apple iCloud
 ## Viewing events
 
 ```bash
-caldir events              # Next 3 days
+caldir events              # View events (3 days foreard by default)
 caldir today               # Today's events
-caldir week                # This week (through Sunday)
+caldir week                # This week (until end of Sunday)
 caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
 ```
 
 ## How sync works
 
-caldir uses a git-like push/pull model:
+caldir syncs through **providers** — small plugin binaries that talk to calendar services.
+
+Current caldir providers:
+- [Google](https://github.com/caldir/caldir/tree/main/caldir-provider-google)
+- [iCloud](https://github.com/caldir/caldir/tree/main/caldir-provider-icloud)
+- [Outlook](https://github.com/caldir/caldir/tree/main/caldir-provider-outlook)
+- [CalDAV](https://github.com/caldir/caldir/tree/main/caldir-provider-caldav)
+
+A provider is just an executable named `caldir-provider-{name}` that speaks JSON over stdin/stdout. Anyone can write one.
 
 - `caldir pull` -- download remote changes to local
 - `caldir push` -- upload local changes to remote (including deletions)
@@ -83,15 +93,9 @@ caldir uses a git-like push/pull model:
 
 ## Where things live
 
-caldir touches two places on your system:
-
 - **`~/caldir/`** -- your events, one `.ics` file per event, organized into calendar subdirectories
 - **`<config_dir>/caldir/`** -- global config (`config.toml`, auto-created on first run) and provider credentials
 
-`<config_dir>` is `~/.config` on Linux, `~/Library/Application Support` on macOS, and `%APPDATA%` on Windows.
-
-The config file is created with all options commented out -- open it to see what's configurable.
-
 ## Standard .ics files
 
-Every event is a standard [RFC 5545](https://tools.ietf.org/html/rfc5545) `.ics` file. You can open them in any calendar app, move them around, or sync them with other tools. caldir is just a directory convention and a sync tool -- there's no lock-in.
+Every event is a standard [RFC 5545](https://tools.ietf.org/html/rfc5545) `.ics` file. You can open them in any calendar app, move them around, or sync them with other tools. caldir is just a directory convention and a sync tool. There's no lock-in.
