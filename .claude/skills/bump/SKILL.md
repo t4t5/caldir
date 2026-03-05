@@ -10,7 +10,7 @@ Analyze git history since the last release and recommend semver bumps for each c
 
 ## Crates
 
-There are 4 crates to consider:
+There are 6 crates to consider:
 
 | Crate | Cargo.toml path |
 |---|---|
@@ -18,8 +18,10 @@ There are 4 crates to consider:
 | `caldir-cli` | `caldir-cli/Cargo.toml` |
 | `caldir-provider-google` | `caldir-provider-google/Cargo.toml` |
 | `caldir-provider-icloud` | `caldir-provider-icloud/Cargo.toml` |
+| `caldir-provider-caldav` | `caldir-provider-caldav/Cargo.toml` |
+| `caldir-provider-outlook` | `caldir-provider-outlook/Cargo.toml` |
 
-`caldir-cli`, `caldir-provider-google`, and `caldir-provider-icloud` all depend on `caldir-core` — their `caldir-core` dependency version pin must always match core's version.
+`caldir-cli` and all `caldir-provider-*` crates depend on `caldir-core` — their `caldir-core` dependency version pin must always match core's version.
 
 ## Steps
 
@@ -49,7 +51,7 @@ For each commit, check which crate directories were modified:
 git diff --name-only <anchor>..HEAD
 ```
 
-Map changed files to crates by directory prefix (`caldir-core/`, `caldir-cli/`, `caldir-provider-google/`, `caldir-provider-icloud/`). Ignore changes outside these directories (root Cargo.toml, .claude/, etc.).
+Map changed files to crates by directory prefix (`caldir-core/`, `caldir-cli/`, `caldir-provider-google/`, `caldir-provider-icloud/`, `caldir-provider-caldav/`, `caldir-provider-outlook/`). Ignore changes outside these directories (root Cargo.toml, .claude/, etc.).
 
 ### 4. Classify changes and recommend bumps
 
