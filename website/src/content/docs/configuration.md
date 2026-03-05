@@ -43,31 +43,15 @@ These files are created automatically by `caldir connect`. The provider returns 
 
 Calendars without `.caldir/config.toml` are treated as local-only (not synced).
 
-## Local state directory
-
-Each calendar has a `.caldir/` directory (similar to `.git/`) for configuration and sync state:
-
-```
-~/caldir/personal/
-  .caldir/
-    config.toml           # Remote provider configuration
-    state/
-      known_event_ids     # Plaintext, one event ID per line
-  2025-03-20T1500__meeting.ics
-  ...
-```
-
-The `known_event_ids` file tracks which events have been synced. This is used for delete detection: if an event ID is in this file but has no corresponding local file, the event was deleted locally and should be deleted from the remote on the next `push`.
-
 ## Provider credentials
 
 Provider credentials and tokens are managed by each provider in its own directory:
 
 ```
 ~/.config/caldir/providers/google/
-  app_config.toml              # OAuth client_id/secret (only for --hosted=false)
-  session/
-    me@gmail.com.toml          # Access/refresh tokens (auto-refreshed)
+├── app_config.toml              # OAuth client_id/secret (only for --hosted=false)
+└── session/
+    └── me@gmail.com.toml        # Access/refresh tokens (auto-refreshed)
 ```
 
 Tokens are refreshed automatically when they expire.

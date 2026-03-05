@@ -25,9 +25,7 @@ Calendars already have an open, text-based format, `.ics` files, but we don't tr
 
 caldir puts them on disk where they're useful. `grep` can search it. A shell script can process it. An LLM can reason about it.
 
-Unix works because everything is inspectable. Git works because it's files. Calendars should be the same.
-
-## This doesn't replace cloud calendars
+## Sync like git
 
 Most people still want services like Google Calendar. It syncs everywhere, works on phones, and is deeply embedded in how teams operate.
 
@@ -38,6 +36,6 @@ caldir doesn't replace that. It just flips the default:
 
 That way you can reason locally, automate freely, and you're never locked in.
 
-## Standard .ics files
+## Own your data
 
 Every event is a standard [RFC 5545](https://tools.ietf.org/html/rfc5545) `.ics` file. You can open them in any calendar app, move them around, or sync them with other tools.

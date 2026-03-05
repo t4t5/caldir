@@ -53,8 +53,6 @@ caldir push
 caldir push --calendar work
 ```
 
-If the local calendar is empty (all files deleted), push will refuse to delete all remote events. Run `caldir pull` to restore them.
-
 ## `caldir sync`
 
 Pull then push in one command.
@@ -76,11 +74,11 @@ Show pending changes per calendar, similar to `git status`.
 ```bash
 caldir status
 
+# Show all event diffs instead of a summary
+caldir status --verbose
+
 # Status for a specific date range
 caldir status --from 2024-01-01 --to 2024-12-31
-
-# Show all events instead of compact counts
-caldir status --verbose
 
 # Status for one calendar
 caldir status --calendar work

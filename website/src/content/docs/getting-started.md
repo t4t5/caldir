@@ -12,7 +12,7 @@ order: 1
 curl -sSf https://caldir.org/install.sh | sh
 ```
 
-This installs the `caldir` CLI and the Google Calendar and iCloud provider plugins.
+This installs the `caldir` CLI and the default provider plugins.
 
 <details>
 <summary>Install from source</summary>
@@ -25,6 +25,8 @@ cd caldir
 cargo install --path caldir-cli
 cargo install --path caldir-provider-google   # Google Calendar
 cargo install --path caldir-provider-icloud   # Apple iCloud
+cargo install --path caldir-provider-caldav   # Caldav
+cargo install --path caldir-provider-outlook  # Outlook
 ```
 
 </details>
@@ -37,6 +39,12 @@ caldir connect google
 
 # Apple iCloud
 caldir connect icloud
+
+# Caldav
+caldir connect caldav
+
+# Outlook
+caldir connect outlook
 ```
 
 This opens your browser for authentication, fetches your calendars, and creates a local directory for each one under `~/caldir/`.
@@ -55,10 +63,10 @@ After pulling, you'll have a directory structure like:
 
 ```
 ~/caldir/
-  personal/
-    2025-03-20T1500__client-call.ics
-    2025-03-21__offsite.ics
-  work/
-    2025-03-25T0900__dentist.ics
-    2025-03-26T1400__sprint-planning.ics
+├── icloud/
+│   ├── 2025-03-20T1500__client-call.ics
+│   └── 2025-03-21__offsite.ics
+└── google/
+    ├── 2025-03-25T0900__dentist.ics
+    └── 2025-03-26T1400__sprint-planning.ics
 ```
