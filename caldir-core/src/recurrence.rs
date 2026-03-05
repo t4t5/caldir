@@ -86,11 +86,7 @@ fn build_rrule_string(start: &EventTime, recurrence: &Recurrence) -> String {
             format!("DTSTART:{}", dt.format("%Y%m%dT%H%M%S"))
         }
         EventTime::DateTimeZoned { datetime, tzid } => {
-            format!(
-                "DTSTART;TZID={}:{}",
-                tzid,
-                datetime.format("%Y%m%dT%H%M%S")
-            )
+            format!("DTSTART;TZID={}:{}", tzid, datetime.format("%Y%m%dT%H%M%S"))
         }
     };
     lines.push(dtstart);
@@ -110,11 +106,7 @@ fn build_rrule_string(start: &EventTime, recurrence: &Recurrence) -> String {
                 format!("EXDATE:{}", dt.format("%Y%m%dT%H%M%S"))
             }
             EventTime::DateTimeZoned { datetime, tzid } => {
-                format!(
-                    "EXDATE;TZID={}:{}",
-                    tzid,
-                    datetime.format("%Y%m%dT%H%M%S")
-                )
+                format!("EXDATE;TZID={}:{}", tzid, datetime.format("%Y%m%dT%H%M%S"))
             }
         };
         lines.push(exdate_str);

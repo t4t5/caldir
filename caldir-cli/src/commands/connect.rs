@@ -40,9 +40,7 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
         let response = provider.connect(options.clone(), data.clone()).await?;
 
         match response {
-            ConnectResponse::Done {
-                account_identifier,
-            } => {
+            ConnectResponse::Done { account_identifier } => {
                 break account_identifier;
             }
             ConnectResponse::NeedsInput {
@@ -133,10 +131,8 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
                         println!("\nReceived tokens, completing authentication...");
 
                         let mut credentials = serde_json::Map::new();
-                        credentials
-                            .insert("access_token".into(), access_token.clone().into());
-                        credentials
-                            .insert("refresh_token".into(), refresh_token.clone().into());
+                        credentials.insert("access_token".into(), access_token.clone().into());
+                        credentials.insert("refresh_token".into(), refresh_token.clone().into());
                         credentials.insert("expires_in".into(), expires_in.clone().into());
                         credentials
                     }

@@ -15,8 +15,8 @@ use caldir_core::remote::protocol::{
     Command, Connect, CreateEvent, DeleteEvent, ListCalendars, ListEvents, ProviderCommand,
     Request, Response, UpdateEvent,
 };
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::future::Future;
 use std::io::{self, BufRead, Write};
 

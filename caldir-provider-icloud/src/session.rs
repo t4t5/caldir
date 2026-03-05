@@ -59,13 +59,11 @@ impl Session {
             anyhow::bail!("iCloud session for {} not found!", apple_id);
         }
 
-        let contents = std::fs::read_to_string(&path).with_context(|| {
-            format!("Failed to read iCloud session from {}", path.display())
-        })?;
+        let contents = std::fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read iCloud session from {}", path.display()))?;
 
-        let session: Session = toml::from_str(&contents).with_context(|| {
-            format!("Failed to parse iCloud session from {}", path.display())
-        })?;
+        let session: Session = toml::from_str(&contents)
+            .with_context(|| format!("Failed to parse iCloud session from {}", path.display()))?;
 
         Ok(session)
     }
@@ -75,8 +73,9 @@ impl Session {
 
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create session directory: {}", parent.display()))?;
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create session directory: {}", parent.display())
+            })?;
         }
 
         let contents = toml::to_string_pretty(&self).context("Failed to serialize session")?;

@@ -29,8 +29,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing 'app_password' in credentials"))?;
 
-        let endpoints =
-            ops::discover_endpoints(CALDAV_ENDPOINT, apple_id, app_password).await?;
+        let endpoints = ops::discover_endpoints(CALDAV_ENDPOINT, apple_id, app_password).await?;
 
         let session = Session::new(
             apple_id,

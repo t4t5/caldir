@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use owo_colors::OwoColorize;
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -7,11 +7,7 @@ const REPO: &str = "t4t5/caldir";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// All binaries included in a caldir release.
-const RELEASE_BINARIES: &[&str] = &[
-    "caldir",
-    "caldir-provider-google",
-    "caldir-provider-icloud",
-];
+const RELEASE_BINARIES: &[&str] = &["caldir", "caldir-provider-google", "caldir-provider-icloud"];
 
 pub async fn run() -> Result<()> {
     let spinner = crate::utils::tui::create_spinner("Checking for updates...".to_string());
@@ -109,10 +105,7 @@ pub async fn run() -> Result<()> {
         }
     }
 
-    println!(
-        "{}",
-        format!("Updated to v{}!", latest_version).green()
-    );
+    println!("{}", format!("Updated to v{}!", latest_version).green());
 
     Ok(())
 }
@@ -146,10 +139,7 @@ fn http_client() -> Result<reqwest::Client> {
 
 async fn fetch_latest_release() -> Result<GitHubRelease> {
     let client = http_client()?;
-    let url = format!(
-        "https://api.github.com/repos/{}/releases/latest",
-        REPO
-    );
+    let url = format!("https://api.github.com/repos/{}/releases/latest", REPO);
     let response = client.get(&url).send().await?;
 
     if !response.status().is_success() {

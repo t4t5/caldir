@@ -8,7 +8,6 @@ use crate::render::{CalendarDiffRender, Render};
 use crate::utils::tui;
 
 pub async fn run(calendars: Vec<Calendar>, range: DateRange, verbose: bool) -> Result<()> {
-
     for (i, cal) in calendars.iter().enumerate() {
         let spinner = tui::create_spinner(cal.render());
         let result = CalendarDiff::from_calendar(cal, &range).await;

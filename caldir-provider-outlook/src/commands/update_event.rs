@@ -21,16 +21,16 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
         .iter()
         .find(|(k, _)| k == PROVIDER_EVENT_ID_PROPERTY)
         .map(|(_, v)| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}")
+        })?;
 
     let body = to_outlook(&cmd.event);
 
     let path = format!("/me/events/{}", outlook_event_id);
     let response = graph.patch(&path, &body).await?;
 
-    let updated: GraphEvent = response
-        .json()
-        .await?;
+    let updated: GraphEvent = response.json().await?;
 
     from_outlook(updated)
 }

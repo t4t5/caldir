@@ -4,8 +4,11 @@ use caldir_core::event::EventTime;
 use chrono::{DateTime, Duration, Utc};
 use owo_colors::OwoColorize;
 
-
-pub fn run(calendars: Vec<Calendar>, from: Option<DateTime<Utc>>, to: Option<DateTime<Utc>>) -> Result<()> {
+pub fn run(
+    calendars: Vec<Calendar>,
+    from: Option<DateTime<Utc>>,
+    to: Option<DateTime<Utc>>,
+) -> Result<()> {
     let start_of_today = chrono::Local::now()
         .date_naive()
         .and_hms_opt(0, 0, 0)
@@ -82,7 +85,9 @@ fn format_date_label(time: &EventTime) -> String {
 fn format_time(time: &EventTime) -> String {
     match time {
         EventTime::Date(_) => "all-day".to_string(),
-        EventTime::DateTimeUtc(dt) => format!("{:>7}", dt.with_timezone(&chrono::Local).format("%H:%M")),
+        EventTime::DateTimeUtc(dt) => {
+            format!("{:>7}", dt.with_timezone(&chrono::Local).format("%H:%M"))
+        }
         EventTime::DateTimeFloating(dt) => format!("{:>7}", dt.format("%H:%M")),
         EventTime::DateTimeZoned { datetime, .. } => format!("{:>7}", datetime.format("%H:%M")),
     }

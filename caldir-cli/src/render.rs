@@ -181,7 +181,11 @@ impl CalendarDiffRender for CalendarDiff {
         }
 
         let mut lines = Vec::new();
-        lines.push(format!("   {}:", "Local changes (to discard)").dimmed().to_string());
+        lines.push(
+            format!("   {}:", "Local changes (to discard)")
+                .dimmed()
+                .to_string(),
+        );
         render_diff_list(&self.to_push, verbose, &mut lines);
         lines.join("\n")
     }
@@ -325,10 +329,8 @@ fn render_recurrence_diff(
             }
             // Show exdate changes
             use std::collections::HashSet;
-            let old_set: HashSet<_> =
-                old_rec.exdates.iter().map(|e| format!("{}", e)).collect();
-            let new_set: HashSet<_> =
-                new_rec.exdates.iter().map(|e| format!("{}", e)).collect();
+            let old_set: HashSet<_> = old_rec.exdates.iter().map(|e| format!("{}", e)).collect();
+            let new_set: HashSet<_> = new_rec.exdates.iter().map(|e| format!("{}", e)).collect();
             for ex in old_set.difference(&new_set) {
                 lines.push(format!("{} exdate {}", "-".red(), ex.red()));
             }

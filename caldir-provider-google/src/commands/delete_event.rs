@@ -17,7 +17,9 @@ pub async fn handle(cmd: DeleteEvent) -> Result<()> {
         .iter()
         .find(|(k, _)| k == PROVIDER_EVENT_ID_PROPERTY)
         .map(|(_, v)| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("Cannot delete event without {PROVIDER_EVENT_ID_PROPERTY}"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("Cannot delete event without {PROVIDER_EVENT_ID_PROPERTY}")
+        })?;
 
     let client = Session::load_valid(account_email).await?.client()?;
 

@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use caldir_core::calendar::config::CalendarConfig;
+use caldir_core::remote::Remote;
 use caldir_core::remote::protocol::ListCalendars;
 use caldir_core::remote::provider::Provider;
-use caldir_core::remote::Remote;
 
 use crate::graph_client::GraphClient;
 use crate::graph_types::{GraphCalendar, GraphResponse};

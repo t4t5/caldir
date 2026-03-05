@@ -8,7 +8,6 @@ use crate::render::{CalendarDiffRender, Render};
 use crate::utils::tui;
 
 pub async fn run(calendars: Vec<Calendar>, range: DateRange, verbose: bool) -> Result<()> {
-
     let mut diffs = Vec::new();
 
     for (i, cal) in calendars.iter().enumerate() {

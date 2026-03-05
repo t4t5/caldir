@@ -13,5 +13,12 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
     let session = Session::load(&config.icloud_account)?;
     let (username, password) = session.credentials();
 
-    ops::fetch_events(username, password, &config.icloud_calendar_url, &cmd.from, &cmd.to).await
+    ops::fetch_events(
+        username,
+        password,
+        &config.icloud_calendar_url,
+        &cmd.from,
+        &cmd.to,
+    )
+    .await
 }

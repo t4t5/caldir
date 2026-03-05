@@ -33,11 +33,7 @@ pub struct SessionData {
 }
 
 impl SessionData {
-    pub fn from_tokens(
-        access_token: String,
-        refresh_token: String,
-        expires_in: i64,
-    ) -> Self {
+    pub fn from_tokens(access_token: String, refresh_token: String, expires_in: i64) -> Self {
         let expires_at = Utc::now() + TimeDelta::seconds(expires_in);
         SessionData {
             access_token,
@@ -120,8 +116,7 @@ impl Session {
     }
 
     pub fn save(&self) -> Result<()> {
-        let contents =
-            toml::to_string_pretty(&self.data).context("Failed to serialize session")?;
+        let contents = toml::to_string_pretty(&self.data).context("Failed to serialize session")?;
         let path = self.path()?;
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -164,7 +159,10 @@ impl Session {
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            anyhow::bail!("Failed to refresh Outlook token via caldir.org: {}", error_text);
+            anyhow::bail!(
+                "Failed to refresh Outlook token via caldir.org: {}",
+                error_text
+            );
         }
 
         #[derive(Deserialize)]
@@ -222,11 +220,8 @@ impl Session {
             .await
             .context("Failed to parse token refresh response")?;
 
-        self.data = SessionData::from_tokens(
-            tokens.access_token,
-            tokens.refresh_token,
-            tokens.expires_in,
-        );
+        self.data =
+            SessionData::from_tokens(tokens.access_token, tokens.refresh_token, tokens.expires_in);
         self.save()?;
 
         Ok(())

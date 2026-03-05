@@ -11,8 +11,8 @@ use caldir_core::remote::protocol::{
     Connect, ConnectResponse, ConnectStepKind, CredentialField, FieldType, HostedOAuthData,
     OAuthData, SetupData,
 };
-use google_calendar::types::MinAccessRole;
 use google_calendar::Client;
+use google_calendar::types::MinAccessRole;
 use url::Url;
 
 use crate::app_config::AppConfig;
@@ -68,8 +68,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
         // Now fall through to generate the OAuth URL
     }
 
-    let has_auth_data =
-        cmd.data.contains_key("code") || cmd.data.contains_key("access_token");
+    let has_auth_data = cmd.data.contains_key("code") || cmd.data.contains_key("access_token");
 
     if has_auth_data {
         // Auth submit: exchange credentials for tokens
@@ -181,7 +180,11 @@ async fn complete_auth(cmd: &Connect, redirect_uri: &str) -> Result<String> {
             let expires_in: i64 = cmd
                 .data
                 .get("expires_in")
-                .and_then(|v| v.as_str().and_then(|s| s.parse().ok()).or_else(|| v.as_i64()))
+                .and_then(|v| {
+                    v.as_str()
+                        .and_then(|s| s.parse().ok())
+                        .or_else(|| v.as_i64())
+                })
                 .ok_or_else(|| anyhow::anyhow!("Missing 'expires_in' in credentials"))?;
 
             let session_data = SessionData::from_tokens(

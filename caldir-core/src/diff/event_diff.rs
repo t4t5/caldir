@@ -2,8 +2,8 @@
 
 use std::fmt;
 
-use crate::event::Event;
 use crate::diff::DiffKind;
+use crate::event::Event;
 
 #[derive(Debug, Clone)]
 pub struct EventDiff {

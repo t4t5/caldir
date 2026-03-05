@@ -50,14 +50,22 @@ impl DateRange {
     /// Get `from` as RFC3339 string, using a very old date if unbounded.
     pub fn from_rfc3339(&self) -> String {
         self.from
-            .unwrap_or_else(|| DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z").unwrap().into())
+            .unwrap_or_else(|| {
+                DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z")
+                    .unwrap()
+                    .into()
+            })
             .to_rfc3339()
     }
 
     /// Get `to` as RFC3339 string, using a far future date if unbounded.
     pub fn to_rfc3339(&self) -> String {
         self.to
-            .unwrap_or_else(|| DateTime::parse_from_rfc3339("2100-01-01T00:00:00Z").unwrap().into())
+            .unwrap_or_else(|| {
+                DateTime::parse_from_rfc3339("2100-01-01T00:00:00Z")
+                    .unwrap()
+                    .into()
+            })
             .to_rfc3339()
     }
 }

@@ -97,7 +97,11 @@ impl Session {
         }
     }
 
-    pub fn new(account_email: &str, session_data: &SessionData, auth_mode: AuthMode) -> Result<Self> {
+    pub fn new(
+        account_email: &str,
+        session_data: &SessionData,
+        auth_mode: AuthMode,
+    ) -> Result<Self> {
         let mut data = session_data.clone();
         data.auth_mode = auth_mode;
 

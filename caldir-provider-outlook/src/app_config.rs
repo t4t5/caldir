@@ -60,8 +60,7 @@ impl AppConfig {
                 .with_context(|| format!("Failed to create directory {}", parent.display()))?;
         }
 
-        let contents =
-            toml::to_string_pretty(self).context("Failed to serialize app config")?;
+        let contents = toml::to_string_pretty(self).context("Failed to serialize app config")?;
 
         std::fs::write(&path, contents)
             .with_context(|| format!("Failed to write app_config to {}", path.display()))?;

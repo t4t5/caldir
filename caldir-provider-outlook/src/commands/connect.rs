@@ -64,8 +64,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
     }
 
     // Auth data submit step
-    let has_auth_data =
-        cmd.data.contains_key("code") || cmd.data.contains_key("access_token");
+    let has_auth_data = cmd.data.contains_key("code") || cmd.data.contains_key("access_token");
 
     if has_auth_data {
         let account_email = complete_auth(&cmd, &redirect_uri).await?;
@@ -130,7 +129,8 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
     let state = format!("{:x}", rand_u64());
 
     let mut auth_url = Url::parse(AUTHORIZE_URL)?;
-    auth_url.query_pairs_mut()
+    auth_url
+        .query_pairs_mut()
         .append_pair("client_id", &app_config.client_id)
         .append_pair("redirect_uri", &redirect_uri)
         .append_pair("response_type", "code")
@@ -162,7 +162,11 @@ async fn complete_auth(cmd: &Connect, redirect_uri: &str) -> Result<String> {
             let expires_in: i64 = cmd
                 .data
                 .get("expires_in")
-                .and_then(|v| v.as_str().and_then(|s| s.parse().ok()).or_else(|| v.as_i64()))
+                .and_then(|v| {
+                    v.as_str()
+                        .and_then(|s| s.parse().ok())
+                        .or_else(|| v.as_i64())
+                })
                 .ok_or_else(|| anyhow::anyhow!("Missing 'expires_in' in credentials"))?;
 
             let session_data = SessionData::from_hosted_tokens(

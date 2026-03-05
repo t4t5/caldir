@@ -12,8 +12,8 @@ use libdav::dav::{GetEtag, GetProperty};
 use libdav::names;
 
 use crate::caldav::{
-    absolute_url, create_caldav_client, event_url, format_caldav_datetime, url_to_href,
-    EventLocation, FindEventByUid, GetCalendarResourcesInRange,
+    EventLocation, FindEventByUid, GetCalendarResourcesInRange, absolute_url, create_caldav_client,
+    event_url, format_caldav_datetime, url_to_href,
 };
 
 /// Discovered CalDAV endpoints from the connect flow.
@@ -205,10 +205,7 @@ pub async fn create_event(
         .context("Failed to create event")?;
 
     if !parts.status.is_success() {
-        anyhow::bail!(
-            "Failed to create event: server returned {}",
-            parts.status
-        );
+        anyhow::bail!("Failed to create event: server returned {}", parts.status);
     }
 
     // Fetch the created event to get server-assigned values
@@ -263,10 +260,7 @@ pub async fn update_event(
         .context("Failed to update event")?;
 
     if !parts.status.is_success() {
-        anyhow::bail!(
-            "Failed to update event: server returned {}",
-            parts.status
-        );
+        anyhow::bail!("Failed to update event: server returned {}", parts.status);
     }
 
     // Fetch the updated event to get server-assigned values

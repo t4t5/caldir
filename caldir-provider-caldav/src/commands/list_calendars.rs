@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use caldir_core::calendar::config::CalendarConfig;
-use caldir_core::remote::{protocol::ListCalendars, provider::Provider, Remote};
+use caldir_core::remote::{Remote, protocol::ListCalendars, provider::Provider};
 use caldir_provider_caldav::ops;
 
 use crate::constants::PROVIDER_NAME;

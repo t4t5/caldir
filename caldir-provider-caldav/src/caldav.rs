@@ -6,14 +6,21 @@ use anyhow::{Context, Result};
 use http::{Method, Uri};
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::{client::legacy::Client, rt::TokioExecutor};
+use libdav::CalDavClient;
 use libdav::dav::WebDavClient;
 use libdav::requests::{DavRequest, ParseResponseError, PreparedRequest};
-use libdav::CalDavClient;
 use tower::ServiceBuilder;
 use tower_http::{auth::AddAuthorization, follow_redirect::FollowRedirect};
 
 /// Type alias for the HTTP client with auth and redirect following.
-type HttpClient = FollowRedirect<AddAuthorization<Client<hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>, String>>>;
+type HttpClient = FollowRedirect<
+    AddAuthorization<
+        Client<
+            hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+            String,
+        >,
+    >,
+>;
 
 /// Type alias for our CalDAV client.
 pub type CalDavClient_ = CalDavClient<HttpClient>;
@@ -168,7 +175,9 @@ impl DavRequest for GetCalendarResourcesInRange<'_> {
 }
 
 /// Parse calendar resources from a CalDAV multistatus response.
-fn parse_calendar_resources(body: &[u8]) -> std::result::Result<Vec<CalendarResource>, ParseResponseError> {
+fn parse_calendar_resources(
+    body: &[u8],
+) -> std::result::Result<Vec<CalendarResource>, ParseResponseError> {
     let text = std::str::from_utf8(body)?;
     let doc = roxmltree::Document::parse(text)?;
     let root = doc.root_element();
@@ -176,7 +185,10 @@ fn parse_calendar_resources(body: &[u8]) -> std::result::Result<Vec<CalendarReso
     let mut resources = Vec::new();
 
     // Find all <response> elements
-    for response in root.descendants().filter(|n| n.tag_name().name() == "response") {
+    for response in root
+        .descendants()
+        .filter(|n| n.tag_name().name() == "response")
+    {
         // Get href
         let href = response
             .descendants()
@@ -202,7 +214,11 @@ fn parse_calendar_resources(body: &[u8]) -> std::result::Result<Vec<CalendarReso
 
         // Only include resources that have calendar data
         if let Some(data) = data {
-            resources.push(CalendarResource { _href: href, _etag: etag, data });
+            resources.push(CalendarResource {
+                _href: href,
+                _etag: etag,
+                data,
+            });
         }
     }
 
@@ -282,7 +298,10 @@ impl DavRequest for FindEventByUid<'_> {
         let doc = roxmltree::Document::parse(text)?;
         let root = doc.root_element();
 
-        for response in root.descendants().filter(|n| n.tag_name().name() == "response") {
+        for response in root
+            .descendants()
+            .filter(|n| n.tag_name().name() == "response")
+        {
             let href = response
                 .descendants()
                 .find(|n| n.tag_name().name() == "href")
@@ -300,7 +319,9 @@ impl DavRequest for FindEventByUid<'_> {
             }
         }
 
-        Err(ParseResponseError::BadStatusCode(http::StatusCode::NOT_FOUND))
+        Err(ParseResponseError::BadStatusCode(
+            http::StatusCode::NOT_FOUND,
+        ))
     }
 }
 

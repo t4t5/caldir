@@ -103,8 +103,9 @@ impl Session {
         let path = self.path()?;
 
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create session directory: {}", parent.display()))?;
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create session directory: {}", parent.display())
+            })?;
         }
 
         let contents = toml::to_string_pretty(&self).context("Failed to serialize session")?;

@@ -210,14 +210,10 @@ async fn main() -> Result<()> {
                 .map_err(|e| anyhow::anyhow!(e))?;
             commands::sync::run(calendars, range, verbose).await
         }
-        Commands::Events {
-            calendar,
-            from,
-            to,
-        } => {
+        Commands::Events { calendar, from, to } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
-            use caldir_core::date_range::{parse_date_start, parse_date_end};
+            use caldir_core::date_range::{parse_date_end, parse_date_start};
             // Only parse dates if explicitly provided; events command has its own defaults
             let from_dt = from
                 .as_deref()
@@ -262,7 +258,11 @@ async fn main() -> Result<()> {
             // num_days_from_monday(): Mon=0, Tue=1, ..., Sun=6
             let days_until_sunday = (6 - today.weekday().num_days_from_monday()) % 7;
             // If today is Sunday, show through next Sunday
-            let days_until_sunday = if days_until_sunday == 0 { 7 } else { days_until_sunday };
+            let days_until_sunday = if days_until_sunday == 0 {
+                7
+            } else {
+                days_until_sunday
+            };
             let end_of_sunday = (today + chrono::Duration::days(days_until_sunday as i64))
                 .and_hms_opt(23, 59, 59)
                 .unwrap()

@@ -173,12 +173,8 @@ fn parse_datetime(input: &str) -> Result<EventTime> {
         .map_err(|_| anyhow::anyhow!("Could not parse date/time: \"{}\"", input))?;
 
     if has_time_component(input) {
-        let tzid = iana_time_zone::get_timezone()
-            .unwrap_or_else(|_| "UTC".to_string());
-        Ok(EventTime::DateTimeZoned {
-            datetime: dt,
-            tzid,
-        })
+        let tzid = iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_string());
+        Ok(EventTime::DateTimeZoned { datetime: dt, tzid })
     } else {
         Ok(EventTime::Date(dt.date()))
     }
@@ -196,9 +192,7 @@ fn has_time_component(input: &str) -> bool {
     // Check for am/pm patterns like "6pm", "6 pm", "11am"
     let bytes = lower.as_bytes();
     for (i, &b) in bytes.iter().enumerate() {
-        if (b == b'a' || b == b'p')
-            && i + 1 < bytes.len() && bytes[i + 1] == b'm'
-        {
+        if (b == b'a' || b == b'p') && i + 1 < bytes.len() && bytes[i + 1] == b'm' {
             // Check that there's a digit before (possibly with space)
             if i > 0 && bytes[i - 1].is_ascii_digit() {
                 return true;

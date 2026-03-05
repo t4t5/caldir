@@ -366,7 +366,11 @@ END:VCALENDAR"#;
         // Check that EXDATE with TZID is preserved through round-trip
         let recurrence = reparsed.recurrence.expect("Should have recurrence");
         assert_eq!(recurrence.rrule, "FREQ=WEEKLY;BYDAY=MO");
-        assert_eq!(recurrence.exdates.len(), 2, "Should have 2 exdates after round-trip");
+        assert_eq!(
+            recurrence.exdates.len(),
+            2,
+            "Should have 2 exdates after round-trip"
+        );
         for exdate in &recurrence.exdates {
             match exdate {
                 EventTime::DateTimeZoned { tzid, .. } => {
@@ -407,20 +411,27 @@ END:VCALENDAR"#;
         let recurrence = reparsed.recurrence.expect("Should have recurrence");
         assert_eq!(recurrence.rrule, "FREQ=WEEKLY;BYDAY=MO");
         assert_eq!(
-            recurrence.exdates.len(), 2,
+            recurrence.exdates.len(),
+            2,
             "Should preserve both EXDATE values. Got: {:?}",
             recurrence.exdates
         );
 
         // Check that both dates are present as zoned datetimes
-        let dates: Vec<String> = recurrence.exdates.iter().map(|e| format!("{}", e)).collect();
+        let dates: Vec<String> = recurrence
+            .exdates
+            .iter()
+            .map(|e| format!("{}", e))
+            .collect();
         assert!(
             dates.iter().any(|d| d.contains("2024-01-08")),
-            "Should have first EXDATE date. Got: {:?}", dates
+            "Should have first EXDATE date. Got: {:?}",
+            dates
         );
         assert!(
             dates.iter().any(|d| d.contains("2024-01-15")),
-            "Should have second EXDATE date. Got: {:?}", dates
+            "Should have second EXDATE date. Got: {:?}",
+            dates
         );
     }
 }

@@ -12,5 +12,11 @@ pub async fn handle(cmd: DeleteEvent) -> Result<()> {
     let session = Session::load(&config.caldav_account)?;
     let (username, password) = session.credentials();
 
-    ops::delete_event(username, password, &config.caldav_calendar_url, &cmd.event.uid).await
+    ops::delete_event(
+        username,
+        password,
+        &config.caldav_calendar_url,
+        &cmd.event.uid,
+    )
+    .await
 }

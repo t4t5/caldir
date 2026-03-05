@@ -23,8 +23,8 @@ impl CalendarDiff {
     pub async fn apply_push(&self) -> CalDirResult<()> {
         // Safety: refuse to push if it would only delete events and nothing remains locally.
         // This catches the case where someone accidentally deletes all local .ics files.
-        let all_deletes = !self.to_push.is_empty()
-            && self.to_push.iter().all(|d| d.kind == DiffKind::Delete);
+        let all_deletes =
+            !self.to_push.is_empty() && self.to_push.iter().all(|d| d.kind == DiffKind::Delete);
         let local_empty = self.calendar.events()?.is_empty();
         if all_deletes && local_empty {
             return Err(CalDirError::Sync(format!(
@@ -40,8 +40,13 @@ impl CalendarDiff {
             .remote()
             .ok_or_else(|| CalDirError::RemoteNotFound(self.calendar.slug.to_string()))?;
 
-        let mut known_ids: HashSet<String> =
-            self.calendar.state().read().known_event_ids.into_iter().collect();
+        let mut known_ids: HashSet<String> = self
+            .calendar
+            .state()
+            .read()
+            .known_event_ids
+            .into_iter()
+            .collect();
 
         for diff in &self.to_push {
             match diff.kind {
@@ -97,8 +102,13 @@ impl CalendarDiff {
     }
 
     pub fn apply_pull(&self) -> CalDirResult<()> {
-        let mut known_ids: HashSet<String> =
-            self.calendar.state().read().known_event_ids.into_iter().collect();
+        let mut known_ids: HashSet<String> = self
+            .calendar
+            .state()
+            .read()
+            .known_event_ids
+            .into_iter()
+            .collect();
 
         for diff in &self.to_pull {
             match diff.kind {
@@ -237,4 +247,3 @@ fn event_key(event: &Event) -> (String, Option<String>) {
         event.recurrence_id.as_ref().map(|t| t.to_ics_string()),
     )
 }
-

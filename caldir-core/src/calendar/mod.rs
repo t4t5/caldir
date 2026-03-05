@@ -153,7 +153,8 @@ impl Calendar {
         // Include singles that fall in range
         for event in singles {
             if let Some(start_utc) = event.start.to_utc()
-                && start_utc >= from && start_utc <= to
+                && start_utc >= from
+                && start_utc <= to
             {
                 result.push(event);
             }
@@ -170,7 +171,8 @@ impl Calendar {
         for (_uid, orphans) in overrides {
             for (_rid, event) in orphans {
                 if let Some(start_utc) = event.start.to_utc()
-                    && start_utc >= from && start_utc <= to
+                    && start_utc >= from
+                    && start_utc <= to
                 {
                     result.push(event);
                 }

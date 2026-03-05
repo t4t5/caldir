@@ -24,7 +24,9 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
         .iter()
         .find(|(k, _)| k == PROVIDER_EVENT_ID_PROPERTY)
         .map(|(_, v)| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}")
+        })?;
 
     let response = client
         .events()

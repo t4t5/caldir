@@ -142,9 +142,7 @@ pub enum ConnectResponse {
         data: serde_json::Value,
     },
     /// Connection complete.
-    Done {
-        account_identifier: String,
-    },
+    Done { account_identifier: String },
 }
 
 impl ProviderCommand for Connect {

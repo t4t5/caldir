@@ -22,7 +22,10 @@ fn is_default_caldir_path(p: &PathBuf) -> bool {
 /// in each calendar's .caldir/config.toml file instead.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CaldirConfig {
-    #[serde(default = "default_caldir_path", skip_serializing_if = "is_default_caldir_path")]
+    #[serde(
+        default = "default_caldir_path",
+        skip_serializing_if = "is_default_caldir_path"
+    )]
     pub calendar_dir: PathBuf,
 
     #[serde(skip_serializing_if = "Option::is_none")]
