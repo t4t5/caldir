@@ -1,6 +1,6 @@
 ---
 title: Providers
-description: Provider plugin architecture, Google and iCloud setup
+description: Provider plugin architecture for Google, iCloud, Outlook, and CalDAV
 order: 5
 ---
 
@@ -13,11 +13,13 @@ caldir uses a plugin architecture for calendar providers. Each provider is a sep
 | Provider | Binary | Auth method |
 |---|---|---|
 | Google Calendar | `caldir-provider-google` | OAuth (hosted or self-hosted) |
+| Microsoft Outlook | `caldir-provider-outlook` | OAuth (hosted or self-hosted) |
 | Apple iCloud | `caldir-provider-icloud` | App-specific password (CalDAV) |
+| Generic CalDAV | `caldir-provider-caldav` | Username + password |
 
 ## Google Calendar
 
-### Hosted auth (default)
+### Hosted auth (recommended)
 
 ```bash
 caldir connect google
@@ -25,7 +27,7 @@ caldir connect google
 
 OAuth is handled via caldir.org — no setup needed. Your tokens pass through caldir.org during authentication and refresh but are **never stored or logged** on the server. See the [privacy policy](/privacy) for details.
 
-### Self-hosted auth
+### Self-hosted auth (more complex)
 
 If you prefer to use your own Google Cloud credentials:
 
@@ -39,6 +41,30 @@ This will prompt you to create OAuth credentials in Google Cloud Console. In thi
 
 You can connect multiple Google accounts by running `caldir connect google` multiple times. Each account's calendars will be synced independently.
 
+## Microsoft Outlook
+
+### Hosted auth (recommended)
+
+```bash
+caldir connect outlook
+```
+
+OAuth is handled via caldir.org, similar to Google — no setup needed.
+
+### Self-hosted auth (more complex)
+
+If you prefer to use your own Azure AD app credentials:
+
+```bash
+caldir connect outlook --hosted=false
+```
+
+This will prompt you to register an app in the Azure portal and provide a client ID and secret.
+
+### Multiple accounts
+
+You can connect multiple Outlook accounts by running `caldir connect outlook` multiple times.
+
 ## Apple iCloud
 
 ```bash
@@ -47,11 +73,19 @@ caldir connect icloud
 
 iCloud uses CalDAV with app-specific passwords. You'll be prompted to enter your Apple ID and an [app-specific password](https://support.apple.com/en-us/102654) (not your main Apple ID password).
 
+## Generic CalDAV
+
+```bash
+caldir connect caldav
+```
+
+For any CalDAV-compatible server (Nextcloud, Radicale, Baikal, etc.). You'll be prompted for a server URL, username, and password. The provider automatically discovers CalDAV endpoints from the server.
+
 ## Plugin architecture
 
 Providers are discovered by looking for executables named `caldir-provider-{name}` in your PATH. This enables:
 
-- **Permissionless ecosystem** — anyone can create a new provider (e.g., `caldir-provider-outlook`)
+- **Permissionless ecosystem** — anyone can create a new provider
 - **Language-agnostic** — providers can be written in any language
 - **Independent versioning** — providers update separately from core
 - **Smaller core binary** — provider-specific dependencies stay in provider crates
