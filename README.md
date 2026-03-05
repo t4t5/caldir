@@ -47,12 +47,12 @@ mv ~/caldir/outlook/*.ics ~/caldir/google/
 curl -sSf https://caldir.org/install.sh | sh
 
 # Connect and follow the instructions in the CLI:
-caldir connect google    # (or "caldir connect icloud", "caldir connect caldav"...)
+caldir connect google    # or "caldir connect icloud", "caldir connect caldav"...
 
 # Sync your calendar events
 caldir sync
 
-# Your calendar is now in ~/caldir
+# Your calendar events are now in ~/caldir
 ```
 
 <details>
@@ -78,12 +78,7 @@ caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
 
 ## Syncing
 
-- `caldir pull` -- download remote changes to local
-- `caldir push` -- upload local changes to remote (including deletions)
-- `caldir sync` -- both, in one command
-- `caldir status` -- show pending changes in either direction
-
-caldir syncs through **providers** — small plugin binaries that talk to calendar services. For example:
+Caldir syncs through **providers** — small plugin binaries that talk to calendar services. For example:
 
 - Google ([caldir-provider-google](https://github.com/caldir/caldir/tree/main/caldir-provider-google))
 - iCloud ([caldir-provider-icloud](https://github.com/caldir/caldir/tree/main/caldir-provider-icloud))
@@ -91,6 +86,13 @@ caldir syncs through **providers** — small plugin binaries that talk to calend
 - CalDAV ([caldir-provider-caldav](https://github.com/caldir/caldir/tree/main/caldir-provider-caldav))
 
 A provider is just an executable named `caldir-provider-{name}` that speaks JSON over stdin/stdout. Anyone can create one.
+
+Once a provider is connected, you can communicate with it using caldir's CLI commands:
+
+- `caldir pull` -- download remote changes to local
+- `caldir push` -- upload local changes to remote (including deletions)
+- `caldir sync` -- both, in one command
+- `caldir status` -- show pending changes in either direction
 
 ## Configuration
 
