@@ -68,7 +68,7 @@ cargo install --path caldir-provider-icloud   # Apple iCloud
 ## Viewing events
 
 ```bash
-caldir events              # View events (3 days foreard by default)
+caldir events              # View events (3 days forward by default)
 caldir today               # Today's events
 caldir week                # This week (until end of Sunday)
 caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
