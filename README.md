@@ -13,28 +13,30 @@ The "file over app" philosophy for calendars.
 
 ## Why?
 
-Calendars already have an open format, `.ics` files, but they're hidden behind APIs and proprietary sync layers. caldir puts your calendar on disk where it's useful:
+Calendars already have an open format (`.ics` files) but they're hidden behind APIs and proprietary sync layers.
 
-**You can search it**
+Caldir connects to any provider and puts your calendar data on disk, so that you can:
+
+**Search it**
 ```bash
-grep -l "alice" ~/caldir/**/*.ics
+grep -l "holiday" ~/caldir/**/*.ics
 ```
 
-**You can script it**
+**Script it**
 ```bash
 # Daily schedule in your terminal
 echo "Today:" && ls ~/caldir/*/$(date +%Y-%m-%d)*
 ```
 
-**Your AI agent can manage it**
+**Manage it with your AI agent**
 ```bash
 claude "Move my Thursday meetings to Friday"
 # Claude reads, renames, and edits the .ics files directly
 ```
 
-**Your data is portable**
+**Keep your data portable**
 ```bash
-caldir connect google
+# Migrate events from Outlook to Google Calendar
 mv ~/caldir/outlook/*.ics ~/caldir/google/
 ```
 
