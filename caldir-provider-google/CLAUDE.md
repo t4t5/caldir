@@ -25,3 +25,10 @@ The Google provider supports two authentication modes:
 **Self-hosted auth (`--hosted=false`):** When the user runs `caldir connect google --hosted=false` and no `app_config.toml` exists, `connect` returns `NeedsInput` with `NeedsSetup` step with instructions for creating Google Cloud OAuth credentials. After setup, the next `connect` call returns `OAuthRedirect` with a direct Google authorization URL. The CLI exchanges the code for tokens locally. Sessions are saved with `auth_mode = "local"`.
 
 Both modes store tokens locally in `~/.config/caldir/providers/google/session/`. The `auth_mode` field in the session file determines how tokens are refreshed — hosted sessions refresh via caldir.org, local sessions refresh directly with Google using the user's client_id/secret.
+
+### Timezone Handling
+
+The Google Calendar API works with UTC timestamps + timezone metadata. The provider converts between this and caldir's `EventTime` types using `chrono-tz`:
+
+- **`from_google` (API → caldir):** When Google returns a `date_time` (UTC) with a `time_zone` string, the provider converts to `DateTimeZoned` — translating the UTC instant to wall clock time in that timezone. This ensures filenames show local time. Falls back to `DateTimeUtc` if no timezone is provided or the timezone is unrecognized.
+- **`to_google` (caldir → API):** `DateTimeZoned` is converted to the correct UTC instant using `chrono-tz` (e.g., 10:00 Europe/Stockholm → 09:00Z), with the timezone passed alongside. This correctly handles DST — the same wall clock time maps to different UTC offsets depending on the date.

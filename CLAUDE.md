@@ -103,7 +103,7 @@ The sync state is updated automatically after each `pull` or `push` operation. I
 
 Providers are separate binaries that communicate with caldir-cli via JSON over stdin/stdout, similar to git's remote helpers (`git-remote-*`). This enables:
 
-- **Permissionless ecosystem** — Anyone can create `caldir-provider-outlook`
+- **Permissionless ecosystem** — Anyone can create a new provider
 - **Language-agnostic** — Providers can be written in any language
 - **Independent versioning** — Providers update separately from core
 - **Smaller core binary** — Provider-specific deps stay in provider crates
@@ -212,6 +212,15 @@ The `connect` command drives a multi-step state machine. The CLI calls `connect`
 
 **ics/** — Pure ICS format (RFC 5545) in `caldir_core::ics`. Generates compliant `.ics` files from `Event` structs, parses properties from existing files. Provider-neutral.
 
+## Timezone Handling
+
+**Timezone is data, not just display.** Events store their timezone so that filenames and `ls` output show local time, and recurring events survive DST transitions correctly.
+
+- **`caldir new`** creates events with `DateTimeZoned` using the system timezone (detected via `iana-time-zone`). So `caldir new "Meeting" --start "tomorrow 10am"` in Stockholm creates `DTSTART;TZID=Europe/Stockholm:...T100000`.
+- **Providers** that work with APIs (Google, Outlook) convert between UTC and zoned times using `chrono-tz`. When receiving events from the API, they preserve the timezone from the response as `DateTimeZoned`. When sending events, they convert zoned local time to the correct UTC instant.
+- **CalDAV/iCloud providers** work with raw ICS files, so timezone info is preserved natively by the ICS format.
+- **`DateTimeFloating`** (no timezone) is used for ICS events that intentionally have no timezone — "10am wherever you are." `caldir new` never creates these.
+
 ## Event Properties
 
 See `specs/caldir.md` for the full ICS format specification with field-by-field documentation.
@@ -260,6 +269,7 @@ The sync state file tracks `{uid}` or `{uid}__{recurrence_id}` for delete detect
 
 **Timed events:** `YYYY-MM-DDTHHMM__slug.ics`
 - Example: `2025-03-20T1500__client-call.ics`
+- The time in the filename is **local time** (from the event's timezone), not UTC
 
 **All-day events:** `YYYY-MM-DD__slug.ics`
 - Example: `2025-03-21__offsite.ics`
