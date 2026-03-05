@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "../layouts/BaseLayout.astro";
 import TerminalDemo from "../components/TerminalDemo.astro";
+import CodeBlock from "../components/CodeBlock.astro";
 ---
 
 <BaseLayout title="caldir - your calendar as a directory">
@@ -18,7 +19,9 @@ import TerminalDemo from "../components/TerminalDemo.astro";
     <p class="mb-4">Sync your Google Calendar or iCloud Calendar as a local directory of <code class="bg-code-bg px-1.5 py-0.5 rounded text-sm">.ics</code> files.<br />Store your events in a portable plaintext format that your LLM and unix tools understand.</p>
 
     <h2 class="text-sm text-muted/70 uppercase mb-2 mt-8">Quickstart</h2>
-    <div class="bg-terminal-bg text-terminal-text px-5 py-4 rounded-lg font-mono text-[0.95rem] max-md:text-[0.8rem] mb-4 overflow-x-auto whitespace-nowrap before:content-['$_'] before:text-terminal-muted before:select-none">curl -sSf https://caldir.org/install.sh | sh</div>
+    <div class="mb-4">
+      <CodeBlock code="curl -sSf https://caldir.org/install.sh | sh" />
+    </div>
 
     <div class="mt-8 flex gap-6">
       <a class="text-link hover:underline" href="/docs/what-is-caldir">Docs</a>
