@@ -83,13 +83,12 @@ caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
 - `caldir sync` -- both, in one command
 - `caldir status` -- show pending changes in either direction
 
-caldir syncs through **providers** — small plugin binaries that talk to calendar services. It
-currently supports:
+caldir syncs through **providers** — small plugin binaries that talk to calendar services. For example:
 
-- [Google](https://github.com/caldir/caldir/tree/main/caldir-provider-google)
-- [iCloud](https://github.com/caldir/caldir/tree/main/caldir-provider-icloud)
-- [Outlook](https://github.com/caldir/caldir/tree/main/caldir-provider-outlook)
-- [CalDAV](https://github.com/caldir/caldir/tree/main/caldir-provider-caldav)
+- Google ([caldir-provider-google](https://github.com/caldir/caldir/tree/main/caldir-provider-google))
+- iCloud ([caldir-provider-icloud](https://github.com/caldir/caldir/tree/main/caldir-provider-icloud))
+- Outlook ([caldir-provider-outlook](https://github.com/caldir/caldir/tree/main/caldir-provider-outlook))
+- CalDAV ([caldir-provider-caldav](https://github.com/caldir/caldir/tree/main/caldir-provider-caldav))
 
 A provider is just an executable named `caldir-provider-{name}` that speaks JSON over stdin/stdout. Anyone can create one.
 
