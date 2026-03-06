@@ -67,18 +67,10 @@ cargo install --path caldir-provider-icloud   # Apple iCloud
 ```
 </details>
 
-## Viewing events
+## Providers
 
-```bash
-caldir events              # View events (3 days forward by default)
-caldir today               # Today's events
-caldir week                # This week (until end of Sunday)
-caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
-```
-
-## Syncing
-
-Caldir syncs through **providers** — small plugin binaries that talk to calendar services. For example:
+Caldir syncs through **providers** — small plugin binaries that talk to calendar services. It
+supports:
 
 - Google ([caldir-provider-google](https://github.com/caldir/caldir/tree/main/caldir-provider-google))
 - iCloud ([caldir-provider-icloud](https://github.com/caldir/caldir/tree/main/caldir-provider-icloud))
@@ -93,6 +85,27 @@ Once a provider is connected, you can communicate with it using caldir's CLI com
 - `caldir push` -- upload local changes to remote (including deletions)
 - `caldir sync` -- both, in one command
 - `caldir status` -- show pending changes in either direction
+
+## Commands
+
+**Create event**
+```bash
+caldir new                                    # Interactive mode (for humans)
+caldir new "Meeting" --start 2025-03-20T15:00 # Non-interactive mode (for agents)
+```
+
+**View events**
+```bash
+caldir events              # Next 3 days
+caldir today               # Today's events
+caldir week                # This week (through Sunday)
+```
+
+**Sync with provider**
+```bash
+caldir status              # Show pending changes
+caldir sync                # Push/Pull changes
+```
 
 ## Configuration
 
