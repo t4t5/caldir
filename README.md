@@ -70,12 +70,12 @@ cargo install --path caldir-provider-icloud   # Apple iCloud
 ## Providers
 
 Caldir syncs through **providers** — small plugin binaries that talk to calendar services. It
-supports:
+currently supports:
 
-- Google ([caldir-provider-google](https://github.com/caldir/caldir/tree/main/caldir-provider-google))
-- iCloud ([caldir-provider-icloud](https://github.com/caldir/caldir/tree/main/caldir-provider-icloud))
-- Outlook ([caldir-provider-outlook](https://github.com/caldir/caldir/tree/main/caldir-provider-outlook))
-- CalDAV ([caldir-provider-caldav](https://github.com/caldir/caldir/tree/main/caldir-provider-caldav))
+- Google ([caldir-provider-google](https://github.com/t4t5/caldir/tree/main/caldir-provider-google))
+- iCloud ([caldir-provider-icloud](https://github.com/t4t5/caldir/tree/main/caldir-provider-icloud))
+- Outlook ([caldir-provider-outlook](https://github.com/t4t5/caldir/tree/main/caldir-provider-outlook))
+- CalDAV ([caldir-provider-caldav](https://github.com/t4t5/caldir/tree/main/caldir-provider-caldav))
 
 A provider is just an executable named `caldir-provider-{name}` that speaks JSON over stdin/stdout. Anyone can create one.
 
