@@ -43,6 +43,31 @@ impl Provider {
         &self.0
     }
 
+    /// Discover all installed provider binaries by scanning PATH for `caldir-provider-*`.
+    pub fn discover_installed() -> Vec<String> {
+        let Ok(path_var) = std::env::var("PATH") else {
+            return vec![];
+        };
+
+        let mut providers = std::collections::BTreeSet::new();
+        let prefix = "caldir-provider-";
+
+        for dir in std::env::split_paths(&path_var) {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                if let Some(provider_name) = name.strip_prefix(prefix) {
+                    providers.insert(provider_name.to_string());
+                }
+            }
+        }
+
+        providers.into_iter().collect()
+    }
+
     fn binary_path(&self) -> CalDirResult<std::path::PathBuf> {
         let binary_name = format!("caldir-provider-{}", self.0);
         let binary_path = which::which(&binary_name).map_err(|_| {

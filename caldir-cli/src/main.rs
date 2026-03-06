@@ -6,6 +6,7 @@ use anyhow::Result;
 use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
 use caldir_core::date_range::DateRange;
+use caldir_core::remote::provider::Provider;
 use chrono::{Datelike, Local, Utc};
 use clap::{Parser, Subcommand};
 
@@ -22,7 +23,8 @@ struct Cli {
 enum Commands {
     #[command(about = "Connect to a remote calendar provider (e.g., Google Calendar)")]
     Connect {
-        provider: String, // e.g. "google"
+        /// Provider name (e.g. "google", "caldav", "icloud", "outlook")
+        provider: Option<String>,
 
         /// Use hosted OAuth via caldir.org (default: true). Pass --hosted=false to use your own credentials.
         #[arg(long, default_value_t = true)]
@@ -168,7 +170,10 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Connect { provider, hosted } => commands::connect::run(&provider, hosted).await,
+        Commands::Connect { provider, hosted } => {
+            let provider = validate_provider(provider)?;
+            commands::connect::run(&provider, hosted).await
+        }
         Commands::Status {
             calendar,
             from,
@@ -295,6 +300,50 @@ async fn main() -> Result<()> {
         Commands::Config => commands::config::run(),
         Commands::Update => commands::update::run().await,
     }
+}
+
+fn validate_provider(provider: Option<String>) -> Result<String> {
+    let name = match provider {
+        Some(name) => name,
+        None => {
+            let installed = Provider::discover_installed();
+            if installed.is_empty() {
+                anyhow::bail!(
+                    "Missing provider argument.\n\n\
+                    Usage: caldir connect <provider>\n\n\
+                    No providers detected. Install one with:\n  \
+                    cargo install caldir-provider-google"
+                );
+            } else {
+                anyhow::bail!(
+                    "Missing provider argument.\n\n\
+                    Usage: caldir connect <provider>\n\n\
+                    Detected providers: {}",
+                    installed.iter().map(|p| format!("\"{}\"", p)).collect::<Vec<_>>().join(", ")
+                );
+            }
+        }
+    };
+
+    // Check the provider binary exists
+    let installed = Provider::discover_installed();
+    if !installed.contains(&name) {
+        if installed.is_empty() {
+            anyhow::bail!(
+                "Unknown provider \"{name}\".\n\n\
+                No providers detected. Install one with:\n  \
+                cargo install caldir-provider-{name}"
+            );
+        } else {
+            anyhow::bail!(
+                "Unknown provider \"{name}\".\n\n\
+                Detected providers: {}",
+                installed.iter().map(|p| format!("\"{}\"", p)).collect::<Vec<_>>().join(", ")
+            );
+        }
+    }
+
+    Ok(name)
 }
 
 fn require_calendars() -> Result<()> {
