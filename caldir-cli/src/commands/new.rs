@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
-use caldir_core::event::{Event, EventTime};
+use caldir_core::event::{Event, EventTime, Reminder};
 use chrono::Duration;
 use dialoguer::{Input, Select};
 use owo_colors::OwoColorize;
@@ -13,6 +13,7 @@ pub fn run(
     duration: Option<String>,
     location: Option<String>,
     calendar_slug: Option<String>,
+    reminder_args: Vec<String>,
     calendars: Vec<Calendar>,
 ) -> Result<()> {
     let interactive = title.is_none() || start.is_none();
@@ -60,6 +61,12 @@ pub fn run(
         None
     };
 
+    // --- Reminders ---
+    let reminders: Vec<Reminder> = reminder_args
+        .iter()
+        .map(|r| parse_reminder(r))
+        .collect::<Result<_>>()?;
+
     // --- Calendar ---
     let calendar = resolve_calendar(calendar_slug, &calendars, interactive)?;
 
@@ -70,7 +77,7 @@ pub fn run(
         None,
         location,
         None,
-        Vec::new(),
+        reminders,
     );
 
     let path = calendar.create_event(&event)?;
@@ -289,6 +296,14 @@ fn default_end(start: &EventTime) -> EventTime {
             tzid: tzid.clone(),
         },
     }
+}
+
+/// Parse a reminder string like "10m", "1h", "2 days" into a Reminder.
+fn parse_reminder(input: &str) -> Result<Reminder> {
+    let dur = humantime::parse_duration(input)
+        .map_err(|_| anyhow::anyhow!("Could not parse reminder: \"{}\"", input))?;
+    let minutes = (dur.as_secs() / 60) as i64;
+    Ok(Reminder { minutes })
 }
 
 /// Resolve which calendar to use.
