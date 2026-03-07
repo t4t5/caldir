@@ -65,6 +65,8 @@ The tool supports bidirectional sync between cloud and local:
 - Events in sync state but missing locally → deleted locally, delete from remote on push
 - Events in sync state but missing remotely → deleted remotely, delete locally on pull
 
+**Conflict resolution**: Last-write-wins. If an event is modified on both sides, the newer timestamp determines the direction (push or pull), and the older version is overwritten. There's no merge — calendar events are atomic, so you generally just want the latest state.
+
 **Sync time window**: Only events within ±365 days of today are synced. Events outside this window are left untouched locally (not flagged for deletion just because they weren't fetched from the remote).
 
 **Delete sync**: When you delete a local `.ics` file and run `push`, the event is also deleted from the remote. This is tracked via the sync state file (see below).
