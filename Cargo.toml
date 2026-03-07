@@ -1,5 +1,5 @@
 [workspace]
-members = ["caldir-cli", "caldir-core", "caldir-provider-caldav", "caldir-provider-google", "caldir-provider-icloud", "caldir-provider-outlook"]
+members = ["caldir-cli", "caldir-core", "caldir-notify", "caldir-provider-caldav", "caldir-provider-google", "caldir-provider-icloud", "caldir-provider-outlook"]
 resolver = "3"
 
 [workspace.package]
