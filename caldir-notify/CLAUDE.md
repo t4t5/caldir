@@ -37,7 +37,7 @@ Platform dispatch is compile-time via `#[cfg(target_os)]` in `install/mod.rs`.
 
 ```bash
 # Check for due reminders and fire notifications (what the timer runs)
-caldir-notify
+caldir-notify check
 
 # Install the system timer to run automatically every 60s
 caldir-notify install

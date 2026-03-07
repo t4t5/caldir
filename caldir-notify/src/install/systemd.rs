@@ -31,7 +31,7 @@ pub fn install() -> Result<(), Box<dyn std::error::Error>> {
          \n\
          [Service]\n\
          Type=oneshot\n\
-         ExecStart={}\n",
+         ExecStart={} check\n",
         bin.display()
     );
 

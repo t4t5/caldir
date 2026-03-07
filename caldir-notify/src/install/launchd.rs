@@ -28,6 +28,7 @@ pub fn install() -> Result<(), Box<dyn std::error::Error>> {
     <key>ProgramArguments</key>
     <array>
         <string>{bin}</string>
+        <string>check</string>
     </array>
     <key>StartInterval</key>
     <integer>60</integer>

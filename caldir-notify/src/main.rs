@@ -8,11 +8,13 @@ use clap::{Parser, Subcommand};
 #[command(name = "caldir-notify", about = "Desktop notifications for caldir reminders")]
 struct Cli {
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Command,
 }
 
 #[derive(Subcommand)]
 enum Command {
+    /// Check for due reminders and fire notifications
+    Check,
     /// Install the system timer/agent to run automatically
     Install,
     /// Uninstall the system timer/agent
@@ -23,9 +25,9 @@ fn main() {
     let cli = Cli::parse();
 
     let result = match cli.command {
-        None => check::check_and_notify(),
-        Some(Command::Install) => install::install(),
-        Some(Command::Uninstall) => install::uninstall(),
+        Command::Check => check::check_and_notify(),
+        Command::Install => install::install(),
+        Command::Uninstall => install::uninstall(),
     };
 
     if let Err(e) = result {

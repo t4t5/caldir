@@ -32,7 +32,7 @@ test-notification:
   #!/usr/bin/env bash
   in_5_mins=$(date -d '+5 minutes' +%H:%M)
   cargo run -p caldir-cli -- new "Test notification" --start "today ${in_5_mins}" --reminder 5m
-  cargo run -p caldir-notify
+  cargo run -p caldir-notify -- check
 
 # Create a test event set to 5 mins from now
 # with a 4m reminder (to see if systemd notification fires)
