@@ -144,6 +144,10 @@ enum Commands {
         /// Calendar slug (defaults to default_calendar from config)
         #[arg(short = 'C', long)]
         calendar: Option<String>,
+
+        /// Reminder(s) before the event (e.g. "10m", "1h", "2 days"). Can be repeated.
+        #[arg(short, long)]
+        reminder: Vec<String>,
     },
     #[command(about = "Discard unpushed local changes (restore to remote state)")]
     Discard {
@@ -283,10 +287,11 @@ async fn main() -> Result<()> {
             duration,
             location,
             calendar,
+            reminder,
         } => {
             require_calendars()?;
             let calendars = resolve_calendars(None)?;
-            commands::new::run(title, start, end, duration, location, calendar, calendars)
+            commands::new::run(title, start, end, duration, location, calendar, reminder, calendars)
         }
         Commands::Discard {
             calendar,
