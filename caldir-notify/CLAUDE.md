@@ -10,7 +10,7 @@ Desktop notification service for caldir reminders. Scans the caldir directory fo
 
 1. Load `Caldir` to find `calendar_dir`
 2. Discover all calendars via `Caldir::calendars()`
-3. For each calendar, load events in a window from -1h to +24h (covers any reasonable reminder offset)
+3. For each calendar, load events in a window from -1h to +7 days (covers reminders like "1 week before")
 4. For each event with reminders, compute trigger time: `event.start - reminder.minutes`
 5. If the trigger time falls within the **last 60 seconds**, fire a notification
 

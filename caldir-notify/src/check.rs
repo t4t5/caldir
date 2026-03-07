@@ -11,9 +11,9 @@ pub fn check_and_notify() -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now();
     let window_start = now - Duration::seconds(60);
 
-    // Look at events starting within the next 24 hours (covers any reasonable reminder offset)
+    // Look at events starting within the next 7 days (covers reminders like "1 week before")
     let range_start = now - Duration::hours(1);
-    let range_end = now + Duration::hours(24);
+    let range_end = now + Duration::days(7);
 
     for calendar in caldir.calendars() {
         let events = match calendar.events_in_range(range_start, range_end) {
