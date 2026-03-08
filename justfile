@@ -30,7 +30,11 @@ serve:
 # with a 5m reminder (and immediately check for notifications)
 test-notification:
   #!/usr/bin/env bash
-  in_5_mins=$(date -d '+5 minutes' +%H:%M)
+  if date -d '+5 minutes' +%H:%M &>/dev/null; then
+    in_5_mins=$(date -d '+5 minutes' +%H:%M)
+  else
+    in_5_mins=$(date -v+5M +%H:%M)
+  fi
   cargo run -p caldir-cli -- new "Test notification" --start "today ${in_5_mins}" --reminder 5m
   cargo run -p caldir-notify -- check
 
@@ -38,5 +42,9 @@ test-notification:
 # with a 4m reminder (to see if systemd notification fires)
 test-notification-systemd:
   #!/usr/bin/env bash
-  in_5_mins=$(date -d '+5 minutes' +%H:%M)
+  if date -d '+5 minutes' +%H:%M &>/dev/null; then
+    in_5_mins=$(date -d '+5 minutes' +%H:%M)
+  else
+    in_5_mins=$(date -v+5M +%H:%M)
+  fi
   cargo run -p caldir-cli -- new "Test notification" --start "today ${in_5_mins}" --reminder 4m
