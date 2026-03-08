@@ -5,11 +5,16 @@ use caldir_core::event::Event;
 pub fn send_notification(event: &Event, minutes_before: i64) -> Result<(), Box<dyn std::error::Error>> {
     let body = format_body(event, minutes_before);
 
-    Notification::new()
+    let mut notification = Notification::new();
+    notification
         .appname("caldir")
         .summary(&event.summary)
-        .body(&body)
-        .show()?;
+        .body(&body);
+
+    #[cfg(target_os = "macos")]
+    notification.sound_name("Ping");
+
+    notification.show()?;
 
     Ok(())
 }
