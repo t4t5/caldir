@@ -2,7 +2,10 @@ use notify_rust::Notification;
 
 use caldir_core::event::Event;
 
-pub fn send_notification(event: &Event, minutes_before: i64) -> Result<(), Box<dyn std::error::Error>> {
+pub fn send_notification(
+    event: &Event,
+    minutes_before: i64,
+) -> Result<(), Box<dyn std::error::Error>> {
     let body = format_body(event, minutes_before);
 
     let mut notification = Notification::new();
@@ -12,7 +15,7 @@ pub fn send_notification(event: &Event, minutes_before: i64) -> Result<(), Box<d
         .body(&body);
 
     #[cfg(target_os = "macos")]
-    notification.sound_name("Ping");
+    notification.sound_name("Basso");
 
     notification.show()?;
 
