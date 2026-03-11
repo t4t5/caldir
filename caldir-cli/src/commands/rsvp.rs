@@ -8,7 +8,7 @@ use caldir_core::calendar::Calendar;
 use caldir_core::event::ParticipationStatus;
 
 use crate::render::format_event_line;
-use crate::utils::date::format_date_label;
+use crate::utils::date::format_date_only;
 use caldir_core::ics::parse_event;
 use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
@@ -134,7 +134,7 @@ fn run_interactive() -> Result<()> {
     let mut current_date: Option<String> = None;
 
     for (calendar, event, email, _path) in &invites {
-        let date_label = format_date_label(&event.start);
+        let date_label = format_date_only(&event.start);
         if current_date.as_ref() != Some(&date_label) {
             if current_date.is_some() {
                 println!();

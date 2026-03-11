@@ -140,16 +140,6 @@ impl Event {
         }
     }
 
-    /// Render the event time with recurring indicator
-    pub fn render_event_time(&self) -> String {
-        let recurring = if self.recurrence.is_some() {
-            " 🔁"
-        } else {
-            ""
-        };
-        format!("{}{}", self.start, recurring)
-    }
-
     /// Returns the unique identifier for this event based on RFC 5545 identity.
     /// Format: `{uid}` for non-recurring events, `{uid}__{recurrence_id}` for instances.
     pub fn unique_id(&self) -> String {

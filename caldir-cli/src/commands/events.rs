@@ -4,7 +4,7 @@ use chrono::{DateTime, Duration, Utc};
 use owo_colors::OwoColorize;
 
 use crate::render::{format_event_line, render_participation_status};
-use crate::utils::date::format_date_label;
+use crate::utils::date::format_date_only;
 
 pub fn run(
     calendars: Vec<Calendar>,
@@ -48,7 +48,7 @@ pub fn run(
     let mut current_date: Option<String> = None;
 
     for (cal_slug, email, event) in &all_events {
-        let date_label = format_date_label(&event.start);
+        let date_label = format_date_only(&event.start);
 
         if current_date.as_ref() != Some(&date_label) {
             if current_date.is_some() {

@@ -10,7 +10,7 @@ use caldir_core::diff::{CalendarDiff, DiffKind, EventDiff};
 use caldir_core::event::{Event, ParticipationStatus};
 use owo_colors::OwoColorize;
 
-use crate::utils::date::format_time;
+use crate::utils::date::{format_datetime, format_time_only};
 
 /// Extension trait for TUI rendering with colors.
 pub trait Render {
@@ -41,9 +41,20 @@ impl Render for EventDiff {
     fn render(&self) -> String {
         let event = self.event();
         let summary = colorize_diff(self.kind, &event.to_string());
-        let time = event.render_event_time();
+        let time = format_datetime(&event.start);
+        let recurring = if event.recurrence.is_some() {
+            " 🔁"
+        } else {
+            ""
+        };
 
-        format!("{} {} {}", self.kind.render(), summary, time.dimmed())
+        format!(
+            "{} {} {}{}",
+            self.kind.render(),
+            summary,
+            time.dimmed(),
+            recurring
+        )
     }
 }
 
@@ -370,7 +381,7 @@ fn render_attendee_diffs(
 
 /// Format a standard event line: "  {time} {summary} [{cal_slug}]{status}"
 pub fn format_event_line(event: &Event, cal_slug: &str, status: &str) -> String {
-    let time = format_time(&event.start);
+    let time = format_time_only(&event.start);
     let cal_tag = format!("[{}]", cal_slug);
     format!("  {} {} {}{}", time, event.summary, cal_tag.dimmed(), status)
 }

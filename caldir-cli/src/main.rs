@@ -173,7 +173,7 @@ enum Commands {
         #[arg(short, long)]
         all: bool,
     },
-    #[command(about = "Respond to a calendar invite")]
+    #[command(about = "Respond to a calendar invites")]
     Rsvp {
         /// Path to the .ics file (omit for interactive mode)
         path: Option<String>,
@@ -309,7 +309,9 @@ async fn main() -> Result<()> {
         } => {
             require_calendars()?;
             let calendars = resolve_calendars(None)?;
-            commands::new::run(title, start, end, duration, location, calendar, reminder, calendars)
+            commands::new::run(
+                title, start, end, duration, location, calendar, reminder, calendars,
+            )
         }
         Commands::Discard {
             calendar,
@@ -351,7 +353,11 @@ fn validate_provider(provider: Option<String>) -> Result<String> {
                     "Missing provider argument.\n\n\
                     Usage: caldir connect <provider>\n\n\
                     Detected providers: {}",
-                    installed.iter().map(|p| format!("\"{}\"", p)).collect::<Vec<_>>().join(", ")
+                    installed
+                        .iter()
+                        .map(|p| format!("\"{}\"", p))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
             }
         }
@@ -370,7 +376,11 @@ fn validate_provider(provider: Option<String>) -> Result<String> {
             anyhow::bail!(
                 "Unknown provider \"{name}\".\n\n\
                 Detected providers: {}",
-                installed.iter().map(|p| format!("\"{}\"", p)).collect::<Vec<_>>().join(", ")
+                installed
+                    .iter()
+                    .map(|p| format!("\"{}\"", p))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
         }
     }
