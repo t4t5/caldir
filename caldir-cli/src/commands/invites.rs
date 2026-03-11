@@ -18,7 +18,7 @@ pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
     let to = start_of_today + Duration::days(30);
 
     // (cal_slug, event, email, file_path)
-    let mut invites: Vec<(String, caldir_core::event::Event, String, String)> = Vec::new();
+    let mut invites: Vec<(String, caldir_core::event::Event, String)> = Vec::new();
 
     for cal in &calendars {
         let Some(email) = cal.account_email() else {
@@ -42,12 +42,7 @@ pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
                 ce.event.is_pending_invite_for(email)
             };
             if is_match {
-                invites.push((
-                    cal.slug.clone(),
-                    ce.event,
-                    email.to_string(),
-                    ce.path.display().to_string(),
-                ));
+                invites.push((cal.slug.clone(), ce.event, email.to_string()));
             }
         }
     }
@@ -63,7 +58,7 @@ pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
     // Group by day
     let mut current_date: Option<String> = None;
 
-    for (cal_slug, event, email, path) in &invites {
+    for (cal_slug, event, email) in &invites {
         let date_label = format_date_label(&event.start);
 
         if current_date.as_ref() != Some(&date_label) {
@@ -80,16 +75,11 @@ pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
             .my_status(email)
             .map(|s| format!(" ({})", render_participation_status(s)))
             .unwrap_or_default();
-        let organizer = event
+        let organizer_email = event
             .organizer
             .as_ref()
-            .map(|o| {
-                o.name
-                    .as_deref()
-                    .unwrap_or(&o.email)
-                    .to_string()
-            })
-            .unwrap_or_default();
+            .map(|o| o.email.as_str())
+            .unwrap_or("");
 
         println!(
             "  {} {} {}{}",
@@ -98,22 +88,13 @@ pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
             cal_tag.dimmed(),
             status
         );
-        if !organizer.is_empty() {
-            println!("       {} {}", "from:".dimmed(), organizer.dimmed());
+        if !organizer_email.is_empty() {
+            println!("       {} {}", "from:".dimmed(), organizer_email.dimmed());
         }
-        println!("       {} {}", "file:".dimmed(), path.dimmed());
     }
 
     println!();
-    println!(
-        "{}",
-        "Respond with: caldir rsvp <path> accept|decline|maybe".dimmed()
-    );
-    println!(
-        "{}",
-        "Or run: caldir rsvp (interactive mode)".dimmed()
-    );
+    println!("Respond with: caldir rsvp");
 
     Ok(())
 }
-
