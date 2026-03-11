@@ -3,8 +3,8 @@ use caldir_core::calendar::Calendar;
 use chrono::{DateTime, Duration, Utc};
 use owo_colors::OwoColorize;
 
-use crate::render::render_participation_status;
-use crate::utils::date::{format_date_label, format_time};
+use crate::render::{format_event_line, render_participation_status};
+use crate::utils::date::format_date_label;
 
 pub fn run(
     calendars: Vec<Calendar>,
@@ -58,21 +58,13 @@ pub fn run(
             current_date = Some(date_label);
         }
 
-        let time = format_time(&event.start);
-        let cal_tag = format!("[{}]", cal_slug);
         let invite_indicator = email
             .as_deref()
             .filter(|e| event.is_invite_for(e))
             .and_then(|e| event.my_status(e))
             .map(|status| format!(" ({})", render_participation_status(status)))
             .unwrap_or_default();
-        println!(
-            "  {} {} {}{}",
-            time,
-            event.summary,
-            cal_tag.dimmed(),
-            invite_indicator
-        );
+        println!("{}", format_event_line(event, cal_slug, &invite_indicator));
     }
 
     Ok(())

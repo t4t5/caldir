@@ -7,7 +7,8 @@ use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
 use caldir_core::event::ParticipationStatus;
 
-use crate::utils::date::{format_date_label, format_time};
+use crate::render::format_event_line;
+use crate::utils::date::format_date_label;
 use caldir_core::ics::parse_event;
 use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
@@ -130,26 +131,29 @@ fn run_interactive() -> Result<()> {
     );
 
     let mut responded = 0;
+    let mut current_date: Option<String> = None;
 
     for (calendar, event, email, _path) in &invites {
-        let time = format!(
-            "{} {}",
-            format_date_label(&event.start),
-            format_time(&event.start).trim()
-        );
+        let date_label = format_date_label(&event.start);
+        if current_date.as_ref() != Some(&date_label) {
+            if current_date.is_some() {
+                println!();
+            }
+            println!("{}", date_label.bold());
+            current_date = Some(date_label);
+        }
+
         let organizer = event
             .organizer
             .as_ref()
             .map(|o| o.name.as_deref().unwrap_or(&o.email).to_string())
             .unwrap_or_else(|| "(unknown)".to_string());
 
-        println!("{} {}", time.bold(), event.summary.bold());
+        println!("{}", format_event_line(event, &calendar.slug, ""));
         println!(
-            "  {} {}  {} {}",
+            "       {} {}",
             "from:".dimmed(),
-            organizer,
-            "calendar:".dimmed(),
-            calendar.slug
+            organizer.dimmed()
         );
         print!("  [a]ccept  [d]ecline  [m]aybe  [s]kip: ");
         io::stdout().flush()?;

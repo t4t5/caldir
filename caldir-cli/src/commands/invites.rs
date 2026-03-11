@@ -3,8 +3,8 @@ use caldir_core::calendar::Calendar;
 use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
 
-use crate::render::render_participation_status;
-use crate::utils::date::{format_date_label, format_time};
+use crate::render::{format_event_line, render_participation_status};
+use crate::utils::date::format_date_label;
 
 pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
     let start_of_today = chrono::Local::now()
@@ -69,27 +69,13 @@ pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
             current_date = Some(date_label);
         }
 
-        let time = format_time(&event.start);
-        let cal_tag = format!("[{}]", cal_slug);
         let status = event
             .my_status(email)
             .map(|s| format!(" ({})", render_participation_status(s)))
             .unwrap_or_default();
-        let organizer_email = event
-            .organizer
-            .as_ref()
-            .map(|o| o.email.as_str())
-            .unwrap_or("");
-
-        println!(
-            "  {} {} {}{}",
-            time,
-            event.summary,
-            cal_tag.dimmed(),
-            status
-        );
-        if !organizer_email.is_empty() {
-            println!("       {} {}", "from:".dimmed(), organizer_email.dimmed());
+        println!("{}", format_event_line(event, cal_slug, &status));
+        if let Some(organizer) = event.organizer.as_ref().filter(|o| !o.email.is_empty()) {
+            println!("       {} {}", "from:".dimmed(), organizer.email.dimmed());
         }
     }
 

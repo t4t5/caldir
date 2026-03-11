@@ -7,8 +7,10 @@ use std::collections::HashMap;
 
 use caldir_core::calendar::Calendar;
 use caldir_core::diff::{CalendarDiff, DiffKind, EventDiff};
-use caldir_core::event::ParticipationStatus;
+use caldir_core::event::{Event, ParticipationStatus};
 use owo_colors::OwoColorize;
+
+use crate::utils::date::format_time;
 
 /// Extension trait for TUI rendering with colors.
 pub trait Render {
@@ -364,6 +366,13 @@ fn render_attendee_diffs(
     }
 
     lines
+}
+
+/// Format a standard event line: "  {time} {summary} [{cal_slug}]{status}"
+pub fn format_event_line(event: &Event, cal_slug: &str, status: &str) -> String {
+    let time = format_time(&event.start);
+    let cal_tag = format!("[{}]", cal_slug);
+    format!("  {} {} {}{}", time, event.summary, cal_tag.dimmed(), status)
 }
 
 /// Render a participation status as colored text (e.g. "accepted" in green, "pending" in yellow)
