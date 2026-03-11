@@ -50,6 +50,8 @@ pub struct GraphEvent {
     pub last_modified_date_time: Option<String>,
     pub online_meeting: Option<OnlineMeeting>,
     pub original_start: Option<DateTimeTimeZone>,
+    /// The calendar owner's response to this event (more reliable than per-attendee status).
+    pub response_status: Option<ResponseStatus>,
 }
 
 /// Event body (content + type).

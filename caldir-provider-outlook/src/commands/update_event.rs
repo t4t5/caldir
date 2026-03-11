@@ -35,7 +35,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
         let path = format!("/me/events/{}", outlook_event_id);
         let response = graph.patch(&path, &body).await?;
         let updated: GraphEvent = response.json().await?;
-        from_outlook(updated)
+        from_outlook(updated, account_email)
     }
 }
 
@@ -60,7 +60,7 @@ async fn respond_to_invite(
             let path = format!("/me/events/{}", event_id);
             let response = graph.get(&path).await?;
             let graph_event: GraphEvent = response.json().await?;
-            return from_outlook(graph_event);
+            return from_outlook(graph_event, account_email);
         }
     };
 
@@ -78,5 +78,5 @@ async fn respond_to_invite(
     let get_path = format!("/me/events/{}", event_id);
     let response = graph.get(&get_path).await?;
     let graph_event: GraphEvent = response.json().await?;
-    from_outlook(graph_event)
+    from_outlook(graph_event, account_email)
 }

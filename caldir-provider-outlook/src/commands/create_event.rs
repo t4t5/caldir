@@ -27,5 +27,5 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
         .await
         .context("Failed to parse created event response")?;
 
-    from_outlook(created)
+    from_outlook(created, &config.outlook_account)
 }

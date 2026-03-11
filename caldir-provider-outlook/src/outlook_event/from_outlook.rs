@@ -10,7 +10,7 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
 use crate::graph_types::GraphEvent;
 
-pub fn from_outlook(event: GraphEvent) -> Result<Event> {
+pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
     let start = parse_event_time(event.start.as_ref(), event.is_all_day, "start")?;
     let end = parse_event_time(event.end.as_ref(), event.is_all_day, "end")?;
 
@@ -56,20 +56,34 @@ pub fn from_outlook(event: GraphEvent) -> Result<Event> {
         response_status: None,
     });
 
+    // The top-level responseStatus reflects the calendar owner's actual response,
+    // which is more reliable than the per-attendee status in the attendees array
+    // (the Graph API often returns "none" for all attendees there).
+    let owner_status = event
+        .response_status
+        .as_ref()
+        .and_then(|s| outlook_to_participation_status(&s.response));
+
     let attendees: Vec<Attendee> = event
         .attendees
         .iter()
-        .map(|a| Attendee {
-            name: if a.email_address.name.is_empty() {
-                None
-            } else {
-                Some(a.email_address.name.clone())
-            },
-            email: a.email_address.address.clone(),
-            response_status: a
-                .status
-                .as_ref()
-                .and_then(|s| outlook_to_participation_status(&s.response)),
+        .map(|a| {
+            let is_owner = a.email_address.address.eq_ignore_ascii_case(account_email);
+            Attendee {
+                name: if a.email_address.name.is_empty() {
+                    None
+                } else {
+                    Some(a.email_address.name.clone())
+                },
+                email: a.email_address.address.clone(),
+                response_status: if is_owner {
+                    owner_status
+                } else {
+                    a.status
+                        .as_ref()
+                        .and_then(|s| outlook_to_participation_status(&s.response))
+                },
+            }
         })
         .collect();
 
@@ -359,4 +373,85 @@ fn strip_html_tags(html: &str) -> String {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph_types::*;
+
+    fn minimal_graph_event() -> GraphEvent {
+        GraphEvent {
+            id: "test-id".to_string(),
+            i_cal_uid: "test-uid".to_string(),
+            subject: "Test Event".to_string(),
+            body: None,
+            start: Some(DateTimeTimeZone {
+                date_time: "2025-03-20T15:00:00.0000000".to_string(),
+                time_zone: "UTC".to_string(),
+            }),
+            end: Some(DateTimeTimeZone {
+                date_time: "2025-03-20T16:00:00.0000000".to_string(),
+                time_zone: "UTC".to_string(),
+            }),
+            location: None,
+            is_all_day: false,
+            is_cancelled: false,
+            recurrence: None,
+            attendees: vec![],
+            organizer: None,
+            reminder_minutes_before_start: 0,
+            show_as: "busy".to_string(),
+            last_modified_date_time: None,
+            online_meeting: None,
+            original_start: None,
+            response_status: None,
+        }
+    }
+
+    #[test]
+    fn owner_status_from_response_status_overrides_attendee_none() {
+        // Graph API returns "none" for all attendees in the attendees array,
+        // but the top-level responseStatus correctly reflects the owner's response.
+        let mut event = minimal_graph_event();
+        event.organizer = Some(GraphRecipient {
+            email_address: EmailAddress {
+                name: "Organizer".to_string(),
+                address: "organizer@example.com".to_string(),
+            },
+        });
+        event.attendees = vec![
+            GraphAttendee {
+                email_address: EmailAddress {
+                    name: "Organizer".to_string(),
+                    address: "organizer@example.com".to_string(),
+                },
+                status: Some(ResponseStatus {
+                    response: "none".to_string(),
+                }),
+            },
+            GraphAttendee {
+                email_address: EmailAddress {
+                    name: "Me".to_string(),
+                    address: "me@example.com".to_string(),
+                },
+                status: Some(ResponseStatus {
+                    response: "none".to_string(),
+                }),
+            },
+        ];
+        event.response_status = Some(ResponseStatus {
+            response: "accepted".to_string(),
+        });
+
+        let result = from_outlook(event, "me@example.com").unwrap();
+
+        // Owner's status should come from top-level responseStatus, not the attendee array
+        let me = result.attendees.iter().find(|a| a.email == "me@example.com").unwrap();
+        assert_eq!(me.response_status, Some(ParticipationStatus::Accepted));
+
+        // Other attendees should still use their per-attendee status
+        let organizer_attendee = result.attendees.iter().find(|a| a.email == "organizer@example.com").unwrap();
+        assert_eq!(organizer_attendee.response_status, Some(ParticipationStatus::NeedsAction));
+    }
 }

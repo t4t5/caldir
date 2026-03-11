@@ -18,7 +18,7 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
         .append_pair("startDateTime", &cmd.from)
         .append_pair("endDateTime", &cmd.to)
         .append_pair("$top", "100")
-        .append_pair("$select", "id,iCalUId,subject,body,start,end,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,showAs,lastModifiedDateTime,onlineMeeting,originalStart")
+        .append_pair("$select", "id,iCalUId,subject,body,start,end,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,showAs,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus")
         .finish();
 
     let path = format!(
@@ -46,7 +46,7 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
             .context("Failed to parse events response")?;
 
         for graph_event in page.value {
-            match from_outlook(graph_event) {
+            match from_outlook(graph_event, &config.outlook_account) {
                 Ok(event) => all_events.push(event),
                 Err(_) => continue, // Skip malformed events
             }
