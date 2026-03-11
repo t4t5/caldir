@@ -332,14 +332,10 @@ fn render_attendee_diffs(
 ) -> Vec<String> {
     let mut lines = Vec::new();
 
-    let old_by_email: HashMap<String, &caldir_core::event::Attendee> = old
-        .iter()
-        .map(|a| (a.email.to_lowercase(), a))
-        .collect();
-    let new_by_email: HashMap<String, &caldir_core::event::Attendee> = new
-        .iter()
-        .map(|a| (a.email.to_lowercase(), a))
-        .collect();
+    let old_by_email: HashMap<String, &caldir_core::event::Attendee> =
+        old.iter().map(|a| (a.email.to_lowercase(), a)).collect();
+    let new_by_email: HashMap<String, &caldir_core::event::Attendee> =
+        new.iter().map(|a| (a.email.to_lowercase(), a)).collect();
 
     // Attendees in both old and new — check for status changes
     for (email, old_att) in &old_by_email {
@@ -383,7 +379,13 @@ fn render_attendee_diffs(
 pub fn format_event_line(event: &Event, cal_slug: &str, status: &str) -> String {
     let time = format_time_only(&event.start);
     let cal_tag = format!("[{}]", cal_slug);
-    format!("  {} {} {}{}", time, event.summary, cal_tag.dimmed(), status)
+    format!(
+        "  {} {} {}{}",
+        time,
+        event.summary,
+        cal_tag.dimmed(),
+        status
+    )
 }
 
 /// Render a participation status as colored text (e.g. "accepted" in green, "pending" in yellow)

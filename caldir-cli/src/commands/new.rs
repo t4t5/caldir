@@ -70,15 +70,7 @@ pub fn run(
     // --- Calendar ---
     let calendar = resolve_calendar(calendar_slug, &calendars, interactive)?;
 
-    let event = Event::new(
-        title,
-        start_time,
-        end_time,
-        None,
-        location,
-        None,
-        reminders,
-    );
+    let event = Event::new(title, start_time, end_time, None, location, None, reminders);
 
     let path = calendar.create_event(&event)?;
 

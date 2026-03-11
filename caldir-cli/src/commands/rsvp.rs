@@ -44,8 +44,8 @@ fn run_direct(path_str: &str, response_str: &str) -> Result<()> {
         .and_then(|n| n.to_str())
         .context("Cannot determine calendar slug")?;
 
-    let calendar = Calendar::load(cal_slug)
-        .context(format!("Failed to load calendar '{}'", cal_slug))?;
+    let calendar =
+        Calendar::load(cal_slug).context(format!("Failed to load calendar '{}'", cal_slug))?;
 
     let email = calendar
         .account_email()
@@ -55,8 +55,7 @@ fn run_direct(path_str: &str, response_str: &str) -> Result<()> {
         anyhow::bail!("This event is not an invite for {}", email);
     }
 
-    let status = ParticipationStatus::from_str(response_str)
-        .map_err(|e| anyhow::anyhow!(e))?;
+    let status = ParticipationStatus::from_str(response_str).map_err(|e| anyhow::anyhow!(e))?;
 
     let updated_event = event
         .with_response(email, status)
@@ -64,17 +63,9 @@ fn run_direct(path_str: &str, response_str: &str) -> Result<()> {
 
     calendar.update_event(&updated_event.uid, &updated_event)?;
 
-    println!(
-        "{} {} → {}",
-        "✓".green(),
-        event.summary,
-        status
-    );
+    println!("{} {} → {}", "✓".green(), event.summary, status);
     println!();
-    println!(
-        "{}",
-        "Remember to run: caldir push".dimmed()
-    );
+    println!("{}", "Remember to run: caldir push".dimmed());
 
     Ok(())
 }
@@ -150,11 +141,7 @@ fn run_interactive() -> Result<()> {
             .unwrap_or_else(|| "(unknown)".to_string());
 
         println!("{}", format_event_line(event, &calendar.slug, ""));
-        println!(
-            "       {} {}",
-            "from:".dimmed(),
-            organizer.dimmed()
-        );
+        println!("       {} {}", "from:".dimmed(), organizer.dimmed());
         print!("  [a]ccept  [d]ecline  [m]aybe  [s]kip: ");
         io::stdout().flush()?;
 
@@ -192,14 +179,10 @@ fn run_interactive() -> Result<()> {
             responded,
             if responded == 1 { "invite" } else { "invites" }
         );
-        println!(
-            "{}",
-            "Remember to run: caldir push".dimmed()
-        );
+        println!("{}", "Remember to run: caldir push".dimmed());
     } else {
         println!("{}", "No changes made.".dimmed());
     }
 
     Ok(())
 }
-

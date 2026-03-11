@@ -173,8 +173,7 @@ impl Event {
 
     /// True if this is a pending invite (NEEDS-ACTION) for the given email
     pub fn is_pending_invite_for(&self, email: &str) -> bool {
-        self.is_invite_for(email)
-            && self.my_status(email) == Some(ParticipationStatus::NeedsAction)
+        self.is_invite_for(email) && self.my_status(email) == Some(ParticipationStatus::NeedsAction)
     }
 
     /// Return a new Event with the attendee's PARTSTAT updated, sequence bumped, and updated timestamp set
@@ -492,7 +491,10 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            updated.find_attendee("bob@example.com").unwrap().response_status,
+            updated
+                .find_attendee("bob@example.com")
+                .unwrap()
+                .response_status,
             Some(ParticipationStatus::Accepted)
         );
         // Sequence bumped
@@ -504,9 +506,11 @@ mod tests {
     #[test]
     fn with_response_returns_none_for_unknown() {
         let event = make_event_with_attendees();
-        assert!(event
-            .with_response("unknown@example.com", ParticipationStatus::Accepted)
-            .is_none());
+        assert!(
+            event
+                .with_response("unknown@example.com", ParticipationStatus::Accepted)
+                .is_none()
+        );
     }
 
     #[test]

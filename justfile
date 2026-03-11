@@ -2,6 +2,9 @@
 default:
   @just --list
 
+format:
+  cargo fmt --all
+
 # Test app commands:
 
 cli +args:
