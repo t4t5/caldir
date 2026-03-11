@@ -170,6 +170,8 @@ caldir-cli/                    # Thin CLI layer (TUI rendering only)
       push.rs    - Push local → remote
       status.rs  - Show pending changes
       new.rs     - Create local events
+      invites.rs - List pending invites
+      rsvp.rs    - Respond to invites (direct + interactive)
     utils/       - Spinners and TUI helpers
 
 caldir-provider-google/        # Google Calendar provider (separate crate)
@@ -237,6 +239,22 @@ Events include these properties (when available from the provider):
 - **Meeting data**: conference/video call URLs
 - **Sync metadata**: LAST-MODIFIED, SEQUENCE, DTSTAMP
 - **Custom properties**: provider-specific fields (e.g., X-GOOGLE-EVENT-ID, X-GOOGLE-CONFERENCE) preserved for round-tripping
+
+### Invites and RSVP
+
+Events synced from others include ATTENDEE/ORGANIZER properties. caldir detects invites using the account email from each calendar's remote config (`{provider}_account` field).
+
+**Invite detection** (`Event` methods in `caldir-core/src/event.rs`):
+- `is_invite_for(email)` — true if the email is an attendee but NOT the organizer
+- `is_pending_invite_for(email)` — true if additionally the PARTSTAT is NEEDS-ACTION
+- `my_status(email)` — returns the user's `ParticipationStatus`
+- `with_response(email, status)` — returns a new `Event` with updated PARTSTAT, bumped SEQUENCE, and fresh LAST-MODIFIED
+
+**`caldir events`** shows invite status indicators after the calendar tag: ⬜ (needs-action), ✅ (accepted), ❌ (declined), 🟡 (tentative). Only shown for invites, not own events.
+
+**`caldir rsvp`** updates the local ICS file — run `caldir push` afterward to sync the response to the server.
+
+`ParticipationStatus` implements `FromStr` with aliases: "accept"/"yes"/"y", "decline"/"no"/"n", "tentative"/"maybe"/"m".
 
 ### Push Flow for New Events
 
@@ -379,6 +397,23 @@ caldir push
 
 # Push with verbose output
 caldir push --verbose
+
+# List pending invites (next 30 days)
+caldir invites
+
+# Include already-responded invites
+caldir invites --all
+
+# Filter invites to one calendar
+caldir invites -c work
+
+# Respond to an invite directly
+caldir rsvp ~/caldir/work/2026-03-15T1000__standup.ics accept
+caldir rsvp ~/caldir/work/2026-03-15T1000__standup.ics decline
+caldir rsvp ~/caldir/work/2026-03-15T1000__standup.ics maybe
+
+# Respond to invites interactively (walks through each pending invite)
+caldir rsvp
 
 # Show pending changes per calendar (like git status)
 caldir status
