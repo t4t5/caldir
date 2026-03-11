@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use caldir_core::calendar::Calendar;
 use caldir_core::diff::{CalendarDiff, DiffKind, EventDiff};
+use caldir_core::event::ParticipationStatus;
 use owo_colors::OwoColorize;
 
 /// Extension trait for TUI rendering with colors.
@@ -363,6 +364,18 @@ fn render_attendee_diffs(
     }
 
     lines
+}
+
+/// Render a participation status as colored text (e.g. "accepted" in green, "pending" in yellow)
+pub fn render_participation_status(status: ParticipationStatus) -> String {
+    let label = status.to_string();
+    match status {
+        ParticipationStatus::Accepted => label.green().to_string(),
+        ParticipationStatus::Declined => label.red().to_string(),
+        ParticipationStatus::Tentative | ParticipationStatus::NeedsAction => {
+            label.yellow().to_string()
+        }
+    }
 }
 
 /// Format an attendee as "Name (email)" or just "email"

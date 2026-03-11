@@ -129,7 +129,7 @@ If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed e
 
 ## `caldir events`
 
-View upcoming events. Events that are invites (where you're an attendee, not the organizer) show a status indicator: ⬜ pending, ✅ accepted, ❌ declined, 🟡 tentative.
+View upcoming events. Events that are invites (where you're an attendee, not the organizer) show a colored status indicator: (pending), (accepted), (declined), or (tentative).
 
 ```bash
 caldir events              # Next 3 days

@@ -250,7 +250,7 @@ Events synced from others include ATTENDEE/ORGANIZER properties. caldir detects 
 - `my_status(email)` — returns the user's `ParticipationStatus`
 - `with_response(email, status)` — returns a new `Event` with updated PARTSTAT, bumped SEQUENCE, and fresh LAST-MODIFIED
 
-**`caldir events`** shows invite status indicators after the calendar tag: ⬜ (needs-action), ✅ (accepted), ❌ (declined), 🟡 (tentative). Only shown for invites, not own events.
+**`caldir events`** shows colored invite status indicators after the calendar tag: (pending) in yellow, (accepted) in green, (declined) in red, (tentative) in yellow. Only shown for invites, not own events. The `render_participation_status()` function in `caldir-cli/src/render.rs` is the shared renderer for this.
 
 **`caldir rsvp`** updates the local ICS file — run `caldir push` afterward to sync the response to the server.
 

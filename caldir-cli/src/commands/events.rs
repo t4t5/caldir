@@ -1,8 +1,10 @@
 use anyhow::Result;
 use caldir_core::calendar::Calendar;
-use caldir_core::event::{EventTime, ParticipationStatus};
+use caldir_core::event::EventTime;
 use chrono::{DateTime, Duration, Utc};
 use owo_colors::OwoColorize;
+
+use crate::render::render_participation_status;
 
 pub fn run(
     calendars: Vec<Calendar>,
@@ -62,13 +64,8 @@ pub fn run(
             .as_deref()
             .filter(|e| event.is_invite_for(e))
             .and_then(|e| event.my_status(e))
-            .map(|status| match status {
-                ParticipationStatus::NeedsAction => " ⬜",
-                ParticipationStatus::Accepted => " ✅",
-                ParticipationStatus::Declined => " ❌",
-                ParticipationStatus::Tentative => " 🟡",
-            })
-            .unwrap_or("");
+            .map(|status| format!(" ({})", render_participation_status(status)))
+            .unwrap_or_default();
         println!(
             "  {} {} {}{}",
             time,

@@ -4,6 +4,8 @@ use caldir_core::event::EventTime;
 use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
 
+use crate::render::render_participation_status;
+
 pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
     let start_of_today = chrono::Local::now()
         .date_naive()
@@ -76,7 +78,7 @@ pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
         let cal_tag = format!("[{}]", cal_slug);
         let status = event
             .my_status(email)
-            .map(|s| format!(" ({})", s))
+            .map(|s| format!(" ({})", render_participation_status(s)))
             .unwrap_or_default();
         let organizer = event
             .organizer
@@ -94,7 +96,7 @@ pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
             time,
             event.summary,
             cal_tag.dimmed(),
-            status.dimmed()
+            status
         );
         if !organizer.is_empty() {
             println!("       {} {}", "from:".dimmed(), organizer.dimmed());

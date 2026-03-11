@@ -253,8 +253,8 @@ impl fmt::Display for ParticipationStatus {
         let s = match self {
             Self::Accepted => "accepted",
             Self::Declined => "declined",
-            Self::Tentative => "tentative",
-            Self::NeedsAction => "needs-action",
+            Self::Tentative => "maybe",
+            Self::NeedsAction => "pending",
         };
         write!(f, "{}", s)
     }
@@ -268,7 +268,7 @@ impl FromStr for ParticipationStatus {
             "accepted" | "accept" | "yes" | "y" => Ok(Self::Accepted),
             "declined" | "decline" | "no" | "n" => Ok(Self::Declined),
             "tentative" | "maybe" | "m" => Ok(Self::Tentative),
-            "needs-action" | "needs_action" => Ok(Self::NeedsAction),
+            "needs-action" | "needs_action" | "pending" => Ok(Self::NeedsAction),
             _ => Err(format!("Unknown participation status: '{}'", s)),
         }
     }
@@ -533,8 +533,8 @@ mod tests {
     fn participation_status_display() {
         assert_eq!(ParticipationStatus::Accepted.to_string(), "accepted");
         assert_eq!(ParticipationStatus::Declined.to_string(), "declined");
-        assert_eq!(ParticipationStatus::Tentative.to_string(), "tentative");
-        assert_eq!(ParticipationStatus::NeedsAction.to_string(), "needs-action");
+        assert_eq!(ParticipationStatus::Tentative.to_string(), "maybe");
+        assert_eq!(ParticipationStatus::NeedsAction.to_string(), "pending");
     }
 
     #[test]
