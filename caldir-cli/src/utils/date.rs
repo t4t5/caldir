@@ -1,5 +1,16 @@
 use caldir_core::event::EventTime;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
+
+/// Convert a zoned datetime to the system's local NaiveDateTime.
+/// Falls back to the original datetime if the timezone can't be parsed.
+fn zoned_to_local(datetime: &NaiveDateTime, tzid: &str) -> NaiveDateTime {
+    if let Ok(tz) = tzid.parse::<chrono_tz::Tz>() {
+        if let Some(zoned) = datetime.and_local_timezone(tz).single() {
+            return zoned.with_timezone(&chrono::Local).naive_local();
+        }
+    }
+    *datetime
+}
 
 /// Returns the start of today (midnight) in UTC.
 pub fn start_of_today() -> DateTime<Utc> {
@@ -20,7 +31,7 @@ pub fn format_date_only(time: &EventTime) -> String {
         EventTime::Date(d) => *d,
         EventTime::DateTimeUtc(dt) => dt.with_timezone(&chrono::Local).date_naive(),
         EventTime::DateTimeFloating(dt) => dt.date(),
-        EventTime::DateTimeZoned { datetime, .. } => datetime.date(),
+        EventTime::DateTimeZoned { datetime, tzid } => zoned_to_local(datetime, tzid).date(),
     };
 
     let diff = (date - today).num_days();
@@ -39,7 +50,9 @@ pub fn format_time_only(time: &EventTime) -> String {
             format!("{:>7}", dt.with_timezone(&chrono::Local).format("%H:%M"))
         }
         EventTime::DateTimeFloating(dt) => format!("{:>7}", dt.format("%H:%M")),
-        EventTime::DateTimeZoned { datetime, .. } => format!("{:>7}", datetime.format("%H:%M")),
+        EventTime::DateTimeZoned { datetime, tzid } => {
+            format!("{:>7}", zoned_to_local(datetime, tzid).format("%H:%M"))
+        }
     }
 }
 
