@@ -1,6 +1,6 @@
 use anyhow::Result;
 use caldir_core::calendar::Calendar;
-use caldir_core::event::EventTime;
+use caldir_core::event::{EventTime, ParticipationStatus};
 use chrono::{DateTime, Duration, Utc};
 use owo_colors::OwoColorize;
 
@@ -19,19 +19,21 @@ pub fn run(
     let from = from.unwrap_or(start_of_today);
     let to = to.unwrap_or(start_of_today + Duration::days(3));
 
-    let mut all_events: Vec<(String, caldir_core::event::Event)> = Vec::new();
+    // (cal_slug, account_email, event)
+    let mut all_events: Vec<(String, Option<String>, caldir_core::event::Event)> = Vec::new();
 
     for cal in &calendars {
+        let email = cal.account_email().map(String::from);
         let events = cal.events_in_range(from, to)?;
         for event in events {
-            all_events.push((cal.slug.clone(), event));
+            all_events.push((cal.slug.clone(), email.clone(), event));
         }
     }
 
     // Sort by start time
     all_events.sort_by(|a, b| {
-        let a_utc = a.1.start.to_utc();
-        let b_utc = b.1.start.to_utc();
+        let a_utc = a.2.start.to_utc();
+        let b_utc = b.2.start.to_utc();
         a_utc.cmp(&b_utc)
     });
 
@@ -43,7 +45,7 @@ pub fn run(
     // Group events by day and print
     let mut current_date: Option<String> = None;
 
-    for (cal_slug, event) in &all_events {
+    for (cal_slug, email, event) in &all_events {
         let date_label = format_date_label(&event.start);
 
         if current_date.as_ref() != Some(&date_label) {
@@ -56,7 +58,24 @@ pub fn run(
 
         let time = format_time(&event.start);
         let cal_tag = format!("[{}]", cal_slug);
-        println!("  {} {} {}", time, event.summary, cal_tag.dimmed());
+        let invite_indicator = email
+            .as_deref()
+            .filter(|e| event.is_invite_for(e))
+            .and_then(|e| event.my_status(e))
+            .map(|status| match status {
+                ParticipationStatus::NeedsAction => " ⬜",
+                ParticipationStatus::Accepted => " ✅",
+                ParticipationStatus::Declined => " ❌",
+                ParticipationStatus::Tentative => " 🟡",
+            })
+            .unwrap_or("");
+        println!(
+            "  {} {} {}{}",
+            time,
+            event.summary,
+            cal_tag.dimmed(),
+            invite_indicator
+        );
     }
 
     Ok(())

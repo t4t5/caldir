@@ -163,6 +163,24 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
+    #[command(about = "List pending invites across calendars")]
+    Invites {
+        /// Only show invites from this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+
+        /// Include already-responded invites (not just pending)
+        #[arg(short, long)]
+        all: bool,
+    },
+    #[command(about = "Respond to a calendar invite")]
+    Rsvp {
+        /// Path to the .ics file (omit for interactive mode)
+        path: Option<String>,
+
+        /// Response: accept, decline, maybe
+        response: Option<String>,
+    },
     #[command(about = "Show configuration paths and calendar info")]
     Config,
     #[command(about = "Update caldir and installed providers to the latest version")]
@@ -301,6 +319,15 @@ async fn main() -> Result<()> {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             commands::discard::run(calendars, verbose, force).await
+        }
+        Commands::Invites { calendar, all } => {
+            require_calendars()?;
+            let calendars = resolve_calendars(calendar.as_deref())?;
+            commands::invites::run(calendars, all)
+        }
+        Commands::Rsvp { path, response } => {
+            require_calendars()?;
+            commands::rsvp::run(path, response)
         }
         Commands::Config => commands::config::run(),
         Commands::Update => commands::update::run().await,
