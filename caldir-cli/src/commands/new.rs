@@ -6,6 +6,7 @@ use chrono::Duration;
 use dialoguer::{Input, Select};
 use owo_colors::OwoColorize;
 
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     title: Option<String>,
     start: Option<String>,
@@ -70,15 +71,7 @@ pub fn run(
     // --- Calendar ---
     let calendar = resolve_calendar(calendar_slug, &calendars, interactive)?;
 
-    let event = Event::new(
-        title,
-        start_time,
-        end_time,
-        None,
-        location,
-        None,
-        reminders,
-    );
+    let event = Event::new(title, start_time, end_time, None, location, None, reminders);
 
     let path = calendar.create_event(&event)?;
 

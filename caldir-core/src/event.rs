@@ -7,6 +7,7 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::str::FromStr;
 
 /// Typed recurrence data for a master event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,16 +140,6 @@ impl Event {
         }
     }
 
-    /// Render the event time with recurring indicator
-    pub fn render_event_time(&self) -> String {
-        let recurring = if self.recurrence.is_some() {
-            " 🔁"
-        } else {
-            ""
-        };
-        format!("{}{}", self.start, recurring)
-    }
-
     /// Returns the unique identifier for this event based on RFC 5545 identity.
     /// Format: `{uid}` for non-recurring events, `{uid}__{recurrence_id}` for instances.
     pub fn unique_id(&self) -> String {
@@ -156,6 +147,49 @@ impl Event {
             Some(rid) => format!("{}__{}", self.uid, rid.to_ics_string()),
             None => self.uid.clone(),
         }
+    }
+
+    /// Find the attendee matching the given email (case-insensitive)
+    pub fn find_attendee(&self, email: &str) -> Option<&Attendee> {
+        self.attendees
+            .iter()
+            .find(|a| a.email.eq_ignore_ascii_case(email))
+    }
+
+    /// True if email is an attendee but NOT the organizer
+    pub fn is_invite_for(&self, email: &str) -> bool {
+        let is_attendee = self.find_attendee(email).is_some();
+        let is_organizer = self
+            .organizer
+            .as_ref()
+            .is_some_and(|o| o.email.eq_ignore_ascii_case(email));
+        is_attendee && !is_organizer
+    }
+
+    /// Get the user's participation status for this event
+    pub fn my_status(&self, email: &str) -> Option<ParticipationStatus> {
+        self.find_attendee(email)?.response_status
+    }
+
+    /// True if this is a pending invite (NEEDS-ACTION) for the given email
+    pub fn is_pending_invite_for(&self, email: &str) -> bool {
+        self.is_invite_for(email) && self.my_status(email) == Some(ParticipationStatus::NeedsAction)
+    }
+
+    /// Return a new Event with the attendee's PARTSTAT updated, sequence bumped, and updated timestamp set
+    pub fn with_response(&self, email: &str, status: ParticipationStatus) -> Option<Event> {
+        // Verify the email is an attendee
+        self.find_attendee(email)?;
+
+        let mut updated = self.clone();
+        for attendee in &mut updated.attendees {
+            if attendee.email.eq_ignore_ascii_case(email) {
+                attendee.response_status = Some(status);
+            }
+        }
+        updated.sequence = Some(self.sequence.unwrap_or(0) + 1);
+        updated.updated = Some(Utc::now());
+        Some(updated)
     }
 }
 
@@ -197,6 +231,32 @@ impl ParticipationStatus {
             "TENTATIVE" => Some(Self::Tentative),
             "NEEDS-ACTION" => Some(Self::NeedsAction),
             _ => None,
+        }
+    }
+}
+
+impl fmt::Display for ParticipationStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::Accepted => "accepted",
+            Self::Declined => "declined",
+            Self::Tentative => "maybe",
+            Self::NeedsAction => "pending",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+impl FromStr for ParticipationStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "accepted" | "accept" | "yes" | "y" => Ok(Self::Accepted),
+            "declined" | "decline" | "no" | "n" => Ok(Self::Declined),
+            "tentative" | "maybe" | "m" => Ok(Self::Tentative),
+            "needs-action" | "needs_action" | "pending" => Ok(Self::NeedsAction),
+            _ => Err(format!("Unknown participation status: '{}'", s)),
         }
     }
 }
@@ -341,4 +401,156 @@ pub enum EventStatus {
     Confirmed,
     Tentative,
     Cancelled,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn make_event_with_attendees() -> Event {
+        let start = EventTime::Date(NaiveDate::from_ymd_opt(2026, 3, 15).unwrap());
+        let end = EventTime::Date(NaiveDate::from_ymd_opt(2026, 3, 15).unwrap());
+        let mut event = Event::new("Team standup".into(), start, end, None, None, None, vec![]);
+        event.organizer = Some(Attendee {
+            name: Some("Alice".into()),
+            email: "alice@example.com".into(),
+            response_status: Some(ParticipationStatus::Accepted),
+        });
+        event.attendees = vec![
+            Attendee {
+                name: Some("Alice".into()),
+                email: "alice@example.com".into(),
+                response_status: Some(ParticipationStatus::Accepted),
+            },
+            Attendee {
+                name: Some("Bob".into()),
+                email: "bob@example.com".into(),
+                response_status: Some(ParticipationStatus::NeedsAction),
+            },
+            Attendee {
+                name: Some("Carol".into()),
+                email: "carol@example.com".into(),
+                response_status: Some(ParticipationStatus::Tentative),
+            },
+        ];
+        event
+    }
+
+    #[test]
+    fn find_attendee_case_insensitive() {
+        let event = make_event_with_attendees();
+        assert!(event.find_attendee("bob@example.com").is_some());
+        assert!(event.find_attendee("BOB@EXAMPLE.COM").is_some());
+        assert!(event.find_attendee("unknown@example.com").is_none());
+    }
+
+    #[test]
+    fn is_invite_for_attendee_not_organizer() {
+        let event = make_event_with_attendees();
+        // Bob is attendee but not organizer
+        assert!(event.is_invite_for("bob@example.com"));
+        // Alice is both attendee and organizer → not an invite
+        assert!(!event.is_invite_for("alice@example.com"));
+        // Unknown person
+        assert!(!event.is_invite_for("unknown@example.com"));
+    }
+
+    #[test]
+    fn my_status_returns_correct_status() {
+        let event = make_event_with_attendees();
+        assert_eq!(
+            event.my_status("bob@example.com"),
+            Some(ParticipationStatus::NeedsAction)
+        );
+        assert_eq!(
+            event.my_status("carol@example.com"),
+            Some(ParticipationStatus::Tentative)
+        );
+        assert_eq!(event.my_status("unknown@example.com"), None);
+    }
+
+    #[test]
+    fn is_pending_invite_for() {
+        let event = make_event_with_attendees();
+        // Bob has NEEDS-ACTION
+        assert!(event.is_pending_invite_for("bob@example.com"));
+        // Carol has TENTATIVE, not pending
+        assert!(!event.is_pending_invite_for("carol@example.com"));
+        // Alice is organizer
+        assert!(!event.is_pending_invite_for("alice@example.com"));
+    }
+
+    #[test]
+    fn with_response_updates_status() {
+        let event = make_event_with_attendees();
+        let updated = event
+            .with_response("bob@example.com", ParticipationStatus::Accepted)
+            .unwrap();
+
+        assert_eq!(
+            updated
+                .find_attendee("bob@example.com")
+                .unwrap()
+                .response_status,
+            Some(ParticipationStatus::Accepted)
+        );
+        // Sequence bumped
+        assert_eq!(updated.sequence, Some(1));
+        // Updated timestamp set
+        assert!(updated.updated.is_some());
+    }
+
+    #[test]
+    fn with_response_returns_none_for_unknown() {
+        let event = make_event_with_attendees();
+        assert!(
+            event
+                .with_response("unknown@example.com", ParticipationStatus::Accepted)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn with_response_bumps_existing_sequence() {
+        let mut event = make_event_with_attendees();
+        event.sequence = Some(5);
+        let updated = event
+            .with_response("bob@example.com", ParticipationStatus::Declined)
+            .unwrap();
+        assert_eq!(updated.sequence, Some(6));
+    }
+
+    #[test]
+    fn participation_status_display() {
+        assert_eq!(ParticipationStatus::Accepted.to_string(), "accepted");
+        assert_eq!(ParticipationStatus::Declined.to_string(), "declined");
+        assert_eq!(ParticipationStatus::Tentative.to_string(), "maybe");
+        assert_eq!(ParticipationStatus::NeedsAction.to_string(), "pending");
+    }
+
+    #[test]
+    fn participation_status_from_str() {
+        // Primary names
+        assert_eq!("accepted".parse(), Ok(ParticipationStatus::Accepted));
+        assert_eq!("declined".parse(), Ok(ParticipationStatus::Declined));
+        assert_eq!("tentative".parse(), Ok(ParticipationStatus::Tentative));
+
+        // Aliases
+        assert_eq!("accept".parse(), Ok(ParticipationStatus::Accepted));
+        assert_eq!("yes".parse(), Ok(ParticipationStatus::Accepted));
+        assert_eq!("y".parse(), Ok(ParticipationStatus::Accepted));
+        assert_eq!("decline".parse(), Ok(ParticipationStatus::Declined));
+        assert_eq!("no".parse(), Ok(ParticipationStatus::Declined));
+        assert_eq!("n".parse(), Ok(ParticipationStatus::Declined));
+        assert_eq!("maybe".parse(), Ok(ParticipationStatus::Tentative));
+        assert_eq!("m".parse(), Ok(ParticipationStatus::Tentative));
+
+        // Case insensitive
+        assert_eq!("ACCEPT".parse(), Ok(ParticipationStatus::Accepted));
+        assert_eq!("Yes".parse(), Ok(ParticipationStatus::Accepted));
+
+        // Invalid
+        assert!("invalid".parse::<ParticipationStatus>().is_err());
+    }
 }

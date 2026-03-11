@@ -129,7 +129,7 @@ If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed e
 
 ## `caldir events`
 
-View upcoming events.
+View upcoming events. Events that are invites (where you're an attendee, not the organizer) show a colored status indicator: (pending), (accepted), (declined), or (tentative).
 
 ```bash
 caldir events              # Next 3 days
@@ -140,6 +140,41 @@ caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
 # Events from one calendar
 caldir events --calendar work
 ```
+
+---
+
+## `caldir invites`
+
+List pending invites across all calendars (next 30 days). Shows organizer, file path, and current status for each invite.
+
+```bash
+caldir invites
+
+# Include already-responded invites (not just pending)
+caldir invites --all
+
+# Filter to one calendar
+caldir invites --calendar work
+```
+
+---
+
+## `caldir rsvp`
+
+Respond to a calendar invite. Updates the local ICS file — run `caldir push` afterward to sync your response.
+
+```bash
+# Interactive mode (for humans)
+caldir rsvp
+
+# Non-interactive mode (for agents)
+caldir rsvp ~/caldir/work/2025-03-20T1500__standup.ics accept
+caldir rsvp ~/caldir/work/2025-03-20T1500__standup.ics decline
+caldir rsvp ~/caldir/work/2025-03-20T1500__standup.ics maybe
+
+```
+
+Accepted response aliases: `accept`/`yes`/`y`, `decline`/`no`/`n`, `maybe`/`tentative`/`m`.
 
 ---
 

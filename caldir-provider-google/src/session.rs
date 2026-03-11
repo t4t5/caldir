@@ -71,6 +71,10 @@ impl Session {
         Self::path_for_account_email(&self.account_email)
     }
 
+    pub fn access_token(&self) -> &str {
+        &self.data.access_token
+    }
+
     pub fn client(&self) -> Result<Client> {
         match self.data.auth_mode {
             AuthMode::Hosted => {

@@ -9,6 +9,7 @@ use caldir_core::date_range::DateRange;
 use caldir_core::remote::provider::Provider;
 use chrono::{Datelike, Local, Utc};
 use clap::{Parser, Subcommand};
+use utils::date::start_of_today;
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
@@ -163,6 +164,24 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
+    #[command(about = "List pending invites across calendars")]
+    Invites {
+        /// Only show invites from this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+
+        /// Include already-responded invites (not just pending)
+        #[arg(short, long)]
+        all: bool,
+    },
+    #[command(about = "Respond to a calendar invites")]
+    Rsvp {
+        /// Path to the .ics file (omit for interactive mode)
+        path: Option<String>,
+
+        /// Response: accept, decline, maybe
+        response: Option<String>,
+    },
     #[command(about = "Show configuration paths and calendar info")]
     Config,
     #[command(about = "Update caldir and installed providers to the latest version")]
@@ -240,30 +259,18 @@ async fn main() -> Result<()> {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             let today = Local::now().date_naive();
-            let start_of_today = today
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-                .and_local_timezone(Local)
-                .unwrap()
-                .with_timezone(&Utc);
             let end_of_today = today
                 .and_hms_opt(23, 59, 59)
                 .unwrap()
                 .and_local_timezone(Local)
                 .unwrap()
                 .with_timezone(&Utc);
-            commands::events::run(calendars, Some(start_of_today), Some(end_of_today))
+            commands::events::run(calendars, Some(start_of_today()), Some(end_of_today))
         }
         Commands::Week { calendar } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             let today = Local::now().date_naive();
-            let start_of_today = today
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-                .and_local_timezone(Local)
-                .unwrap()
-                .with_timezone(&Utc);
             // num_days_from_monday(): Mon=0, Tue=1, ..., Sun=6
             let days_until_sunday = (6 - today.weekday().num_days_from_monday()) % 7;
             // If today is Sunday, show through next Sunday
@@ -278,7 +285,7 @@ async fn main() -> Result<()> {
                 .and_local_timezone(Local)
                 .unwrap()
                 .with_timezone(&Utc);
-            commands::events::run(calendars, Some(start_of_today), Some(end_of_sunday))
+            commands::events::run(calendars, Some(start_of_today()), Some(end_of_sunday))
         }
         Commands::New {
             title,
@@ -291,7 +298,9 @@ async fn main() -> Result<()> {
         } => {
             require_calendars()?;
             let calendars = resolve_calendars(None)?;
-            commands::new::run(title, start, end, duration, location, calendar, reminder, calendars)
+            commands::new::run(
+                title, start, end, duration, location, calendar, reminder, calendars,
+            )
         }
         Commands::Discard {
             calendar,
@@ -301,6 +310,15 @@ async fn main() -> Result<()> {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             commands::discard::run(calendars, verbose, force).await
+        }
+        Commands::Invites { calendar, all } => {
+            require_calendars()?;
+            let calendars = resolve_calendars(calendar.as_deref())?;
+            commands::invites::run(calendars, all)
+        }
+        Commands::Rsvp { path, response } => {
+            require_calendars()?;
+            commands::rsvp::run(path, response)
         }
         Commands::Config => commands::config::run(),
         Commands::Update => commands::update::run().await,
@@ -324,7 +342,11 @@ fn validate_provider(provider: Option<String>) -> Result<String> {
                     "Missing provider argument.\n\n\
                     Usage: caldir connect <provider>\n\n\
                     Detected providers: {}",
-                    installed.iter().map(|p| format!("\"{}\"", p)).collect::<Vec<_>>().join(", ")
+                    installed
+                        .iter()
+                        .map(|p| format!("\"{}\"", p))
+                        .collect::<Vec<_>>()
+                        .join(", ")
                 );
             }
         }
@@ -343,7 +365,11 @@ fn validate_provider(provider: Option<String>) -> Result<String> {
             anyhow::bail!(
                 "Unknown provider \"{name}\".\n\n\
                 Detected providers: {}",
-                installed.iter().map(|p| format!("\"{}\"", p)).collect::<Vec<_>>().join(", ")
+                installed
+                    .iter()
+                    .map(|p| format!("\"{}\"", p))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
         }
     }

@@ -96,6 +96,11 @@ impl Calendar {
 
     // EVENTS OPERATIONS:
 
+    /// Get the account email for this calendar (from remote config)
+    pub fn account_email(&self) -> Option<&str> {
+        self.config.remote.as_ref()?.account_identifier()
+    }
+
     /// Where changes get pushed to / pulled from (None if no remote configured)
     pub fn remote(&self) -> Option<&Remote> {
         self.config.remote.as_ref()

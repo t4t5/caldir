@@ -197,6 +197,7 @@ dependencies = [
  "anyhow",
  "caldir-core",
  "chrono",
+ "chrono-tz",
  "clap",
  "dialoguer",
  "flate2",
