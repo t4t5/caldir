@@ -1,10 +1,10 @@
 use anyhow::Result;
 use caldir_core::calendar::Calendar;
-use caldir_core::event::EventTime;
 use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
 
 use crate::render::render_participation_status;
+use crate::utils::date::{format_date_label, format_time};
 
 pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
     let start_of_today = chrono::Local::now()
@@ -117,33 +117,3 @@ pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
     Ok(())
 }
 
-/// Format a date as a human-readable label
-fn format_date_label(time: &EventTime) -> String {
-    let today = chrono::Local::now().date_naive();
-
-    let date = match time {
-        EventTime::Date(d) => *d,
-        EventTime::DateTimeUtc(dt) => dt.with_timezone(&chrono::Local).date_naive(),
-        EventTime::DateTimeFloating(dt) => dt.date(),
-        EventTime::DateTimeZoned { datetime, .. } => datetime.date(),
-    };
-
-    let diff = (date - today).num_days();
-    match diff {
-        0 => "Today".to_string(),
-        1 => "Tomorrow".to_string(),
-        _ => date.format("%a %b %-d").to_string(),
-    }
-}
-
-/// Format the time portion of an event
-fn format_time(time: &EventTime) -> String {
-    match time {
-        EventTime::Date(_) => "all-day".to_string(),
-        EventTime::DateTimeUtc(dt) => {
-            format!("{:>7}", dt.with_timezone(&chrono::Local).format("%H:%M"))
-        }
-        EventTime::DateTimeFloating(dt) => format!("{:>7}", dt.format("%H:%M")),
-        EventTime::DateTimeZoned { datetime, .. } => format!("{:>7}", datetime.format("%H:%M")),
-    }
-}

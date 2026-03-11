@@ -5,7 +5,9 @@ use std::str::FromStr;
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
-use caldir_core::event::{EventTime, ParticipationStatus};
+use caldir_core::event::ParticipationStatus;
+
+use crate::utils::date::{format_date_label, format_time};
 use caldir_core::ics::parse_event;
 use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
@@ -130,7 +132,11 @@ fn run_interactive() -> Result<()> {
     let mut responded = 0;
 
     for (calendar, event, email, _path) in &invites {
-        let time = format_time(&event.start);
+        let time = format!(
+            "{} {}",
+            format_date_label(&event.start),
+            format_time(&event.start).trim()
+        );
         let organizer = event
             .organizer
             .as_ref()
@@ -193,16 +199,3 @@ fn run_interactive() -> Result<()> {
     Ok(())
 }
 
-/// Format the time portion of an event
-fn format_time(time: &EventTime) -> String {
-    match time {
-        EventTime::Date(_) => "all-day".to_string(),
-        EventTime::DateTimeUtc(dt) => {
-            format!("{}", dt.with_timezone(&chrono::Local).format("%a %b %-d %H:%M"))
-        }
-        EventTime::DateTimeFloating(dt) => format!("{}", dt.format("%a %b %-d %H:%M")),
-        EventTime::DateTimeZoned { datetime, .. } => {
-            format!("{}", datetime.format("%a %b %-d %H:%M"))
-        }
-    }
-}
