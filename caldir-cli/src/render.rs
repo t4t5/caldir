@@ -3,6 +3,8 @@
 //! This module provides extension traits that add colored terminal rendering
 //! to caldir-core types using owo_colors.
 
+use std::collections::HashMap;
+
 use caldir_core::calendar::Calendar;
 use caldir_core::diff::{CalendarDiff, DiffKind, EventDiff};
 use owo_colors::OwoColorize;
@@ -279,12 +281,11 @@ fn render_field_diffs(diff: &EventDiff) -> Vec<String> {
             ));
         }
         if old.attendees != new.attendees {
-            lines.push(format!(
-                "{}: {:?} → {:?}",
-                "attendees".dimmed(),
-                old.attendees,
-                new.attendees
-            ));
+            let attendee_lines = render_attendee_diffs(&old.attendees, &new.attendees);
+            if !attendee_lines.is_empty() {
+                lines.push(format!("{}:", "attendees".dimmed()));
+                lines.extend(attendee_lines.into_iter().map(|l| format!("  {}", l)));
+            }
         }
         if old.conference_url != new.conference_url {
             lines.push(render_optional_diff(
@@ -308,6 +309,68 @@ fn render_optional_diff(field: &str, old: &Option<String>, new: &Option<String>)
         old_str.red(),
         new_str.green()
     )
+}
+
+/// Render attendee changes, showing only what actually changed per attendee
+fn render_attendee_diffs(
+    old: &[caldir_core::event::Attendee],
+    new: &[caldir_core::event::Attendee],
+) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    let old_by_email: HashMap<String, &caldir_core::event::Attendee> = old
+        .iter()
+        .map(|a| (a.email.to_lowercase(), a))
+        .collect();
+    let new_by_email: HashMap<String, &caldir_core::event::Attendee> = new
+        .iter()
+        .map(|a| (a.email.to_lowercase(), a))
+        .collect();
+
+    // Attendees in both old and new — check for status changes
+    for (email, old_att) in &old_by_email {
+        if let Some(new_att) = new_by_email.get(email) {
+            if old_att.response_status != new_att.response_status {
+                let label = attendee_label(new_att);
+                let old_status = old_att
+                    .response_status
+                    .map_or("(none)".to_string(), |s| s.to_string());
+                let new_status = new_att
+                    .response_status
+                    .map_or("(none)".to_string(), |s| s.to_string());
+                lines.push(format!(
+                    "{}: {} → {}",
+                    label.dimmed(),
+                    old_status.red(),
+                    new_status.green()
+                ));
+            }
+        }
+    }
+
+    // Added attendees
+    for (email, att) in &new_by_email {
+        if !old_by_email.contains_key(email) {
+            lines.push(format!("{} {}", "+".green(), attendee_label(att).green()));
+        }
+    }
+
+    // Removed attendees
+    for (email, att) in &old_by_email {
+        if !new_by_email.contains_key(email) {
+            lines.push(format!("{} {}", "-".red(), attendee_label(att).red()));
+        }
+    }
+
+    lines
+}
+
+/// Format an attendee as "Name (email)" or just "email"
+fn attendee_label(att: &caldir_core::event::Attendee) -> String {
+    match &att.name {
+        Some(name) if !name.is_empty() => format!("{} ({})", name, att.email),
+        _ => att.email.clone(),
+    }
 }
 
 /// Render recurrence diff showing RRULE and EXDATE changes
