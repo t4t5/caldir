@@ -158,7 +158,7 @@ fn format_exdate_for_google(time: &EventTime) -> String {
     }
 }
 
-fn participation_status_to_google(status: ParticipationStatus) -> &'static str {
+pub(crate) fn participation_status_to_google(status: ParticipationStatus) -> &'static str {
     match status {
         ParticipationStatus::Accepted => "accepted",
         ParticipationStatus::Declined => "declined",
