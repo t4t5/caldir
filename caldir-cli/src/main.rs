@@ -8,8 +8,8 @@ use caldir_core::calendar::Calendar;
 use caldir_core::date_range::DateRange;
 use caldir_core::remote::provider::Provider;
 use chrono::{Datelike, Local, Utc};
-use utils::date::start_of_today;
 use clap::{Parser, Subcommand};
+use utils::date::start_of_today;
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]

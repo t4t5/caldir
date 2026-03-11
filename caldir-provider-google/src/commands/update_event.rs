@@ -29,9 +29,14 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
 
     if cmd.event.is_invite_for(account_email) {
         // Only update our own attendee status:
-        let google_event =
-            update_invite_status(&session, calendar_id, google_event_id, &cmd.event, account_email)
-                .await?;
+        let google_event = update_invite_status(
+            &session,
+            calendar_id,
+            google_event_id,
+            &cmd.event,
+            account_email,
+        )
+        .await?;
         Ok(Event::from_google(google_event)?)
     } else {
         // Organizer or own event: full PUT update

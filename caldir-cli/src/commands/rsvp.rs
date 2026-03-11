@@ -8,8 +8,8 @@ use caldir_core::calendar::Calendar;
 use caldir_core::event::ParticipationStatus;
 
 use crate::render::format_event_line;
-use crate::utils::date::start_of_today;
 use crate::utils::date::format_date_only;
+use crate::utils::date::start_of_today;
 use caldir_core::ics::parse_event;
 use chrono::Duration;
 use owo_colors::OwoColorize;

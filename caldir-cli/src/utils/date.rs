@@ -4,10 +4,10 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 /// Convert a zoned datetime to the system's local NaiveDateTime.
 /// Falls back to the original datetime if the timezone can't be parsed.
 fn zoned_to_local(datetime: &NaiveDateTime, tzid: &str) -> NaiveDateTime {
-    if let Ok(tz) = tzid.parse::<chrono_tz::Tz>() {
-        if let Some(zoned) = datetime.and_local_timezone(tz).single() {
-            return zoned.with_timezone(&chrono::Local).naive_local();
-        }
+    if let Ok(tz) = tzid.parse::<chrono_tz::Tz>()
+        && let Some(zoned) = datetime.and_local_timezone(tz).single()
+    {
+        return zoned.with_timezone(&chrono::Local).naive_local();
     }
     *datetime
 }
