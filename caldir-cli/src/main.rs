@@ -8,6 +8,7 @@ use caldir_core::calendar::Calendar;
 use caldir_core::date_range::DateRange;
 use caldir_core::remote::provider::Provider;
 use chrono::{Datelike, Local, Utc};
+use utils::date::start_of_today;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -258,30 +259,18 @@ async fn main() -> Result<()> {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             let today = Local::now().date_naive();
-            let start_of_today = today
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-                .and_local_timezone(Local)
-                .unwrap()
-                .with_timezone(&Utc);
             let end_of_today = today
                 .and_hms_opt(23, 59, 59)
                 .unwrap()
                 .and_local_timezone(Local)
                 .unwrap()
                 .with_timezone(&Utc);
-            commands::events::run(calendars, Some(start_of_today), Some(end_of_today))
+            commands::events::run(calendars, Some(start_of_today()), Some(end_of_today))
         }
         Commands::Week { calendar } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             let today = Local::now().date_naive();
-            let start_of_today = today
-                .and_hms_opt(0, 0, 0)
-                .unwrap()
-                .and_local_timezone(Local)
-                .unwrap()
-                .with_timezone(&Utc);
             // num_days_from_monday(): Mon=0, Tue=1, ..., Sun=6
             let days_until_sunday = (6 - today.weekday().num_days_from_monday()) % 7;
             // If today is Sunday, show through next Sunday
@@ -296,7 +285,7 @@ async fn main() -> Result<()> {
                 .and_local_timezone(Local)
                 .unwrap()
                 .with_timezone(&Utc);
-            commands::events::run(calendars, Some(start_of_today), Some(end_of_sunday))
+            commands::events::run(calendars, Some(start_of_today()), Some(end_of_sunday))
         }
         Commands::New {
             title,

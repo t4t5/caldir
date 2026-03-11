@@ -1,4 +1,16 @@
 use caldir_core::event::EventTime;
+use chrono::{DateTime, Utc};
+
+/// Returns the start of today (midnight) in UTC.
+pub fn start_of_today() -> DateTime<Utc> {
+    chrono::Local::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_local_timezone(chrono::Local)
+        .unwrap()
+        .with_timezone(&Utc)
+}
 
 /// Format a date as a human-readable label (e.g. "Today", "Tomorrow", "Wed Feb 25")
 pub fn format_date_only(time: &EventTime) -> String {

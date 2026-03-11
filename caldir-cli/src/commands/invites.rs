@@ -1,21 +1,15 @@
 use anyhow::Result;
 use caldir_core::calendar::Calendar;
-use chrono::{Duration, Utc};
+use chrono::Duration;
 use owo_colors::OwoColorize;
 
 use crate::render::{format_event_line, render_participation_status};
-use crate::utils::date::format_date_only;
+use crate::utils::date::{format_date_only, start_of_today};
 
 pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
-    let start_of_today = chrono::Local::now()
-        .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_local_timezone(chrono::Local)
-        .unwrap()
-        .with_timezone(&Utc);
-    let from = start_of_today;
-    let to = start_of_today + Duration::days(30);
+    let today = start_of_today();
+    let from = today;
+    let to = today + Duration::days(30);
 
     // (cal_slug, event, email, file_path)
     let mut invites: Vec<(String, caldir_core::event::Event, String)> = Vec::new();

@@ -4,22 +4,16 @@ use chrono::{DateTime, Duration, Utc};
 use owo_colors::OwoColorize;
 
 use crate::render::{format_event_line, render_participation_status};
-use crate::utils::date::format_date_only;
+use crate::utils::date::{format_date_only, start_of_today};
 
 pub fn run(
     calendars: Vec<Calendar>,
     from: Option<DateTime<Utc>>,
     to: Option<DateTime<Utc>>,
 ) -> Result<()> {
-    let start_of_today = chrono::Local::now()
-        .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_local_timezone(chrono::Local)
-        .unwrap()
-        .with_timezone(&Utc);
-    let from = from.unwrap_or(start_of_today);
-    let to = to.unwrap_or(start_of_today + Duration::days(3));
+    let today = start_of_today();
+    let from = from.unwrap_or(today);
+    let to = to.unwrap_or(today + Duration::days(3));
 
     // (cal_slug, account_email, event)
     let mut all_events: Vec<(String, Option<String>, caldir_core::event::Event)> = Vec::new();

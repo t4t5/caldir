@@ -8,9 +8,10 @@ use caldir_core::calendar::Calendar;
 use caldir_core::event::ParticipationStatus;
 
 use crate::render::format_event_line;
+use crate::utils::date::start_of_today;
 use crate::utils::date::format_date_only;
 use caldir_core::ics::parse_event;
-use chrono::{Duration, Utc};
+use chrono::Duration;
 use owo_colors::OwoColorize;
 
 pub fn run(path: Option<String>, response: Option<String>) -> Result<()> {
@@ -74,15 +75,9 @@ fn run_interactive() -> Result<()> {
     let caldir = Caldir::load()?;
     let calendars = caldir.calendars();
 
-    let start_of_today = chrono::Local::now()
-        .date_naive()
-        .and_hms_opt(0, 0, 0)
-        .unwrap()
-        .and_local_timezone(chrono::Local)
-        .unwrap()
-        .with_timezone(&Utc);
-    let from = start_of_today;
-    let to = start_of_today + Duration::days(30);
+    let today = start_of_today();
+    let from = today;
+    let to = today + Duration::days(30);
 
     // Collect pending invites: (calendar, event, email, path)
     let mut invites: Vec<(Calendar, caldir_core::event::Event, String, PathBuf)> = Vec::new();
