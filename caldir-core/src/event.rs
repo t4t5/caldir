@@ -179,9 +179,7 @@ impl Event {
     /// Return a new Event with the attendee's PARTSTAT updated, sequence bumped, and updated timestamp set
     pub fn with_response(&self, email: &str, status: ParticipationStatus) -> Option<Event> {
         // Verify the email is an attendee
-        if self.find_attendee(email).is_none() {
-            return None;
-        }
+        self.find_attendee(email)?;
 
         let mut updated = self.clone();
         for attendee in &mut updated.attendees {

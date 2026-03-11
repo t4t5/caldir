@@ -339,22 +339,22 @@ fn render_attendee_diffs(
 
     // Attendees in both old and new — check for status changes
     for (email, old_att) in &old_by_email {
-        if let Some(new_att) = new_by_email.get(email) {
-            if old_att.response_status != new_att.response_status {
-                let label = attendee_label(new_att);
-                let old_status = old_att
-                    .response_status
-                    .map_or("(none)".to_string(), |s| s.to_string());
-                let new_status = new_att
-                    .response_status
-                    .map_or("(none)".to_string(), |s| s.to_string());
-                lines.push(format!(
-                    "{}: {} → {}",
-                    label.dimmed(),
-                    old_status.red(),
-                    new_status.green()
-                ));
-            }
+        if let Some(new_att) = new_by_email.get(email)
+            && old_att.response_status != new_att.response_status
+        {
+            let label = attendee_label(new_att);
+            let old_status = old_att
+                .response_status
+                .map_or("(none)".to_string(), |s| s.to_string());
+            let new_status = new_att
+                .response_status
+                .map_or("(none)".to_string(), |s| s.to_string());
+            lines.push(format!(
+                "{}: {} → {}",
+                label.dimmed(),
+                old_status.red(),
+                new_status.green()
+            ));
         }
     }
 

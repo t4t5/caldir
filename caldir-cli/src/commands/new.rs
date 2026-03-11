@@ -6,6 +6,7 @@ use chrono::Duration;
 use dialoguer::{Input, Select};
 use owo_colors::OwoColorize;
 
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     title: Option<String>,
     start: Option<String>,
