@@ -1,6 +1,6 @@
 [package]
 name = "caldir-core"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2024"
 description = "Shared types for caldir ecosystem (Event, protocol types)"
 license.workspace = true
@@ -13,6 +13,7 @@ categories = ["data-structures"]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
 uuid = { version = "1", features = ["v4"] }
 thiserror = "2"
 toml = "0.9"

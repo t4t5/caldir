@@ -349,7 +349,14 @@ impl EventTime {
             EventTime::Date(d) => d.and_hms_opt(0, 0, 0).map(|dt| dt.and_utc()),
             EventTime::DateTimeUtc(dt) => Some(*dt),
             EventTime::DateTimeFloating(dt) => Some(dt.and_utc()),
-            EventTime::DateTimeZoned { datetime, .. } => Some(datetime.and_utc()),
+            EventTime::DateTimeZoned { datetime, tzid } => {
+                if let Ok(tz) = tzid.parse::<chrono_tz::Tz>()
+                    && let Some(zoned) = datetime.and_local_timezone(tz).single()
+                {
+                    return Some(zoned.with_timezone(&Utc));
+                }
+                Some(datetime.and_utc())
+            }
         }
     }
 
@@ -374,11 +381,7 @@ impl EventTime {
     pub fn to_iso_string(&self) -> String {
         match self {
             EventTime::Date(d) => d.format("%Y-%m-%d").to_string(),
-            EventTime::DateTimeUtc(dt) => dt.to_rfc3339(),
-            EventTime::DateTimeFloating(dt) => format!("{}Z", dt.format("%Y-%m-%dT%H:%M:%S")),
-            EventTime::DateTimeZoned { datetime, .. } => {
-                format!("{}Z", datetime.format("%Y-%m-%dT%H:%M:%S"))
-            }
+            _ => self.to_utc().map(|dt| dt.to_rfc3339()).unwrap_or_default(),
         }
     }
 }

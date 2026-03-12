@@ -447,11 +447,22 @@ mod tests {
         let result = from_outlook(event, "me@example.com").unwrap();
 
         // Owner's status should come from top-level responseStatus, not the attendee array
-        let me = result.attendees.iter().find(|a| a.email == "me@example.com").unwrap();
+        let me = result
+            .attendees
+            .iter()
+            .find(|a| a.email == "me@example.com")
+            .unwrap();
         assert_eq!(me.response_status, Some(ParticipationStatus::Accepted));
 
         // Other attendees should still use their per-attendee status
-        let organizer_attendee = result.attendees.iter().find(|a| a.email == "organizer@example.com").unwrap();
-        assert_eq!(organizer_attendee.response_status, Some(ParticipationStatus::NeedsAction));
+        let organizer_attendee = result
+            .attendees
+            .iter()
+            .find(|a| a.email == "organizer@example.com")
+            .unwrap();
+        assert_eq!(
+            organizer_attendee.response_status,
+            Some(ParticipationStatus::NeedsAction)
+        );
     }
 }
