@@ -108,6 +108,10 @@ impl fmt::Display for Event {
 }
 
 impl Event {
+    fn generate_uid() -> String {
+        format!("{}@caldir", uuid::Uuid::new_v4())
+    }
+
     pub fn new(
         summary: String,
         start: EventTime,
@@ -117,7 +121,7 @@ impl Event {
         recurrence: Option<Recurrence>,
         reminders: Vec<Reminder>,
     ) -> Self {
-        let uid = format!("{}@caldir", uuid::Uuid::new_v4());
+        let uid = Self::generate_uid();
 
         Event {
             uid,
@@ -137,6 +141,14 @@ impl Event {
             updated: None,
             sequence: None,
             custom_properties: Vec::new(),
+        }
+    }
+
+    /// Return a clone of this event with a fresh UID.
+    pub fn with_new_uid(&self) -> Self {
+        Event {
+            uid: Self::generate_uid(),
+            ..self.clone()
         }
     }
 
