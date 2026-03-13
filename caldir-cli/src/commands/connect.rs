@@ -14,12 +14,7 @@ use std::io::{self, Write};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
-const DEFAULT_REDIRECT_PORT: u16 = 8085;
-
-fn build_options(hosted: bool) -> serde_json::Map<String, serde_json::Value> {
-    let port = DEFAULT_REDIRECT_PORT;
-    let redirect_uri = format!("http://localhost:{}/callback", port);
-
+fn build_options(hosted: bool, redirect_uri: &str) -> serde_json::Map<String, serde_json::Value> {
     let mut options = serde_json::Map::new();
     options.insert("redirect_uri".into(), redirect_uri.into());
     options.insert("hosted".into(), hosted.into());
@@ -28,9 +23,14 @@ fn build_options(hosted: bool) -> serde_json::Map<String, serde_json::Value> {
 
 pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     let provider = Provider::from_name(provider_name);
-    let port = DEFAULT_REDIRECT_PORT;
+
+    // Bind to port 0 so the OS picks a free port
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .context("Failed to bind OAuth callback listener")?;
+    let port = listener.local_addr()?.port();
     let redirect_uri = format!("http://localhost:{}/callback", port);
-    let options = build_options(hosted);
+    let options = build_options(hosted, &redirect_uri);
 
     println!("Connecting to {provider_name}...\n");
 
@@ -82,7 +82,7 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
                             );
                         }
 
-                        let params = wait_for_callback(port).await?;
+                        let params = wait_for_callback(&listener).await?;
 
                         let code = params
                             .get("code")
@@ -116,7 +116,7 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
                             );
                         }
 
-                        let params = wait_for_callback(port).await?;
+                        let params = wait_for_callback(&listener).await?;
 
                         let access_token = params
                             .get("access_token")
@@ -244,13 +244,8 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     Ok(())
 }
 
-/// Wait for an HTTP callback on localhost and return all query parameters.
-async fn wait_for_callback(port: u16) -> Result<HashMap<String, String>> {
-    let address = format!("127.0.0.1:{}", port);
-    let listener = TcpListener::bind(&address)
-        .await
-        .context("Failed to bind OAuth callback listener")?;
-
+/// Wait for an HTTP callback on a pre-bound listener and return all query parameters.
+async fn wait_for_callback(listener: &TcpListener) -> Result<HashMap<String, String>> {
     let (stream, _) = listener
         .accept()
         .await
