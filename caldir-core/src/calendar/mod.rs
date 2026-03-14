@@ -190,6 +190,17 @@ impl Calendar {
         Ok(result)
     }
 
+    /// Search events by summary (case-insensitive substring match).
+    /// Returns raw CalendarEvent entries (not expanded recurring instances).
+    pub fn search_events(&self, query: &str) -> CalDirResult<Vec<CalendarEvent>> {
+        let query_lower = query.to_lowercase();
+        let all = self.events()?;
+        Ok(all
+            .into_iter()
+            .filter(|ce| ce.event.summary.to_lowercase().contains(&query_lower))
+            .collect())
+    }
+
     pub fn create_event(&self, event: &Event) -> CalDirResult<PathBuf> {
         let dir = self.path()?;
         std::fs::create_dir_all(&dir)?;
