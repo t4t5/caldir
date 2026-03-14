@@ -30,6 +30,10 @@ impl Caldir {
         Ok(Caldir { config })
     }
 
+    pub fn config(&self) -> &CaldirConfig {
+        &self.config
+    }
+
     pub fn data_path(&self) -> PathBuf {
         let full_path_str =
             shellexpand::tilde(&self.config.calendar_dir.to_string_lossy()).into_owned();

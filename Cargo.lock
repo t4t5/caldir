@@ -225,6 +225,7 @@ dependencies = [
  "chrono-tz",
  "config",
  "dirs",
+ "humantime",
  "icalendar",
  "iso8601",
  "rrule",

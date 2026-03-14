@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{CalDirError, CalDirResult};
+use crate::event::Reminder;
 
 static DEFAULT_CALDIR_PATH: &str = "~/caldir";
 
@@ -30,6 +31,9 @@ pub struct CaldirConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_calendar: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_reminders: Option<Vec<String>>,
 }
 
 impl CaldirConfig {
@@ -54,6 +58,18 @@ impl CaldirConfig {
         Ok(())
     }
 
+    /// Parse default_reminders strings into Reminder structs.
+    pub fn parse_default_reminders(&self) -> CalDirResult<Option<Vec<Reminder>>> {
+        let Some(ref strs) = self.default_reminders else {
+            return Ok(None);
+        };
+        let reminders: Vec<Reminder> = strs
+            .iter()
+            .map(|s| Reminder::from_duration_str(s).map_err(CalDirError::Config))
+            .collect::<CalDirResult<_>>()?;
+        Ok(Some(reminders))
+    }
+
     /// Create a default config file with all options commented out.
     pub fn create_default_config(path: &std::path::Path) -> CalDirResult<()> {
         let contents = format!(
@@ -65,6 +81,9 @@ impl CaldirConfig {
 
 # Default calendar for new events:
 # default_calendar = \"personal\"
+
+# Default reminders for new events (e.g. [\"10m\", \"1h\"]):
+# default_reminders = [\"10m\", \"1h\"]
 ",
             DEFAULT_CALDIR_PATH
         );

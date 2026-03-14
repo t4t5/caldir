@@ -279,6 +279,16 @@ pub struct Reminder {
     pub minutes: i64,
 }
 
+impl Reminder {
+    /// Parse a human-readable duration string like "10m", "1h", "2 days" into a Reminder.
+    pub fn from_duration_str(input: &str) -> Result<Self, String> {
+        let dur = humantime::parse_duration(input)
+            .map_err(|_| format!("Could not parse reminder: \"{}\"", input))?;
+        let minutes = (dur.as_secs() / 60) as i64;
+        Ok(Reminder { minutes })
+    }
+}
+
 /// A collection of reminders with order-independent equality.
 ///
 /// Reminder order is not meaningful — `[10, 30]` and `[30, 10]` are equal.

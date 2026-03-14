@@ -15,6 +15,7 @@ pub fn run(
     location: Option<String>,
     calendar_slug: Option<String>,
     reminder_args: Vec<String>,
+    no_reminders: bool,
     calendars: Vec<Calendar>,
 ) -> Result<()> {
     let interactive = title.is_none() || start.is_none();
@@ -63,10 +64,21 @@ pub fn run(
     };
 
     // --- Reminders ---
-    let reminders: Vec<Reminder> = reminder_args
-        .iter()
-        .map(|r| parse_reminder(r))
-        .collect::<Result<_>>()?;
+    let reminders: Vec<Reminder> = if no_reminders {
+        vec![]
+    } else if !reminder_args.is_empty() {
+        reminder_args
+            .iter()
+            .map(|r| parse_reminder(r))
+            .collect::<Result<_>>()?
+    } else {
+        let caldir = Caldir::load()?;
+        caldir
+            .config()
+            .parse_default_reminders()
+            .map_err(|e| anyhow::anyhow!("{}", e))?
+            .unwrap_or_default()
+    };
 
     // --- Calendar ---
     let calendar = resolve_calendar(calendar_slug, &calendars, interactive)?;
@@ -293,10 +305,7 @@ fn default_end(start: &EventTime) -> EventTime {
 
 /// Parse a reminder string like "10m", "1h", "2 days" into a Reminder.
 fn parse_reminder(input: &str) -> Result<Reminder> {
-    let dur = humantime::parse_duration(input)
-        .map_err(|_| anyhow::anyhow!("Could not parse reminder: \"{}\"", input))?;
-    let minutes = (dur.as_secs() / 60) as i64;
-    Ok(Reminder { minutes })
+    Reminder::from_duration_str(input).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 /// Resolve which calendar to use.
