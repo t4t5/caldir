@@ -48,7 +48,7 @@ impl FromGoogle for Event {
 
         let recurrence_id = if let Some(ref orig) = event.original_start_time {
             if let Some(dt) = orig.date_time {
-                Some(EventTime::DateTimeUtc(dt))
+                Some(utc_to_zoned(dt, &orig.time_zone))
             } else {
                 orig.date.map(EventTime::Date)
             }
