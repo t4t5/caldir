@@ -7,6 +7,16 @@ use serde::{Deserialize, Serialize};
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Reminder;
 
+/// Time display format: 24-hour ("15:00") or 12-hour ("3:00pm").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TimeFormat {
+    #[default]
+    #[serde(rename = "24h")]
+    H24,
+    #[serde(rename = "12h")]
+    H12,
+}
+
 static DEFAULT_CALDIR_PATH: &str = "~/caldir";
 
 fn default_caldir_path() -> PathBuf {
@@ -34,6 +44,13 @@ pub struct CaldirConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_reminders: Option<Vec<String>>,
+
+    #[serde(default, skip_serializing_if = "is_default_time_format")]
+    pub time_format: TimeFormat,
+}
+
+fn is_default_time_format(f: &TimeFormat) -> bool {
+    *f == TimeFormat::default()
 }
 
 impl CaldirConfig {
@@ -84,6 +101,9 @@ impl CaldirConfig {
 
 # Default reminders for new events (e.g. [\"10m\", \"1h\"]):
 # default_reminders = [\"10m\", \"1h\"]
+
+# Time display format: \"24h\" (default, e.g. 15:00) or \"12h\" (e.g. 3:00pm)
+# time_format = \"12h\"
 ",
             DEFAULT_CALDIR_PATH
         );

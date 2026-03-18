@@ -1,5 +1,16 @@
+use std::sync::LazyLock;
+
+use caldir_core::caldir::Caldir;
+use caldir_core::caldir_config::TimeFormat;
 use caldir_core::event::EventTime;
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
+
+/// Lazily loaded time format from global config. Defaults to 24h if config can't be read.
+static TIME_FORMAT: LazyLock<TimeFormat> = LazyLock::new(|| {
+    Caldir::load()
+        .map(|c| c.config().time_format)
+        .unwrap_or_default()
+});
 
 /// Convert a zoned datetime to the system's local NaiveDateTime.
 /// Falls back to the original datetime if the timezone can't be parsed.
@@ -42,16 +53,38 @@ pub fn format_date_only(time: &EventTime) -> String {
     }
 }
 
-/// Format the time portion of an event (e.g. "  15:00" or "all-day"), right-padded to 7 chars
+/// Format a NaiveDateTime's time portion according to the given format.
+fn format_naive_time(dt: &NaiveDateTime, time_format: TimeFormat) -> String {
+    match time_format {
+        TimeFormat::H24 => format!("{:>7}", dt.format("%H:%M")),
+        TimeFormat::H12 => {
+            let hour = dt.hour();
+            let minute = dt.minute();
+            let (h12, ampm) = if hour == 0 {
+                (12, "am")
+            } else if hour < 12 {
+                (hour, "am")
+            } else if hour == 12 {
+                (12, "pm")
+            } else {
+                (hour - 12, "pm")
+            };
+            format!("{:>7}", format!("{}:{:02}{}", h12, minute, ampm))
+        }
+    }
+}
+
+/// Format the time portion of an event (e.g. "  15:00" or " 3:00pm" or "all-day"), right-padded to 7 chars
 pub fn format_time_only(time: &EventTime) -> String {
     match time {
         EventTime::Date(_) => "all-day".to_string(),
         EventTime::DateTimeUtc(dt) => {
-            format!("{:>7}", dt.with_timezone(&chrono::Local).format("%H:%M"))
+            let local = dt.with_timezone(&chrono::Local).naive_local();
+            format_naive_time(&local, *TIME_FORMAT)
         }
-        EventTime::DateTimeFloating(dt) => format!("{:>7}", dt.format("%H:%M")),
+        EventTime::DateTimeFloating(dt) => format_naive_time(dt, *TIME_FORMAT),
         EventTime::DateTimeZoned { datetime, tzid } => {
-            format!("{:>7}", zoned_to_local(datetime, tzid).format("%H:%M"))
+            format_naive_time(&zoned_to_local(datetime, tzid), *TIME_FORMAT)
         }
     }
 }
