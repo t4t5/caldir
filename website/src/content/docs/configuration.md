@@ -20,6 +20,9 @@ calendar_dir = "~/caldir"
 
 # Default calendar for new events (used when --calendar not specified)
 default_calendar = "personal"
+
+# Default reminders for new events (e.g. ["10m", "1h"])
+default_reminders = ["10m"]
 ```
 
 The config file is created with all options commented out on first run — open it to see what's configurable.

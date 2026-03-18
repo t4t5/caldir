@@ -119,11 +119,22 @@ caldir new "Vacation" --start 2025-03-25 --end 2025-03-28
 # With a location
 caldir new "Lunch" --start 2025-03-20T12:00 --location "Café Central"
 
+# With a reminder
+caldir new "Sprint planning" --start 2025-03-22T10:00 --reminder 10m
+
+# Multiple reminders
+caldir new "Flight" --start 2025-03-22T06:00 --reminder 1h --reminder 1day
+
+# No reminders (overrides default_reminders from config)
+caldir new "Quick chat" --start 2025-03-22T14:00 --no-reminders
+
 # In a specific calendar (defaults to default_calendar from config)
 caldir new "Sprint planning" --start 2025-03-22T10:00 --calendar work
 ```
 
 If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed events or 1 day for all-day events.
+
+If `default_reminders` is set in your [global config](/docs/configuration), those reminders are added to every new event automatically. Use `--no-reminders` to override this.
 
 ---
 
