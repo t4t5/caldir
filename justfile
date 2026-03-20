@@ -44,6 +44,10 @@ install-provider:
 install: install-provider
   cargo install --path caldir-cli
 
+# Remove all installed binaries
+uninstall:
+  rm -f ~/.cargo/bin/caldir ~/.cargo/bin/caldir-provider-*
+
 # Serve website locally
 serve:
   cd website && npm run dev
