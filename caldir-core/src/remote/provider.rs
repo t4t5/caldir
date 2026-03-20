@@ -43,16 +43,27 @@ impl Provider {
         &self.0
     }
 
-    /// Discover all installed provider binaries by scanning PATH for `caldir-provider-*`.
-    pub fn discover_installed() -> Vec<String> {
-        let Ok(path_var) = std::env::var("PATH") else {
-            return vec![];
-        };
+    /// Returns directories from `CALDIR_PROVIDER_PATH` followed by `PATH`.
+    fn provider_search_dirs() -> impl Iterator<Item = std::path::PathBuf> {
+        let provider_path = std::env::var_os("CALDIR_PROVIDER_PATH");
+        let system_path = std::env::var_os("PATH");
+        provider_path
+            .into_iter()
+            .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
+            .chain(
+                system_path
+                    .into_iter()
+                    .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>()),
+            )
+    }
 
+    /// Discover all installed provider binaries by scanning `CALDIR_PROVIDER_PATH` then `PATH`
+    /// for `caldir-provider-*`.
+    pub fn discover_installed() -> Vec<String> {
         let mut providers = std::collections::BTreeSet::new();
         let prefix = "caldir-provider-";
 
-        for dir in std::env::split_paths(&path_var) {
+        for dir in Self::provider_search_dirs() {
             let Ok(entries) = std::fs::read_dir(&dir) else {
                 continue;
             };
@@ -70,6 +81,18 @@ impl Provider {
 
     fn binary_path(&self) -> CalDirResult<std::path::PathBuf> {
         let binary_name = format!("caldir-provider-{}", self.0);
+
+        // Check CALDIR_PROVIDER_PATH directories first (direct file lookup).
+        if let Some(provider_path) = std::env::var_os("CALDIR_PROVIDER_PATH") {
+            for dir in std::env::split_paths(&provider_path) {
+                let candidate = dir.join(&binary_name);
+                if candidate.is_file() {
+                    return Ok(candidate);
+                }
+            }
+        }
+
+        // Fall back to which (searches PATH).
         let binary_path = which::which(&binary_name).map_err(|_| {
             CalDirError::ProviderNotInstalled(format!(
                 "Provider '{}' not found. Install it with:\n  cargo install {}",
