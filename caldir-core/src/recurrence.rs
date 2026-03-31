@@ -9,7 +9,7 @@ use chrono::{DateTime, Duration, Utc};
 use rrule::RRuleSet;
 
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::{Event, EventTime, Recurrence};
+use crate::event::{Event, EventStatus, EventTime, Recurrence};
 
 /// Ensure the UNTIL parameter in an RRULE string matches the DTSTART timezone convention.
 ///
@@ -174,7 +174,9 @@ pub fn expand_recurring_event(
         let ics_key = occ_event_time.to_ics_string();
 
         if let Some(override_event) = overrides.get(&ics_key) {
-            events.push(override_event.clone());
+            if override_event.status != EventStatus::Cancelled {
+                events.push(override_event.clone());
+            }
         } else {
             // Build instance end time preserving the master's EventTime variant
             let instance_end = match (&master.start, &master.end) {

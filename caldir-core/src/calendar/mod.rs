@@ -16,7 +16,7 @@ use crate::calendar::config::CalendarConfig;
 use crate::calendar::event::CalendarEvent;
 use crate::calendar::state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::{Event, EventTime};
+use crate::event::{Event, EventStatus, EventTime};
 use crate::recurrence::expand_recurring_event;
 use crate::remote::Remote;
 use crate::utils::slugify;
@@ -157,6 +157,9 @@ impl Calendar {
 
         // Include singles that fall in range
         for event in singles {
+            if event.status == EventStatus::Cancelled {
+                continue;
+            }
             if let Some(start_utc) = event.start.to_utc()
                 && start_utc >= from
                 && start_utc <= to
@@ -175,6 +178,9 @@ impl Calendar {
         // Include orphaned overrides (override whose master is missing) if in range
         for (_uid, orphans) in overrides {
             for (_rid, event) in orphans {
+                if event.status == EventStatus::Cancelled {
+                    continue;
+                }
                 if let Some(start_utc) = event.start.to_utc()
                     && start_utc >= from
                     && start_utc <= to
