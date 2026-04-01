@@ -39,6 +39,7 @@ install-provider:
   cargo install --path caldir-provider-google
   cargo install --path caldir-provider-icloud
   cargo install --path caldir-provider-outlook
+  cargo install --path caldir-provider-webcal
 
 # Build and install everything
 install: install-provider

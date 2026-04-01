@@ -9,12 +9,29 @@ use icalendar::{
     parser::{Property, read_calendar, unfold},
 };
 
-/// Parse ICS content into an Event struct
+/// Parse ICS content into an Event struct (returns the first VEVENT)
 pub fn parse_event(content: &str) -> Option<Event> {
-    let unfolded = unfold(content);
-    let calendar = read_calendar(&unfolded).ok()?;
-    let vevent = calendar.components.iter().find(|c| c.name == "VEVENT")?;
+    parse_events(content).into_iter().next()
+}
 
+/// Parse ICS content into Event structs for all VEVENTs in the file
+pub fn parse_events(content: &str) -> Vec<Event> {
+    let unfolded = unfold(content);
+    let calendar = match read_calendar(&unfolded) {
+        Ok(cal) => cal,
+        Err(_) => return Vec::new(),
+    };
+
+    calendar
+        .components
+        .iter()
+        .filter(|c| c.name == "VEVENT")
+        .filter_map(parse_vevent)
+        .collect()
+}
+
+/// Parse a single VEVENT component into an Event
+fn parse_vevent(vevent: &icalendar::parser::Component) -> Option<Event> {
     // Required fields
     let uid = vevent.find_prop("UID")?.val.to_string();
     let summary = vevent

@@ -6,4 +6,4 @@ mod generate;
 mod parse;
 
 pub use generate::generate_ics;
-pub use parse::parse_event;
+pub use parse::{parse_event, parse_events};
