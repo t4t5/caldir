@@ -49,12 +49,12 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
         let display_name = extract_property(&body, "X-WR-CALNAME");
         let color = extract_property(&body, "X-APPLE-CALENDAR-COLOR");
 
-        let account_identifier = Session::account_identifier(&url);
-
         let session = Session::new(&url, display_name, color);
         session.save()?;
 
-        return Ok(ConnectResponse::Done { account_identifier });
+        return Ok(ConnectResponse::Done {
+            account_identifier: url,
+        });
     }
 
     // Init step: return credential field requirements

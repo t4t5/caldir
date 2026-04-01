@@ -9,9 +9,8 @@ use crate::remote_config::WebcalRemoteConfig;
 use crate::session::Session;
 
 pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
+    // The account_identifier IS the URL for webcal subscriptions
     let session = Session::load(&cmd.account_identifier)?;
-
-    let account_id = Session::account_identifier(&session.url);
 
     // Fall back to the URL host for the display name
     let name = session.display_name.clone().unwrap_or_else(|| {
@@ -21,7 +20,7 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
             .unwrap_or_else(|| "Webcal".to_string())
     });
 
-    let remote_config = WebcalRemoteConfig::new(&account_id, &session.url);
+    let remote_config = WebcalRemoteConfig::new(&session.url);
     let remote = Remote::new(Provider::from_name(PROVIDER_NAME), remote_config.into());
 
     let config = CalendarConfig {

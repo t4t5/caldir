@@ -5,8 +5,6 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
 use crate::constants::PROVIDER_NAME;
@@ -28,26 +26,9 @@ pub struct Session {
 }
 
 impl Session {
-    /// Derive a slug from the URL host and a path hash for use as filename.
-    pub fn slug(url: &str) -> String {
-        let parsed = url::Url::parse(url).ok();
-        let host = parsed
-            .as_ref()
-            .and_then(|u| u.host_str().map(|h| h.to_string()))
-            .unwrap_or_else(|| "unknown".to_string());
-
-        let mut hasher = DefaultHasher::new();
-        url.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        let raw = format!("{}_{:x}", host, hash);
-        raw.replace(['/', '\\', ':', '@', '.'], "_")
-    }
-
-    /// Use the URL host as the account identifier.
-    pub fn account_identifier(url: &str) -> String {
-        let slug = Self::slug(url);
-        format!("webcal_{}", slug)
+    /// Derive a filename-safe slug from the URL.
+    fn slug(url: &str) -> String {
+        url.replace(['/', '\\', ':', '@', '.', '?', '&', '=', '%', '#'], "_")
     }
 
     fn path_for(url: &str) -> Result<PathBuf> {
@@ -71,27 +52,12 @@ impl Session {
         }
     }
 
-    pub fn load(account_identifier: &str) -> Result<Self> {
-        let session_dir = base_dir()?.join("session");
-        if !session_dir.exists() {
-            anyhow::bail!("Webcal session for {} not found!", account_identifier);
-        }
-
-        for entry in std::fs::read_dir(&session_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("toml") {
-                let contents = std::fs::read_to_string(&path)?;
-                if let Ok(session) = toml::from_str::<Session>(&contents) {
-                    let id = Self::account_identifier(&session.url);
-                    if id == account_identifier {
-                        return Ok(session);
-                    }
-                }
-            }
-        }
-
-        anyhow::bail!("Webcal session for {} not found!", account_identifier);
+    /// Load a session by URL (the URL is the account identifier).
+    pub fn load(url: &str) -> Result<Self> {
+        let path = Self::path_for(url)?;
+        let contents = std::fs::read_to_string(&path)
+            .with_context(|| format!("Webcal session not found for URL: {}", url))?;
+        toml::from_str(&contents).context("Failed to parse webcal session")
     }
 
     pub fn save(&self) -> Result<()> {
