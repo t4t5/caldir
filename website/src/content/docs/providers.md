@@ -1,6 +1,6 @@
 ---
 title: Providers
-description: Provider plugin architecture for Google, iCloud, Outlook, and CalDAV
+description: Provider plugin architecture for Google, iCloud, Outlook, CalDAV, and Webcal
 order: 4
 ---
 
@@ -16,6 +16,7 @@ caldir uses a plugin architecture for calendar providers. Each provider is a sep
 | Microsoft Outlook | `caldir-provider-outlook` | OAuth (hosted or self-hosted) |
 | Apple iCloud | `caldir-provider-icloud` | App-specific password (CalDAV) |
 | Generic CalDAV | `caldir-provider-caldav` | Username + password |
+| Webcal (ICS feeds) | `caldir-provider-webcal` | None (public URLs) |
 
 ## Google Calendar
 
@@ -80,6 +81,18 @@ caldir connect caldav
 ```
 
 For any CalDAV-compatible server (Nextcloud, Radicale, Baikal, etc.). You'll be prompted for a server URL, username, and password. The provider automatically discovers CalDAV endpoints from the server.
+
+## Webcal (ICS feeds)
+
+```bash
+caldir connect webcal
+```
+
+Subscribe to any public ICS calendar feed (`webcal://` or `https://` URLs). You'll be prompted for the feed URL — the provider validates it by fetching the feed and checking for valid ICS data.
+
+Webcal subscriptions are **read-only**: you can pull events, but `caldir push` won't modify the remote feed. No credentials are stored — the feed URL itself is the only configuration.
+
+Common uses: public holiday calendars, sports schedules, shared team calendars published as ICS feeds.
 
 ## Plugin architecture
 

@@ -76,6 +76,8 @@ currently supports:
 - iCloud ([caldir-provider-icloud](https://github.com/t4t5/caldir/tree/main/caldir-provider-icloud))
 - Outlook ([caldir-provider-outlook](https://github.com/t4t5/caldir/tree/main/caldir-provider-outlook))
 - CalDAV ([caldir-provider-caldav](https://github.com/t4t5/caldir/tree/main/caldir-provider-caldav))
+- Webcal
+([caldir-provider-webcal](https://github.com/t4t5/caldir/tree/main/caldir-provider-webcal))
 
 A provider is just an executable named `caldir-provider-{name}` that speaks JSON over stdin/stdout. Anyone can create one.
 
