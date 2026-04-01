@@ -7,7 +7,6 @@
 mod commands;
 mod constants;
 mod remote_config;
-mod session;
 
 use anyhow::Result;
 use caldir_core::remote::protocol::{

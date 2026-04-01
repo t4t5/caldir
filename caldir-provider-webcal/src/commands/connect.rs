@@ -1,14 +1,12 @@
 //! Handle the connect flow for webcal subscriptions.
 //!
 //! Single credential field: the ICS feed URL.
-//! On submit: fetches the URL, verifies it's valid ICS, extracts metadata, saves session.
+//! On submit: fetches the URL and verifies it's valid ICS.
 
 use anyhow::Result;
 use caldir_core::remote::protocol::{
     Connect, ConnectResponse, ConnectStepKind, CredentialField, CredentialsData, FieldType,
 };
-
-use crate::session::Session;
 
 pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
     // If data contains the URL, this is the submit step.
@@ -22,7 +20,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
         // Normalize webcal:// to https://
         let url = raw_url.replacen("webcal://", "https://", 1);
 
-        // Fetch the ICS feed
+        // Fetch the ICS feed to validate it
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .user_agent("caldir-provider-webcal")
@@ -45,13 +43,6 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
             );
         }
 
-        // Extract calendar metadata from the ICS body
-        let display_name = extract_property(&body, "X-WR-CALNAME");
-        let color = extract_property(&body, "X-APPLE-CALENDAR-COLOR");
-
-        let session = Session::new(&url, display_name, color);
-        session.save()?;
-
         return Ok(ConnectResponse::Done {
             account_identifier: url,
         });
@@ -72,18 +63,4 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
         step: ConnectStepKind::Credentials,
         data: serde_json::to_value(creds_data)?,
     })
-}
-
-/// Extract a top-level ICS property value by simple string search.
-fn extract_property(ics_body: &str, property: &str) -> Option<String> {
-    let prefix = format!("{}:", property);
-    for line in ics_body.lines() {
-        if let Some(value) = line.strip_prefix(&prefix) {
-            let trimmed = value.trim();
-            if !trimmed.is_empty() {
-                return Some(trimmed.to_string());
-            }
-        }
-    }
-    None
 }
