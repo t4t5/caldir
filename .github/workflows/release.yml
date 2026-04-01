@@ -64,7 +64,7 @@ jobs:
         run: |
           staging="caldir-${{ matrix.target }}"
           mkdir "$staging"
-          for bin in caldir caldir-provider-google caldir-provider-icloud caldir-provider-caldav caldir-provider-outlook; do
+          for bin in caldir caldir-provider-google caldir-provider-icloud caldir-provider-caldav caldir-provider-outlook caldir-provider-webcal; do
             cp "target/${{ matrix.target }}/release/${bin}" "$staging/"
           done
           tar -czf "${staging}.tar.gz" -C "$staging" .
@@ -124,5 +124,6 @@ jobs:
           publish caldir-provider-google
           publish caldir-provider-caldav
           publish caldir-provider-outlook
+          publish caldir-provider-webcal
           sleep 30
           publish caldir-provider-icloud

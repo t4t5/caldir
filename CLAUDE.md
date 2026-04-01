@@ -427,6 +427,17 @@ caldir status --verbose
 
 If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed events or 1 day for all-day events.
 
+## Adding a New Default Provider
+
+When adding a new provider to the default set shipped with caldir, update these files:
+
+1. **`Cargo.toml`** (workspace) — add crate to `members`
+2. **`.github/workflows/release.yml`** — add binary to the packaging loop and `publish` step
+3. **`website/public/install.sh`** — add binary to the install loop
+4. **`website/src/content/docs/providers.md`** — add row to provider table and a new section
+5. **`website/src/content/docs/getting-started.md`** — add to "install from source" and "connect a calendar"
+6. **`.claude/skills/bump/SKILL.md`** — add to crates table and directory prefix mapping
+
 ## Development
 
 ```bash

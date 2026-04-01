@@ -65,7 +65,7 @@ main() {
   # Install binaries
   mkdir -p "$INSTALL_DIR"
 
-  for bin in caldir caldir-provider-google caldir-provider-icloud caldir-provider-caldav; do
+  for bin in caldir caldir-provider-google caldir-provider-icloud caldir-provider-caldav caldir-provider-webcal; do
     if [ -f "${tmp}/${bin}" ]; then
       install -m 755 "${tmp}/${bin}" "${INSTALL_DIR}/${bin}"
       echo "  Installed ${bin} to ${INSTALL_DIR}/${bin}"

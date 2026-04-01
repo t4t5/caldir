@@ -27,6 +27,7 @@ cargo install --path caldir-provider-google   # Google Calendar
 cargo install --path caldir-provider-icloud   # Apple iCloud
 cargo install --path caldir-provider-caldav   # Caldav
 cargo install --path caldir-provider-outlook  # Outlook
+cargo install --path caldir-provider-webcal   # Webcal (ICS feeds)
 ```
 
 </details>
@@ -45,9 +46,12 @@ caldir connect caldav
 
 # Outlook
 caldir connect outlook
+
+# Webcal (ICS feed)
+caldir connect webcal
 ```
 
-This opens your browser for authentication, fetches your calendars, and creates a local directory for each one under `~/caldir/`.
+This opens your browser for authentication (or prompts for a URL for webcal), fetches your calendars, and creates a local directory for each one under `~/caldir/`.
 
 ## Sync your events
 
