@@ -397,6 +397,47 @@ END:VCALENDAR"#;
     }
 
     #[test]
+    fn test_parse_events_multiple_vevents() {
+        let ics = r#"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:TEST
+BEGIN:VEVENT
+UID:event-1
+SUMMARY:Morning Standup
+DTSTART:20250320T090000Z
+DTEND:20250320T091500Z
+END:VEVENT
+BEGIN:VEVENT
+UID:event-2
+SUMMARY:Lunch
+DTSTART:20250320T120000Z
+DTEND:20250320T130000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:event-3
+SUMMARY:Retro
+DTSTART:20250320T150000Z
+DTEND:20250320T160000Z
+END:VEVENT
+END:VCALENDAR"#;
+
+        let events = parse_events(ics).expect("Should parse multi-VEVENT ICS");
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].uid, "event-1");
+        assert_eq!(events[0].summary, "Morning Standup");
+        assert_eq!(events[1].uid, "event-2");
+        assert_eq!(events[1].summary, "Lunch");
+        assert_eq!(events[2].uid, "event-3");
+        assert_eq!(events[2].summary, "Retro");
+    }
+
+    #[test]
+    fn test_parse_events_invalid_ics_returns_error() {
+        let result = parse_events("this is not valid ICS");
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_multiple_exdate_properties_roundtrip() {
         // Test with multiple separate EXDATE properties
         let ics = r#"BEGIN:VCALENDAR
