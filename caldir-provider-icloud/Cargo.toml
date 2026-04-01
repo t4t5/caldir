@@ -1,6 +1,6 @@
 [package]
 name = "caldir-provider-icloud"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 description = "iCloud Calendar provider for caldir-cli"
 license.workspace = true
@@ -15,10 +15,10 @@ path = "src/main.rs"
 
 [dependencies]
 # Shared types
-caldir-core = { path = "../caldir-core", version = "0.7.0" }
+caldir-core = { path = "../caldir-core", version = "0.7.1" }
 
 # Generic CalDAV operations
-caldir-provider-caldav = { path = "../caldir-provider-caldav", version = "0.1.3" }
+caldir-provider-caldav = { path = "../caldir-provider-caldav", version = "0.1.5" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
