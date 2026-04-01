@@ -9,12 +9,27 @@ use icalendar::{
     parser::{Property, read_calendar, unfold},
 };
 
-/// Parse ICS content into an Event struct
+/// Parse ICS content into an Event struct (returns the first VEVENT)
 pub fn parse_event(content: &str) -> Option<Event> {
-    let unfolded = unfold(content);
-    let calendar = read_calendar(&unfolded).ok()?;
-    let vevent = calendar.components.iter().find(|c| c.name == "VEVENT")?;
+    parse_events(content).ok()?.into_iter().next()
+}
 
+/// Parse ICS content into Event structs for all VEVENTs in the file
+pub fn parse_events(content: &str) -> Result<Vec<Event>, String> {
+    let unfolded = unfold(content);
+    let calendar =
+        read_calendar(&unfolded).map_err(|e| format!("Failed to parse ICS content: {e}"))?;
+
+    Ok(calendar
+        .components
+        .iter()
+        .filter(|c| c.name == "VEVENT")
+        .filter_map(parse_vevent)
+        .collect())
+}
+
+/// Parse a single VEVENT component into an Event
+fn parse_vevent(vevent: &icalendar::parser::Component) -> Option<Event> {
     // Required fields
     let uid = vevent.find_prop("UID")?.val.to_string();
     let summary = vevent
@@ -379,6 +394,47 @@ END:VCALENDAR"#;
                 other => panic!("Expected DateTimeZoned, got {:?}", other),
             }
         }
+    }
+
+    #[test]
+    fn test_parse_events_multiple_vevents() {
+        let ics = r#"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:TEST
+BEGIN:VEVENT
+UID:event-1
+SUMMARY:Morning Standup
+DTSTART:20250320T090000Z
+DTEND:20250320T091500Z
+END:VEVENT
+BEGIN:VEVENT
+UID:event-2
+SUMMARY:Lunch
+DTSTART:20250320T120000Z
+DTEND:20250320T130000Z
+END:VEVENT
+BEGIN:VEVENT
+UID:event-3
+SUMMARY:Retro
+DTSTART:20250320T150000Z
+DTEND:20250320T160000Z
+END:VEVENT
+END:VCALENDAR"#;
+
+        let events = parse_events(ics).expect("Should parse multi-VEVENT ICS");
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].uid, "event-1");
+        assert_eq!(events[0].summary, "Morning Standup");
+        assert_eq!(events[1].uid, "event-2");
+        assert_eq!(events[1].summary, "Lunch");
+        assert_eq!(events[2].uid, "event-3");
+        assert_eq!(events[2].summary, "Retro");
+    }
+
+    #[test]
+    fn test_parse_events_invalid_ics_returns_error() {
+        let result = parse_events("this is not valid ICS");
+        assert!(result.is_err());
     }
 
     #[test]
