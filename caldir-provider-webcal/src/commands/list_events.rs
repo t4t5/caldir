@@ -29,7 +29,8 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
     let body = response.text().await?;
 
     // Parse all events from the ICS body
-    let all_events = parse_events(&body);
+    let all_events =
+        parse_events(&body).map_err(|e| anyhow::anyhow!("Failed to parse webcal feed: {e}"))?;
 
     // Parse the from/to date range
     let from_dt = DateTime::parse_from_rfc3339(&cmd.from)

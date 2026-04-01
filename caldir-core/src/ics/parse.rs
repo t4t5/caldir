@@ -11,23 +11,21 @@ use icalendar::{
 
 /// Parse ICS content into an Event struct (returns the first VEVENT)
 pub fn parse_event(content: &str) -> Option<Event> {
-    parse_events(content).into_iter().next()
+    parse_events(content).ok()?.into_iter().next()
 }
 
 /// Parse ICS content into Event structs for all VEVENTs in the file
-pub fn parse_events(content: &str) -> Vec<Event> {
+pub fn parse_events(content: &str) -> Result<Vec<Event>, String> {
     let unfolded = unfold(content);
-    let calendar = match read_calendar(&unfolded) {
-        Ok(cal) => cal,
-        Err(_) => return Vec::new(),
-    };
+    let calendar =
+        read_calendar(&unfolded).map_err(|e| format!("Failed to parse ICS content: {e}"))?;
 
-    calendar
+    Ok(calendar
         .components
         .iter()
         .filter(|c| c.name == "VEVENT")
         .filter_map(parse_vevent)
-        .collect()
+        .collect())
 }
 
 /// Parse a single VEVENT component into an Event
