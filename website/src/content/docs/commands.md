@@ -17,7 +17,7 @@ caldir connect google
 # Google with your own credentials
 caldir connect google --hosted=false
 
-# Apple iCloud
+# iCloud
 caldir connect icloud
 ```
 

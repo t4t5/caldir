@@ -13,8 +13,8 @@ caldir uses a plugin architecture for calendar providers. Each provider is a sep
 | Provider | Binary | Auth method |
 |---|---|---|
 | Google Calendar | `caldir-provider-google` | OAuth (hosted or self-hosted) |
-| Microsoft Outlook | `caldir-provider-outlook` | OAuth (hosted or self-hosted) |
-| Apple iCloud | `caldir-provider-icloud` | App-specific password (CalDAV) |
+| Outlook | `caldir-provider-outlook` | OAuth (hosted or self-hosted) |
+| iCloud | `caldir-provider-icloud` | App-specific password (CalDAV) |
 | Generic CalDAV | `caldir-provider-caldav` | Username + password |
 | Webcal (ICS feeds) | `caldir-provider-webcal` | None (public URLs) |
 
@@ -38,7 +38,7 @@ caldir connect google --hosted=false
 
 This will prompt you to create OAuth credentials in Google Cloud Console. In this mode, caldir.org is not involved at all.
 
-## Apple iCloud
+## iCloud
 
 ```bash
 caldir connect icloud
@@ -46,7 +46,7 @@ caldir connect icloud
 
 iCloud uses CalDAV with app-specific passwords. You'll be prompted to enter your Apple ID and an [app-specific password](https://support.apple.com/en-us/102654) (not your main Apple ID password).
 
-## Microsoft Outlook
+## Outlook
 
 Install the Outlook provider first (it's not included in the default `install.sh` bundle):
 

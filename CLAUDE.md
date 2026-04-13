@@ -121,9 +121,9 @@ The core CLI is completely provider-agnostic — it just passes provider-prefixe
 
 **Current providers**:
 - `caldir-provider-google` — Google Calendar (OAuth + REST API)
-- `caldir-provider-icloud` — Apple iCloud (CalDAV + app-specific passwords)
+- `caldir-provider-icloud` — iCloud (CalDAV + app-specific passwords)
 - `caldir-provider-caldav` — Generic CalDAV servers
-- `caldir-provider-outlook` — Microsoft Outlook Calendar (OAuth + Microsoft Graph API)
+- `caldir-provider-outlook` — Outlook Calendar (OAuth + Microsoft Graph API)
 
 ## Module Architecture
 
@@ -182,7 +182,7 @@ caldir-provider-google/        # Google Calendar provider (separate crate)
     commands/      - Command handlers (connect, list_calendars, list_events, etc.)
     google_event/  - Conversion between Google API types and caldir_core types
 
-caldir-provider-outlook/       # Microsoft Outlook provider (separate crate)
+caldir-provider-outlook/       # Outlook provider (separate crate)
   src/
     main.rs          - JSON protocol handler (reads stdin, writes stdout)
     app_config.rs    - Azure AD OAuth credentials (~/.config/caldir/providers/outlook/app_config.toml)
@@ -369,7 +369,7 @@ caldir connect google
 # Connect with your own Google Cloud credentials
 caldir connect google --hosted=false
 
-# Connect to Microsoft Outlook Calendar (Azure AD app credentials)
+# Connect to Outlook Calendar (Azure AD app credentials)
 caldir connect outlook
 
 # Create a new local event (uses default_calendar from config)

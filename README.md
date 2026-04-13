@@ -63,7 +63,7 @@ Make sure you have [Rust and Cargo](https://rust-lang.org/learn/get-started/) in
 ```bash
 cargo install --path caldir-cli
 cargo install --path caldir-provider-google   # Google Calendar
-cargo install --path caldir-provider-icloud   # Apple iCloud
+cargo install --path caldir-provider-icloud   # iCloud
 ```
 </details>
 

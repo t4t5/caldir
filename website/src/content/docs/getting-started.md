@@ -24,7 +24,7 @@ git clone https://github.com/t4t5/caldir
 cd caldir
 cargo install --path caldir-cli
 cargo install --path caldir-provider-google   # Google Calendar
-cargo install --path caldir-provider-icloud   # Apple iCloud
+cargo install --path caldir-provider-icloud   # iCloud
 cargo install --path caldir-provider-caldav   # Caldav
 cargo install --path caldir-provider-outlook  # Outlook
 cargo install --path caldir-provider-webcal   # Webcal (ICS feeds)
@@ -38,7 +38,7 @@ cargo install --path caldir-provider-webcal   # Webcal (ICS feeds)
 # Google Calendar
 caldir connect google
 
-# Apple iCloud
+# iCloud
 caldir connect icloud
 
 # Caldav
