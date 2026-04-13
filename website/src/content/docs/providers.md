@@ -38,11 +38,21 @@ caldir connect google --hosted=false
 
 This will prompt you to create OAuth credentials in Google Cloud Console. In this mode, caldir.org is not involved at all.
 
-### Multiple accounts
+## Apple iCloud
 
-You can connect multiple Google accounts by running `caldir connect google` multiple times. Each account's calendars will be synced independently.
+```bash
+caldir connect icloud
+```
+
+iCloud uses CalDAV with app-specific passwords. You'll be prompted to enter your Apple ID and an [app-specific password](https://support.apple.com/en-us/102654) (not your main Apple ID password).
 
 ## Microsoft Outlook
+
+Install the Outlook provider first (it's not included in the default `install.sh` bundle):
+
+```bash
+cargo install caldir-provider-outlook
+```
 
 ### Hosted auth (recommended)
 
@@ -62,19 +72,8 @@ caldir connect outlook --hosted=false
 
 This will prompt you to register an app in the Azure portal and provide a client ID and secret.
 
-### Multiple accounts
 
-You can connect multiple Outlook accounts by running `caldir connect outlook` multiple times.
-
-## Apple iCloud
-
-```bash
-caldir connect icloud
-```
-
-iCloud uses CalDAV with app-specific passwords. You'll be prompted to enter your Apple ID and an [app-specific password](https://support.apple.com/en-us/102654) (not your main Apple ID password).
-
-## Generic CalDAV
+## Other CalDAV server
 
 ```bash
 caldir connect caldav

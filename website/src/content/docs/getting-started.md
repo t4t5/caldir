@@ -45,6 +45,10 @@ caldir connect icloud
 caldir connect caldav
 
 # Outlook
+# Install provider first (not included in default install)
+cargo install caldir-provider-outlook
+
+# Then connect
 caldir connect outlook
 
 # Webcal (ICS feed)
