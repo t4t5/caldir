@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
+use crate::calendar::group::Group;
 use crate::error::{CalDirError, CalDirResult};
 use config::{Config, File};
 
@@ -74,6 +75,42 @@ impl Caldir {
     pub fn default_calendar(&self) -> Option<Calendar> {
         let name = self.config.default_calendar.as_ref()?;
         self.calendars().into_iter().find(|c| &c.slug == name)
+    }
+
+    /// Look up a calendar by slug. Errors with a message listing available
+    /// slugs if no match.
+    pub fn calendar(&self, slug: &str) -> CalDirResult<Calendar> {
+        let all = self.calendars();
+        if let Some(cal) = all.iter().find(|c| c.slug == slug) {
+            return Ok(cal.clone());
+        }
+        let available: Vec<String> = all.into_iter().map(|c| c.slug).collect();
+        Err(CalDirError::CalendarNotFound(format!(
+            "'{}' (available: {})",
+            slug,
+            available.join(", ")
+        )))
+    }
+
+    /// All known groups across every calendar, deduped and sorted. A group
+    /// "exists" iff at least one calendar declares membership.
+    pub fn all_groups(&self) -> Vec<Group> {
+        let mut groups: Vec<Group> = self
+            .calendars()
+            .into_iter()
+            .flat_map(|c| c.config.groups)
+            .collect();
+        groups.sort();
+        groups.dedup();
+        groups
+    }
+
+    /// Calendars that declare membership in the given group.
+    pub fn calendars_in_group(&self, group: &Group) -> Vec<Calendar> {
+        self.calendars()
+            .into_iter()
+            .filter(|c| c.config.groups.iter().any(|g| g == group))
+            .collect()
     }
 
     /// Set the default calendar if one isn't already configured.

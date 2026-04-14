@@ -188,8 +188,38 @@ enum Commands {
     },
     #[command(about = "Show configuration paths and calendar info")]
     Config,
+    #[command(about = "Manage calendar groups")]
+    Group {
+        #[command(subcommand)]
+        command: GroupCommands,
+    },
     #[command(about = "Update caldir and installed providers to the latest version")]
     Update,
+}
+
+#[derive(Subcommand)]
+enum GroupCommands {
+    #[command(about = "Add a calendar to a group")]
+    Add {
+        /// Calendar slug
+        calendar: String,
+        /// Group name
+        name: String,
+    },
+    #[command(about = "Remove a calendar from a group")]
+    Remove {
+        /// Calendar slug
+        calendar: String,
+        /// Group name
+        name: String,
+    },
+    #[command(about = "List all known groups")]
+    List,
+    #[command(about = "List calendars in a group")]
+    Members {
+        /// Group name
+        name: String,
+    },
 }
 
 #[tokio::main]
@@ -334,6 +364,14 @@ async fn main() -> Result<()> {
             commands::rsvp::run(path, response)
         }
         Commands::Config => commands::config::run(),
+        Commands::Group { command } => match command {
+            GroupCommands::Add { calendar, name } => commands::group::add::run(&calendar, &name),
+            GroupCommands::Remove { calendar, name } => {
+                commands::group::remove::run(&calendar, &name)
+            }
+            GroupCommands::List => commands::group::list::run(),
+            GroupCommands::Members { name } => commands::group::members::run(&name),
+        },
         Commands::Update => commands::update::run().await,
     }
 }

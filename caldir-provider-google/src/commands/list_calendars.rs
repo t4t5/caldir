@@ -35,6 +35,7 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
                 color: Some(cal.background_color.clone()),
                 read_only: Some(read_only),
                 remote: Some(remote),
+                groups: vec![],
             }
         })
         .collect();

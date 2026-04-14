@@ -4,6 +4,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::calendar::group::Group;
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::Remote;
 
@@ -14,6 +15,8 @@ pub struct CalendarConfig {
     pub color: Option<String>,
     pub read_only: Option<bool>,
     pub remote: Option<Remote>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<Group>,
 }
 
 impl CalendarConfig {

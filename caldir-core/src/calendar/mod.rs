@@ -2,6 +2,7 @@
 
 pub mod config;
 mod event;
+pub mod group;
 mod state;
 
 use std::collections::HashMap;
@@ -14,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::caldir::Caldir;
 use crate::calendar::config::CalendarConfig;
 use crate::calendar::event::CalendarEvent;
+use crate::calendar::group::Group;
 use crate::calendar::state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::{Event, EventStatus, EventTime};
@@ -92,6 +94,29 @@ impl Calendar {
 
     pub fn save_config(&self) -> CalDirResult<()> {
         self.config.save(&self.path()?)
+    }
+
+    /// Add this calendar to a group. Returns true if added, false if already
+    /// a member (idempotent).
+    pub fn add_to_group(&mut self, group: &Group) -> CalDirResult<bool> {
+        if self.config.groups.iter().any(|g| g == group) {
+            return Ok(false);
+        }
+        self.config.groups.push(group.clone());
+        self.save_config()?;
+        Ok(true)
+    }
+
+    /// Remove this calendar from a group. Returns true if removed, false if
+    /// not a member (idempotent).
+    pub fn remove_from_group(&mut self, group: &Group) -> CalDirResult<bool> {
+        let before = self.config.groups.len();
+        self.config.groups.retain(|g| g != group);
+        if self.config.groups.len() == before {
+            return Ok(false);
+        }
+        self.save_config()?;
+        Ok(true)
     }
 
     // EVENTS OPERATIONS:

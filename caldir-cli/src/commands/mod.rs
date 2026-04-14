@@ -2,6 +2,7 @@ pub mod config;
 pub mod connect;
 pub mod discard;
 pub mod events;
+pub mod group;
 pub mod invites;
 pub mod new;
 pub mod pull;

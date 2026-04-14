@@ -35,6 +35,7 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
                 color,
                 read_only: None,
                 remote: Some(remote),
+                groups: vec![],
             }
         })
         .collect();
