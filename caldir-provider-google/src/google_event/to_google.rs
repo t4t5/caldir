@@ -2,7 +2,7 @@ use caldir_core::event::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Transparency,
 };
 
-use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
+use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
 
 pub trait ToGoogle {
     fn to_google(&self) -> google_calendar::types::Event;
@@ -61,6 +61,13 @@ impl ToGoogle for Event {
             .map(|(_, v)| v.clone())
             .unwrap_or_default();
 
+        let color_id = self
+            .custom_properties
+            .iter()
+            .find(|(k, _)| k == PROVIDER_COLOR_ID_PROPERTY)
+            .map(|(_, v)| v.clone())
+            .unwrap_or_default();
+
         google_calendar::types::Event {
             id: google_event_id,
             i_cal_uid: self.uid.clone(),
@@ -76,6 +83,7 @@ impl ToGoogle for Event {
             recurrence,
             original_start_time,
             sequence: self.sequence.unwrap_or(0),
+            color_id,
             ..Default::default()
         }
     }

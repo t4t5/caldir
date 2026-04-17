@@ -4,7 +4,7 @@ use caldir_core::event::{
     Transparency,
 };
 
-use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
+use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
 
 pub trait FromGoogle {
     fn from_google(event: google_calendar::types::Event) -> Result<Self>
@@ -107,6 +107,9 @@ impl FromGoogle for Event {
         custom_properties.push((PROVIDER_EVENT_ID_PROPERTY.to_string(), event.id));
         if let Some(ref url) = conference_url {
             custom_properties.push(("X-GOOGLE-CONFERENCE".to_string(), url.clone()));
+        }
+        if !event.color_id.is_empty() {
+            custom_properties.push((PROVIDER_COLOR_ID_PROPERTY.to_string(), event.color_id));
         }
 
         Ok(Event {
