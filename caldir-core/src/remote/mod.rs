@@ -11,7 +11,7 @@ use crate::remote::protocol::{CreateEvent, DeleteEvent, ListEvents, UpdateEvent}
 use crate::remote::provider::Provider;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct RemoteConfig(pub HashMap<String, toml::Value>);
 
 impl From<&RemoteConfig> for serde_json::Map<String, serde_json::Value> {
@@ -25,7 +25,7 @@ impl From<&RemoteConfig> for serde_json::Map<String, serde_json::Value> {
 }
 
 /// Remote provider configuration (e.g., Google Calendar settings)
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Remote {
     pub provider: Provider,
     #[serde(flatten)]

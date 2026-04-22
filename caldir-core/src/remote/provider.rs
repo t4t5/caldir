@@ -25,7 +25,7 @@ const PROVIDER_TIMEOUT: Duration = Duration::from_secs(15);
 /// No timeout for auth commands since they involve user interaction.
 const AUTH_TIMEOUT: Duration = Duration::from_secs(300);
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Provider(String);
 
 impl fmt::Display for Provider {

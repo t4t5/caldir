@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
+use caldir_core::calendar::config::CalendarConfig;
 use caldir_core::date_range::DateRange;
 use caldir_core::remote::protocol::{
     ConnectResponse, ConnectStepKind, CredentialsData, FieldType, HostedOAuthData, OAuthData,
@@ -174,6 +175,38 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     }
 
     println!("Found {} calendar(s).\n", calendar_configs.len());
+
+    // Skip calendars whose remote already matches a local one — keeps re-running
+    // `connect` idempotent instead of spawning `personal-2/` next to `personal/`.
+    let existing = Caldir::load()?.calendars();
+
+    let mut new_configs: Vec<CalendarConfig> = Vec::new();
+    let mut skipped: Vec<(CalendarConfig, String)> = Vec::new();
+    for cfg in calendar_configs {
+        let existing_cal = cfg
+            .remote
+            .as_ref()
+            .and_then(|remote| existing.iter().find(|cal| cal.remote() == Some(remote)));
+        match existing_cal {
+            Some(cal) => skipped.push((cfg, cal.slug.clone())),
+            None => new_configs.push(cfg),
+        }
+    }
+
+    if !skipped.is_empty() {
+        println!("Skipping {} already-connected calendar(s):", skipped.len());
+        for (cfg, slug) in &skipped {
+            let name = cfg.name.as_deref().unwrap_or("Unnamed");
+            println!("  - {name} ({slug}/)");
+        }
+        println!();
+    }
+
+    if new_configs.is_empty() {
+        println!("All calendars for this account are already connected.");
+        return Ok(());
+    }
+    let calendar_configs = new_configs;
 
     // Build selection items with calendar names
     let items: Vec<String> = calendar_configs
