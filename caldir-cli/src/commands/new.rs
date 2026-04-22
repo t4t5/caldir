@@ -186,10 +186,22 @@ fn expand_abbreviations(input: &str) -> String {
     result
 }
 
-/// Parse a natural language date/time string into an EventTime.
-/// If the input contains time tokens (am/pm, HH:MM, noon, midnight, "at"),
-/// returns DateTimeZoned with the system timezone. Otherwise returns Date (all-day).
+/// Parse a date/time string into an EventTime.
+/// Tries ISO 8601 formats first (e.g. "2026-06-09T10:00"), then falls back
+/// to fuzzydate natural language parsing (e.g. "tomorrow 6pm").
 fn parse_datetime(input: &str) -> Result<EventTime> {
+    // Try ISO 8601 datetime first (YYYY-MM-DDTHH:MM)
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(input, "%Y-%m-%dT%H:%M") {
+        let tzid = iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".to_string());
+        return Ok(EventTime::DateTimeZoned { datetime: dt, tzid });
+    }
+
+    // Try ISO 8601 date-only (YYYY-MM-DD)
+    if let Ok(d) = chrono::NaiveDate::parse_from_str(input, "%Y-%m-%d") {
+        return Ok(EventTime::Date(d));
+    }
+
+    // Fall back to natural language parsing
     let expanded = expand_abbreviations(input);
     let dt = fuzzydate::parse(&expanded)
         .map_err(|_| anyhow::anyhow!("Could not parse date/time: \"{}\"", input))?;
@@ -360,7 +372,7 @@ fn resolve_calendar(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Datelike, NaiveDate};
+    use chrono::{Datelike, NaiveDate, Timelike};
 
     // --- has_time_component ---
 
@@ -457,6 +469,26 @@ mod tests {
         if let EventTime::Date(d) = result {
             assert_eq!(d.month(), 3);
             assert_eq!(d.day(), 20);
+        }
+    }
+
+    #[test]
+    fn parse_datetime_iso_datetime() {
+        let result = parse_datetime("2026-06-09T10:00").unwrap();
+        assert!(matches!(result, EventTime::DateTimeZoned { .. }));
+        if let EventTime::DateTimeZoned { datetime, .. } = result {
+            assert_eq!(datetime.date(), NaiveDate::from_ymd_opt(2026, 6, 9).unwrap());
+            assert_eq!(datetime.hour(), 10);
+            assert_eq!(datetime.minute(), 0);
+        }
+    }
+
+    #[test]
+    fn parse_datetime_iso_date_only() {
+        let result = parse_datetime("2026-06-09").unwrap();
+        assert!(matches!(result, EventTime::Date(_)));
+        if let EventTime::Date(d) = result {
+            assert_eq!(d, NaiveDate::from_ymd_opt(2026, 6, 9).unwrap());
         }
     }
 
