@@ -132,7 +132,6 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
     border-radius: 6px;
     padding: 18px;
     margin: 0;
-    overflow-x: auto;
     background: transparent;
   }
 
@@ -141,6 +140,8 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
     padding: 0;
     line-height: 1.4;
     color: var(--color-text-code);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .caldir-prose :global(table) {

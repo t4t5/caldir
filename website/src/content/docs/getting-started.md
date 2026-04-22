@@ -10,7 +10,7 @@ order: 1
 curl -sSf https://caldir.org/install.sh | sh
 ```
 
-This installs the `caldir` CLI and the default provider plugins.
+This installs the `caldir` CLI and the default [provider plugins](/providers).
 
 <details>
 <summary>Or install from source</summary>
@@ -18,14 +18,19 @@ This installs the `caldir` CLI and the default provider plugins.
 Make sure you have [Rust and Cargo](https://rust-lang.org/learn/get-started/) installed.
 
 ```bash
+# Clone the repo:
 git clone https://github.com/t4t5/caldir
+
+# Install the CLI:
 cd caldir
 cargo install --path caldir-cli
-cargo install --path caldir-provider-google   # Google Calendar
-cargo install --path caldir-provider-icloud   # iCloud
-cargo install --path caldir-provider-caldav   # Caldav
-cargo install --path caldir-provider-outlook  # Outlook
-cargo install --path caldir-provider-webcal   # Webcal (ICS feeds)
+
+# Install the providers you want:
+cargo install --path caldir-provider-google
+cargo install --path caldir-provider-icloud
+cargo install --path caldir-provider-caldav
+cargo install --path caldir-provider-outlook
+cargo install --path caldir-provider-webcal
 ```
 
 </details>
@@ -33,39 +38,26 @@ cargo install --path caldir-provider-webcal   # Webcal (ICS feeds)
 ## Connect a calendar
 
 ```bash
-# Google Calendar
-caldir connect google
+caldir connect google # Google Cal
 
-# iCloud
-caldir connect icloud
+caldir connect icloud # iCloud
 
-# Caldav
-caldir connect caldav
+caldir connect caldav # CalDAV
 
-# Outlook
-# Install provider first (not included in default install)
-cargo install caldir-provider-outlook
+caldir connect outlook # Outlook
 
-# Then connect
-caldir connect outlook
-
-# Webcal (ICS feed)
-caldir connect webcal
+caldir connect webcal # Public ICS feeds
 ```
 
-This opens your browser for authentication (or prompts for a URL for webcal), fetches your calendars, and creates a local directory for each one under `~/caldir/`.
+Complete the authentication so that your calendars can be fetched.
 
 ## Sync your events
 
 ```bash
-# Pull remote events to local
 caldir pull
-
-# Your calendar is now in ~/caldir/
-ls ~/caldir/
 ```
 
-After pulling, you'll have a directory structure like:
+Your ICS files should now appear in your directory!
 
 ```
 ~/caldir/
