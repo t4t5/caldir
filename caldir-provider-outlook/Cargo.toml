@@ -37,5 +37,3 @@ chrono = { version = "0.4", features = ["serde"] }
 # URL parsing
 url = "2"
 
-# Platform-native config directories
-dirs = "6"

@@ -55,11 +55,7 @@ fn is_default_time_format(f: &TimeFormat) -> bool {
 
 impl CaldirConfig {
     pub fn config_path() -> CalDirResult<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| CalDirError::Config("Could not determine config directory".into()))?
-            .join("caldir");
-
-        Ok(config_dir.join("config.toml"))
+        Ok(crate::paths::caldir_config_dir()?.join("config.toml"))
     }
 
     /// Save the current config to ~/.config/caldir/config.toml

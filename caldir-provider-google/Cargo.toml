@@ -44,5 +44,3 @@ open = "5"
 # URL parsing
 url = "2"
 
-# Platform-native config directories
-dirs = "6"

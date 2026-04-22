@@ -8,8 +8,7 @@ order: 5
 
 Global settings are configured in:
 
-- `~/.config/caldir/config.toml` (Linux)
-- `~/Library/Application Support/caldir/config.toml` (macOS)
+- `~/.config/caldir/config.toml` (Linux, macOS)
 - `%APPDATA%/caldir/config.toml` (Windows)
 
 Example config file:

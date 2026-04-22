@@ -114,8 +114,7 @@ caldir sync                # Push/Pull changes
 **Caldir's global settings** are stored in in your system's config directory:
 
 ```toml
-# ~/.config/caldir/config.toml (Linux)
-# ~/Library/Application Support/caldir/config.toml (macOS)
+# ~/.config/caldir/config.toml
 calendar_dir = "~/caldir"
 default_calendar = "personal"
 ```

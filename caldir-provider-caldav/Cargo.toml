@@ -49,8 +49,6 @@ roxmltree = "0.21"
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
-# Platform-native config directories
-dirs = "6"
 
 # URL parsing
 url = "2"

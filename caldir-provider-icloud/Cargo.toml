@@ -31,5 +31,3 @@ toml = "0.9"
 # Error handling
 anyhow = "1"
 
-# Platform-native config directories
-dirs = "6"
