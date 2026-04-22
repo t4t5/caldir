@@ -124,7 +124,7 @@ caldir new "Sprint planning" --start 2025-03-22T10:00 --calendar work
 
 If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed events or 1 day for all-day events.
 
-If `default_reminders` is set in your [global config](/docs/configuration), those reminders are added to every new event automatically. Use `--no-reminders` to override this.
+If `default_reminders` is set in your [global config](/configuration), those reminders are added to every new event automatically. Use `--no-reminders` to override this.
 
 ## `caldir events`
 
