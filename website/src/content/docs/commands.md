@@ -27,6 +27,25 @@ You can connect multiple accounts by running the command multiple times.
 
 ---
 
+## `caldir status`
+
+Show pending changes per calendar, similar to `git status`.
+
+```bash
+caldir status
+
+# Show all event diffs instead of a summary
+caldir status --verbose
+
+# Status for a specific date range
+caldir status --from 2024-01-01 --to 2024-12-31
+
+# Status for one calendar
+caldir status --calendar work
+```
+
+---
+
 ## `caldir pull`
 
 Download remote changes to local.
@@ -74,25 +93,6 @@ caldir sync --from 2024-01-01 --to 2024-12-31
 
 # Sync only one calendar
 caldir sync --calendar work
-```
-
----
-
-## `caldir status`
-
-Show pending changes per calendar, similar to `git status`.
-
-```bash
-caldir status
-
-# Show all event diffs instead of a summary
-caldir status --verbose
-
-# Status for a specific date range
-caldir status --from 2024-01-01 --to 2024-12-31
-
-# Status for one calendar
-caldir status --calendar work
 ```
 
 ---

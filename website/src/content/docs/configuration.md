@@ -6,9 +6,7 @@ order: 5
 
 # Configuration
 
-## Global config
-
-Global settings live in:
+General Caldir settings live in:
 
 - `~/.config/caldir/config.toml` (Linux)
 - `~/Library/Application Support/caldir/config.toml` (macOS)

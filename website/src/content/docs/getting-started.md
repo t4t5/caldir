@@ -6,8 +6,6 @@ order: 1
 
 # Quickstart
 
-## Install
-
 ```bash
 curl -sSf https://caldir.org/install.sh | sh
 ```
@@ -15,7 +13,7 @@ curl -sSf https://caldir.org/install.sh | sh
 This installs the `caldir` CLI and the default provider plugins.
 
 <details>
-<summary>Install from source</summary>
+<summary>Or install from source</summary>
 
 Make sure you have [Rust and Cargo](https://rust-lang.org/learn/get-started/) installed.
 

@@ -1,10 +1,9 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
 import DocsSidebar from "../components/DocsSidebar.astro";
+import DocsPrevNextNav from "../components/DocsPrevNextNav.astro";
 import Footer from "../components/Footer.astro";
 import { docsLinks } from "../data/docs-links";
-import ChevronLeft from "../icons/chevron-left.astro";
-import ChevronRight from "../icons/chevron-right.astro";
 import Logo from "../icons/logo.astro";
 
 interface Props {
@@ -60,22 +59,7 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
         <slot />
       </article>
 
-      {(prevLink || nextLink) && (
-        <nav class="flex justify-between w-full">
-          {prevLink ? (
-            <a href={prevLink.href} class="text-[15px] text-text-muted hover:text-text-body flex items-center gap-1.5">
-              <ChevronLeft class="size-[18px]" />
-              {prevLink.title}
-            </a>
-          ) : <span />}
-          {nextLink && (
-            <a href={nextLink.href} class="text-[15px] font-medium text-text-link ml-auto flex items-center gap-1.5">
-              {nextLink.title}
-              <ChevronRight class="size-[18px]" />
-            </a>
-          )}
-        </nav>
-      )}
+      <DocsPrevNextNav prevLink={prevLink} nextLink={nextLink} variant="mobile" />
 
       <Footer />
     </main>
@@ -91,22 +75,7 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
           <slot />
         </article>
 
-        {(prevLink || nextLink) && (
-          <nav class="flex justify-between w-full">
-            {prevLink ? (
-              <a href={prevLink.href} class="no-underline text-[15px] text-text-muted hover:underline flex items-center gap-1.5">
-                <ChevronLeft class="size-[18px]" />
-                {prevLink.title}
-              </a>
-            ) : <span />}
-            {nextLink && (
-              <a href={nextLink.href} class="no-underline hover:underline text-[15px] font-medium text-text-link ml-auto flex items-center gap-1.5">
-                {nextLink.title}
-                <ChevronRight class="size-[18px]" />
-              </a>
-            )}
-          </nav>
-        )}
+        <DocsPrevNextNav prevLink={prevLink} nextLink={nextLink} variant="desktop" />
 
         <Footer />
       </main>
