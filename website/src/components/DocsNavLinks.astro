@@ -1,0 +1,25 @@
+---
+import { docsLinks } from "../data/docs-links";
+
+interface Props {
+  currentSlug?: string;
+}
+
+const { currentSlug } = Astro.props;
+---
+
+<ul class="flex flex-col gap-3 text-[15px] list-none p-0">
+  {docsLinks.map((link) => (
+    <li>
+      <a
+        href={link.href}
+        class:list={[
+          "block no-underline",
+          currentSlug === link.slug ? "text-text-body" : "text-text-muted hover:text-text-body",
+        ]}
+      >
+        {link.title}
+      </a>
+    </li>
+  ))}
+</ul>

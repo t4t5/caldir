@@ -1,0 +1,34 @@
+---
+import ChevronLeft from "../icons/chevron-left.astro";
+import ChevronRight from "../icons/chevron-right.astro";
+
+interface DocsLink {
+  href: string;
+  title: string;
+}
+
+interface Props {
+  prevLink: DocsLink | null;
+  nextLink: DocsLink | null;
+  variant: "mobile" | "desktop";
+}
+
+const { prevLink, nextLink, variant } = Astro.props;
+---
+
+{(prevLink || nextLink) && (
+  <nav class="flex justify-between w-full">
+    {prevLink ? (
+      <a href={prevLink.href} class="no-underline text-[15px] text-text-muted hover:underline flex items-center gap-1.5">
+        <ChevronLeft class="size-[18px]" />
+        {prevLink.title}
+      </a>
+    ) : <span />}
+    {nextLink && (
+      <a href={nextLink.href} class="no-underline hover:underline text-[15px] font-medium text-text-link ml-auto flex items-center gap-1.5">
+        {nextLink.title}
+        <ChevronRight class="size-[18px]" />
+      </a>
+    )}
+  </nav>
+)}

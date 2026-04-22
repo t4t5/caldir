@@ -1,41 +1,29 @@
 ---
-title: What is caldir?
+title: Overview
 description: Your calendar as a directory of plain text files
 order: 0
 ---
 
-# What is caldir?
+# Your calendar as a directory
 
-caldir is a convention and a sync tool. Your calendar is a directory of `.ics` files, one event per file, with human-readable filenames:
+Caldir is a tool for storing your calendar data as a directory of ICS files:
 
 ```
 ~/caldir/
-├── home/
+├── google/
 │   └── 2025-03-25T0900__dentist.ics
-└── work/
+└── outlook/
     ├── 2025-03-20T1500__client-call.ics
     └── 2025-03-26T1400__sprint-planning.ics
 ```
 
-It can sync bidirectionally with providers like Google Calendar and iCloud, so your events stay up to date in both directions.
+It syncs with a range of providers (Google Calendar, iCloud, Outlook, CalDAV...) using git-like pull/push actions.
 
-## Why
+## Why?
 
-Calendars already have an open, text-based format, `.ics` files, but we don't treat them as first-class. They're hidden behind APIs, proprietary sync layers, and typically only used for exports.
+Calendars today are often hidden behind APIs and proprietary sync layers, limiting what you can
+do.
 
-caldir puts them on disk where they're useful. `grep` can search it. A shell script can process it. An LLM can reason about it.
+By turning them into simple plaintext files, you can search your data blazingly quickly with `grep`, and set up advanced workflows using scripts and LLMs.
 
-## Sync like git
-
-Most people still want services like Google Calendar. It syncs everywhere, works on phones, and is deeply embedded in how teams operate.
-
-caldir doesn't replace that. It just flips the default:
-
-- **Local files are the source of truth**
-- Cloud calendars become sync targets
-
-That way you can reason locally, automate freely, and you're never locked in.
-
-## Own your data
-
-Every event is a standard [RFC 5545](https://tools.ietf.org/html/rfc5545) `.ics` file. You can open them in any calendar app, move them around, or sync them with other tools.
+It also makes it trivial to migrate your data from one provider to another.

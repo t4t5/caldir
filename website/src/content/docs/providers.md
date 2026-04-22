@@ -12,9 +12,9 @@ caldir uses a plugin architecture for calendar providers. Each provider is a sep
 
 | Provider | Binary | Auth method |
 |---|---|---|
-| Google Calendar | `caldir-provider-google` | OAuth (hosted or self-hosted) |
-| Outlook | `caldir-provider-outlook` | OAuth (hosted or self-hosted) |
-| iCloud | `caldir-provider-icloud` | App-specific password (CalDAV) |
+| Google Calendar | `caldir-provider-google` | OAuth (hosted/self-hosted) |
+| Outlook | `caldir-provider-outlook` | OAuth (hosted/self-hosted) |
+| iCloud | `caldir-provider-icloud` | App-specific password |
 | Generic CalDAV | `caldir-provider-caldav` | Username + password |
 | Webcal (ICS feeds) | `caldir-provider-webcal` | None (public URLs) |
 

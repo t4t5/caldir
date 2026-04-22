@@ -1,7 +1,7 @@
 export const docsLinks = [
-  { slug: "what-is-caldir", title: "What is caldir?" },
-  { slug: "getting-started", title: "Getting started" },
-  { slug: "commands", title: "Commands" },
-  { slug: "providers", title: "Providers" },
-  { slug: "configuration", title: "Configuration" },
+  { slug: "what-is-caldir", title: "Overview", href: "/" },
+  { slug: "quickstart", title: "Quickstart", href: "/quickstart" },
+  { slug: "commands", title: "Commands", href: "/commands" },
+  { slug: "providers", title: "Providers", href: "/providers" },
+  { slug: "configuration", title: "Configuration", href: "/configuration" },
 ];

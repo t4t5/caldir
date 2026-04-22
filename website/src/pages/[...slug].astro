@@ -1,0 +1,21 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { getCollection, render } from "astro:content";
+
+export async function getStaticPaths() {
+  const docs = await getCollection("docs");
+  return docs
+    .filter((doc) => doc.id !== "what-is-caldir")
+    .map((doc) => ({
+      params: { slug: doc.id },
+      props: { doc },
+    }));
+}
+
+const { doc } = Astro.props;
+const { Content } = await render(doc);
+---
+
+<Layout title={doc.data.title} currentSlug={doc.id}>
+  <Content />
+</Layout>

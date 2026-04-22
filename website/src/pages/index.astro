@@ -1,32 +1,12 @@
 ---
-import BaseLayout from "../layouts/BaseLayout.astro";
-import TerminalDemo from "../components/TerminalDemo.astro";
-import CodeBlock from "../components/CodeBlock.astro";
+import Layout from "../layouts/Layout.astro";
+import { getEntry, render } from "astro:content";
+
+const entry = await getEntry("docs", "what-is-caldir");
+if (!entry) throw new Error("Missing docs collection entry: what-is-caldir");
+const { Content } = await render(entry);
 ---
 
-<BaseLayout title="Caldir">
-  <main class="max-w-[640px] mx-auto px-6 py-20">
-    <div class="flex items-center gap-3 mb-1">
-      <img class="w-9 h-9 block" src="/logo.svg" alt="caldir logo">
-      <h1 class="text-[2rem] font-bold my-0">caldir</h1>
-    </div>
-    <p class="text-muted text-lg mb-8">"File over app" for calendars.</p>
-
-    <div class="mb-6">
-      <TerminalDemo />
-    </div>
-
-    <p class="mb-4">Sync your Google Calendar and iCloud to a local directory of <code class="bg-code-bg px-1.5 py-0.5 rounded text-sm">.ics</code> files.<br />Store your events in a portable plaintext format that your LLM and unix tools can use.</p>
-
-    <h2 class="text-sm text-muted/70 uppercase mb-2 mt-8">Quickstart</h2>
-    <div class="mb-4">
-      <CodeBlock code="curl -sSf https://caldir.org/install.sh | sh" />
-    </div>
-
-    <div class="mt-8 flex gap-6">
-      <a class="text-link hover:underline" href="/docs/what-is-caldir">Docs</a>
-      <a class="text-link hover:underline" href="https://github.com/t4t5/caldir">GitHub</a>
-      <a class="text-link hover:underline" href="/privacy">Privacy</a>
-    </div>
-  </main>
-</BaseLayout>
+<Layout title="caldir" currentSlug="what-is-caldir">
+  <Content />
+</Layout>

@@ -1,32 +1,45 @@
 ---
-import { docsLinks } from "../data/docs-links";
+import fs from "node:fs";
+import path from "node:path";
+import DocsNavLinks from "./DocsNavLinks.astro";
+import GithubIcon from "../icons/github.astro";
+import Logo from "../icons/logo.astro";
 
 interface Props {
   currentSlug?: string;
 }
 
 const { currentSlug } = Astro.props;
+
+const cargoTomlPath = path.resolve("../caldir-cli/Cargo.toml");
+const cargoToml = fs.readFileSync(cargoTomlPath, "utf8");
+const version = cargoToml.match(/^version\s*=\s*"([^"]+)"/m)?.[1] ?? "";
 ---
 
-<aside class="hidden md:block w-48 shrink-0">
-  <nav class="sticky top-20">
-    <a href="/" class="text-muted text-sm mb-6 block hover:text-text">&larr; caldir.org</a>
-    <ul class="space-y-1.5">
-      {docsLinks.map((link) => (
-        <li>
-          <a
-            href={`/docs/${link.slug}`}
-            class:list={[
-              "block text-sm py-0.5",
-              currentSlug === link.slug
-                ? "text-link font-medium"
-                : "text-muted hover:text-text",
-            ]}
-          >
-            {link.title}
-          </a>
-        </li>
-      ))}
-    </ul>
+<aside class="hidden md:flex flex-col gap-8 w-[136px] shrink-0 sticky top-20 self-start">
+  <a href="/" aria-label="caldir home" class="block size-6 text-text-heading">
+    <Logo class="block size-6" />
+  </a>
+
+  <nav>
+    <DocsNavLinks currentSlug={currentSlug} />
   </nav>
+
+  <div class="flex items-center gap-0">
+    <a
+      href="https://crates.io/crates/caldir-cli"
+      target="_blank"
+      class="font-display text-[12px] text-text-muted hover:text-text-body no-underline w-[50px]"
+    >
+      v{version}
+    </a>
+    <a
+      href="https://github.com/t4t5/caldir"
+      target="_blank"
+      aria-label="GitHub repository"
+      class="block size-4 text-text-muted hover:text-text-body"
+    >
+      <GithubIcon class="block size-4" />
+    </a>
+  </div>
 </aside>

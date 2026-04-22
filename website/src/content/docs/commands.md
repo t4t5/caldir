@@ -25,7 +25,22 @@ This authenticates with the provider, fetches your calendars, and creates a loca
 
 You can connect multiple accounts by running the command multiple times.
 
----
+## `caldir status`
+
+Show pending changes per calendar, similar to `git status`.
+
+```bash
+caldir status
+
+# Show all event diffs instead of a summary
+caldir status --verbose
+
+# Status for a specific date range
+caldir status --from 2024-01-01 --to 2024-12-31
+
+# Status for one calendar
+caldir status --calendar work
+```
 
 ## `caldir pull`
 
@@ -44,8 +59,6 @@ caldir pull --from start
 caldir pull --calendar work
 ```
 
----
-
 ## `caldir push`
 
 Upload local changes to the remote.
@@ -60,8 +73,6 @@ caldir push --calendar work
 If you delete a local `.ics` file and run `push`, the event is also deleted from the remote.
 
 
----
-
 ## `caldir sync`
 
 Pull then push in one command. By default, only events within **365 days** of today (past and future) are synced. You can override this with `--from` and `--to`.
@@ -75,27 +86,6 @@ caldir sync --from 2024-01-01 --to 2024-12-31
 # Sync only one calendar
 caldir sync --calendar work
 ```
-
----
-
-## `caldir status`
-
-Show pending changes per calendar, similar to `git status`.
-
-```bash
-caldir status
-
-# Show all event diffs instead of a summary
-caldir status --verbose
-
-# Status for a specific date range
-caldir status --from 2024-01-01 --to 2024-12-31
-
-# Status for one calendar
-caldir status --calendar work
-```
-
----
 
 ## `caldir new`
 
@@ -134,9 +124,7 @@ caldir new "Sprint planning" --start 2025-03-22T10:00 --calendar work
 
 If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed events or 1 day for all-day events.
 
-If `default_reminders` is set in your [global config](/docs/configuration), those reminders are added to every new event automatically. Use `--no-reminders` to override this.
-
----
+If `default_reminders` is set in your [global config](/configuration), those reminders are added to every new event automatically. Use `--no-reminders` to override this.
 
 ## `caldir events`
 
@@ -152,8 +140,6 @@ caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
 caldir events --calendar work
 ```
 
----
-
 ## `caldir invites`
 
 List pending invites across all calendars (next 30 days). Shows organizer, file path, and current status for each invite.
@@ -167,8 +153,6 @@ caldir invites --all
 # Filter to one calendar
 caldir invites --calendar work
 ```
-
----
 
 ## `caldir rsvp`
 
@@ -187,8 +171,6 @@ caldir rsvp ~/caldir/work/2025-03-20T1500__standup.ics maybe
 
 Accepted response aliases: `accept`/`yes`/`y`, `decline`/`no`/`n`, `maybe`/`tentative`/`m`.
 
----
-
 ## `caldir discard`
 
 Discard unpushed local changes, reverting to the remote state. Locally created events are deleted, local edits are reverted, and locally deleted events are restored.
@@ -203,8 +185,6 @@ caldir discard --calendar work
 caldir discard --force
 ```
 
----
-
 ## `caldir config`
 
 Show configuration paths and calendar info.
@@ -212,8 +192,6 @@ Show configuration paths and calendar info.
 ```bash
 caldir config
 ```
-
----
 
 ## `caldir update`
 
