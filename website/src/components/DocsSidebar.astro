@@ -1,7 +1,7 @@
 ---
 import fs from "node:fs";
 import path from "node:path";
-import { docsLinks } from "../data/docs-links";
+import DocsNavLinks from "./DocsNavLinks.astro";
 import GithubIcon from "../icons/github.astro";
 import Logo from "../icons/logo.astro";
 
@@ -22,21 +22,7 @@ const version = cargoToml.match(/^version\s*=\s*"([^"]+)"/m)?.[1] ?? "";
   </a>
 
   <nav>
-    <ul class="flex flex-col gap-3 text-[15px] list-none p-0">
-      {docsLinks.map((link) => (
-        <li>
-          <a
-            href={link.href}
-            class:list={[
-              "block no-underline",
-              currentSlug === link.slug ? "text-text-body" : "text-text-muted hover:text-text-body",
-            ]}
-          >
-            {link.title}
-          </a>
-        </li>
-      ))}
-    </ul>
+    <DocsNavLinks currentSlug={currentSlug} />
   </nav>
 
   <div class="flex items-center gap-0">

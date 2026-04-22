@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
 import DocsSidebar from "../components/DocsSidebar.astro";
+import DocsNavLinks from "../components/DocsNavLinks.astro";
 import DocsPrevNextNav from "../components/DocsPrevNextNav.astro";
 import Footer from "../components/Footer.astro";
 import { docsLinks } from "../data/docs-links";
@@ -37,21 +38,7 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
     </header>
 
     <nav class="hidden w-full" data-mobile-nav>
-      <ul class="flex flex-col gap-3 text-[15px]">
-        {docsLinks.map((link) => (
-          <li>
-            <a
-              href={link.href}
-              class:list={[
-                "block",
-                currentSlug === link.slug ? "text-text-body" : "text-text-muted",
-              ]}
-            >
-              {link.title}
-            </a>
-          </li>
-        ))}
-      </ul>
+      <DocsNavLinks currentSlug={currentSlug} />
     </nav>
 
     <main class="flex flex-col gap-[40px] w-full">
