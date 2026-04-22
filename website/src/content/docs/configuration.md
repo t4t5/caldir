@@ -45,16 +45,3 @@ google_calendar_id = "primary"
 These files are created automatically by `caldir connect`. The provider returns the config fields to save (name, color, remote settings), so the CLI doesn't need to know about provider-specific fields.
 
 Calendars without `.caldir/config.toml` are treated as local-only (not synced).
-
-## Provider credentials
-
-Provider credentials and tokens are managed by each provider in its own directory:
-
-```
-~/.config/caldir/providers/google/
-├── app_config.toml              # OAuth client_id/secret (only for --hosted=false)
-└── session/
-    └── me@gmail.com.toml        # Access/refresh tokens (auto-refreshed)
-```
-
-Tokens are refreshed automatically when they expire.

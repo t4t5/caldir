@@ -3,6 +3,9 @@ import BaseLayout from "./BaseLayout.astro";
 import DocsSidebar from "../components/DocsSidebar.astro";
 import Footer from "../components/Footer.astro";
 import { docsLinks } from "../data/docs-links";
+import ChevronLeft from "../icons/chevron-left.astro";
+import ChevronRight from "../icons/chevron-right.astro";
+import Logo from "../icons/logo.astro";
 
 interface Props {
   title: string;
@@ -19,14 +22,14 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
   <!-- Mobile -->
   <div class="md:hidden flex flex-col gap-[38px] p-7 min-h-screen" data-mobile-root>
     <header class="flex items-center justify-between w-full">
-      <a href="/" aria-label="caldir home" class="block size-6">
-        <img src="/logo.svg" alt="caldir" class="block size-6" />
+      <a href="/" aria-label="caldir home" class="block size-6 text-text-heading">
+        <Logo class="block size-6" />
       </a>
       <button
         type="button"
         aria-label="Toggle navigation"
         aria-expanded="false"
-        class="size-6 relative text-logo cursor-pointer"
+        class="size-6 relative text-text-heading cursor-pointer"
         data-mobile-toggle
       >
         <span class="absolute left-1/2 top-1/2 -translate-x-1/2 block w-[15.43px] h-[2.57px] rounded-[3.86px] bg-current transition-transform -translate-y-[3.71px] group-open:translate-y-0 group-open:rotate-45" data-mobile-bar-top></span>
@@ -61,14 +64,14 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
         <nav class="flex justify-between w-full">
           {prevLink ? (
             <a href={prevLink.href} class="text-[15px] text-text-muted hover:text-text-body flex items-center gap-1.5">
-              <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" class="size-[18px]" aria-hidden="true"><path d="M11.25 4.5 6.75 9l4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <ChevronLeft class="size-[18px]" />
               {prevLink.title}
             </a>
           ) : <span />}
           {nextLink && (
             <a href={nextLink.href} class="text-[15px] font-medium text-text-link ml-auto flex items-center gap-1.5">
               {nextLink.title}
-              <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" class="size-[18px]" aria-hidden="true"><path d="M6.75 4.5 11.25 9l-4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <ChevronRight class="size-[18px]" />
             </a>
           )}
         </nav>
@@ -92,14 +95,14 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
           <nav class="flex justify-between w-full">
             {prevLink ? (
               <a href={prevLink.href} class="no-underline text-[15px] text-text-muted hover:underline flex items-center gap-1.5">
-                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" class="size-[18px]" aria-hidden="true"><path d="M11.25 4.5 6.75 9l4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <ChevronLeft class="size-[18px]" />
                 {prevLink.title}
               </a>
             ) : <span />}
             {nextLink && (
               <a href={nextLink.href} class="no-underline hover:underline text-[15px] font-medium text-text-link ml-auto flex items-center gap-1.5">
                 {nextLink.title}
-                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" class="size-[18px]" aria-hidden="true"><path d="M6.75 4.5 11.25 9l-4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <ChevronRight class="size-[18px]" />
               </a>
             )}
           </nav>
@@ -121,6 +124,10 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
     line-height: 1.2;
     color: var(--color-text-heading);
     margin: 0;
+  }
+
+  .caldir-prose :global(h1) {
+    font-size: 22px;
   }
 
   .caldir-prose :global(p) {
@@ -170,6 +177,11 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
     padding: 0;
     line-height: 1.4;
     color: var(--color-text-code);
+  }
+
+  .caldir-prose :global(table) {
+    font-size: 13px;
+    text-align: left;
   }
 
   /* Desktop code sizes */

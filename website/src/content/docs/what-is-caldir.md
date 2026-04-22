@@ -21,7 +21,7 @@ It syncs with a range of providers (Google Calendar, iCloud, Outlook, CalDAV...)
 
 ## Why?
 
-Calendar data today is typically hidden behind APIs and proprietary sync layers.
+Calendars today are typically hidden behind APIs and proprietary sync layers.
 
 By turning it into plaintext files on a disk, you can search your data with `grep`, automate it with a script, or use LLMs to analyze it.
 
