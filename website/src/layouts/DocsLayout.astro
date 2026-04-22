@@ -1,6 +1,7 @@
 ---
 import BaseLayout from "./BaseLayout.astro";
 import DocsSidebar from "../components/DocsSidebar.astro";
+import Footer from "../components/Footer.astro";
 import { docsLinks } from "../data/docs-links";
 
 interface Props {
@@ -9,86 +10,209 @@ interface Props {
 }
 
 const { title, currentSlug } = Astro.props;
-const currentTitle = docsLinks.find((l) => l.slug === currentSlug)?.title ?? "Docs";
 const currentIndex = docsLinks.findIndex((l) => l.slug === currentSlug);
 const prevLink = currentIndex > 0 ? docsLinks[currentIndex - 1] : null;
-const nextLink = currentIndex < docsLinks.length - 1 ? docsLinks[currentIndex + 1] : null;
+const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docsLinks[currentIndex + 1] : null;
 ---
 
-<BaseLayout title={`${title} — caldir docs`}>
-  <div class="max-w-5xl mx-auto px-6 py-12 md:py-20 md:flex md:gap-12">
-    <nav class="md:hidden mb-8 text-sm">
-      <div class="flex items-center justify-between">
-        <a href="/" class="text-muted hover:text-text">&larr; caldir.org</a>
-        <details class="group relative">
-          <summary class="cursor-pointer list-none flex items-center gap-1.5 text-link font-medium">
-            {currentTitle}
-            <svg class="w-4 h-4 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7" /></svg>
-          </summary>
-          <div class="fixed inset-0 group-open:block hidden" onclick="this.parentElement.removeAttribute('open')"></div>
-          <ul class="absolute right-0 mt-2 space-y-1.5 bg-bg border border-code-bg rounded-lg p-4 shadow-sm min-w-48 z-10">
-            {docsLinks.map((link) => (
-              <li class="list-none">
-                <a
-                  href={`/docs/${link.slug}`}
-                  class:list={[
-                    "block py-0.5 whitespace-nowrap",
-                    currentSlug === link.slug
-                      ? "text-link font-medium"
-                      : "text-muted hover:text-text",
-                  ]}
-                >
-                  {link.title}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </details>
-      </div>
+<BaseLayout title={title === "caldir" ? "caldir" : `${title} — caldir docs`}>
+  <!-- Mobile -->
+  <div class="md:hidden flex flex-col gap-[38px] p-7 min-h-screen" data-mobile-root>
+    <header class="flex items-center justify-between w-full">
+      <a href="/" aria-label="caldir home" class="block size-6">
+        <img src="/logo.svg" alt="caldir" class="block size-6" />
+      </a>
+      <button
+        type="button"
+        aria-label="Toggle navigation"
+        aria-expanded="false"
+        class="size-6 relative text-logo cursor-pointer"
+        data-mobile-toggle
+      >
+        <span class="absolute left-1/2 top-1/2 -translate-x-1/2 block w-[15.43px] h-[2.57px] rounded-[3.86px] bg-current transition-transform -translate-y-[3.71px] group-open:translate-y-0 group-open:rotate-45" data-mobile-bar-top></span>
+        <span class="absolute left-1/2 top-1/2 -translate-x-1/2 block w-[15.43px] h-[2.57px] rounded-[3.86px] bg-current transition-transform translate-y-[2.71px] group-open:translate-y-0 group-open:-rotate-45" data-mobile-bar-bottom></span>
+      </button>
+    </header>
+
+    <nav class="hidden w-full" data-mobile-nav>
+      <ul class="flex flex-col gap-3 text-[15px]">
+        {docsLinks.map((link) => (
+          <li>
+            <a
+              href={link.href}
+              class:list={[
+                "block",
+                currentSlug === link.slug ? "text-text-body" : "text-text-muted",
+              ]}
+            >
+              {link.title}
+            </a>
+          </li>
+        ))}
+      </ul>
     </nav>
-    <DocsSidebar currentSlug={currentSlug} />
-    <main class="min-w-0 flex-1 prose prose-neutral max-w-none
-      prose-headings:font-semibold
-      prose-a:text-link prose-a:no-underline prose-a:hover:underline
-      prose-code:bg-code-bg prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:before:content-none prose-code:after:content-none
-      prose-pre:bg-terminal-bg prose-pre:text-terminal-text">
-      <slot />
+
+    <main class="flex flex-col gap-[40px] w-full">
+      <article class="caldir-prose flex flex-col gap-[24px] w-full text-[14px]">
+        <slot />
+      </article>
 
       {(prevLink || nextLink) && (
-        <nav class="not-prose mt-12 pt-6 border-t border-code-bg flex justify-between text-sm">
+        <nav class="flex justify-between w-full">
           {prevLink ? (
-            <a href={`/docs/${prevLink.slug}`} class="text-muted hover:text-text">
-              &larr; {prevLink.title}
+            <a href={prevLink.href} class="text-[15px] text-text-muted hover:text-text-body flex items-center gap-1.5">
+              <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" class="size-[18px]" aria-hidden="true"><path d="M11.25 4.5 6.75 9l4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              {prevLink.title}
             </a>
           ) : <span />}
           {nextLink && (
-            <a href={`/docs/${nextLink.slug}`} class="text-link hover:underline ml-auto">
-              {nextLink.title} &rarr;
+            <a href={nextLink.href} class="text-[15px] font-medium text-text-link ml-auto flex items-center gap-1.5">
+              {nextLink.title}
+              <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" class="size-[18px]" aria-hidden="true"><path d="M6.75 4.5 11.25 9l-4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </a>
           )}
         </nav>
       )}
+
+      <Footer />
     </main>
+  </div>
+
+  <!-- Desktop -->
+  <div class="hidden md:flex justify-center items-start py-20 px-8">
+    <div class="flex gap-[111px] items-start">
+      <DocsSidebar currentSlug={currentSlug} />
+
+      <main class="flex flex-col gap-[40px] w-[560px]">
+        <article class="caldir-prose flex flex-col gap-[24px] w-full text-[15px]">
+          <slot />
+        </article>
+
+        {(prevLink || nextLink) && (
+          <nav class="flex justify-between w-full">
+            {prevLink ? (
+              <a href={prevLink.href} class="text-[15px] text-text-muted hover:text-text-body flex items-center gap-1.5">
+                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" class="size-[18px]" aria-hidden="true"><path d="M11.25 4.5 6.75 9l4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                {prevLink.title}
+              </a>
+            ) : <span />}
+            {nextLink && (
+              <a href={nextLink.href} class="text-[15px] font-medium text-text-link ml-auto flex items-center gap-1.5">
+                {nextLink.title}
+                <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" class="size-[18px]" aria-hidden="true"><path d="M6.75 4.5 11.25 9l-4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </a>
+            )}
+          </nav>
+        )}
+
+        <Footer />
+      </main>
+    </div>
   </div>
 </BaseLayout>
 
 <style>
-  main :global(pre code) {
-    background-color: transparent;
+  .caldir-prose :global(h1),
+  .caldir-prose :global(h2),
+  .caldir-prose :global(h3) {
+    font-family: "Inter", -apple-system, sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    line-height: 1.2;
+    color: var(--color-text-heading);
+    margin: 0;
+  }
+
+  .caldir-prose :global(p) {
+    color: var(--color-text-body);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .caldir-prose :global(a) {
+    color: var(--color-text-link);
+    text-decoration: none;
+  }
+
+  .caldir-prose :global(a:hover) {
+    text-decoration: underline;
+  }
+
+  .caldir-prose :global(ul),
+  .caldir-prose :global(ol) {
+    color: var(--color-text-body);
+    line-height: 1.5;
+    margin: 0;
+    padding-left: 1.5em;
+  }
+
+  .caldir-prose :global(li) {
+    margin: 0.25em 0;
+  }
+
+  .caldir-prose :global(code) {
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    color: var(--color-text-code);
+    background: transparent;
+    padding: 0 0.15em;
+  }
+
+  .caldir-prose :global(pre) {
+    border: 1px solid var(--color-codeblock-border);
+    border-radius: 6px;
+    padding: 18px;
+    margin: 0;
+    overflow-x: auto;
+    background: transparent;
+  }
+
+  .caldir-prose :global(pre code) {
+    background: transparent;
     padding: 0;
-    border-radius: 0;
-    font-size: inherit;
+    line-height: 1.4;
+    color: var(--color-text-code);
   }
 
-  main :global(hr) {
-    margin: 20px 0;
-    border: 1px solid #dfdfdf;
-    border-bottom: transparent;
+  /* Desktop code sizes */
+  @media (min-width: 768px) {
+    .caldir-prose :global(code) { font-size: 14px; }
   }
 
+  /* Mobile code sizes */
   @media (max-width: 767px) {
-    main :global(pre code) {
-      font-size: 0.8rem;
-    }
+    .caldir-prose :global(code) { font-size: 12px; }
+  }
+
+  .caldir-prose :global(hr) {
+    border: none;
+    border-top: 1px solid var(--color-separator);
+    margin: 20px 0;
+  }
+
+  .caldir-prose :global(strong) {
+    font-weight: 600;
+    color: var(--color-text-body);
   }
 </style>
+
+<script>
+  const root = document.querySelector("[data-mobile-root]") as HTMLElement | null;
+  const toggle = document.querySelector("[data-mobile-toggle]") as HTMLButtonElement | null;
+  const nav = document.querySelector("[data-mobile-nav]") as HTMLElement | null;
+  const barTop = document.querySelector("[data-mobile-bar-top]") as HTMLElement | null;
+  const barBottom = document.querySelector("[data-mobile-bar-bottom]") as HTMLElement | null;
+
+  if (root && toggle && nav && barTop && barBottom) {
+    toggle.addEventListener("click", () => {
+      const isOpen = nav.classList.toggle("hidden") === false;
+      toggle.setAttribute("aria-expanded", String(isOpen));
+      if (isOpen) {
+        barTop.style.transform = "translate(-50%, 0) rotate(45deg)";
+        barBottom.style.transform = "translate(-50%, 0) rotate(-45deg)";
+      } else {
+        barTop.style.transform = "";
+        barBottom.style.transform = "";
+      }
+    });
+  }
+</script>

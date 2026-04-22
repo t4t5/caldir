@@ -1,10 +1,10 @@
 ---
-title: Getting started
+title: Quickstart
 description: Install caldir and sync your first calendar
 order: 1
 ---
 
-# Getting started
+# Quickstart
 
 ## Install
 
