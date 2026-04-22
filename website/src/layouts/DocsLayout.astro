@@ -4,6 +4,7 @@ import DocsSidebar from "../components/DocsSidebar.astro";
 import DocsNavLinks from "../components/DocsNavLinks.astro";
 import DocsPrevNextNav from "../components/DocsPrevNextNav.astro";
 import Footer from "../components/Footer.astro";
+import HamburgerToggle from "../components/HamburgerToggle.astro";
 import { docsLinks } from "../data/docs-links";
 import Logo from "../icons/logo.astro";
 
@@ -25,16 +26,7 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
       <a href="/" aria-label="caldir home" class="block size-6 text-text-heading">
         <Logo class="block size-6" />
       </a>
-      <button
-        type="button"
-        aria-label="Toggle navigation"
-        aria-expanded="false"
-        class="size-6 relative text-text-heading cursor-pointer"
-        data-mobile-toggle
-      >
-        <span class="absolute left-1/2 top-1/2 -translate-x-1/2 block w-[15.43px] h-[2.57px] rounded-[3.86px] bg-current transition-transform -translate-y-[3.71px] group-open:translate-y-0 group-open:rotate-45" data-mobile-bar-top></span>
-        <span class="absolute left-1/2 top-1/2 -translate-x-1/2 block w-[15.43px] h-[2.57px] rounded-[3.86px] bg-current transition-transform translate-y-[2.71px] group-open:translate-y-0 group-open:-rotate-45" data-mobile-bar-bottom></span>
-      </button>
+      <HamburgerToggle data-mobile-toggle />
     </header>
 
     <nav class="hidden w-full" data-mobile-nav>
@@ -167,26 +159,26 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
     font-weight: 600;
     color: var(--color-text-body);
   }
+
+  .caldir-prose :global(summary) {
+    cursor: pointer;
+    margin-bottom: 8px;
+  }
+
+  .caldir-prose :global(summary:hover) {
+    opacity: 0.6;
+  }
 </style>
 
 <script>
-  const root = document.querySelector("[data-mobile-root]") as HTMLElement | null;
   const toggle = document.querySelector("[data-mobile-toggle]") as HTMLButtonElement | null;
   const nav = document.querySelector("[data-mobile-nav]") as HTMLElement | null;
-  const barTop = document.querySelector("[data-mobile-bar-top]") as HTMLElement | null;
-  const barBottom = document.querySelector("[data-mobile-bar-bottom]") as HTMLElement | null;
 
-  if (root && toggle && nav && barTop && barBottom) {
+  if (toggle && nav) {
     toggle.addEventListener("click", () => {
       const isOpen = nav.classList.toggle("hidden") === false;
       toggle.setAttribute("aria-expanded", String(isOpen));
-      if (isOpen) {
-        barTop.style.transform = "translate(-50%, 0) rotate(45deg)";
-        barBottom.style.transform = "translate(-50%, 0) rotate(-45deg)";
-      } else {
-        barTop.style.transform = "";
-        barBottom.style.transform = "";
-      }
+      toggle.setAttribute("data-open", String(isOpen));
     });
   }
 </script>

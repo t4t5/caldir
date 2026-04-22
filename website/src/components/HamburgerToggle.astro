@@ -1,0 +1,25 @@
+---
+interface Props {
+  class?: string;
+  [key: string]: unknown;
+}
+
+const { class: className = "", ...rest } = Astro.props;
+---
+
+<button
+  type="button"
+  aria-label="Toggle navigation"
+  aria-expanded="false"
+  data-open="false"
+  class:list={[
+    "group size-5 flex items-center justify-center bg-transparent border-0 p-0 cursor-pointer text-text-heading",
+    className,
+  ]}
+  {...rest}
+>
+  <span class="w-3.5 h-2.5 flex flex-col justify-between">
+    <span class="block w-full h-[2px] rounded-[1px] bg-current origin-center transition-transform group-data-[open=true]:translate-y-[4px] group-data-[open=true]:rotate-45"></span>
+    <span class="block w-full h-[2px] rounded-[1px] bg-current origin-center transition-transform group-data-[open=true]:-translate-y-[4px] group-data-[open=true]:-rotate-45"></span>
+  </span>
+</button>
