@@ -1,5 +1,5 @@
 ---
-import DocsLayout from "../layouts/DocsLayout.astro";
+import Layout from "../layouts/Layout.astro";
 import { getEntry, render } from "astro:content";
 
 const entry = await getEntry("docs", "what-is-caldir");
@@ -7,6 +7,6 @@ if (!entry) throw new Error("Missing docs collection entry: what-is-caldir");
 const { Content } = await render(entry);
 ---
 
-<DocsLayout title="caldir" currentSlug="what-is-caldir">
+<Layout title="caldir" currentSlug="what-is-caldir">
   <Content />
-</DocsLayout>
+</Layout>

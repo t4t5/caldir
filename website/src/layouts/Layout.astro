@@ -14,7 +14,7 @@ interface Props {
 }
 
 const { title, currentSlug } = Astro.props;
-const pageTitle = title === "caldir" ? "caldir" : `${title} — caldir docs`;
+const pageTitle = title === "caldir" ? "Caldir - your calendar as a directory" : `Caldir • ${title}`;
 const currentIndex = docsLinks.findIndex((l) => l.slug === currentSlug);
 const prevLink = currentIndex > 0 ? docsLinks[currentIndex - 1] : null;
 const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docsLinks[currentIndex + 1] : null;

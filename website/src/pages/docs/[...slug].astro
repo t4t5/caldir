@@ -1,5 +1,5 @@
 ---
-import DocsLayout from "../../layouts/DocsLayout.astro";
+import Layout from "../../layouts/Layout.astro";
 import { getCollection, render } from "astro:content";
 
 export async function getStaticPaths() {
@@ -16,6 +16,6 @@ const { doc } = Astro.props;
 const { Content } = await render(doc);
 ---
 
-<DocsLayout title={doc.data.title} currentSlug={doc.id}>
+<Layout title={doc.data.title} currentSlug={doc.id}>
   <Content />
-</DocsLayout>
+</Layout>

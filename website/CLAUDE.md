@@ -18,7 +18,7 @@ The marketing + docs site for caldir, at caldir.org.
 - Docs are an Astro content collection at `src/content/docs/*.md`.
 - Nav order and labels are driven by `src/data/docs-links.ts` — each entry has an explicit `href`.
 - The Overview (`what-is-caldir`) is rendered at `/` by `src/pages/index.astro`. `/docs/what-is-caldir` 301s to `/` and is filtered out of `[...slug].astro`.
-- `DocsLayout.astro` is the shared shell (desktop two-column + mobile hamburger). Pages pass `currentSlug` so the sidebar can highlight the active link.
+- `Layout.astro` is the shared shell (desktop two-column + mobile hamburger). Pages pass `currentSlug` so the sidebar can highlight the active link.
 
 ## Icons
 
@@ -32,7 +32,6 @@ The sidebar's `v{version}` is read at build time from `../caldir-cli/Cargo.toml`
 
 ## Layout structure
 
-- `BaseLayout.astro` — `<html>`, `<head>`, Google Fonts (Inter / JetBrains Mono / Anonymous Pro), `<body>` with global tokens.
-- `DocsLayout.astro` — mobile + desktop shells, prev/next nav, footer. Used by every docs page and the homepage.
+- `Layout.astro` — `<html>`, `<head>`, mobile + desktop shells, prev/next nav, footer. Used by every docs page and the homepage.
 - `DocsSidebar.astro` — desktop-only sticky sidebar (logomark + nav + version + GitHub link).
 - `Footer.astro` — shared footer.
