@@ -21,3 +21,108 @@
 
   --breakpoint-md: 880px;
 }
+
+.caldir-prose h1,
+.caldir-prose h2,
+.caldir-prose h3 {
+  font-family: var(--font-sans);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-text-heading);
+  margin: 0;
+}
+
+.caldir-prose h1 {
+  font-size: 22px;
+}
+
+.caldir-prose h2 {
+  font-size: 20px;
+}
+
+.caldir-prose h3 {
+  font-size: 15px;
+}
+
+.caldir-prose p {
+  color: var(--color-text-body);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.caldir-prose a {
+  color: var(--color-text-link);
+  text-decoration: none;
+}
+
+.caldir-prose a:hover {
+  text-decoration: underline;
+}
+
+.caldir-prose ul,
+.caldir-prose ol {
+  color: var(--color-text-body);
+  line-height: 1.5;
+  margin: 0;
+  padding-left: 1.5em;
+}
+
+.caldir-prose li {
+  margin: 0.25em 0;
+}
+
+.caldir-prose code {
+  font-family: var(--font-mono);
+  background: var(--color-inline-code);
+  padding: 0 6px;
+}
+
+.caldir-prose pre {
+  border: 1px solid var(--color-codeblock-border);
+  border-radius: 6px;
+  padding: 18px;
+  margin: 0;
+  background: transparent;
+}
+
+.caldir-prose pre code {
+  background: transparent;
+  padding: 0;
+  line-height: 1.4;
+  color: var(--color-text-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.caldir-prose table {
+  font-size: 13px;
+  text-align: left;
+}
+
+@media (min-width: 880px) {
+  .caldir-prose code { font-size: 14px; }
+}
+
+@media (max-width: 879px) {
+  .caldir-prose code { font-size: 12px; }
+}
+
+.caldir-prose hr {
+  border: none;
+  border-top: 1px solid var(--color-separator);
+  margin: 20px 0;
+}
+
+.caldir-prose strong {
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+
+.caldir-prose summary {
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.caldir-prose summary:hover {
+  opacity: 0.6;
+}
