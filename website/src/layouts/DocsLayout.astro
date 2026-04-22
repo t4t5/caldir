@@ -1,5 +1,5 @@
 ---
-import BaseLayout from "./BaseLayout.astro";
+import Meta from "../components/Meta.astro";
 import DocsSidebar from "../components/DocsSidebar.astro";
 import DocsNavLinks from "../components/DocsNavLinks.astro";
 import DocsPrevNextNav from "../components/DocsPrevNextNav.astro";
@@ -14,12 +14,18 @@ interface Props {
 }
 
 const { title, currentSlug } = Astro.props;
+const pageTitle = title === "caldir" ? "caldir" : `${title} — caldir docs`;
 const currentIndex = docsLinks.findIndex((l) => l.slug === currentSlug);
 const prevLink = currentIndex > 0 ? docsLinks[currentIndex - 1] : null;
 const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docsLinks[currentIndex + 1] : null;
 ---
 
-<BaseLayout title={title === "caldir" ? "caldir" : `${title} — caldir docs`}>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <Meta title={pageTitle} />
+</head>
+<body class="bg-background text-text-body font-sans">
   <!-- Mobile -->
   <div class="md:hidden flex flex-col gap-[38px] p-7 min-h-screen" data-mobile-root>
     <header class="flex items-center justify-between w-full">
@@ -60,9 +66,12 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
       </main>
     </div>
   </div>
-</BaseLayout>
+</body>
+</html>
 
 <style>
+  @import "../styles/global.css";
+
   .caldir-prose :global(h1),
   .caldir-prose :global(h2),
   .caldir-prose :global(h3) {
