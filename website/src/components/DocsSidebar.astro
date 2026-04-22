@@ -40,9 +40,16 @@ const version = cargoToml.match(/^version\s*=\s*"([^"]+)"/m)?.[1] ?? "";
   </nav>
 
   <div class="flex items-center gap-0">
-    <span class="font-display text-[12px] text-text-muted w-[50px]">v{version}</span>
+    <a
+      href="https://crates.io/crates/caldir-cli"
+      target="_blank"
+      class="font-display text-[12px] text-text-muted hover:text-text-body no-underline w-[50px]"
+    >
+      v{version}
+    </a>
     <a
       href="https://github.com/t4t5/caldir"
+      target="_blank"
       aria-label="GitHub repository"
       class="block size-4 text-text-muted hover:text-text-body"
     >
