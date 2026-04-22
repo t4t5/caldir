@@ -5,7 +5,7 @@ import { getCollection, render } from "astro:content";
 export async function getStaticPaths() {
   const docs = await getCollection("docs");
   return docs
-    .filter((doc) => doc.id !== "what-is-caldir")
+    .filter((doc) => doc.id !== "overview")
     .map((doc) => ({
       params: { slug: doc.id },
       props: { doc },

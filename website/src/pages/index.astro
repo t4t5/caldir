@@ -2,11 +2,11 @@
 import Layout from "../layouts/Layout.astro";
 import { getEntry, render } from "astro:content";
 
-const entry = await getEntry("docs", "what-is-caldir");
-if (!entry) throw new Error("Missing docs collection entry: what-is-caldir");
+const entry = await getEntry("docs", "overview");
+if (!entry) throw new Error("Missing docs collection entry: overview");
 const { Content } = await render(entry);
 ---
 
-<Layout title="caldir" currentSlug="what-is-caldir">
+<Layout title="caldir" currentSlug="overview">
   <Content />
 </Layout>
