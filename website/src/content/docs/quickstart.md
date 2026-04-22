@@ -37,29 +37,18 @@ cargo install --path caldir-provider-webcal
 
 ## Connect a calendar
 
-```bash
-caldir connect google # Google Calendar
-
-caldir connect icloud # iCloud
-
-caldir connect caldav # CalDAV
-
-caldir connect outlook # Outlook
-
-caldir connect webcal # Public ICS feeds
-```
-
-Complete the authentication and your calendar will automatically be fetched.
-
-## Sync your events
-
-Once a calendar has been connected, you can pull its data:
+Choose a provider where you have calendar data:
 
 ```bash
-caldir pull
+caldir connect google
+
+caldir connect icloud
+
+caldir connect caldav
 ```
 
-That's it! your ICS files should now appear in your directory:
+Complete the authentication process and watch your events be pulled into your directory as
+ICS files!
 
 ```
 ~/caldir/
