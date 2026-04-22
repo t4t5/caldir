@@ -64,6 +64,14 @@ impl AppConfig {
         std::fs::write(&path, contents)
             .with_context(|| format!("Failed to write app_config to {}", path.display()))?;
 
+        // Set to owner-only (0600) since file contains OAuth client secret:
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+                .with_context(|| format!("Failed to set permissions on {}", path.display()))?;
+        }
+
         Ok(())
     }
 }
