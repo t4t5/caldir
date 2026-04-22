@@ -10,10 +10,9 @@ interface DocsLink {
 interface Props {
   prevLink: DocsLink | null;
   nextLink: DocsLink | null;
-  variant: "mobile" | "desktop";
 }
 
-const { prevLink, nextLink, variant } = Astro.props;
+const { prevLink, nextLink } = Astro.props;
 ---
 
 {(prevLink || nextLink) && (

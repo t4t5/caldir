@@ -26,45 +26,29 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
   <Meta title={pageTitle} />
 </head>
 <body class="bg-background text-text-body font-sans">
-  <!-- Mobile -->
-  <div class="md:hidden flex flex-col gap-[38px] p-7 min-h-screen" data-mobile-root>
-    <header class="flex items-center justify-between w-full">
+  <div class="flex flex-col gap-[38px] p-7 min-h-screen md:flex-row md:justify-center md:items-start md:gap-[111px] md:p-0 md:py-20 md:px-8">
+    <header class="md:hidden flex items-center justify-between w-full">
       <a href="/" aria-label="caldir home" class="block size-6 text-text-heading">
         <Logo class="block size-6" />
       </a>
       <HamburgerToggle data-mobile-toggle />
     </header>
 
-    <nav class="hidden w-full" data-mobile-nav>
+    <nav class="md:hidden hidden w-full" data-mobile-nav>
       <DocsNavLinks currentSlug={currentSlug} />
     </nav>
 
-    <main class="flex flex-col gap-[40px] w-full">
-      <article class="caldir-prose flex flex-col gap-[24px] w-full text-[14px]">
+    <DocsSidebar currentSlug={currentSlug} />
+
+    <main class="flex flex-col gap-[40px] w-full md:w-[560px]">
+      <article class="caldir-prose flex flex-col gap-[24px] w-full text-[14px] md:text-[15px]">
         <slot />
       </article>
 
-      <DocsPrevNextNav prevLink={prevLink} nextLink={nextLink} variant="mobile" />
+      <DocsPrevNextNav prevLink={prevLink} nextLink={nextLink} />
 
       <Footer />
     </main>
-  </div>
-
-  <!-- Desktop -->
-  <div class="hidden md:flex justify-center items-start py-20 px-8">
-    <div class="flex gap-[111px] items-start">
-      <DocsSidebar currentSlug={currentSlug} />
-
-      <main class="flex flex-col gap-[40px] w-[560px]">
-        <article class="caldir-prose flex flex-col gap-[24px] w-full text-[15px]">
-          <slot />
-        </article>
-
-        <DocsPrevNextNav prevLink={prevLink} nextLink={nextLink} variant="desktop" />
-
-        <Footer />
-      </main>
-    </div>
   </div>
 </body>
 </html>
