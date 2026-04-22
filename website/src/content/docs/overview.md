@@ -6,15 +6,18 @@ order: 0
 
 # Your calendar as a directory
 
-Caldir is a tool for storing your calendar data as a directory of ICS files:
+Caldir is a tool for storing your calendar as a directory of ICS files:
 
 ```
 ~/caldir/
 ├── google/
-│   └── 2025-03-25T0900__dentist.ics
+│   ├── 2026-06-25T0900__dentist.ics
+│   ├── 2026-06-28__johns-birthday.ics
+│   └── ...
 └── outlook/
-    ├── 2025-03-20T1500__client-call.ics
-    └── 2025-03-26T1400__sprint-planning.ics
+    ├── 2026-06-20T1500__client-call.ics
+    ├── 2026-06-26T1400__sprint-planning.ics
+    └── ...
 ```
 
 It syncs with a range of providers (Google Calendar, iCloud, Outlook, CalDAV...) using git-like pull/push actions.
@@ -24,6 +27,6 @@ It syncs with a range of providers (Google Calendar, iCloud, Outlook, CalDAV...)
 Calendars today are often hidden behind APIs and proprietary sync layers, limiting what you can
 do.
 
-By turning them into simple plaintext files, you can search your data blazingly quickly with `grep`, and set up advanced workflows using scripts and LLMs.
+By turning them into plaintext files, you can use tools like `grep` to search them, or set up custom workflows with scripts and LLMs.
 
-It also makes it trivial to migrate your data from one provider to another.
+It also makes it really easy to migrate your data from one provider to another.

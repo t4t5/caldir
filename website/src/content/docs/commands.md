@@ -8,22 +8,14 @@ order: 3
 
 ## `caldir connect`
 
-Connect to a cloud calendar provider.
+Connect to a [calendar provider](/providers) and fetch its calendars.
 
 ```bash
 # Google Calendar (hosted OAuth via caldir.org)
 caldir connect google
-
-# Google with your own credentials
-caldir connect google --hosted=false
-
-# iCloud
-caldir connect icloud
 ```
 
-This authenticates with the provider, fetches your calendars, and creates a local directory for each one with a `.caldir/config.toml` configuration file.
-
-You can connect multiple accounts by running the command multiple times.
+You can connect multiple accounts (e.g. personal and work) by running the command multiple times.
 
 ## `caldir status`
 
@@ -32,30 +24,25 @@ Show pending changes per calendar, similar to `git status`.
 ```bash
 caldir status
 
-# Show all event diffs instead of a summary
+# Show detailed diff
 caldir status --verbose
 
-# Status for a specific date range
-caldir status --from 2024-01-01 --to 2024-12-31
-
-# Status for one calendar
+# Status for a specific calendar
 caldir status --calendar work
 ```
 
 ## `caldir pull`
 
-Download remote changes to local.
+Download remote changes to your local caldir directory.
 
 ```bash
+# Pull events within ±1 year of today
 caldir pull
 
-# Pull a specific date range
-caldir pull --from 2024-01-01 --to 2024-12-31
-
-# Pull all past events
+# Pull all events since start
 caldir pull --from start
 
-# Pull only one calendar
+# Pull only a specific calendar
 caldir pull --calendar work
 ```
 
@@ -66,36 +53,29 @@ Upload local changes to the remote.
 ```bash
 caldir push
 
-# Push only one calendar
+# Push only a specific calendar
 caldir push --calendar work
 ```
 
-If you delete a local `.ics` file and run `push`, the event is also deleted from the remote.
+Note: if you delete a local `.ics` file and run `push`, the event is also deleted from the remote.
 
 
 ## `caldir sync`
 
-Pull then push in one command. By default, only events within **365 days** of today (past and future) are synced. You can override this with `--from` and `--to`.
-
+Pull/push in a single command.
 ```bash
 caldir sync
-
-# Sync a specific date range
-caldir sync --from 2024-01-01 --to 2024-12-31
-
-# Sync only one calendar
-caldir sync --calendar work
 ```
 
 ## `caldir new`
 
-Create a new local event.
+Create a new event in your local directory.
 
 ```bash
-# Interactive mode (prompts for details)
+# Interactive mode (for humans)
 caldir new
 
-# Or pass arguments directly:
+# Non-interactive mode (for agents):
 
 # Timed event (defaults to 1 hour)
 caldir new "Meeting with Alice" --start 2025-03-20T15:00
@@ -103,32 +83,22 @@ caldir new "Meeting with Alice" --start 2025-03-20T15:00
 # With explicit duration
 caldir new "Team standup" --start 2025-03-20T09:00 --duration 30m
 
-# All-day event
-caldir new "Vacation" --start 2025-03-25 --end 2025-03-28
-
 # With a location
 caldir new "Lunch" --start 2025-03-20T12:00 --location "Café Central"
 
 # With a reminder
 caldir new "Sprint planning" --start 2025-03-22T10:00 --reminder 10m
 
-# Multiple reminders
-caldir new "Flight" --start 2025-03-22T06:00 --reminder 1h --reminder 1day
-
-# No reminders (overrides default_reminders from config)
-caldir new "Quick chat" --start 2025-03-22T14:00 --no-reminders
-
-# In a specific calendar (defaults to default_calendar from config)
+# In a specific calendar
 caldir new "Sprint planning" --start 2025-03-22T10:00 --calendar work
 ```
 
-If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed events or 1 day for all-day events.
-
-If `default_reminders` is set in your [global config](/configuration), those reminders are added to every new event automatically. Use `--no-reminders` to override this.
+- If neither `--end` nor `--duration` is specified, new events default to being 1 hour long.
+- If `default_reminders` is set in your [global config](/configuration), those reminders are added to new events automatically.
 
 ## `caldir events`
 
-View upcoming events. Events that are invites (where you're an attendee, not the organizer) show a colored status indicator: (pending), (accepted), (declined), or (tentative).
+View upcoming events. Events that are invites show a colored status indicator: (pending), (accepted), (declined), or (tentative).
 
 ```bash
 caldir events              # Next 3 days
@@ -156,7 +126,7 @@ caldir invites --calendar work
 
 ## `caldir rsvp`
 
-Respond to a calendar invite. Updates the local ICS file — run `caldir push` afterward to sync your response.
+Respond to pending calendar invites. Updates the local ICS file (run `caldir push` afterward to sync your response).
 
 ```bash
 # Interactive mode (for humans)
@@ -169,11 +139,9 @@ caldir rsvp ~/caldir/work/2025-03-20T1500__standup.ics maybe
 
 ```
 
-Accepted response aliases: `accept`/`yes`/`y`, `decline`/`no`/`n`, `maybe`/`tentative`/`m`.
-
 ## `caldir discard`
 
-Discard unpushed local changes, reverting to the remote state. Locally created events are deleted, local edits are reverted, and locally deleted events are restored.
+Discard unpushed local changes, reverting to the remote state.
 
 ```bash
 caldir discard

@@ -6,7 +6,7 @@ order: 4
 
 # Providers
 
-caldir uses a plugin architecture for calendar providers. Each provider is a separate binary that communicates with caldir via JSON over stdin/stdout, similar to git's remote helpers.
+caldir uses a plugin architecture for calendar providers.
 
 ## Available providers
 
@@ -20,23 +20,24 @@ caldir uses a plugin architecture for calendar providers. Each provider is a sep
 
 ## Google Calendar
 
-### Hosted auth (recommended)
+### Hosted auth (easy)
 
 ```bash
 caldir connect google
 ```
 
-OAuth is handled via caldir.org — no setup needed. Your tokens pass through caldir.org during authentication and refresh but are **never stored or logged** on the server. See the [privacy policy](/privacy) for details.
+In this mode, OAuth is handled by the caldir.org server for simplicity. Your tokens are never stored or logged on the server (see [source code](https://github.com/t4t5/caldir/blob/main/website/functions/auth/google/start.ts) and [privacy policy](/privacy) for details).
 
-### Self-hosted auth (more complex)
+### Self-hosted auth (harder)
 
-If you prefer to use your own Google Cloud credentials:
+If you prefer to use your own Google Cloud credentials instead of going through caldir.org, you can run:
 
 ```bash
 caldir connect google --hosted=false
 ```
 
-This will prompt you to create OAuth credentials in Google Cloud Console. In this mode, caldir.org is not involved at all.
+This will prompt you to create OAuth credentials in Google Cloud Console and set up the right
+permissions.
 
 ## iCloud
 
@@ -44,7 +45,7 @@ This will prompt you to create OAuth credentials in Google Cloud Console. In thi
 caldir connect icloud
 ```
 
-iCloud uses CalDAV with app-specific passwords. You'll be prompted to enter your Apple ID and an [app-specific password](https://support.apple.com/en-us/102654) (not your main Apple ID password).
+This will prompt you to enter your Apple ID and an [app-specific password](https://support.apple.com/en-us/102654) (*not* your main Apple ID password).
 
 ## Outlook
 
@@ -54,15 +55,15 @@ Install the Outlook provider first (it's not included in the default `install.sh
 cargo install caldir-provider-outlook
 ```
 
-### Hosted auth (recommended)
+### Hosted auth (easy)
 
 ```bash
 caldir connect outlook
 ```
 
-OAuth is handled via caldir.org, similar to Google — no setup needed.
+OAuth is handled via caldir.org, similar to the Google provider, with no setup needed.
 
-### Self-hosted auth (more complex)
+### Self-hosted auth (harder)
 
 If you prefer to use your own Azure AD app credentials:
 
@@ -75,23 +76,27 @@ This will prompt you to register an app in the Azure portal and provide a client
 
 ## Other CalDAV server
 
+Use this to connect to any other CalDAV-compatible server (Nextcloud, Radicale, Baikal...)
+
 ```bash
 caldir connect caldav
 ```
 
-For any CalDAV-compatible server (Nextcloud, Radicale, Baikal, etc.). You'll be prompted for a server URL, username, and password. The provider automatically discovers CalDAV endpoints from the server.
+You'll be prompted for a server URL, username, and password.
 
-## Webcal (ICS feeds)
+## Webcal (public ICS feeds)
+
+Subscribe to any public ICS calendar feed (`webcal://` or `https://` URLs).
 
 ```bash
 caldir connect webcal
 ```
 
-Subscribe to any public ICS calendar feed (`webcal://` or `https://` URLs). You'll be prompted for the feed URL — the provider validates it by fetching the feed and checking for valid ICS data.
-
 Webcal subscriptions are **read-only**: you can pull events, but `caldir push` won't modify the remote feed. No credentials are stored — the feed URL itself is the only configuration.
 
 Common uses: public holiday calendars, sports schedules, shared team calendars published as ICS feeds.
+
+Example feed: [Public US holidays](https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics)
 
 ## Plugin architecture
 

@@ -6,24 +6,26 @@ order: 5
 
 # Configuration
 
-General Caldir settings live in:
+Global settings are configured in:
 
 - `~/.config/caldir/config.toml` (Linux)
 - `~/Library/Application Support/caldir/config.toml` (macOS)
 - `%APPDATA%/caldir/config.toml` (Windows)
 
+Example config file:
+
 ```toml
-# Where calendar subdirectories live
+# where your data is stored:
 calendar_dir = "~/caldir"
 
-# Default calendar for new events (used when --calendar not specified)
+# where new events get added:
 default_calendar = "personal"
 
-# Default reminders for new events (e.g. ["10m", "1h"])
-default_reminders = ["10m"]
+# default reminders for new events:
+default_reminders = ["1h", "2h"]
 ```
 
-The config file is created with all options commented out on first run — open it to see what's configurable.
+By default, the config file has all options commented out.
 
 ## Per-calendar config
 
@@ -40,6 +42,4 @@ google_account = "me@gmail.com"
 google_calendar_id = "primary"
 ```
 
-These files are created automatically by `caldir connect`. The provider returns the config fields to save (name, color, remote settings), so the CLI doesn't need to know about provider-specific fields.
-
-Calendars without `.caldir/config.toml` are treated as local-only (not synced).
+Calendars without a `.caldir/config.toml` or without a `[remote]` value are treated as offline calendars (not synced anywhere).
