@@ -5,4 +5,9 @@ export default defineConfig({
   vite: {
     plugins: [tailwindcss()],
   },
+  markdown: {
+    shikiConfig: {
+      theme: "min-light",
+    },
+  },
 });

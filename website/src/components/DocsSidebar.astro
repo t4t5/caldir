@@ -14,19 +14,19 @@ const cargoToml = fs.readFileSync(cargoTomlPath, "utf8");
 const version = cargoToml.match(/^version\s*=\s*"([^"]+)"/m)?.[1] ?? "";
 ---
 
-<aside class="hidden md:flex flex-col gap-8 w-[136px] shrink-0">
+<aside class="hidden md:flex flex-col gap-8 w-[136px] shrink-0 sticky top-20 self-start">
   <a href="/" aria-label="caldir home" class="block size-6">
     <img src="/logo.svg" alt="caldir" class="block size-6" />
   </a>
 
   <nav>
-    <ul class="flex flex-col gap-3 text-[15px]">
+    <ul class="flex flex-col gap-3 text-[15px] list-none p-0">
       {docsLinks.map((link) => (
         <li>
           <a
             href={link.href}
             class:list={[
-              "block",
+              "block no-underline",
               currentSlug === link.slug ? "text-text-body" : "text-text-muted hover:text-text-body",
             ]}
           >

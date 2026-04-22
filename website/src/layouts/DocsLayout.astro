@@ -91,13 +91,13 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
         {(prevLink || nextLink) && (
           <nav class="flex justify-between w-full">
             {prevLink ? (
-              <a href={prevLink.href} class="text-[15px] text-text-muted hover:text-text-body flex items-center gap-1.5">
+              <a href={prevLink.href} class="no-underline text-[15px] text-text-muted hover:underline flex items-center gap-1.5">
                 <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" class="size-[18px]" aria-hidden="true"><path d="M11.25 4.5 6.75 9l4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 {prevLink.title}
               </a>
             ) : <span />}
             {nextLink && (
-              <a href={nextLink.href} class="text-[15px] font-medium text-text-link ml-auto flex items-center gap-1.5">
+              <a href={nextLink.href} class="no-underline hover:underline text-[15px] font-medium text-text-link ml-auto flex items-center gap-1.5">
                 {nextLink.title}
                 <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" class="size-[18px]" aria-hidden="true"><path d="M6.75 4.5 11.25 9l-4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </a>
@@ -115,7 +115,7 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
   .caldir-prose :global(h1),
   .caldir-prose :global(h2),
   .caldir-prose :global(h3) {
-    font-family: "Inter", -apple-system, sans-serif;
+    font-family: var(--font-sans);
     font-weight: 600;
     font-size: 20px;
     line-height: 1.2;
@@ -151,10 +151,9 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
   }
 
   .caldir-prose :global(code) {
-    font-family: "JetBrains Mono", "SF Mono", monospace;
-    color: var(--color-text-code);
-    background: transparent;
-    padding: 0 0.15em;
+    font-family: var(--font-mono);
+    background: var(--color-inline-code);
+    padding: 0 6px;
   }
 
   .caldir-prose :global(pre) {
@@ -174,12 +173,12 @@ const nextLink = currentIndex >= 0 && currentIndex < docsLinks.length - 1 ? docs
   }
 
   /* Desktop code sizes */
-  @media (min-width: 768px) {
+  @media (min-width: 880px) {
     .caldir-prose :global(code) { font-size: 14px; }
   }
 
   /* Mobile code sizes */
-  @media (max-width: 767px) {
+  @media (max-width: 879px) {
     .caldir-prose :global(code) { font-size: 12px; }
   }
 
