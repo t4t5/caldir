@@ -9,6 +9,13 @@ pub fn run() -> Result<()> {
     let config_path = CaldirConfig::config_path().map_err(|e| anyhow::anyhow!(e))?;
     let caldir = Caldir::load().map_err(|e| anyhow::anyhow!(e))?;
 
+    let settings = caldir.config().to_toml_string()?;
+    println!("{}", "Settings".bold());
+    for line in settings.lines() {
+        println!("  {line}");
+    }
+    println!();
+
     let config_display = std::env::var("HOME")
         .ok()
         .and_then(|home| {

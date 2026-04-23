@@ -23,20 +23,13 @@ fn default_caldir_path() -> PathBuf {
     PathBuf::from(DEFAULT_CALDIR_PATH)
 }
 
-fn is_default_caldir_path(p: &PathBuf) -> bool {
-    *p == default_caldir_path()
-}
-
 /// Global configuration at ~/.config/caldir/config.toml
 ///
 /// Calendar-specific configuration (provider, account, etc.) is stored
 /// in each calendar's .caldir/config.toml file instead.
 #[derive(Serialize, Deserialize, Clone)]
 pub struct CaldirConfig {
-    #[serde(
-        default = "default_caldir_path",
-        skip_serializing_if = "is_default_caldir_path"
-    )]
+    #[serde(default = "default_caldir_path")]
     pub calendar_dir: PathBuf,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -45,12 +38,19 @@ pub struct CaldirConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_reminders: Option<Vec<String>>,
 
-    #[serde(default, skip_serializing_if = "is_default_time_format")]
+    #[serde(default)]
     pub time_format: TimeFormat,
 }
 
-fn is_default_time_format(f: &TimeFormat) -> bool {
-    *f == TimeFormat::default()
+impl Default for CaldirConfig {
+    fn default() -> Self {
+        Self {
+            calendar_dir: default_caldir_path(),
+            default_calendar: None,
+            default_reminders: None,
+            time_format: TimeFormat::default(),
+        }
+    }
 }
 
 impl CaldirConfig {
@@ -58,12 +58,18 @@ impl CaldirConfig {
         Ok(crate::paths::caldir_config_dir()?.join("config.toml"))
     }
 
+    /// Serialize the config to TOML. Fields with a concrete default (like
+    /// `calendar_dir` and `time_format`) are always emitted so the file
+    /// documents the effective values; `Option` fields are omitted when
+    /// `None` since there's no value to write.
+    pub fn to_toml_string(&self) -> CalDirResult<String> {
+        toml::to_string_pretty(self).map_err(|e| CalDirError::Config(e.to_string()))
+    }
+
     /// Save the current config to ~/.config/caldir/config.toml
     pub fn save(&self) -> CalDirResult<()> {
         let config_path = Self::config_path()?;
-
-        let content =
-            toml::to_string_pretty(self).map_err(|e| CalDirError::Config(e.to_string()))?;
+        let content = self.to_toml_string()?;
 
         std::fs::write(&config_path, content)
             .map_err(|e| CalDirError::Config(format!("Could not write config file: {e}")))?;
