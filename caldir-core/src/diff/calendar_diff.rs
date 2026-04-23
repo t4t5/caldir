@@ -20,15 +20,6 @@ impl CalendarDiff {
         self.to_push.is_empty() && self.to_pull.is_empty()
     }
 
-    /// Returns true if applying `to_push` would delete every remote event while
-    /// the local calendar is empty — i.e. the user likely wiped their files by
-    /// accident. Callers should typically refuse to proceed in this case.
-    pub fn would_wipe_remote(&self) -> CalDirResult<bool> {
-        let all_deletes =
-            !self.to_push.is_empty() && self.to_push.iter().all(|d| d.kind == DiffKind::Delete);
-        Ok(all_deletes && self.calendar.events()?.is_empty())
-    }
-
     pub async fn apply_push(&self) -> CalDirResult<()> {
         let remote = self
             .calendar

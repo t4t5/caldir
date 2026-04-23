@@ -4,6 +4,7 @@ use caldir_core::date_range::DateRange;
 use caldir_core::diff::{BatchDiff, CalendarDiff};
 use owo_colors::OwoColorize;
 
+use crate::commands::guards::allow_mass_delete;
 use crate::render::{CalendarDiffRender, Render};
 use crate::utils::tui;
 
@@ -22,18 +23,7 @@ pub async fn run(calendars: Vec<Calendar>, verbose: bool, force: bool) -> Result
         match result {
             Ok(diff) => {
                 println!("{}", diff.render_push(verbose));
-                if !force && diff.would_wipe_remote()? {
-                    println!(
-                        "   {}",
-                        format!(
-                            "Refusing to delete all {} remote events for '{}' — local calendar is empty. \
-                             If you deleted files by accident, run `caldir pull` to restore them. \
-                             To proceed anyway, re-run with `--force`.",
-                            diff.to_push.len(),
-                            cal.slug,
-                        )
-                        .red()
-                    );
+                if !allow_mass_delete(&diff, cal, force, "re-run with `--force`") {
                     continue;
                 }
                 diff.apply_push().await?;
