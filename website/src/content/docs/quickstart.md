@@ -56,3 +56,7 @@ ICS files!
     ├── 2025-03-25T0900__dentist.ics
     └── 2025-03-26T1400__sprint-planning.ics
 ```
+
+## Using agents
+
+To explore caldir with tools like Claude Code or Opencode, ask it to install: [SKILL.md](/skill.md)
