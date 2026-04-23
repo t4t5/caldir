@@ -8,7 +8,12 @@ use crate::commands::guards::allow_mass_delete;
 use crate::render::{CalendarDiffRender, Render};
 use crate::utils::tui;
 
-pub async fn run(calendars: Vec<Calendar>, range: DateRange, verbose: bool) -> Result<()> {
+pub async fn run(
+    calendars: Vec<Calendar>,
+    range: DateRange,
+    verbose: bool,
+    force: bool,
+) -> Result<()> {
     let mut diffs = Vec::new();
 
     for (i, cal) in calendars.iter().enumerate() {
@@ -22,7 +27,7 @@ pub async fn run(calendars: Vec<Calendar>, range: DateRange, verbose: bool) -> R
             Ok(diff) => {
                 println!("{}", diff.render_sync(verbose));
                 diff.apply_pull()?;
-                if !allow_mass_delete(&diff, cal, false, "run `caldir push --force`") {
+                if !allow_mass_delete(&diff, cal, force) {
                     continue;
                 }
                 diff.apply_push().await?;

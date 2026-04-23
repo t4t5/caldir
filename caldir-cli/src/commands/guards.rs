@@ -7,14 +7,8 @@ const MASS_DELETE_THRESHOLD: usize = 10;
 
 /// Refuses a push that would delete a large number of remote events. Prints a
 /// warning and returns `false` when blocked; callers should `continue` past
-/// the calendar in that case. `force_hint` is the trailing instruction shown
-/// to the user (e.g. "re-run with `--force`").
-pub fn allow_mass_delete(
-    diff: &CalendarDiff,
-    cal: &Calendar,
-    force: bool,
-    force_hint: &str,
-) -> bool {
+/// the calendar in that case.
+pub fn allow_mass_delete(diff: &CalendarDiff, cal: &Calendar, force: bool) -> bool {
     if force {
         return true;
     }
@@ -31,8 +25,8 @@ pub fn allow_mass_delete(
         format!(
             "Refusing to delete {} remote events for '{}' — that's a lot. \
              If this wasn't intentional, run `caldir discard` to restore any missing local files. \
-             To proceed anyway, {}.",
-            delete_count, cal.slug, force_hint,
+             To proceed anyway, re-run with `--force`.",
+            delete_count, cal.slug,
         )
         .red()
     );

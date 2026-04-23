@@ -98,6 +98,10 @@ enum Commands {
         /// Show all events (instead of compact view when >5 events)
         #[arg(short, long)]
         verbose: bool,
+
+        /// Bypass safety checks (e.g. allow deleting many remote events at once)
+        #[arg(long)]
+        force: bool,
     },
     #[command(about = "List upcoming events across all calendars")]
     Events {
@@ -243,12 +247,13 @@ async fn main() -> Result<()> {
             from,
             to,
             verbose,
+            force,
         } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
             let range = DateRange::from_args(from.as_deref(), to.as_deref())
                 .map_err(|e| anyhow::anyhow!(e))?;
-            commands::sync::run(calendars, range, verbose).await
+            commands::sync::run(calendars, range, verbose, force).await
         }
         Commands::Events { calendar, from, to } => {
             require_calendars()?;
