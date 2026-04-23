@@ -76,6 +76,10 @@ enum Commands {
         /// Show all events (instead of compact view when >5 events)
         #[arg(short, long)]
         verbose: bool,
+
+        /// Bypass safety checks (e.g. allow deleting all remote events when local is empty)
+        #[arg(long)]
+        force: bool,
     },
     #[command(about = "Sync changes between caldir and remote calendars (push + pull)")]
     Sync {
@@ -225,10 +229,14 @@ async fn main() -> Result<()> {
                 .map_err(|e| anyhow::anyhow!(e))?;
             commands::pull::run(calendars, range, verbose).await
         }
-        Commands::Push { calendar, verbose } => {
+        Commands::Push {
+            calendar,
+            verbose,
+            force,
+        } => {
             require_calendars()?;
             let calendars = resolve_calendars(calendar.as_deref())?;
-            commands::push::run(calendars, verbose).await
+            commands::push::run(calendars, verbose, force).await
         }
         Commands::Sync {
             calendar,
