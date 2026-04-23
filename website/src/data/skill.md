@@ -110,6 +110,7 @@ Run `caldir push` after responding to sync the RSVP to the server.
 
 ## Tips
 
+- **Trust the CLI defaults.** Do not manually browse calendar directories or ask the user which calendar to use. The `caldir` CLI reads `~/.config/caldir/config.toml` for the calendar directory and default calendar. Just run `caldir new` without `--calendar` — only pass `--calendar` if the user explicitly names a different calendar.
 - After editing a `.ics` file by hand, run `caldir status` to confirm the change is detected before pushing.
 - Timezone is stored per event; `caldir new` uses the system timezone.
 - Full docs: https://caldir.org/docs.md
