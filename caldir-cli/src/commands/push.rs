@@ -23,7 +23,7 @@ pub async fn run(calendars: Vec<Calendar>, verbose: bool, force: bool) -> Result
         match result {
             Ok(diff) => {
                 println!("{}", diff.render_push(verbose));
-                if !allow_mass_delete(&diff, cal, force) {
+                if !allow_mass_delete(&diff, force) {
                     continue;
                 }
                 diff.apply_push().await?;

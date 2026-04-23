@@ -27,7 +27,7 @@ pub async fn run(
             Ok(diff) => {
                 println!("{}", diff.render_sync(verbose));
                 diff.apply_pull()?;
-                if !allow_mass_delete(&diff, cal, force) {
+                if !allow_mass_delete(&diff, force) {
                     continue;
                 }
                 diff.apply_push().await?;
