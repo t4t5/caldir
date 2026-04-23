@@ -1,6 +1,6 @@
 [package]
 name = "caldir-provider-caldav"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2024"
 description = "Generic CalDAV provider for caldir-cli"
 license.workspace = true
@@ -19,7 +19,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Shared types
-caldir-core = { path = "../caldir-core", version = "0.7.1" }
+caldir-core = { path = "../caldir-core", version = "0.8.0" }
 
 # CalDAV client library
 libdav = "0.10"

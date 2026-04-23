@@ -1,6 +1,6 @@
 [package]
 name = "caldir-provider-webcal"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Webcal (ICS subscription) provider for caldir"
 license.workspace = true
@@ -12,7 +12,7 @@ name = "caldir-provider-webcal"
 path = "src/main.rs"
 
 [dependencies]
-caldir-core = { path = "../caldir-core", version = "0.7.1" }
+caldir-core = { path = "../caldir-core", version = "0.8.0" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
