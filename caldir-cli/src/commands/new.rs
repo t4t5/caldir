@@ -40,7 +40,9 @@ pub fn run(
     let default_hint = if is_allday { "1 day" } else { "1 hour" };
 
     let end_time = if let Some(end_input) = end {
-        parse_datetime(&end_input)?
+        let parsed = parse_datetime(&end_input)?;
+        check_end_matches_start(&start_time, &parsed)?;
+        parsed
     } else if let Some(dur_input) = duration {
         apply_duration(&start_time, &dur_input)?
     } else if interactive {
@@ -121,7 +123,8 @@ where
     }
 }
 
-/// Prompt for duration/end with retry on parse errors.
+/// Prompt for duration with retry on parse errors. Only accepts duration
+/// strings like "30m", "1h", "2 days" — never a date or end time.
 fn prompt_duration(start: &EventTime, default_hint: &str) -> Result<EventTime> {
     loop {
         let input: String = Input::new()
@@ -132,10 +135,13 @@ fn prompt_duration(start: &EventTime, default_hint: &str) -> Result<EventTime> {
         if input.is_empty() {
             return Ok(default_end(start));
         }
-        match parse_end(&input, start) {
+        match try_apply_duration(start, &input) {
             Ok(result) => return Ok(result),
-            Err(e) => {
-                eprintln!("  {}", e.to_string().red());
+            Err(_) => {
+                eprintln!(
+                    "  {}",
+                    format!("Enter a duration like \"30m\", \"1h\", or \"2 days\" — got \"{}\"", input).red()
+                );
             }
         }
     }
@@ -265,20 +271,19 @@ fn has_time_component(input: &str) -> bool {
     false
 }
 
-/// Parse an end input — tries duration first (humantime), then date/time (fuzzydate).
-fn parse_end(input: &str, start: &EventTime) -> Result<EventTime> {
-    // Try as duration first
-    if let Ok(event_time) = try_apply_duration(start, input) {
-        return Ok(event_time);
+/// Verify that an explicit `--end` value matches the kind of `--start`
+/// (both timed or both all-day). Mismatches like a timed start with a
+/// date-only end are rejected by Google Calendar with a 400.
+fn check_end_matches_start(start: &EventTime, end: &EventTime) -> Result<()> {
+    match (start.is_date(), end.is_date()) {
+        (true, false) => anyhow::bail!(
+            "--start is all-day but --end is timed — both must be the same kind"
+        ),
+        (false, true) => anyhow::bail!(
+            "--start is timed but --end is all-day — both must be the same kind"
+        ),
+        _ => Ok(()),
     }
-
-    // Strip "until"/"to" prefix and parse as datetime
-    let cleaned = input
-        .strip_prefix("until ")
-        .or_else(|| input.strip_prefix("to "))
-        .unwrap_or(input);
-
-    parse_datetime(cleaned)
 }
 
 /// Apply a duration string to a start time.
@@ -581,37 +586,53 @@ mod tests {
         );
     }
 
-    // --- parse_end ---
+    // --- check_end_matches_start ---
 
     #[test]
-    fn parse_end_duration_string() {
+    fn check_end_matches_start_both_timed_ok() {
         let start = EventTime::DateTimeFloating(
             NaiveDate::from_ymd_opt(2026, 3, 20)
                 .unwrap()
                 .and_hms_opt(15, 0, 0)
                 .unwrap(),
         );
-        let end = parse_end("45m", &start).unwrap();
-        assert_eq!(
-            end,
-            EventTime::DateTimeFloating(
-                NaiveDate::from_ymd_opt(2026, 3, 20)
-                    .unwrap()
-                    .and_hms_opt(15, 45, 0)
-                    .unwrap()
-            )
+        let end = EventTime::DateTimeFloating(
+            NaiveDate::from_ymd_opt(2026, 3, 20)
+                .unwrap()
+                .and_hms_opt(16, 0, 0)
+                .unwrap(),
         );
+        assert!(check_end_matches_start(&start, &end).is_ok());
     }
 
     #[test]
-    fn parse_end_until_datetime() {
+    fn check_end_matches_start_both_dates_ok() {
+        let start = EventTime::Date(NaiveDate::from_ymd_opt(2026, 3, 20).unwrap());
+        let end = EventTime::Date(NaiveDate::from_ymd_opt(2026, 3, 21).unwrap());
+        assert!(check_end_matches_start(&start, &end).is_ok());
+    }
+
+    #[test]
+    fn check_end_matches_start_timed_start_date_end_errors() {
         let start = EventTime::DateTimeFloating(
             NaiveDate::from_ymd_opt(2026, 3, 20)
                 .unwrap()
                 .and_hms_opt(15, 0, 0)
                 .unwrap(),
         );
-        let end = parse_end("until tomorrow 5pm", &start).unwrap();
-        assert!(matches!(end, EventTime::DateTimeZoned { .. }));
+        let end = EventTime::Date(NaiveDate::from_ymd_opt(2026, 3, 20).unwrap());
+        assert!(check_end_matches_start(&start, &end).is_err());
+    }
+
+    #[test]
+    fn check_end_matches_start_date_start_timed_end_errors() {
+        let start = EventTime::Date(NaiveDate::from_ymd_opt(2026, 3, 20).unwrap());
+        let end = EventTime::DateTimeFloating(
+            NaiveDate::from_ymd_opt(2026, 3, 20)
+                .unwrap()
+                .and_hms_opt(15, 0, 0)
+                .unwrap(),
+        );
+        assert!(check_end_matches_start(&start, &end).is_err());
     }
 }
