@@ -12,8 +12,8 @@ use libdav::dav::{GetEtag, GetProperty};
 use libdav::names;
 
 use crate::caldav::{
-    EventLocation, FindEventByUid, GetCalendarResourcesInRange, absolute_url, create_caldav_client,
-    event_url, format_caldav_datetime, url_to_href,
+    EventLocation, FindEventByUid, GetCalendarResourcesInRange, GetCurrentUserPrivilegeSet,
+    absolute_url, create_caldav_client, event_url, format_caldav_datetime, url_to_href,
 };
 
 /// Discovered CalDAV endpoints from the connect flow.
@@ -32,6 +32,20 @@ pub struct RawCalendar {
     pub color: Option<String>,
     /// Absolute URL of the calendar.
     pub url: String,
+    /// Whether the authenticated user lacks write access to this calendar,
+    /// derived from `DAV:current-user-privilege-set`. `None` if the server
+    /// did not return a privilege set (assume writable).
+    pub read_only: Option<bool>,
+}
+
+/// Decide whether a calendar is writable from the privileges returned by
+/// `DAV:current-user-privilege-set`. We treat any of `all`, `write`, or
+/// `bind` as sufficient — `bind` is what's needed to create new resources
+/// in a collection, which is the relevant capability for pushing events.
+fn is_writable_privilege_set(privileges: &[String]) -> bool {
+    privileges
+        .iter()
+        .any(|p| matches!(p.as_str(), "all" | "write" | "bind"))
 }
 
 /// Discover CalDAV principal and calendar-home URLs.
@@ -123,6 +137,15 @@ pub async fn list_calendars_raw(
             .ok()
             .and_then(|r| r.value);
 
+        // Get current-user-privilege-set (RFC 3744). If the server doesn't
+        // expose it, leave `read_only` as None so the calendar is treated as
+        // writable by default — matches the existing behaviour.
+        let read_only = caldav
+            .request(GetCurrentUserPrivilegeSet::new(&calendar.href))
+            .await
+            .ok()
+            .map(|privs| !is_writable_privilege_set(&privs));
+
         let url = absolute_url(&caldav, &calendar.href);
 
         calendars.push(RawCalendar {
@@ -130,6 +153,7 @@ pub async fn list_calendars_raw(
             name: display_name,
             color,
             url,
+            read_only,
         });
     }
 

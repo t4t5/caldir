@@ -33,7 +33,7 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
             CalendarConfig {
                 name: Some(cal.name),
                 color,
-                read_only: None,
+                read_only: cal.read_only,
                 remote: Some(remote),
             }
         })

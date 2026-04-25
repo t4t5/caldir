@@ -50,25 +50,6 @@ Credentials are stored at `~/.config/caldir/providers/icloud/session/{apple_id_s
 
 File permissions are set to 0600 (owner-only) for security.
 
-## Module Structure
-
-```
-src/
-├── main.rs              # JSON protocol dispatcher
-├── constants.rs         # PROVIDER_NAME, CALDAV_ENDPOINT
-├── session.rs           # Credential storage and loading
-├── remote_config.rs     # ICloudRemoteConfig type
-├── caldav.rs            # CalDAV client helpers
-└── commands/
-    ├── mod.rs
-    ├── connect.rs       # Connect flow (credential fields → validate → done)
-    ├── list_calendars.rs
-    ├── list_events.rs
-    ├── create_event.rs
-    ├── update_event.rs
-    └── delete_event.rs
-```
-
 ## CalDAV Request/Response Flow
 
 ### Authentication (connect)
@@ -84,6 +65,15 @@ src/
 1. PROPFIND on calendar-home URL with Depth: 1
 2. Filter responses for calendar collections (resourcetype contains calendar)
 3. Extract displayname and color for each calendar
+4. PROPFIND on each calendar with `DAV:current-user-privilege-set` to detect read-only access (see below)
+
+### Read-only detection
+
+For each calendar, we issue a `PROPFIND` (Depth: 0) for `DAV:current-user-privilege-set` (RFC 3744). A calendar is reported as writable if the response contains any of the privileges `all`, `write`, or `bind` — `bind` is the privilege actually required to create new resources in a collection. Otherwise it's flagged read-only and stored as `read_only = true` in `.caldir/config.toml`.
+
+If the server doesn't return the property, `read_only` is left as `None` and the calendar is treated as writable by default. iCloud surfaces accurate per-calendar privileges, including for shared calendars granted view-only.
+
+The actual implementation is shared with `caldir-provider-caldav` and lives in `caldir-provider-caldav/src/ops.rs::list_calendars_raw`.
 
 ### List Events
 

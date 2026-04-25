@@ -325,6 +325,79 @@ impl DavRequest for FindEventByUid<'_> {
     }
 }
 
+// ============================================================================
+// Custom DAV request to fetch the current-user-privilege-set property
+// ============================================================================
+
+/// Request to fetch the `DAV:current-user-privilege-set` property (RFC 3744)
+/// for a single resource.
+///
+/// Returns the list of privilege element names granted to the authenticated
+/// user (e.g. `"read"`, `"write"`, `"write-content"`, `"bind"`, `"all"`).
+pub struct GetCurrentUserPrivilegeSet<'a> {
+    href: &'a str,
+}
+
+impl<'a> GetCurrentUserPrivilegeSet<'a> {
+    pub fn new(href: &'a str) -> Self {
+        Self { href }
+    }
+}
+
+impl DavRequest for GetCurrentUserPrivilegeSet<'_> {
+    type Response = Vec<String>;
+    type ParseError = ParseResponseError;
+    type Error<E> = libdav::dav::WebDavError<E>;
+
+    fn prepare_request(&self) -> std::result::Result<PreparedRequest, http::Error> {
+        let body = r#"<D:propfind xmlns:D="DAV:">
+    <D:prop>
+        <D:current-user-privilege-set/>
+    </D:prop>
+</D:propfind>"#
+            .to_string();
+
+        Ok(PreparedRequest {
+            method: Method::from_bytes(b"PROPFIND")?,
+            path: self.href.to_string(),
+            body,
+            headers: vec![("Depth".to_string(), "0".to_string())],
+        })
+    }
+
+    fn parse_response(
+        &self,
+        parts: &http::response::Parts,
+        body: &[u8],
+    ) -> std::result::Result<Self::Response, ParseResponseError> {
+        if !parts.status.is_success() {
+            return Err(ParseResponseError::BadStatusCode(parts.status));
+        }
+
+        let text = std::str::from_utf8(body)?;
+        let doc = roxmltree::Document::parse(text)?;
+        let root = doc.root_element();
+
+        let mut privileges = Vec::new();
+
+        for set in root
+            .descendants()
+            .filter(|n| n.tag_name().name() == "current-user-privilege-set")
+        {
+            for privilege in set
+                .descendants()
+                .filter(|n| n.tag_name().name() == "privilege")
+            {
+                for child in privilege.children().filter(|n| n.is_element()) {
+                    privileges.push(child.tag_name().name().to_string());
+                }
+            }
+        }
+
+        Ok(privileges)
+    }
+}
+
 /// Format a date string for CalDAV time-range queries.
 ///
 /// Input: RFC3339 format (e.g., "2025-01-01T00:00:00Z", "2025-01-01T00:00:00+00:00", or "2025-01-01")
