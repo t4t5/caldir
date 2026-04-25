@@ -9,15 +9,20 @@ use crate::utils::tui;
 
 pub async fn run(calendars: Vec<Calendar>, range: DateRange, verbose: bool) -> Result<()> {
     for (i, cal) in calendars.iter().enumerate() {
-        let spinner = tui::create_spinner(cal.render());
-        let result = CalendarDiff::from_calendar(cal, &range).await;
-        spinner.finish_and_clear();
+        if cal.remote().is_none() {
+            println!("{}", cal.render());
+            println!("   {}", "(local only)".dimmed());
+        } else {
+            let spinner = tui::create_spinner(cal.render());
+            let result = CalendarDiff::from_calendar(cal, &range).await;
+            spinner.finish_and_clear();
 
-        println!("{}", cal.render());
+            println!("{}", cal.render());
 
-        match result {
-            Ok(diff) => println!("{}", diff.render(verbose)),
-            Err(e) => println!("   {}", e.to_string().red()),
+            match result {
+                Ok(diff) => println!("{}", diff.render(verbose)),
+                Err(e) => println!("   {}", e.to_string().red()),
+            }
         }
 
         // Add spacing between calendars (but not after the last one)

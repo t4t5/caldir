@@ -71,9 +71,13 @@ The tool supports bidirectional sync between cloud and local:
 
 **Delete sync**: When you delete a local `.ics` file and run `push`, the event is also deleted from the remote. This is tracked via the sync state file (see below).
 
+### Calendar discovery
+
+Every non-hidden subdirectory of `calendar_dir` is a calendar — the directory itself is the source of truth, and the directory name is the slug. `.caldir/` is optional and only carries metadata + remote sync settings. A directory containing only `.ics` files (no `.caldir/`) is a valid local-only calendar; `caldir week`, `caldir new`, etc. work against it. Remote-touching commands (`push`, `pull`, `sync`, `status`) display local-only calendars with a dim `(local only)` note instead of attempting to sync.
+
 ### Local State (`.caldir/` directory)
 
-Each calendar has a `.caldir/` directory (similar to `.git/`) for local state and configuration:
+When a calendar is connected to a remote, it gets a `.caldir/` directory (similar to `.git/`) for local state and configuration:
 
 ```
 ~/caldir/personal/
@@ -200,7 +204,7 @@ caldir-provider-outlook/       # Outlook provider (separate crate)
 
 **caldir-cli** — Thin CLI layer that provides TUI rendering via the `Render` trait. All business logic lives in caldir-core; the CLI just handles command dispatch and colored terminal output.
 
-**Calendar** — Represents a single calendar directory (`caldir_core::calendar::Calendar`). Loaded via `Calendar::load(path)` which reads the local config from `.caldir/config.toml`. Provides methods for event CRUD operations and sync state management. The `remote()` method returns `Option<Remote>` — calendars without `.caldir/config.toml` are local-only.
+**Calendar** — Represents a single calendar directory (`caldir_core::calendar::Calendar`). Loaded via `Calendar::load(slug)` which reads the local config from `.caldir/config.toml` if present, otherwise falls back to `CalendarConfig::default()`. Provides methods for event CRUD operations and sync state management. The `remote()` method returns `Option<Remote>` — calendars without a configured remote are local-only.
 
 **CalendarDiff** — Bidirectional diff for a single calendar (`caldir_core::diff::CalendarDiff`). Created via `CalendarDiff::from_calendar(&cal).await`. Contains `to_push` and `to_pull` vectors of `EventDiff`. Call `apply_push().await` or `apply_pull()` to sync changes.
 
@@ -334,7 +338,7 @@ google_account = "me@gmail.com"
 google_calendar_id = "work@group.calendar.google.com"
 ```
 
-These files are created automatically by `caldir connect google`. The provider returns the config fields to save (name, color, remote settings), so the CLI doesn't need to know about provider-specific field names. Calendars without `.caldir/config.toml` are treated as local-only (not synced).
+These files are created automatically by `caldir connect google`. The provider returns the config fields to save (name, color, remote settings), so the CLI doesn't need to know about provider-specific field names. Calendars without `.caldir/config.toml` (or without a `[remote]` block in it) are treated as local-only — they're still discovered and listed, but `push`/`pull`/`sync`/`status` skip them with a `(local only)` note.
 
 **Account identifier convention**: Providers with an account concept include a `{provider}_account` field in their remote config (e.g., `google_account`, `icloud_account`). `Remote::account_identifier()` extracts this for grouping calendars by account. Providers without accounts (e.g., plain CalDAV) simply omit the field.
 

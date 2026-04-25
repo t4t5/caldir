@@ -47,8 +47,9 @@ impl Caldir {
         self.config.calendar_dir.clone()
     }
 
-    /// Discover calendars by scanning calendar_dir for subdirectories
-    /// with .caldir/config.toml files.
+    /// Discover calendars by scanning calendar_dir for subdirectories.
+    /// Every non-hidden directory is a calendar; `.caldir/config.toml`
+    /// is optional and only carries metadata + remote sync settings.
     pub fn calendars(&self) -> Vec<Calendar> {
         let data_path = self.data_path();
 
@@ -59,10 +60,11 @@ impl Caldir {
         let mut calendars: Vec<Calendar> = entries
             .filter_map(|entry| entry.ok())
             .map(|entry| entry.path())
-            .filter(|path| path.is_dir() && path.join(".caldir").exists())
+            .filter(|path| path.is_dir())
             .filter_map(|path| {
                 path.file_name()
                     .and_then(|n| n.to_str())
+                    .filter(|name| !name.starts_with('.'))
                     .and_then(|name| Calendar::load(name).ok())
             })
             .collect();

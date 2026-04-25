@@ -17,23 +17,28 @@ pub async fn run(
     let mut diffs = Vec::new();
 
     for (i, cal) in calendars.iter().enumerate() {
-        let spinner = tui::create_spinner(cal.render());
-        let result = CalendarDiff::from_calendar(cal, &range).await;
-        spinner.finish_and_clear();
+        if cal.remote().is_none() {
+            println!("{}", cal.render());
+            println!("   {}", "(local only)".dimmed());
+        } else {
+            let spinner = tui::create_spinner(cal.render());
+            let result = CalendarDiff::from_calendar(cal, &range).await;
+            spinner.finish_and_clear();
 
-        println!("{}", cal.render());
+            println!("{}", cal.render());
 
-        match result {
-            Ok(diff) => {
-                println!("{}", diff.render_sync(verbose));
-                diff.apply_pull()?;
-                if !allow_mass_delete(&diff, force) {
-                    continue;
+            match result {
+                Ok(diff) => {
+                    println!("{}", diff.render_sync(verbose));
+                    diff.apply_pull()?;
+                    if !allow_mass_delete(&diff, force) {
+                        continue;
+                    }
+                    diff.apply_push().await?;
+                    diffs.push(diff);
                 }
-                diff.apply_push().await?;
-                diffs.push(diff);
+                Err(e) => println!("   {}", e.to_string().red()),
             }
-            Err(e) => println!("   {}", e.to_string().red()),
         }
 
         if i < calendars.len() - 1 {
