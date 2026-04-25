@@ -192,7 +192,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-cli"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "caldir-core",
@@ -219,7 +219,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-core"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "chrono",
  "chrono-tz",
@@ -242,7 +242,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-provider-caldav"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "anyhow",
  "caldir-core",
@@ -282,7 +282,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-provider-icloud"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "anyhow",
  "caldir-core",
