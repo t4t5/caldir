@@ -16,8 +16,8 @@ use crate::calendar::config::CalendarConfig;
 use crate::calendar::event::CalendarEvent;
 use crate::calendar::state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::{Event, EventStatus, EventTime};
-use crate::recurrence::expand_recurring_event;
+use crate::event::{Event, EventStatus, EventTime, Recurrence};
+use crate::recurrence::{expand_recurring_event, truncate_recurrence_before};
 use crate::remote::Remote;
 use crate::utils::slugify;
 
@@ -235,6 +235,86 @@ impl Calendar {
             .find(|ce| ce.event.uid == uid && ce.event.recurrence.is_some())
             .map(|ce| ce.event);
         Ok(master)
+    }
+
+    /// Split a recurring series at `split_start`.
+    ///
+    /// The original master's RRULE is truncated to end strictly before
+    /// `split_start`, any EXDATEs at or after `split_start` are dropped, and
+    /// any override files at or after `split_start` are deleted (they're
+    /// either being replaced by the new series or are now orphaned).
+    ///
+    /// A new master is created starting at `split_start` (with `split_end`
+    /// and `new_recurrence`), inheriting all other metadata (summary,
+    /// description, location, reminders, attendees, etc.) from the original
+    /// master. The new master gets a fresh UID and a reset SEQUENCE.
+    ///
+    /// Returns the new master event. Errors if no master with `master_uid`
+    /// exists or if the master is not recurring.
+    pub fn split_recurring_series_at(
+        &self,
+        master_uid: &str,
+        split_start: EventTime,
+        split_end: EventTime,
+        new_recurrence: Option<Recurrence>,
+    ) -> CalDirResult<Event> {
+        let all_events = self.events()?;
+
+        // 1. Find the master.
+        let master = all_events
+            .iter()
+            .find(|ce| ce.event.uid == master_uid && ce.event.recurrence_id.is_none())
+            .map(|ce| ce.event.clone())
+            .ok_or_else(|| {
+                CalDirError::Config(format!("Master event not found: {}", master_uid))
+            })?;
+        let master_recurrence = master.recurrence.as_ref().ok_or_else(|| {
+            CalDirError::Config(format!("Event {} is not recurring", master_uid))
+        })?;
+
+        // 2. Truncate the master's recurrence and write it back.
+        let truncated_recurrence =
+            truncate_recurrence_before(master_recurrence, &master.start, &split_start);
+        let truncated_master = Event {
+            recurrence: Some(truncated_recurrence),
+            updated: Some(Utc::now()),
+            sequence: master.sequence.map(|s| s + 1).or(Some(1)),
+            ..master.clone()
+        };
+        self.update_event(&master.uid, &truncated_master)?;
+
+        // 3. Create the new master, inheriting all metadata from the original.
+        let new_master = Event {
+            start: split_start.clone(),
+            end: split_end,
+            recurrence: new_recurrence,
+            recurrence_id: None,
+            updated: Some(Utc::now()),
+            sequence: None,
+            ..master.with_new_uid()
+        };
+        self.create_event(&new_master)?;
+
+        // 4. Delete overrides at or after split_start. Includes the override
+        //    at split_start itself (the new master replaces it) and orphaned
+        //    overrides at later dates that no longer match an occurrence of
+        //    the truncated master.
+        let split_start_utc = split_start.to_utc();
+        for ce in &all_events {
+            if ce.event.uid != master_uid {
+                continue;
+            }
+            let Some(rid) = &ce.event.recurrence_id else {
+                continue;
+            };
+            if let (Some(rid_utc), Some(start_utc)) = (rid.to_utc(), split_start_utc)
+                && rid_utc >= start_utc
+            {
+                self.delete_event(&ce.event.uid, Some(rid))?;
+            }
+        }
+
+        Ok(new_master)
     }
 
     /// Delete a local event file by id

@@ -223,6 +223,92 @@ pub fn expand_recurring_event(
     Ok(events)
 }
 
+/// Return a copy of `recurrence` truncated to end strictly before `before`.
+///
+/// The returned recurrence:
+/// - Has any existing `UNTIL=` and `COUNT=` fragments stripped from its RRULE
+///   and replaced with a fresh `UNTIL=<just before `before`>`.
+/// - Has any EXDATEs at or after `before` removed (they are no longer
+///   meaningful once the series ends earlier).
+///
+/// `dtstart` is the master event's start time; it determines the format of
+/// the emitted UNTIL value (per RFC 5545 / the rrule crate's matching rule).
+///
+/// Used to implement "split a recurring series at this instance" — a primitive
+/// that any caldir client can use to translate a "this and future" edit into
+/// two separate events on disk.
+pub fn truncate_recurrence_before(
+    recurrence: &Recurrence,
+    dtstart: &EventTime,
+    before: &EventTime,
+) -> Recurrence {
+    let until_value = format_until_value(dtstart, before);
+    let truncated_rrule = with_until(&recurrence.rrule, &until_value);
+
+    let before_utc = before.to_utc();
+    let kept_exdates: Vec<EventTime> = recurrence
+        .exdates
+        .iter()
+        .filter(|ex| match (ex.to_utc(), before_utc) {
+            (Some(ex_utc), Some(b_utc)) => ex_utc < b_utc,
+            // If we can't compare, keep the EXDATE — the caller can clean up.
+            _ => true,
+        })
+        .cloned()
+        .collect();
+
+    Recurrence {
+        rrule: truncated_rrule,
+        exdates: kept_exdates,
+    }
+}
+
+/// Format an RRULE UNTIL value for a series with `dtstart`, set "just before"
+/// `before`. Format matches the rrule crate's expectations for the dtstart
+/// variant (see `normalize_rrule_until`).
+fn format_until_value(dtstart: &EventTime, before: &EventTime) -> String {
+    use chrono::Duration;
+
+    match dtstart {
+        EventTime::Date(_) => {
+            let before_date = match before {
+                EventTime::Date(d) => *d,
+                _ => before
+                    .to_utc()
+                    .map(|dt| dt.date_naive())
+                    .unwrap_or_default(),
+            };
+            (before_date - Duration::days(1)).format("%Y%m%d").to_string()
+        }
+        EventTime::DateTimeUtc(_) | EventTime::DateTimeZoned { .. } => {
+            let before_utc = before.to_utc().unwrap_or_default();
+            (before_utc - Duration::seconds(1))
+                .format("%Y%m%dT%H%M%SZ")
+                .to_string()
+        }
+        EventTime::DateTimeFloating(_) => {
+            let before_naive = before.to_utc().unwrap_or_default().naive_utc();
+            (before_naive - Duration::seconds(1))
+                .format("%Y%m%dT%H%M%S")
+                .to_string()
+        }
+    }
+}
+
+/// Return a copy of `rrule` with any existing `UNTIL=` and `COUNT=` fragments
+/// removed and a new `UNTIL=<until_value>` appended. Order of other fragments
+/// is preserved.
+fn with_until(rrule: &str, until_value: &str) -> String {
+    let mut parts: Vec<String> = rrule
+        .split(';')
+        .filter(|p| !p.is_empty())
+        .filter(|p| !p.starts_with("UNTIL=") && !p.starts_with("COUNT="))
+        .map(|p| p.to_string())
+        .collect();
+    parts.push(format!("UNTIL={}", until_value));
+    parts.join(";")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,5 +355,107 @@ mod tests {
 
         let result: Result<RRuleSet, _> = rrule_str.parse();
         assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
+    }
+
+    #[test]
+    fn truncate_utc_event() {
+        let dtstart = EventTime::DateTimeUtc("2026-04-01T10:00:00Z".parse().unwrap());
+        let recurrence = Recurrence {
+            rrule: "FREQ=DAILY".to_string(),
+            exdates: vec![],
+        };
+        let split = EventTime::DateTimeUtc("2026-04-03T10:00:00Z".parse().unwrap());
+
+        let truncated = truncate_recurrence_before(&recurrence, &dtstart, &split);
+        // UNTIL should be 1 second before split, with Z suffix
+        assert_eq!(truncated.rrule, "FREQ=DAILY;UNTIL=20260403T095959Z");
+
+        // Round-trips through the rrule parser via build_rrule_string
+        let rrule_str = build_rrule_string(&dtstart, &truncated);
+        let parsed: Result<RRuleSet, _> = rrule_str.parse();
+        assert!(parsed.is_ok(), "Failed to parse: {:?}", parsed.err());
+    }
+
+    #[test]
+    fn truncate_strips_existing_until_and_count() {
+        let dtstart = EventTime::DateTimeUtc("2026-04-01T10:00:00Z".parse().unwrap());
+        let recurrence = Recurrence {
+            rrule: "FREQ=DAILY;COUNT=10;BYDAY=MO".to_string(),
+            exdates: vec![],
+        };
+        let split = EventTime::DateTimeUtc("2026-04-03T10:00:00Z".parse().unwrap());
+
+        let truncated = truncate_recurrence_before(&recurrence, &dtstart, &split);
+        assert!(!truncated.rrule.contains("COUNT="));
+        assert_eq!(truncated.rrule.matches("UNTIL=").count(), 1);
+        assert!(truncated.rrule.contains("BYDAY=MO"));
+        assert!(truncated.rrule.ends_with("UNTIL=20260403T095959Z"));
+    }
+
+    #[test]
+    fn truncate_allday_event() {
+        let dtstart = EventTime::Date(NaiveDate::from_ymd_opt(2026, 4, 1).unwrap());
+        let recurrence = Recurrence {
+            rrule: "FREQ=DAILY".to_string(),
+            exdates: vec![],
+        };
+        let split = EventTime::Date(NaiveDate::from_ymd_opt(2026, 4, 3).unwrap());
+
+        let truncated = truncate_recurrence_before(&recurrence, &dtstart, &split);
+        // UNTIL is the day before split, date-only (no time component)
+        assert_eq!(truncated.rrule, "FREQ=DAILY;UNTIL=20260402");
+    }
+
+    #[test]
+    fn truncate_drops_exdates_at_or_after_split() {
+        let dtstart = EventTime::DateTimeUtc("2026-04-01T10:00:00Z".parse().unwrap());
+        let kept = EventTime::DateTimeUtc("2026-04-02T10:00:00Z".parse().unwrap());
+        let dropped_at = EventTime::DateTimeUtc("2026-04-03T10:00:00Z".parse().unwrap());
+        let dropped_after = EventTime::DateTimeUtc("2026-04-05T10:00:00Z".parse().unwrap());
+        let recurrence = Recurrence {
+            rrule: "FREQ=DAILY".to_string(),
+            exdates: vec![kept.clone(), dropped_at, dropped_after],
+        };
+        let split = EventTime::DateTimeUtc("2026-04-03T10:00:00Z".parse().unwrap());
+
+        let truncated = truncate_recurrence_before(&recurrence, &dtstart, &split);
+        assert_eq!(truncated.exdates, vec![kept]);
+    }
+
+    #[test]
+    fn truncate_zoned_event_emits_utc_until() {
+        // RRULE crate requires UNTIL in UTC for zoned DTSTART (see
+        // normalize_rrule_until comment).
+        let dtstart = EventTime::DateTimeZoned {
+            datetime: NaiveDateTime::new(
+                NaiveDate::from_ymd_opt(2026, 4, 1).unwrap(),
+                NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            ),
+            tzid: "Europe/Stockholm".to_string(),
+        };
+        let recurrence = Recurrence {
+            rrule: "FREQ=DAILY".to_string(),
+            exdates: vec![],
+        };
+        // Split at 2026-04-03 10:00 Stockholm = 08:00 UTC
+        let split = EventTime::DateTimeZoned {
+            datetime: NaiveDateTime::new(
+                NaiveDate::from_ymd_opt(2026, 4, 3).unwrap(),
+                NaiveTime::from_hms_opt(10, 0, 0).unwrap(),
+            ),
+            tzid: "Europe/Stockholm".to_string(),
+        };
+
+        let truncated = truncate_recurrence_before(&recurrence, &dtstart, &split);
+        assert!(
+            truncated.rrule.ends_with("Z"),
+            "zoned UNTIL must be in UTC form: {}",
+            truncated.rrule
+        );
+
+        // And it must round-trip through the rrule parser
+        let rrule_str = build_rrule_string(&dtstart, &truncated);
+        let parsed: Result<RRuleSet, _> = rrule_str.parse();
+        assert!(parsed.is_ok(), "Failed to parse: {:?}", parsed.err());
     }
 }
