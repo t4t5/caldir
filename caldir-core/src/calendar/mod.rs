@@ -1,5 +1,6 @@
 //! Calendar directory management.
 
+mod cache;
 pub mod config;
 mod event;
 mod state;
@@ -106,20 +107,17 @@ impl Calendar {
         self.config.remote.as_ref()
     }
 
-    /// Load events from local directory
+    /// Load events from local directory.
+    ///
+    /// Backed by a process-wide per-file cache (`calendar::cache`) for the
+    /// benefit of long-running hosts (e.g. GUI desktop apps using caldir):
+    /// the first call reads and parses every `.ics` file,
+    /// subsequent calls only re-parse files whose mtime has changed.
+    /// The one-shot CLI gets no benefit (fresh process per
+    /// invocation) but pays no meaningful cost either.
     pub fn events(&self) -> CalDirResult<Vec<CalendarEvent>> {
         let data_path = self.path()?;
-
-        let entries = std::fs::read_dir(&data_path)?;
-
-        let local_events = entries
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|e| e == "ics"))
-            .filter_map(|path| CalendarEvent::from_file(path).ok())
-            .collect();
-
-        Ok(local_events)
+        cache::cached_events_for_dir(&data_path)
     }
 
     /// Load events in the given date range, expanding recurring events into instances.
@@ -268,9 +266,10 @@ impl Calendar {
             .ok_or_else(|| {
                 CalDirError::Config(format!("Master event not found: {}", master_uid))
             })?;
-        let master_recurrence = master.recurrence.as_ref().ok_or_else(|| {
-            CalDirError::Config(format!("Event {} is not recurring", master_uid))
-        })?;
+        let master_recurrence = master
+            .recurrence
+            .as_ref()
+            .ok_or_else(|| CalDirError::Config(format!("Event {} is not recurring", master_uid)))?;
 
         // 2. Truncate the master's recurrence and write it back.
         let truncated_recurrence =
