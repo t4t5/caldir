@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  check-version:
+  check-cli-version:
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
@@ -18,23 +18,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check if version tag exists
+      - name: Check if caldir-cli version tag exists
         id: check
         run: |
           version=$(grep '^version' caldir-cli/Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
           tag="v${version}"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           if git rev-parse "$tag" >/dev/null 2>&1; then
-            echo "Tag ${tag} already exists, skipping release"
+            echo "Tag ${tag} already exists, skipping CLI release"
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Tag ${tag} does not exist, will release"
+            echo "Tag ${tag} does not exist, will release CLI"
             echo "should_release=true" >> "$GITHUB_OUTPUT"
           fi
 
   build:
-    needs: check-version
-    if: needs.check-version.outputs.should_release == 'true'
+    needs: check-cli-version
+    if: needs.check-cli-version.outputs.should_release == 'true'
     strategy:
       matrix:
         include:
@@ -76,7 +76,7 @@ jobs:
           path: ${{ env.TARBALL }}
 
   release:
-    needs: [check-version, build]
+    needs: [check-cli-version, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -90,13 +90,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          version="v${{ needs.check-version.outputs.version }}"
+          version="v${{ needs.check-cli-version.outputs.version }}"
           gh release create "$version" artifacts/*.tar.gz \
             --title "$version" \
             --generate-notes
 
   publish:
-    needs: [check-version, release]
+    needs: release
+    if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -104,26 +105,47 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Publish to crates.io
+      - name: Publish changed crates to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          publish() {
-            output=$(cargo publish -p "$1" 2>&1) || {
-              if echo "$output" | grep -q "already exists\|already uploaded"; then
-                echo "$1: already published, skipping"
-              else
-                echo "$output" >&2
-                return 1
-              fi
-            }
+          set -euo pipefail
+
+          crate_version() {
+            grep '^version' "$1/Cargo.toml" | head -1 | sed 's/.*"\(.*\)".*/\1/'
           }
-          publish caldir-core
-          sleep 30
-          publish caldir-cli
-          publish caldir-provider-google
-          publish caldir-provider-caldav
-          publish caldir-provider-outlook
-          publish caldir-provider-webcal
-          sleep 30
-          publish caldir-provider-icloud
+
+          # Returns 0 if {crate}@{version} is already on crates.io, 1 otherwise.
+          already_published() {
+            local crate=$1 version=$2 status
+            status=$(curl -sS -o /dev/null -w "%{http_code}" \
+              "https://crates.io/api/v1/crates/${crate}/${version}")
+            [ "$status" = "200" ]
+          }
+
+          # Returns 0 if a publish happened, 1 if skipped.
+          publish_if_new() {
+            local crate=$1 version
+            version=$(crate_version "$crate")
+            if already_published "$crate" "$version"; then
+              echo "${crate} ${version}: already on crates.io, skipping"
+              return 1
+            fi
+            echo "${crate} ${version}: publishing..."
+            cargo publish -p "$crate"
+            return 0
+          }
+
+          # Publish caldir-core first; if it published, wait for the index to
+          # catch up before publishing dependents.
+          if publish_if_new caldir-core; then
+            echo "Waiting 30s for crates.io to index caldir-core..."
+            sleep 30
+          fi
+
+          publish_if_new caldir-cli || true
+          publish_if_new caldir-provider-google || true
+          publish_if_new caldir-provider-caldav || true
+          publish_if_new caldir-provider-outlook || true
+          publish_if_new caldir-provider-webcal || true
+          publish_if_new caldir-provider-icloud || true
