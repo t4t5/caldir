@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::caldir::Caldir;
@@ -17,7 +17,7 @@ use crate::calendar::config::CalendarConfig;
 use crate::calendar::event::CalendarEvent;
 use crate::calendar::state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::{Event, EventStatus, EventTime, Recurrence};
+use crate::event::{Event, EventTime, Recurrence};
 use crate::recurrence::{expand_recurring_event, truncate_recurrence_before};
 use crate::remote::Remote;
 use crate::utils::slugify;
@@ -155,13 +155,7 @@ impl Calendar {
 
         // Include singles that fall in range
         for event in singles {
-            if event.status == EventStatus::Cancelled {
-                continue;
-            }
-            if let Some(start_utc) = event.start.to_utc()
-                && start_utc >= from
-                && start_utc <= to
-            {
+            if event.starts_in_range(from, to, &Local) {
                 result.push(event);
             }
         }
@@ -176,13 +170,7 @@ impl Calendar {
         // Include orphaned overrides (override whose master is missing) if in range
         for (_uid, orphans) in overrides {
             for (_rid, event) in orphans {
-                if event.status == EventStatus::Cancelled {
-                    continue;
-                }
-                if let Some(start_utc) = event.start.to_utc()
-                    && start_utc >= from
-                    && start_utc <= to
-                {
+                if event.starts_in_range(from, to, &Local) {
                     result.push(event);
                 }
             }
@@ -335,3 +323,4 @@ impl fmt::Display for Calendar {
         write!(f, "{}", self.slug)
     }
 }
+

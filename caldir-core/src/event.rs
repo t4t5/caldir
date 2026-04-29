@@ -4,7 +4,7 @@
 //! Providers convert their API responses into these types, and caldir-cli
 //! works exclusively with them for sync, diff, and ICS generation.
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -203,6 +203,23 @@ impl Event {
         updated.updated = Some(Utc::now());
         Some(updated)
     }
+
+    /// Whether this event's start falls inside `[from, to]`, interpreting
+    /// floating/all-day starts in `host_tz`. Cancelled events never match.
+    pub fn starts_in_range<Tz: TimeZone>(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        host_tz: &Tz,
+    ) -> bool {
+        if self.status == EventStatus::Cancelled {
+            return false;
+        }
+        let Some(instant) = self.start.resolve_instant_in_zone(host_tz) else {
+            return false;
+        };
+        instant >= from && instant <= to
+    }
 }
 
 /// An event attendee (also used for organizer)
@@ -364,6 +381,35 @@ pub enum EventTime {
 }
 
 impl EventTime {
+    /// Resolve to the UTC instant this event actually starts at, given a host
+    /// timezone for interpreting wall-clock-only variants.
+    ///
+    /// - `Date`: midnight in `host_tz`.
+    /// - `DateTimeFloating`: wall-clock interpreted in `host_tz` (RFC 5545
+    ///   floating time = "9am wherever you are").
+    /// - `DateTimeUtc` / `DateTimeZoned`: instant is already unambiguous;
+    ///   `host_tz` is ignored.
+    ///
+    /// Use this (not `to_utc`) whenever the result drives a real-world time
+    /// decision: range filtering, reminder scheduling, etc. `to_utc` is an
+    /// ordering projection only.
+    pub fn resolve_instant_in_zone<Tz: TimeZone>(
+        &self,
+        host_tz: &Tz,
+    ) -> Option<DateTime<Utc>> {
+        match self {
+            EventTime::Date(d) => host_tz
+                .from_local_datetime(&d.and_hms_opt(0, 0, 0)?)
+                .single()
+                .map(|l| l.with_timezone(&Utc)),
+            EventTime::DateTimeFloating(dt) => host_tz
+                .from_local_datetime(dt)
+                .single()
+                .map(|l| l.with_timezone(&Utc)),
+            EventTime::DateTimeUtc(_) | EventTime::DateTimeZoned { .. } => self.to_utc(),
+        }
+    }
+
     /// Get the start time as UTC DateTime (for comparison/sorting)
     /// Note: For floating and zoned times, this converts to UTC using naive interpretation
     pub fn to_utc(&self) -> Option<DateTime<Utc>> {
@@ -552,6 +598,29 @@ mod tests {
         assert_eq!(ParticipationStatus::Declined.to_string(), "declined");
         assert_eq!(ParticipationStatus::Tentative.to_string(), "maybe");
         assert_eq!(ParticipationStatus::NeedsAction.to_string(), "pending");
+    }
+
+    /// Floating "9am" on a Pacific host fires at 17:00 UTC, not 09:00 UTC.
+    #[test]
+    fn starts_in_range_resolves_floating_in_host_zone() {
+        use chrono::FixedOffset;
+        let pacific = FixedOffset::west_opt(8 * 3600).unwrap();
+        let naive = NaiveDate::from_ymd_opt(2026, 1, 15)
+            .unwrap()
+            .and_hms_opt(9, 0, 0)
+            .unwrap();
+        let event = Event::new(
+            "Test".into(),
+            EventTime::DateTimeFloating(naive),
+            EventTime::DateTimeFloating(naive),
+            None,
+            None,
+            None,
+            vec![],
+        );
+        let from = Utc.with_ymd_and_hms(2026, 1, 15, 16, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 1, 15, 18, 0, 0).unwrap();
+        assert!(event.starts_in_range(from, to, &pacific));
     }
 
     #[test]
