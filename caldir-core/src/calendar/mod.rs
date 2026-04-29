@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::caldir::Caldir;
@@ -129,57 +129,8 @@ impl Calendar {
         from: DateTime<Utc>,
         to: DateTime<Utc>,
     ) -> CalDirResult<Vec<Event>> {
-        let all_events = self.events()?;
-
-        // Classify events into singles, masters, and overrides
-        let mut singles: Vec<Event> = Vec::new();
-        let mut masters: Vec<Event> = Vec::new();
-        // uid → (recurrence_id ICS string → override Event)
-        let mut overrides: HashMap<String, HashMap<String, Event>> = HashMap::new();
-
-        for ce in all_events {
-            let event = ce.event;
-            if event.recurrence.is_some() {
-                masters.push(event);
-            } else if let Some(ref rid) = event.recurrence_id {
-                overrides
-                    .entry(event.uid.clone())
-                    .or_default()
-                    .insert(rid.to_ics_string(), event);
-            } else {
-                singles.push(event);
-            }
-        }
-
-        let mut result: Vec<Event> = Vec::new();
-
-        // Include singles that fall in range
-        for event in singles {
-            if event.starts_in_range(from, to, &Local) {
-                result.push(event);
-            }
-        }
-
-        // Expand each master into instances within range
-        for master in &masters {
-            let uid_overrides = overrides.remove(&master.uid).unwrap_or_default();
-            let instances = expand_recurring_event(master, from, to, &uid_overrides)?;
-            result.extend(instances);
-        }
-
-        // Include orphaned overrides (override whose master is missing) if in range
-        for (_uid, orphans) in overrides {
-            for (_rid, event) in orphans {
-                if event.starts_in_range(from, to, &Local) {
-                    result.push(event);
-                }
-            }
-        }
-
-        // Sort by start time
-        result.sort_by(|a, b| a.start.to_utc().cmp(&b.start.to_utc()));
-
-        Ok(result)
+        let all_events = self.events()?.into_iter().map(|ce| ce.event);
+        events_in_range_from_events(all_events, from, to)
     }
 
     /// Search events by summary (case-insensitive substring match).
@@ -324,3 +275,136 @@ impl fmt::Display for Calendar {
     }
 }
 
+/// Filter and expand an in-memory event set for the given UTC range.
+///
+/// This is the pure core behind [`Calendar::events_in_range`]. Filesystem-backed
+/// calendars load events from disk first, then delegate here.
+pub fn events_in_range_from_events<I>(
+    all_events: I,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+) -> CalDirResult<Vec<Event>>
+where
+    I: IntoIterator<Item = Event>,
+{
+    events_in_range_from_events_in_zone(all_events, from, to, rrule::Tz::LOCAL)
+}
+
+fn events_in_range_from_events_in_zone<I>(
+    all_events: I,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+    host_tz: rrule::Tz,
+) -> CalDirResult<Vec<Event>>
+where
+    I: IntoIterator<Item = Event>,
+{
+    // Classify events into singles, masters, and overrides
+    let mut singles: Vec<Event> = Vec::new();
+    let mut masters: Vec<Event> = Vec::new();
+    // uid -> (recurrence_id ICS string -> override Event)
+    let mut overrides: HashMap<String, HashMap<String, Event>> = HashMap::new();
+
+    for event in all_events {
+        if event.recurrence.is_some() {
+            masters.push(event);
+        } else if let Some(ref rid) = event.recurrence_id {
+            overrides
+                .entry(event.uid.clone())
+                .or_default()
+                .insert(rid.to_ics_string(), event);
+        } else {
+            singles.push(event);
+        }
+    }
+
+    let mut result: Vec<Event> = Vec::new();
+
+    // Include singles that fall in range
+    for event in singles {
+        if event.starts_in_range(from, to, &host_tz) {
+            result.push(event);
+        }
+    }
+
+    // Expand each master into instances within range
+    for master in &masters {
+        let uid_overrides = overrides.remove(&master.uid).unwrap_or_default();
+        let instances = expand_recurring_event(master, from, to, &uid_overrides, host_tz)?;
+        result.extend(instances);
+    }
+
+    // Include orphaned overrides (override whose master is missing) if in range
+    for (_uid, orphans) in overrides {
+        for (_rid, event) in orphans {
+            if event.starts_in_range(from, to, &host_tz) {
+                result.push(event);
+            }
+        }
+    }
+
+    // Sort by resolved start instant in the same host timezone used for filtering.
+    result.sort_by_key(|event| {
+        event
+            .start
+            .resolve_instant_in_zone(&host_tz)
+            .or_else(|| event.start.to_utc())
+    });
+
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{NaiveDate, NaiveDateTime, TimeZone};
+
+    fn t(year: i32, month: u32, day: u32, hour: u32, min: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(year, month, day, hour, min, 0)
+            .unwrap()
+    }
+
+    fn naive(year: i32, month: u32, day: u32, hour: u32, min: u32) -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(year, month, day)
+            .unwrap()
+            .and_hms_opt(hour, min, 0)
+            .unwrap()
+    }
+
+    #[test]
+    fn events_in_range_preserves_recurring_floating_wall_time() {
+        let pacific = rrule::Tz::US__Pacific;
+        let start = EventTime::DateTimeFloating(naive(2026, 1, 15, 9, 0));
+        let end = EventTime::DateTimeFloating(naive(2026, 1, 15, 10, 0));
+        let event = Event::new(
+            "Daily standup".into(),
+            start.clone(),
+            end.clone(),
+            None,
+            None,
+            Some(Recurrence {
+                rrule: "FREQ=DAILY;COUNT=1".into(),
+                exdates: vec![],
+            }),
+            vec![],
+        );
+
+        // 09:00 Pacific on this date is 17:00 UTC.
+        let events = events_in_range_from_events_in_zone(
+            vec![event],
+            t(2026, 1, 15, 16, 30),
+            t(2026, 1, 15, 17, 30),
+            pacific,
+        )
+        .unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].start, start);
+        assert_eq!(events[0].end, end);
+        assert!(events[0].starts_in_range(
+            t(2026, 1, 15, 16, 30),
+            t(2026, 1, 15, 17, 30),
+            &pacific
+        ));
+    }
+}

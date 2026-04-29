@@ -393,10 +393,7 @@ impl EventTime {
     /// Use this (not `to_utc`) whenever the result drives a real-world time
     /// decision: range filtering, reminder scheduling, etc. `to_utc` is an
     /// ordering projection only.
-    pub fn resolve_instant_in_zone<Tz: TimeZone>(
-        &self,
-        host_tz: &Tz,
-    ) -> Option<DateTime<Utc>> {
+    pub fn resolve_instant_in_zone<Tz: TimeZone>(&self, host_tz: &Tz) -> Option<DateTime<Utc>> {
         match self {
             EventTime::Date(d) => host_tz
                 .from_local_datetime(&d.and_hms_opt(0, 0, 0)?)

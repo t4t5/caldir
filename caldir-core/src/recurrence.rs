@@ -70,21 +70,32 @@ fn normalize_rrule_until(rrule: &str, start: &EventTime) -> String {
 }
 
 /// Build an iCalendar-format RRULE string for the rrule crate parser.
-fn build_rrule_string(start: &EventTime, recurrence: &Recurrence) -> String {
+fn build_rrule_string(start: &EventTime, recurrence: &Recurrence, host_tz: rrule::Tz) -> String {
     let mut lines = Vec::new();
 
-    // DTSTART — Date and Floating stay floating (no Z) so they match
-    // their RRULE's UNTIL format. UTC keeps Z. Zoned keeps TZID.
+    // DTSTART — Date and Floating use the host timezone when one is supplied
+    // explicitly, otherwise they stay floating so Local behavior is unchanged.
+    // UTC keeps Z. Zoned keeps its own TZID.
     let dtstart = match start {
-        EventTime::Date(d) => {
+        EventTime::Date(d) if host_tz.is_local() => {
             format!("DTSTART:{}T000000", d.format("%Y%m%d"))
         }
+        EventTime::Date(d) => format!(
+            "DTSTART;TZID={}:{}T000000",
+            host_tz.name(),
+            d.format("%Y%m%d")
+        ),
         EventTime::DateTimeUtc(dt) => {
             format!("DTSTART:{}", dt.format("%Y%m%dT%H%M%SZ"))
         }
-        EventTime::DateTimeFloating(dt) => {
+        EventTime::DateTimeFloating(dt) if host_tz.is_local() => {
             format!("DTSTART:{}", dt.format("%Y%m%dT%H%M%S"))
         }
+        EventTime::DateTimeFloating(dt) => format!(
+            "DTSTART;TZID={}:{}",
+            host_tz.name(),
+            dt.format("%Y%m%dT%H%M%S")
+        ),
         EventTime::DateTimeZoned { datetime, tzid } => {
             format!("DTSTART;TZID={}:{}", tzid, datetime.format("%Y%m%dT%H%M%S"))
         }
@@ -98,13 +109,25 @@ fn build_rrule_string(start: &EventTime, recurrence: &Recurrence) -> String {
     // EXDATE lines — must also match DTSTART's timezone convention
     for exdate in &recurrence.exdates {
         let exdate_str = match exdate {
-            EventTime::Date(d) => format!("EXDATE:{}T000000", d.format("%Y%m%d")),
+            EventTime::Date(d) if host_tz.is_local() => {
+                format!("EXDATE:{}T000000", d.format("%Y%m%d"))
+            }
+            EventTime::Date(d) => format!(
+                "EXDATE;TZID={}:{}T000000",
+                host_tz.name(),
+                d.format("%Y%m%d")
+            ),
             EventTime::DateTimeUtc(dt) => {
                 format!("EXDATE:{}", dt.format("%Y%m%dT%H%M%SZ"))
             }
-            EventTime::DateTimeFloating(dt) => {
+            EventTime::DateTimeFloating(dt) if host_tz.is_local() => {
                 format!("EXDATE:{}", dt.format("%Y%m%dT%H%M%S"))
             }
+            EventTime::DateTimeFloating(dt) => format!(
+                "EXDATE;TZID={}:{}",
+                host_tz.name(),
+                dt.format("%Y%m%dT%H%M%S")
+            ),
             EventTime::DateTimeZoned { datetime, tzid } => {
                 format!("EXDATE;TZID={}:{}", tzid, datetime.format("%Y%m%dT%H%M%S"))
             }
@@ -120,7 +143,7 @@ fn occurrence_to_event_time(dt: &DateTime<rrule::Tz>, master_start: &EventTime) 
     match master_start {
         EventTime::Date(_) => EventTime::Date(dt.date_naive()),
         EventTime::DateTimeUtc(_) => EventTime::DateTimeUtc(dt.with_timezone(&Utc)),
-        EventTime::DateTimeFloating(_) => EventTime::DateTimeFloating(dt.naive_utc()),
+        EventTime::DateTimeFloating(_) => EventTime::DateTimeFloating(dt.naive_local()),
         EventTime::DateTimeZoned { tzid, .. } => EventTime::DateTimeZoned {
             datetime: dt.naive_local(),
             tzid: tzid.clone(),
@@ -138,13 +161,14 @@ pub fn expand_recurring_event(
     range_start: DateTime<Utc>,
     range_end: DateTime<Utc>,
     overrides: &HashMap<String, Event>,
+    host_tz: rrule::Tz,
 ) -> CalDirResult<Vec<Event>> {
     let recurrence = match &master.recurrence {
         Some(r) => r,
         None => return Ok(Vec::new()),
     };
 
-    let rrule_str = build_rrule_string(&master.start, recurrence);
+    let rrule_str = build_rrule_string(&master.start, recurrence, host_tz);
 
     let rrule_set: RRuleSet = rrule_str.parse().map_err(|e| {
         CalDirError::IcsParse(format!(
@@ -188,7 +212,7 @@ pub fn expand_recurring_event(
                     EventTime::DateTimeUtc(occ_dt.with_timezone(&Utc) + duration)
                 }
                 (EventTime::DateTimeFloating(_), _) => {
-                    EventTime::DateTimeFloating(occ_dt.naive_utc() + duration)
+                    EventTime::DateTimeFloating(occ_dt.naive_local() + duration)
                 }
                 (EventTime::DateTimeZoned { tzid, .. }, _) => EventTime::DateTimeZoned {
                     datetime: occ_dt.naive_local() + duration,
@@ -278,7 +302,9 @@ fn format_until_value(dtstart: &EventTime, before: &EventTime) -> String {
                     .map(|dt| dt.date_naive())
                     .unwrap_or_default(),
             };
-            (before_date - Duration::days(1)).format("%Y%m%d").to_string()
+            (before_date - Duration::days(1))
+                .format("%Y%m%d")
+                .to_string()
         }
         EventTime::DateTimeUtc(_) | EventTime::DateTimeZoned { .. } => {
             let before_utc = before.to_utc().unwrap_or_default();
@@ -331,7 +357,7 @@ mod tests {
             exdates: vec![],
         };
 
-        let rrule_str = build_rrule_string(&start, &recurrence);
+        let rrule_str = build_rrule_string(&start, &recurrence, rrule::Tz::LOCAL);
         eprintln!("Generated rrule string:\n{}", rrule_str);
 
         // This is the line that was failing:
@@ -350,7 +376,7 @@ mod tests {
             exdates: vec![],
         };
 
-        let rrule_str = build_rrule_string(&start, &recurrence);
+        let rrule_str = build_rrule_string(&start, &recurrence, rrule::Tz::LOCAL);
         eprintln!("Generated rrule string:\n{}", rrule_str);
 
         let result: Result<RRuleSet, _> = rrule_str.parse();
@@ -371,7 +397,7 @@ mod tests {
         assert_eq!(truncated.rrule, "FREQ=DAILY;UNTIL=20260403T095959Z");
 
         // Round-trips through the rrule parser via build_rrule_string
-        let rrule_str = build_rrule_string(&dtstart, &truncated);
+        let rrule_str = build_rrule_string(&dtstart, &truncated, rrule::Tz::LOCAL);
         let parsed: Result<RRuleSet, _> = rrule_str.parse();
         assert!(parsed.is_ok(), "Failed to parse: {:?}", parsed.err());
     }
@@ -454,7 +480,7 @@ mod tests {
         );
 
         // And it must round-trip through the rrule parser
-        let rrule_str = build_rrule_string(&dtstart, &truncated);
+        let rrule_str = build_rrule_string(&dtstart, &truncated, rrule::Tz::LOCAL);
         let parsed: Result<RRuleSet, _> = rrule_str.parse();
         assert!(parsed.is_ok(), "Failed to parse: {:?}", parsed.err());
     }
