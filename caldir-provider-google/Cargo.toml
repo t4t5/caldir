@@ -1,6 +1,6 @@
 [package]
 name = "caldir-provider-google"
-version = "0.5.1"
+version = "0.5.2"
 edition = "2024"
 description = "Google Calendar provider for caldir-cli"
 license.workspace = true
