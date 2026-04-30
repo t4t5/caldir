@@ -29,10 +29,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
         let response = client.get(&url).send().await?;
 
         if !response.status().is_success() {
-            anyhow::bail!(
-                "Failed to fetch calendar URL: HTTP {}",
-                response.status()
-            );
+            anyhow::bail!("Failed to fetch calendar URL: HTTP {}", response.status());
         }
 
         let body = response.text().await?;

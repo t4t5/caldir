@@ -1,10 +1,10 @@
 //! List events within a time range from a webcal subscription.
 
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use caldir_core::event::Event;
 use caldir_core::ics::parse_events;
 use caldir_core::remote::protocol::ListEvents;
+use chrono::{DateTime, Utc};
 
 use crate::remote_config::WebcalRemoteConfig;
 
@@ -20,10 +20,7 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
     let response = client.get(&config.webcal_url).send().await?;
 
     if !response.status().is_success() {
-        anyhow::bail!(
-            "Failed to fetch webcal feed: HTTP {}",
-            response.status()
-        );
+        anyhow::bail!("Failed to fetch webcal feed: HTTP {}", response.status());
     }
 
     let body = response.text().await?;
@@ -33,10 +30,8 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
         parse_events(&body).map_err(|e| anyhow::anyhow!("Failed to parse webcal feed: {e}"))?;
 
     // Parse the from/to date range
-    let from_utc = DateTime::parse_from_rfc3339(&cmd.from)
-        .map(|dt| dt.with_timezone(&Utc))?;
-    let to_utc = DateTime::parse_from_rfc3339(&cmd.to)
-        .map(|dt| dt.with_timezone(&Utc))?;
+    let from_utc = DateTime::parse_from_rfc3339(&cmd.from).map(|dt| dt.with_timezone(&Utc))?;
+    let to_utc = DateTime::parse_from_rfc3339(&cmd.to).map(|dt| dt.with_timezone(&Utc))?;
 
     // Filter events by date range
     let filtered: Vec<Event> = all_events

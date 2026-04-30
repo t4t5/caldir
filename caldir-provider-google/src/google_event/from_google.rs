@@ -14,8 +14,9 @@ pub trait FromGoogle {
 
 impl FromGoogle for Event {
     fn from_google(event: google_calendar::types::Event) -> Result<Self> {
-        let start = google_dt_to_event_time(event.start.as_ref())
-            .ok_or_else(|| anyhow::anyhow!("Event has no start time ({})", describe_event(&event)))?;
+        let start = google_dt_to_event_time(event.start.as_ref()).ok_or_else(|| {
+            anyhow::anyhow!("Event has no start time ({})", describe_event(&event))
+        })?;
 
         let end = google_dt_to_event_time(event.end.as_ref())
             .ok_or_else(|| anyhow::anyhow!("Event has no end time ({})", describe_event(&event)))?;

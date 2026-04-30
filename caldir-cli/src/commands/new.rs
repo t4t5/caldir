@@ -140,7 +140,11 @@ fn prompt_duration(start: &EventTime, default_hint: &str) -> Result<EventTime> {
             Err(_) => {
                 eprintln!(
                     "  {}",
-                    format!("Enter a duration like \"30m\", \"1h\", or \"2 days\" — got \"{}\"", input).red()
+                    format!(
+                        "Enter a duration like \"30m\", \"1h\", or \"2 days\" — got \"{}\"",
+                        input
+                    )
+                    .red()
                 );
             }
         }
@@ -276,12 +280,12 @@ fn has_time_component(input: &str) -> bool {
 /// date-only end are rejected by Google Calendar with a 400.
 fn check_end_matches_start(start: &EventTime, end: &EventTime) -> Result<()> {
     match (start.is_date(), end.is_date()) {
-        (true, false) => anyhow::bail!(
-            "--start is all-day but --end is timed — both must be the same kind"
-        ),
-        (false, true) => anyhow::bail!(
-            "--start is timed but --end is all-day — both must be the same kind"
-        ),
+        (true, false) => {
+            anyhow::bail!("--start is all-day but --end is timed — both must be the same kind")
+        }
+        (false, true) => {
+            anyhow::bail!("--start is timed but --end is all-day — both must be the same kind")
+        }
         _ => Ok(()),
     }
 }
@@ -482,7 +486,10 @@ mod tests {
         let result = parse_datetime("2026-06-09T10:00").unwrap();
         assert!(matches!(result, EventTime::DateTimeZoned { .. }));
         if let EventTime::DateTimeZoned { datetime, .. } = result {
-            assert_eq!(datetime.date(), NaiveDate::from_ymd_opt(2026, 6, 9).unwrap());
+            assert_eq!(
+                datetime.date(),
+                NaiveDate::from_ymd_opt(2026, 6, 9).unwrap()
+            );
             assert_eq!(datetime.hour(), 10);
             assert_eq!(datetime.minute(), 0);
         }

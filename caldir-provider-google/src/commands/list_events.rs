@@ -94,7 +94,12 @@ fn cancellation_to_event(
     let (uid, summary) = master_info_by_google_id
         .get(&ge.recurring_event_id)
         .cloned()
-        .unwrap_or_else(|| (format!("{}@google.com", ge.recurring_event_id), String::new()));
+        .unwrap_or_else(|| {
+            (
+                format!("{}@google.com", ge.recurring_event_id),
+                String::new(),
+            )
+        });
 
     let start = recurrence_id.clone();
     let end = match &start {
