@@ -1,4 +1,4 @@
-use anyhow::{Result, bail};
+use anyhow::Result;
 use caldir_core::event::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder, Reminders,
     Transparency,
@@ -14,29 +14,11 @@ pub trait FromGoogle {
 
 impl FromGoogle for Event {
     fn from_google(event: google_calendar::types::Event) -> Result<Self> {
-        let start = if let Some(ref start) = event.start {
-            if let Some(dt) = start.date_time {
-                utc_to_zoned(dt, &start.time_zone)
-            } else if let Some(d) = start.date {
-                EventTime::Date(d)
-            } else {
-                bail!("Event has no start time");
-            }
-        } else {
-            bail!("Event has no start time");
-        };
+        let start = google_dt_to_event_time(event.start.as_ref())
+            .ok_or_else(|| anyhow::anyhow!("Event has no start time ({})", describe_event(&event)))?;
 
-        let end = if let Some(ref end) = event.end {
-            if let Some(dt) = end.date_time {
-                utc_to_zoned(dt, &end.time_zone)
-            } else if let Some(d) = end.date {
-                EventTime::Date(d)
-            } else {
-                bail!("Event has no end time");
-            }
-        } else {
-            bail!("Event has no end time");
-        };
+        let end = google_dt_to_event_time(event.end.as_ref())
+            .ok_or_else(|| anyhow::anyhow!("Event has no end time ({})", describe_event(&event)))?;
 
         let status = match event.status.as_str() {
             "tentative" => EventStatus::Tentative,
@@ -46,15 +28,7 @@ impl FromGoogle for Event {
 
         let recurrence = parse_google_recurrence(&event.recurrence);
 
-        let recurrence_id = if let Some(ref orig) = event.original_start_time {
-            if let Some(dt) = orig.date_time {
-                Some(utc_to_zoned(dt, &orig.time_zone))
-            } else {
-                orig.date.map(EventTime::Date)
-            }
-        } else {
-            None
-        };
+        let recurrence_id = google_dt_to_event_time(event.original_start_time.as_ref());
 
         let reminders = if let Some(ref rem) = event.reminders {
             rem.overrides
@@ -208,6 +182,23 @@ fn parse_google_exdate(s: &str, tzid: &Option<String>, is_date: bool) -> Option<
         chrono::NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%S")
             .ok()
             .map(EventTime::DateTimeFloating)
+    }
+}
+
+fn describe_event(event: &google_calendar::types::Event) -> String {
+    serde_json::to_string(event).unwrap_or_else(|_| format!("id={}", event.id))
+}
+
+/// Convert a Google `EventDateTime` (used for start/end/originalStartTime) into our `EventTime`.
+/// Returns `None` if the field is absent or carries neither a `dateTime` nor a `date`.
+pub fn google_dt_to_event_time(
+    dt: Option<&google_calendar::types::EventDateTime>,
+) -> Option<EventTime> {
+    let dt = dt?;
+    if let Some(d) = dt.date_time {
+        Some(utc_to_zoned(d, &dt.time_zone))
+    } else {
+        dt.date.map(EventTime::Date)
     }
 }
 
