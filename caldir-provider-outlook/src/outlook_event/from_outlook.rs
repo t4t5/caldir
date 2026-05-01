@@ -465,6 +465,61 @@ mod tests {
         }
     }
 
+    /// What `/me/calendars/{id}/events` returns for a daily recurring event:
+    /// a single `seriesMaster` carrying its full recurrence pattern. Compare
+    /// to `/calendarView`, which would return ~92 expanded `occurrence`s,
+    /// each with its own synthetic `iCalUId`.
+    const SERIES_MASTER_JSON: &str = r#"{
+        "id": "AAMkAD-master-id",
+        "iCalUId": "040000008200E00074C5B7101A82E008000000002F2E84387DD9DC0100000000000000001000000020abc",
+        "subject": "Foo",
+        "type": "seriesMaster",
+        "start": {"dateTime": "2026-05-01T16:00:00.0000000", "timeZone": "UTC"},
+        "end":   {"dateTime": "2026-05-01T16:30:00.0000000", "timeZone": "UTC"},
+        "isAllDay": false,
+        "isCancelled": false,
+        "showAs": "busy",
+        "originalStart": null,
+        "recurrence": {
+            "pattern": {
+                "type": "daily",
+                "interval": 1,
+                "month": 0,
+                "dayOfMonth": 0,
+                "firstDayOfWeek": "sunday",
+                "index": "first"
+            },
+            "range": {
+                "type": "endDate",
+                "startDate": "2026-05-01",
+                "endDate": "2026-08-01",
+                "recurrenceTimeZone": "GMT Standard Time",
+                "numberOfOccurrences": 0
+            }
+        }
+    }"#;
+
+    #[test]
+    fn series_master_becomes_one_event_with_rrule() {
+        // Regression: when the provider used `/calendarView` instead of
+        // `/events`, this same recurring meeting came back as ~92 expanded
+        // occurrences with synthetic iCalUIds — one file per day.  The fix
+        // (switch to `/events`) means a series master arrives as a single
+        // event carrying its RRULE; caldir stores it as one .ics with a
+        // RECURRENCE-RULE rather than 92 dated files.
+        let parsed: GraphEvent = serde_json::from_str(SERIES_MASTER_JSON).unwrap();
+        let event = from_outlook(parsed, "me@example.com").unwrap();
+
+        assert!(
+            event.recurrence_id.is_none(),
+            "master must not have a recurrence_id"
+        );
+        let rec = event
+            .recurrence
+            .expect("series master must carry recurrence");
+        assert_eq!(rec.rrule, "FREQ=DAILY;UNTIL=20260801");
+    }
+
     #[test]
     fn owner_status_from_response_status_overrides_attendee_none() {
         // Graph API returns "none" for all attendees in the attendees array,
