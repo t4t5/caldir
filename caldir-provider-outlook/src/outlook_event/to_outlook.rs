@@ -1,83 +1,80 @@
-//! Convert caldir Event to Microsoft Graph event JSON.
+//! Convert caldir Event to a Microsoft Graph event.
 
 use caldir_core::event::{Event, EventTime, ParticipationStatus, Transparency};
-use serde_json::{Value, json};
+use chrono::Datelike;
 
-use crate::graph_types::DateTimeTimeZone;
+use crate::graph_types::{
+    DateTimeTimeZone, EmailAddress, GraphAttendee, GraphBody, GraphEvent, GraphLocation,
+    PatternedRecurrence, RecurrencePattern, RecurrenceRange, ResponseStatus,
+};
 
-pub fn to_outlook(event: &Event) -> Value {
-    let mut body = json!({
-        "subject": event.summary,
-        "start": event_time_to_graph(&event.start),
-        "end": event_time_to_graph(&event.end),
-        "isAllDay": event.start.is_date(),
+pub fn to_outlook(event: &Event) -> GraphEvent {
+    let body = event.description.as_ref().map(|desc| GraphBody {
+        content: desc.clone(),
+        content_type: "text".to_string(),
     });
 
-    // Safety: json!({...}) always returns Value::Object
-    let Some(obj) = body.as_object_mut() else {
-        return body;
-    };
+    let location = event.location.as_ref().map(|loc| GraphLocation {
+        display_name: loc.clone(),
+    });
 
-    if let Some(ref desc) = event.description {
-        obj.insert(
-            "body".to_string(),
-            json!({ "contentType": "text", "content": desc }),
-        );
-    }
-
-    if let Some(ref loc) = event.location {
-        obj.insert("location".to_string(), json!({ "displayName": loc }));
-    }
-
-    // ShowAs / transparency
     let show_as = match event.transparency {
         Transparency::Transparent => "free",
         Transparency::Opaque => "busy",
+    }
+    .to_string();
+
+    let (reminder_minutes, is_reminder_on) = match event.reminders.first() {
+        Some(r) => (r.minutes, true),
+        None => (0, false),
     };
-    obj.insert("showAs".to_string(), json!(show_as));
 
-    // Reminders
-    if let Some(reminder) = event.reminders.first() {
-        obj.insert(
-            "reminderMinutesBeforeStart".to_string(),
-            json!(reminder.minutes),
-        );
-        obj.insert("isReminderOn".to_string(), json!(true));
-    } else {
-        obj.insert("isReminderOn".to_string(), json!(false));
+    let attendees = event
+        .attendees
+        .iter()
+        .map(|a| GraphAttendee {
+            email_address: EmailAddress {
+                name: a.name.clone().unwrap_or_default(),
+                address: a.email.clone(),
+            },
+            status: Some(ResponseStatus {
+                response: a
+                    .response_status
+                    .map(participation_status_to_outlook)
+                    .unwrap_or("none")
+                    .to_string(),
+            }),
+            attendee_type: "required".to_string(),
+        })
+        .collect();
+
+    let recurrence = event
+        .recurrence
+        .as_ref()
+        .and_then(|rec| rrule_to_outlook(&rec.rrule, &event.start));
+
+    GraphEvent {
+        id: String::new(),
+        i_cal_uid: String::new(),
+        subject: event.summary.clone(),
+        body,
+        start: Some(event_time_to_graph(&event.start)),
+        end: Some(event_time_to_graph(&event.end)),
+        location,
+        is_all_day: event.start.is_date(),
+        is_cancelled: false,
+        recurrence,
+        attendees,
+        organizer: None,
+        reminder_minutes_before_start: reminder_minutes,
+        is_reminder_on,
+        show_as,
+        last_modified_date_time: None,
+        online_meeting: None,
+        original_start: None,
+        response_status: None,
+        event_type: String::new(),
     }
-
-    // Attendees
-    if !event.attendees.is_empty() {
-        let attendees: Vec<Value> = event
-            .attendees
-            .iter()
-            .map(|a| {
-                json!({
-                    "emailAddress": {
-                        "address": a.email,
-                        "name": a.name.as_deref().unwrap_or(""),
-                    },
-                    "type": "required",
-                    "status": {
-                        "response": a.response_status
-                            .map(participation_status_to_outlook)
-                            .unwrap_or("none"),
-                    },
-                })
-            })
-            .collect();
-        obj.insert("attendees".to_string(), json!(attendees));
-    }
-
-    // Recurrence
-    if let Some(ref rec) = event.recurrence
-        && let Some(recurrence) = rrule_to_outlook(&rec.rrule, &event.start)
-    {
-        obj.insert("recurrence".to_string(), recurrence);
-    }
-
-    body
 }
 
 fn event_time_to_graph(time: &EventTime) -> DateTimeTimeZone {
@@ -110,15 +107,10 @@ fn participation_status_to_outlook(status: ParticipationStatus) -> &'static str 
     }
 }
 
-/// Convert an RRULE string to Microsoft Graph's `recurrence` JSON shape.
-///
-/// Graph has six distinct pattern types (`daily`, `weekly`,
-/// `absoluteMonthly`, `relativeMonthly`, `absoluteYearly`, `relativeYearly`)
-/// with disjoint required fields — sending fields that don't apply (e.g.
-/// `index` on a daily pattern) gets rejected as an invalid `weekIndex`. We
-/// build the JSON directly so each call only emits the fields its pattern
-/// type uses.
-fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<Value> {
+/// Build a `PatternedRecurrence` from an RRULE string, picking the variant
+/// whose required fields match the FREQ. Each variant only carries the fields
+/// its pattern type uses, so unrelated fields can't leak into the request.
+fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<PatternedRecurrence> {
     let mut freq = "";
     let mut interval = 1i32;
     let mut byday: Vec<&str> = Vec::new();
@@ -142,80 +134,65 @@ fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<Value> {
     }
 
     let pattern = match freq {
-        "DAILY" => json!({
-            "type": "daily",
-            "interval": interval,
-        }),
+        "DAILY" => RecurrencePattern::Daily { interval },
         "WEEKLY" => {
-            let days: Vec<&str> = byday
+            let days_of_week: Vec<String> = byday
                 .iter()
                 .filter_map(|d| {
                     rrule_day_to_outlook(
                         d.trim_start_matches(|c: char| c.is_ascii_digit() || c == '-'),
                     )
                 })
+                .map(String::from)
                 .collect();
-            json!({
-                "type": "weekly",
-                "interval": interval,
-                "daysOfWeek": days,
-                "firstDayOfWeek": "sunday",
-            })
+            RecurrencePattern::Weekly {
+                interval,
+                days_of_week,
+                first_day_of_week: "sunday".to_string(),
+            }
         }
         "MONTHLY" if !byday.is_empty() => {
-            let (index, days) = parse_relative_byday(&byday);
-            json!({
-                "type": "relativeMonthly",
-                "interval": interval,
-                "daysOfWeek": days,
-                "index": index,
-            })
+            let (index, days_of_week) = parse_relative_byday(&byday);
+            RecurrencePattern::RelativeMonthly {
+                interval,
+                days_of_week,
+                index: index.to_string(),
+            }
         }
-        "MONTHLY" => {
-            let day_of_month = if bymonthday > 0 {
+        "MONTHLY" => RecurrencePattern::AbsoluteMonthly {
+            interval,
+            day_of_month: if bymonthday > 0 {
                 bymonthday
             } else {
                 extract_day_of_month(start)
-            };
-            json!({
-                "type": "absoluteMonthly",
-                "interval": interval,
-                "dayOfMonth": day_of_month,
-            })
-        }
+            },
+        },
         "YEARLY" if !byday.is_empty() => {
-            let (index, days) = parse_relative_byday(&byday);
-            let month = if bymonth > 0 {
-                bymonth
-            } else {
-                extract_month(start)
-            };
-            json!({
-                "type": "relativeYearly",
-                "interval": interval,
-                "daysOfWeek": days,
-                "index": index,
-                "month": month,
-            })
+            let (index, days_of_week) = parse_relative_byday(&byday);
+            RecurrencePattern::RelativeYearly {
+                interval,
+                days_of_week,
+                index: index.to_string(),
+                month: if bymonth > 0 {
+                    bymonth
+                } else {
+                    extract_month(start)
+                },
+            }
         }
-        "YEARLY" => {
-            let day_of_month = if bymonthday > 0 {
+        "YEARLY" => RecurrencePattern::AbsoluteYearly {
+            interval,
+            day_of_month: if bymonthday > 0 {
                 bymonthday
             } else {
                 extract_day_of_month(start)
-            };
-            let month = if bymonth > 0 {
+            },
+            month: if bymonth > 0 {
                 bymonth
             } else {
                 extract_month(start)
-            };
-            json!({
-                "type": "absoluteYearly",
-                "interval": interval,
-                "dayOfMonth": day_of_month,
-                "month": month,
-            })
-        }
+            },
+        },
         _ => return None,
     };
 
@@ -233,29 +210,24 @@ fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<Value> {
         } else {
             until.clone()
         };
-        json!({
-            "type": "endDate",
-            "startDate": start_date,
-            "endDate": end_date,
-        })
+        RecurrenceRange::EndDate {
+            start_date,
+            end_date,
+        }
     } else if count > 0 {
-        json!({
-            "type": "numbered",
-            "startDate": start_date,
-            "numberOfOccurrences": count,
-        })
+        RecurrenceRange::Numbered {
+            start_date,
+            number_of_occurrences: count,
+        }
     } else {
-        json!({
-            "type": "noEnd",
-            "startDate": start_date,
-        })
+        RecurrenceRange::NoEnd { start_date }
     };
 
-    Some(json!({ "pattern": pattern, "range": range }))
+    Some(PatternedRecurrence { pattern, range })
 }
 
 /// Parse BYDAY values that may have numeric prefixes (e.g., "2MO", "-1FR").
-fn parse_relative_byday(byday: &[&str]) -> (&'static str, Vec<&'static str>) {
+fn parse_relative_byday(byday: &[&str]) -> (&'static str, Vec<String>) {
     let mut index = "first";
     let mut days = Vec::new();
 
@@ -266,7 +238,7 @@ fn parse_relative_byday(byday: &[&str]) -> (&'static str, Vec<&'static str>) {
             index = number_to_outlook_index(num_str);
         }
         if let Some(day) = rrule_day_to_outlook(day_str) {
-            days.push(day);
+            days.push(day.to_string());
         }
     }
 
@@ -362,8 +334,6 @@ fn iana_to_windows_timezone(tz: &str) -> String {
     .to_string()
 }
 
-use chrono::Datelike;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,12 +350,24 @@ mod tests {
     }
 
     #[test]
-    fn daily_pattern_omits_index_and_other_unrelated_fields() {
+    fn daily_pattern_serializes_without_unrelated_fields() {
         // Regression: a `daily` pattern that included an empty `index` field
         // got rejected by Microsoft Graph as
         //   "Cannot parse 'null' as a value of type 'microsoft.graph.weekIndex'".
-        // Each pattern type must only emit fields that apply to it.
-        let json = rrule_to_outlook("FREQ=DAILY;UNTIL=20260801", &start_on(2026, 5, 1)).unwrap();
+        // The tagged-enum encoding guarantees only the variant's own fields
+        // appear in the JSON.
+        let rec = rrule_to_outlook("FREQ=DAILY;UNTIL=20260801", &start_on(2026, 5, 1)).unwrap();
+        assert!(matches!(
+            rec.pattern,
+            RecurrencePattern::Daily { interval: 1 }
+        ));
+        assert!(matches!(
+            rec.range,
+            RecurrenceRange::EndDate { ref start_date, ref end_date }
+                if start_date == "2026-05-01" && end_date == "2026-08-01"
+        ));
+
+        let json = serde_json::to_value(&rec).unwrap();
         let pattern = json.get("pattern").unwrap().as_object().unwrap();
         assert_eq!(pattern.get("type").unwrap(), "daily");
         assert_eq!(pattern.get("interval").unwrap(), 1);
@@ -396,64 +378,68 @@ mod tests {
         assert!(!pattern.contains_key("firstDayOfWeek"));
 
         let range = json.get("range").unwrap().as_object().unwrap();
-        assert_eq!(range.get("type").unwrap(), "endDate");
-        assert_eq!(range.get("startDate").unwrap(), "2026-05-01");
-        assert_eq!(range.get("endDate").unwrap(), "2026-08-01");
         assert!(!range.contains_key("numberOfOccurrences"));
-        assert!(!range.contains_key("recurrenceTimeZone"));
     }
 
     #[test]
     fn weekly_pattern_emits_days_and_first_day_of_week() {
-        let json = rrule_to_outlook("FREQ=WEEKLY;BYDAY=MO,WE", &start_on(2026, 5, 4)).unwrap();
-        let pattern = json.get("pattern").unwrap().as_object().unwrap();
-        assert_eq!(pattern.get("type").unwrap(), "weekly");
-        assert_eq!(
-            pattern.get("daysOfWeek").unwrap(),
-            &json!(["monday", "wednesday"])
-        );
-        assert_eq!(pattern.get("firstDayOfWeek").unwrap(), "sunday");
-        assert!(!pattern.contains_key("index"));
-        assert!(!pattern.contains_key("dayOfMonth"));
+        let rec = rrule_to_outlook("FREQ=WEEKLY;BYDAY=MO,WE", &start_on(2026, 5, 4)).unwrap();
+        match rec.pattern {
+            RecurrencePattern::Weekly {
+                ref days_of_week,
+                ref first_day_of_week,
+                ..
+            } => {
+                assert_eq!(days_of_week, &vec!["monday", "wednesday"]);
+                assert_eq!(first_day_of_week, "sunday");
+            }
+            other => panic!("expected Weekly variant, got {other:?}"),
+        }
     }
 
     #[test]
-    fn relative_monthly_pattern_emits_index_and_days() {
-        let json = rrule_to_outlook("FREQ=MONTHLY;BYDAY=2MO", &start_on(2026, 5, 11)).unwrap();
-        let pattern = json.get("pattern").unwrap().as_object().unwrap();
-        assert_eq!(pattern.get("type").unwrap(), "relativeMonthly");
-        assert_eq!(pattern.get("index").unwrap(), "second");
-        assert_eq!(pattern.get("daysOfWeek").unwrap(), &json!(["monday"]));
-        assert!(!pattern.contains_key("dayOfMonth"));
-        assert!(!pattern.contains_key("firstDayOfWeek"));
+    fn relative_monthly_pattern_carries_index_and_days() {
+        let rec = rrule_to_outlook("FREQ=MONTHLY;BYDAY=2MO", &start_on(2026, 5, 11)).unwrap();
+        match rec.pattern {
+            RecurrencePattern::RelativeMonthly {
+                ref days_of_week,
+                ref index,
+                ..
+            } => {
+                assert_eq!(days_of_week, &vec!["monday"]);
+                assert_eq!(index, "second");
+            }
+            other => panic!("expected RelativeMonthly variant, got {other:?}"),
+        }
     }
 
     #[test]
     fn absolute_monthly_pattern_uses_day_of_month_from_start() {
         // No BYMONTHDAY in RRULE, so we extract it from the start date (15th).
-        let json = rrule_to_outlook("FREQ=MONTHLY", &start_on(2026, 5, 15)).unwrap();
-        let pattern = json.get("pattern").unwrap().as_object().unwrap();
-        assert_eq!(pattern.get("type").unwrap(), "absoluteMonthly");
-        assert_eq!(pattern.get("dayOfMonth").unwrap(), 15);
-        assert!(!pattern.contains_key("daysOfWeek"));
-        assert!(!pattern.contains_key("index"));
+        let rec = rrule_to_outlook("FREQ=MONTHLY", &start_on(2026, 5, 15)).unwrap();
+        match rec.pattern {
+            RecurrencePattern::AbsoluteMonthly { day_of_month, .. } => {
+                assert_eq!(day_of_month, 15);
+            }
+            other => panic!("expected AbsoluteMonthly variant, got {other:?}"),
+        }
     }
 
     #[test]
-    fn count_range_uses_numbered_type() {
-        let json = rrule_to_outlook("FREQ=DAILY;COUNT=10", &start_on(2026, 5, 1)).unwrap();
-        let range = json.get("range").unwrap().as_object().unwrap();
-        assert_eq!(range.get("type").unwrap(), "numbered");
-        assert_eq!(range.get("numberOfOccurrences").unwrap(), 10);
-        assert!(!range.contains_key("endDate"));
+    fn count_range_uses_numbered_variant() {
+        let rec = rrule_to_outlook("FREQ=DAILY;COUNT=10", &start_on(2026, 5, 1)).unwrap();
+        assert!(matches!(
+            rec.range,
+            RecurrenceRange::Numbered {
+                number_of_occurrences: 10,
+                ..
+            }
+        ));
     }
 
     #[test]
-    fn no_end_range_omits_count_and_end_date() {
-        let json = rrule_to_outlook("FREQ=DAILY", &start_on(2026, 5, 1)).unwrap();
-        let range = json.get("range").unwrap().as_object().unwrap();
-        assert_eq!(range.get("type").unwrap(), "noEnd");
-        assert!(!range.contains_key("endDate"));
-        assert!(!range.contains_key("numberOfOccurrences"));
+    fn no_end_range_uses_no_end_variant() {
+        let rec = rrule_to_outlook("FREQ=DAILY", &start_on(2026, 5, 1)).unwrap();
+        assert!(matches!(rec.range, RecurrenceRange::NoEnd { .. }));
     }
 }

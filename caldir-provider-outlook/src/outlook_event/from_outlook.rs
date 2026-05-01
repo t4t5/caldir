@@ -1,6 +1,6 @@
 //! Convert Microsoft Graph event types to caldir Event.
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use caldir_core::event::{
     Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder, Reminders,
     Transparency,
@@ -8,7 +8,7 @@ use caldir_core::event::{
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
-use crate::graph_types::GraphEvent;
+use crate::graph_types::{GraphEvent, PatternedRecurrence, RecurrencePattern, RecurrenceRange};
 
 pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
     let start = parse_event_time(event.start.as_ref(), event.is_all_day, "start")?;
@@ -260,85 +260,93 @@ fn outlook_to_participation_status(status: &str) -> Option<ParticipationStatus> 
 }
 
 /// Convert Graph PatternedRecurrence to an RRULE string + exdates.
-fn recurrence_from_outlook(rec: &crate::graph_types::PatternedRecurrence) -> Result<Recurrence> {
-    let pattern = &rec.pattern;
-    let range = &rec.range;
-
+fn recurrence_from_outlook(rec: &PatternedRecurrence) -> Result<Recurrence> {
     let mut parts = Vec::new();
 
-    // FREQ
-    let freq = match pattern.pattern_type.as_str() {
-        "daily" => "DAILY",
-        "weekly" => "WEEKLY",
-        "absoluteMonthly" | "relativeMonthly" => "MONTHLY",
-        "absoluteYearly" | "relativeYearly" => "YEARLY",
-        other => bail!("Unsupported recurrence pattern type: {other}"),
+    let freq = match &rec.pattern {
+        RecurrencePattern::Daily { .. } => "DAILY",
+        RecurrencePattern::Weekly { .. } => "WEEKLY",
+        RecurrencePattern::AbsoluteMonthly { .. } | RecurrencePattern::RelativeMonthly { .. } => {
+            "MONTHLY"
+        }
+        RecurrencePattern::AbsoluteYearly { .. } | RecurrencePattern::RelativeYearly { .. } => {
+            "YEARLY"
+        }
     };
     parts.push(format!("FREQ={freq}"));
 
-    // INTERVAL
-    if pattern.interval > 1 {
-        parts.push(format!("INTERVAL={}", pattern.interval));
+    let interval = match &rec.pattern {
+        RecurrencePattern::Daily { interval }
+        | RecurrencePattern::Weekly { interval, .. }
+        | RecurrencePattern::AbsoluteMonthly { interval, .. }
+        | RecurrencePattern::RelativeMonthly { interval, .. }
+        | RecurrencePattern::AbsoluteYearly { interval, .. }
+        | RecurrencePattern::RelativeYearly { interval, .. } => *interval,
+    };
+    if interval > 1 {
+        parts.push(format!("INTERVAL={interval}"));
     }
 
-    // BYDAY
-    if !pattern.days_of_week.is_empty() {
-        let days: Vec<&str> = pattern
-            .days_of_week
-            .iter()
-            .filter_map(|d| outlook_day_to_rrule(d))
-            .collect();
-        if !days.is_empty() {
-            match pattern.pattern_type.as_str() {
-                "relativeMonthly" | "relativeYearly" => {
-                    // Prefix with index (e.g., "2MO" for second Monday)
-                    let index_num = outlook_index_to_number(&pattern.index);
-                    let prefixed: Vec<String> =
-                        days.iter().map(|d| format!("{index_num}{d}")).collect();
-                    parts.push(format!("BYDAY={}", prefixed.join(",")));
-                }
-                _ => {
-                    parts.push(format!("BYDAY={}", days.join(",")));
-                }
+    match &rec.pattern {
+        RecurrencePattern::Weekly { days_of_week, .. } => {
+            let days: Vec<&str> = days_of_week
+                .iter()
+                .filter_map(|d| outlook_day_to_rrule(d))
+                .collect();
+            if !days.is_empty() {
+                parts.push(format!("BYDAY={}", days.join(",")));
             }
         }
+        RecurrencePattern::RelativeMonthly {
+            days_of_week,
+            index,
+            ..
+        }
+        | RecurrencePattern::RelativeYearly {
+            days_of_week,
+            index,
+            ..
+        } => {
+            let days: Vec<&str> = days_of_week
+                .iter()
+                .filter_map(|d| outlook_day_to_rrule(d))
+                .collect();
+            if !days.is_empty() {
+                let index_num = outlook_index_to_number(index);
+                let prefixed: Vec<String> =
+                    days.iter().map(|d| format!("{index_num}{d}")).collect();
+                parts.push(format!("BYDAY={}", prefixed.join(",")));
+            }
+        }
+        _ => {}
     }
 
-    // BYMONTHDAY
-    if pattern.day_of_month > 0
-        && matches!(
-            pattern.pattern_type.as_str(),
-            "absoluteMonthly" | "absoluteYearly"
-        )
+    if let RecurrencePattern::AbsoluteMonthly { day_of_month, .. }
+    | RecurrencePattern::AbsoluteYearly { day_of_month, .. } = &rec.pattern
+        && *day_of_month > 0
     {
-        parts.push(format!("BYMONTHDAY={}", pattern.day_of_month));
+        parts.push(format!("BYMONTHDAY={day_of_month}"));
     }
 
-    // BYMONTH
-    if pattern.month > 0
-        && matches!(
-            pattern.pattern_type.as_str(),
-            "absoluteYearly" | "relativeYearly"
-        )
+    if let RecurrencePattern::AbsoluteYearly { month, .. }
+    | RecurrencePattern::RelativeYearly { month, .. } = &rec.pattern
+        && *month > 0
     {
-        parts.push(format!("BYMONTH={}", pattern.month));
+        parts.push(format!("BYMONTH={month}"));
     }
 
-    // Range
-    match range.range_type.as_str() {
-        "endDate" => {
-            if !range.end_date.is_empty() {
-                // Convert "2025-12-31" to "20251231"
-                let until = range.end_date.replace('-', "");
-                parts.push(format!("UNTIL={until}"));
-            }
+    match &rec.range {
+        RecurrenceRange::EndDate { end_date, .. } if !end_date.is_empty() => {
+            // Convert "2025-12-31" to "20251231"
+            let until = end_date.replace('-', "");
+            parts.push(format!("UNTIL={until}"));
         }
-        "numbered" => {
-            if range.number_of_occurrences > 0 {
-                parts.push(format!("COUNT={}", range.number_of_occurrences));
-            }
+        RecurrenceRange::Numbered {
+            number_of_occurrences,
+            ..
+        } if *number_of_occurrences > 0 => {
+            parts.push(format!("COUNT={number_of_occurrences}"));
         }
-        "noEnd" => {} // No UNTIL or COUNT
         _ => {}
     }
 
@@ -414,6 +422,7 @@ mod tests {
             attendees: vec![],
             organizer: None,
             reminder_minutes_before_start: 0,
+            is_reminder_on: false,
             show_as: "busy".to_string(),
             last_modified_date_time: None,
             online_meeting: None,
@@ -541,6 +550,7 @@ mod tests {
                 status: Some(ResponseStatus {
                     response: "none".to_string(),
                 }),
+                attendee_type: String::new(),
             },
             GraphAttendee {
                 email_address: EmailAddress {
@@ -550,6 +560,7 @@ mod tests {
                 status: Some(ResponseStatus {
                     response: "none".to_string(),
                 }),
+                attendee_type: String::new(),
             },
         ];
         event.response_status = Some(ResponseStatus {

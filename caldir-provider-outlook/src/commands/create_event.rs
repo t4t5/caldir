@@ -181,6 +181,7 @@ mod tests {
             attendees: Vec::new(),
             organizer: None,
             reminder_minutes_before_start: 0,
+            is_reminder_on: false,
             show_as: String::new(),
             last_modified_date_time: None,
             online_meeting: None,
