@@ -442,6 +442,33 @@ impl EventTime {
         }
     }
 
+    /// Parse an ICS-format string back into an `EventTime`, using `template`
+    /// to disambiguate floating vs. zoned (which share `YYYYMMDDTHHMMSS`).
+    /// Used for round-tripping a synthetic instance ID (`unique_id()`) back
+    /// into its `recurrence_id` component, where the master's `start` provides
+    /// the template variant.
+    pub fn from_ics_string_like(s: &str, template: &EventTime) -> Result<Self, String> {
+        if s.len() == 8 && !s.contains('T') {
+            return NaiveDate::parse_from_str(s, "%Y%m%d")
+                .map(EventTime::Date)
+                .map_err(|e| format!("invalid ICS date '{}': {}", s, e));
+        }
+        if s.ends_with('Z') {
+            return NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%SZ")
+                .map(|dt| EventTime::DateTimeUtc(dt.and_utc()))
+                .map_err(|e| format!("invalid ICS UTC datetime '{}': {}", s, e));
+        }
+        let dt = NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%S")
+            .map_err(|e| format!("invalid ICS datetime '{}': {}", s, e))?;
+        match template {
+            EventTime::DateTimeZoned { tzid, .. } => Ok(EventTime::DateTimeZoned {
+                datetime: dt,
+                tzid: tzid.clone(),
+            }),
+            _ => Ok(EventTime::DateTimeFloating(dt)),
+        }
+    }
+
     /// Format as ISO 8601 string (for JSON/JavaScript compatibility)
     pub fn to_iso_string(&self) -> String {
         match self {
