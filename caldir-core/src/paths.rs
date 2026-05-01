@@ -41,6 +41,18 @@ fn platform_config_dir() -> CalDirResult<PathBuf> {
 
 #[cfg(target_os = "macos")]
 fn migrate_legacy_macos_path(new_path: &std::path::Path) -> CalDirResult<()> {
+    use std::sync::OnceLock;
+
+    static MIGRATION_RESULT: OnceLock<Result<(), String>> = OnceLock::new();
+
+    MIGRATION_RESULT
+        .get_or_init(|| migrate_legacy_macos_path_inner(new_path).map_err(|e| e.to_string()))
+        .clone()
+        .map_err(CalDirError::Config)
+}
+
+#[cfg(target_os = "macos")]
+fn migrate_legacy_macos_path_inner(new_path: &std::path::Path) -> CalDirResult<()> {
     let home = dirs::home_dir()
         .ok_or_else(|| CalDirError::Config("Could not determine home directory".into()))?;
     let old_path = home
