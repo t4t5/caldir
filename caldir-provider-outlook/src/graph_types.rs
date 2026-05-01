@@ -49,7 +49,10 @@ pub struct GraphEvent {
     pub show_as: String,
     pub last_modified_date_time: Option<String>,
     pub online_meeting: Option<OnlineMeeting>,
-    pub original_start: Option<DateTimeTimeZone>,
+    /// UTC ISO-8601 timestamp (Edm.DateTimeOffset). Present on every expanded
+    /// occurrence returned by `calendarView`, identifying the scheduled start
+    /// of the originating recurring instance.
+    pub original_start: Option<String>,
     /// The calendar owner's response to this event (more reliable than per-attendee status).
     pub response_status: Option<ResponseStatus>,
 }

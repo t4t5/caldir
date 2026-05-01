@@ -31,11 +31,12 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         .map(recurrence_from_outlook)
         .transpose()?;
 
-    // For exception instances, original_start serves as recurrence_id
+    // For exception instances, original_start serves as recurrence_id.
+    // Microsoft Graph returns this as a UTC RFC3339 timestamp.
     let recurrence_id = event
         .original_start
-        .as_ref()
-        .map(|orig| parse_datetime_timezone(&orig.date_time, &orig.time_zone, event.is_all_day))
+        .as_deref()
+        .map(|s| parse_original_start(s, event.is_all_day))
         .transpose()?;
 
     let reminders = if event.reminder_minutes_before_start > 0 {
@@ -145,6 +146,18 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         sequence: None,
         custom_properties,
     })
+}
+
+fn parse_original_start(s: &str, is_all_day: bool) -> Result<EventTime> {
+    if is_all_day {
+        let date = NaiveDate::parse_from_str(&s[..s.len().min(10)], "%Y-%m-%d")
+            .map_err(|e| anyhow::anyhow!("Failed to parse all-day originalStart '{}': {}", s, e))?;
+        return Ok(EventTime::Date(date));
+    }
+    let dt = DateTime::parse_from_rfc3339(s)
+        .map_err(|e| anyhow::anyhow!("Failed to parse originalStart '{}': {}", s, e))?
+        .with_timezone(&Utc);
+    Ok(EventTime::DateTimeUtc(dt))
 }
 
 fn parse_event_time(
@@ -406,6 +419,49 @@ mod tests {
             online_meeting: None,
             original_start: None,
             response_status: None,
+        }
+    }
+
+    /// Representative JSON of a recurring event instance returned by
+    /// `calendarView`. `originalStart` is a UTC ISO-8601 string
+    /// (Edm.DateTimeOffset), not a `dateTimeTimeZone` object — getting this
+    /// wrong used to fail the entire pull with:
+    ///   "invalid type: string \"...\", expected struct DateTimeTimeZone"
+    const RECURRING_INSTANCE_JSON: &str = r#"{
+        "id": "AAMkAD-instance-id",
+        "iCalUId": "040000008200E00074C5B7101A82E00800000000abc@outlook.com",
+        "subject": "Daily standup",
+        "start": {"dateTime": "2026-05-01T16:00:00.0000000", "timeZone": "UTC"},
+        "end":   {"dateTime": "2026-05-01T16:30:00.0000000", "timeZone": "UTC"},
+        "isAllDay": false,
+        "isCancelled": false,
+        "showAs": "busy",
+        "originalStart": "2026-05-01T16:00:00Z"
+    }"#;
+
+    #[test]
+    fn graph_event_deserializes_with_original_start_as_string() {
+        // Regression: Graph's `originalStart` is Edm.DateTimeOffset, a string —
+        // not a `dateTimeTimeZone` struct. Any expanded recurring instance from
+        // calendarView includes it, so a wrong type here breaks every pull on a
+        // calendar that has a recurring event.
+        let parsed: GraphEvent = serde_json::from_str(RECURRING_INSTANCE_JSON)
+            .expect("recurring instance with string originalStart must parse");
+        assert_eq!(
+            parsed.original_start.as_deref(),
+            Some("2026-05-01T16:00:00Z")
+        );
+    }
+
+    #[test]
+    fn from_outlook_uses_original_start_as_recurrence_id() {
+        let parsed: GraphEvent = serde_json::from_str(RECURRING_INSTANCE_JSON).unwrap();
+        let event = from_outlook(parsed, "me@example.com").unwrap();
+        match event.recurrence_id {
+            Some(EventTime::DateTimeUtc(dt)) => {
+                assert_eq!(dt.to_rfc3339(), "2026-05-01T16:00:00+00:00");
+            }
+            other => panic!("expected DateTimeUtc recurrence_id, got {other:?}"),
         }
     }
 
