@@ -129,8 +129,10 @@ pub struct OnlineMeeting {
     pub join_url: Option<String>,
 }
 
-/// Patterned recurrence (pattern + range).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Patterned recurrence (pattern + range). Deserialized from Graph; outbound
+/// recurrence JSON is built directly in `outlook_event::to_outlook` because
+/// each pattern type has a different set of valid fields.
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PatternedRecurrence {
     pub pattern: RecurrencePattern,
@@ -138,7 +140,7 @@ pub struct PatternedRecurrence {
 }
 
 /// Recurrence pattern.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecurrencePattern {
     /// "daily", "weekly", "absoluteMonthly", "relativeMonthly", "absoluteYearly", "relativeYearly"
@@ -155,8 +157,6 @@ pub struct RecurrencePattern {
     /// "first", "second", "third", "fourth", "last"
     #[serde(default)]
     pub index: String,
-    #[serde(default)]
-    pub first_day_of_week: String,
 }
 
 fn default_interval() -> i32 {
@@ -164,20 +164,16 @@ fn default_interval() -> i32 {
 }
 
 /// Recurrence range.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecurrenceRange {
     /// "endDate", "noEnd", "numbered"
     #[serde(rename = "type")]
     pub range_type: String,
     #[serde(default)]
-    pub start_date: String,
-    #[serde(default)]
     pub end_date: String,
     #[serde(default)]
     pub number_of_occurrences: i32,
-    #[serde(default)]
-    pub recurrence_time_zone: String,
 }
 
 /// User profile (from GET /me).
