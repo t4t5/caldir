@@ -419,6 +419,7 @@ mod tests {
             online_meeting: None,
             original_start: None,
             response_status: None,
+            event_type: String::new(),
         }
     }
 

@@ -39,8 +39,14 @@ impl CalendarDiff {
                 DiffKind::Create => {
                     let event = diff.new.as_ref().expect("Create must have new event");
                     let created = remote.create_event(event).await?;
-                    // Update local file with remote-assigned ID and fields (find by uid)
-                    self.calendar.update_event(&event.uid, &created)?;
+                    // Delete by the *sent* identity. The provider may return
+                    // an event with a different (uid, recurrence_id) — e.g.
+                    // an override gets a per-instance id — and using the
+                    // response's identity here would match the wrong local
+                    // file.
+                    self.calendar
+                        .delete_event(&event.uid, event.recurrence_id.as_ref())?;
+                    self.calendar.create_event(&created)?;
                     known_ids.insert(created.unique_id());
                 }
                 DiffKind::Update => {

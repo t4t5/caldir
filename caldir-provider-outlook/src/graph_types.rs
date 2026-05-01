@@ -55,6 +55,12 @@ pub struct GraphEvent {
     pub original_start: Option<String>,
     /// The calendar owner's response to this event (more reliable than per-attendee status).
     pub response_status: Option<ResponseStatus>,
+    /// Graph's event classification: `singleInstance`, `seriesMaster`,
+    /// `occurrence`, or `exception`. Used by `list_events` to pick exceptions
+    /// out of an `/instances` response (auto-expanded `occurrence` items get
+    /// dropped).
+    #[serde(default, rename = "type")]
+    pub event_type: String,
 }
 
 /// Event body (content + type).
