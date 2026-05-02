@@ -300,6 +300,7 @@ dependencies = [
  "anyhow",
  "caldir-core",
  "chrono",
+ "chrono-tz",
  "reqwest",
  "serde",
  "serde_json",

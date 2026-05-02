@@ -1,7 +1,7 @@
 //! Convert caldir Event to a Microsoft Graph event.
 
 use caldir_core::event::{Event, EventTime, ParticipationStatus, Transparency};
-use chrono::Datelike;
+use chrono::{Datelike, Duration, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
 use crate::graph_types::{
     DateTimeTimeZone, EmailAddress, GraphAttendee, GraphBody, GraphEvent, GraphLocation,
@@ -204,12 +204,7 @@ fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<PatternedRecurrenc
     };
 
     let range = if !until.is_empty() {
-        // Convert "20251231" or "20251231T235959Z" to "2025-12-31"
-        let end_date = if until.len() >= 8 {
-            format!("{}-{}-{}", &until[..4], &until[4..6], &until[6..8])
-        } else {
-            until.clone()
-        };
+        let end_date = until_to_end_date(&until, start)?;
         RecurrenceRange::EndDate {
             start_date,
             end_date,
@@ -224,6 +219,70 @@ fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<PatternedRecurrenc
     };
 
     Some(PatternedRecurrence { pattern, range })
+}
+
+/// Convert an RRULE `UNTIL` value to a Graph `endDate` string ("YYYY-MM-DD").
+///
+/// Graph's `recurrenceRange.endDate` is day-level and inclusive, interpreted
+/// in the event's start timezone. RFC 5545 `UNTIL` is an inclusive datetime,
+/// often produced as `split_start - 1s` when truncating a series. Naively
+/// taking the date portion of UNTIL keeps the would-be occurrence on that day
+/// in the series — the bug that produced two events on the split day.
+///
+/// We detect that case by comparing UNTIL's local time-of-day to the start's
+/// time-of-day. If UNTIL falls before the would-be occurrence on its date,
+/// we step back a day so Outlook excludes that occurrence too.
+fn until_to_end_date(until: &str, start: &EventTime) -> Option<String> {
+    if !until.contains('T') {
+        if until.len() < 8 {
+            return None;
+        }
+        return Some(format!("{}-{}-{}", &until[..4], &until[4..6], &until[6..8]));
+    }
+
+    let local = until_local(until, start)?;
+    let start_time_of_day = start_time_of_day(start);
+    let occurrence_on_until_date = local.date().and_time(start_time_of_day);
+
+    let end_date = if local < occurrence_on_until_date {
+        local.date() - Duration::days(1)
+    } else {
+        local.date()
+    };
+
+    Some(end_date.format("%Y-%m-%d").to_string())
+}
+
+/// Interpret UNTIL in the start's timezone, returning the corresponding naive
+/// local datetime. UNTIL with a `Z` suffix is UTC; without it, it's floating
+/// (used as-is, since there's no timezone to convert through).
+fn until_local(until: &str, start: &EventTime) -> Option<NaiveDateTime> {
+    let trimmed = until.trim_end_matches('Z');
+    let naive = NaiveDateTime::parse_from_str(trimmed, "%Y%m%dT%H%M%S").ok()?;
+
+    if !until.ends_with('Z') {
+        return Some(naive);
+    }
+
+    let utc = Utc.from_utc_datetime(&naive);
+    let local = match start {
+        EventTime::DateTimeZoned { tzid, .. } => {
+            let tz: chrono_tz::Tz = tzid.parse().ok()?;
+            utc.with_timezone(&tz).naive_local()
+        }
+        _ => utc.naive_utc(),
+    };
+    Some(local)
+}
+
+fn start_time_of_day(start: &EventTime) -> NaiveTime {
+    let midnight = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
+    match start {
+        EventTime::Date(_) => midnight,
+        EventTime::DateTimeUtc(dt) => dt.time(),
+        EventTime::DateTimeFloating(dt) => dt.time(),
+        EventTime::DateTimeZoned { datetime, .. } => datetime.time(),
+    }
 }
 
 /// Parse BYDAY values that may have numeric prefixes (e.g., "2MO", "-1FR").
@@ -441,5 +500,87 @@ mod tests {
     fn no_end_range_uses_no_end_variant() {
         let rec = rrule_to_outlook("FREQ=DAILY", &start_on(2026, 5, 1)).unwrap();
         assert!(matches!(rec.range, RecurrenceRange::NoEnd { .. }));
+    }
+
+    /// Regression: splitting a daily series at May 6 18:00 used to send
+    /// `endDate = 2026-05-06`, leaving the May 6 occurrence in the truncated
+    /// series — so both old and new masters showed up on May 6 in Outlook.
+    /// UNTIL = `split_start - 1s` is before the would-be occurrence on its
+    /// own date, so endDate should step back a day.
+    #[test]
+    fn until_just_before_occurrence_steps_end_date_back_one_day() {
+        let rec = rrule_to_outlook(
+            "FREQ=DAILY;UNTIL=20260506T175959Z",
+            &EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 5, 1)
+                    .unwrap()
+                    .and_hms_opt(18, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+        )
+        .unwrap();
+        match rec.range {
+            RecurrenceRange::EndDate { end_date, .. } => assert_eq!(end_date, "2026-05-05"),
+            other => panic!("expected EndDate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn until_after_occurrence_keeps_end_date_same_day() {
+        // UNTIL is later in the day than the start time-of-day, so the
+        // occurrence on UNTIL's date is included.
+        let rec = rrule_to_outlook(
+            "FREQ=DAILY;UNTIL=20260506T235959Z",
+            &EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 5, 1)
+                    .unwrap()
+                    .and_hms_opt(8, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+        )
+        .unwrap();
+        match rec.range {
+            RecurrenceRange::EndDate { end_date, .. } => assert_eq!(end_date, "2026-05-06"),
+            other => panic!("expected EndDate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn date_only_until_passes_through() {
+        // Date-only UNTIL (from all-day events) is already at day-level,
+        // so we just reformat without shifting.
+        let rec = rrule_to_outlook(
+            "FREQ=DAILY;UNTIL=20260801",
+            &EventTime::Date(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
+        )
+        .unwrap();
+        match rec.range {
+            RecurrenceRange::EndDate { end_date, .. } => assert_eq!(end_date, "2026-08-01"),
+            other => panic!("expected EndDate, got {other:?}"),
+        }
+    }
+
+    /// Zoned start: UNTIL is in UTC but endDate must be in the start's local
+    /// timezone. A NY 10:00 daily series split at May 6 → UNTIL = 13:59:59Z
+    /// (= 09:59:59 NY) on May 6. The May 6 occurrence at 10:00 NY is excluded.
+    #[test]
+    fn until_zoned_start_compares_in_local_timezone() {
+        let rec = rrule_to_outlook(
+            "FREQ=DAILY;UNTIL=20260506T135959Z",
+            &EventTime::DateTimeZoned {
+                datetime: NaiveDate::from_ymd_opt(2026, 5, 1)
+                    .unwrap()
+                    .and_hms_opt(10, 0, 0)
+                    .unwrap(),
+                tzid: "America/New_York".to_string(),
+            },
+        )
+        .unwrap();
+        match rec.range {
+            RecurrenceRange::EndDate { end_date, .. } => assert_eq!(end_date, "2026-05-05"),
+            other => panic!("expected EndDate, got {other:?}"),
+        }
     }
 }
