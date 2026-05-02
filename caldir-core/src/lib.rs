@@ -7,7 +7,6 @@ pub mod diff;
 pub mod error;
 pub mod event;
 pub mod ics;
-pub mod paths;
 pub mod recurrence;
 pub mod remote;
 pub mod utils;

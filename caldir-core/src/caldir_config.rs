@@ -54,8 +54,22 @@ impl Default for CaldirConfig {
 }
 
 impl CaldirConfig {
+    /// Caldir config directory:
+    /// - Linux/BSD: `$XDG_CONFIG_HOME/caldir` or `~/.config/caldir`
+    /// - macOS: `~/.config/caldir`
+    /// - Windows: `%APPDATA%\caldir`
+    pub fn config_dir() -> CalDirResult<PathBuf> {
+        let config_dir_path = Self::platform_config_dir()?.join("caldir");
+
+        #[cfg(target_os = "macos")]
+        Self::migrate_legacy_macos_path(&config_dir_path)?;
+
+        Ok(config_dir_path)
+    }
+
+    // ~/config/caldir/config.toml
     pub fn config_path() -> CalDirResult<PathBuf> {
-        Ok(crate::paths::caldir_config_dir()?.join("config.toml"))
+        Ok(Self::config_dir()?.join("config.toml"))
     }
 
     /// Serialize the config to TOML. Fields with a concrete default (like
@@ -118,6 +132,57 @@ impl CaldirConfig {
 
         std::fs::write(path, contents)
             .map_err(|e| CalDirError::Config(format!("Could not write config file: {e}")))?;
+
+        Ok(())
+    }
+
+    /// Make the macOS path ~/.config/caldir (like Linux)
+    /// instead of the dirs::config_dir default of ~/Library/Application Support
+    #[cfg(target_os = "macos")]
+    fn platform_config_dir() -> CalDirResult<PathBuf> {
+        let home = dirs::home_dir()
+            .ok_or_else(|| CalDirError::Config("Could not determine home directory".into()))?;
+        Ok(home.join(".config"))
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn platform_config_dir() -> CalDirResult<PathBuf> {
+        dirs::config_dir()
+            .ok_or_else(|| CalDirError::Config("Could not determine config directory".into()))
+    }
+
+    /// Migrates data from ~/Library/Application Support/caldir (legacy)
+    /// to ~/.config/caldir (new)
+    #[cfg(target_os = "macos")]
+    fn migrate_legacy_macos_path(new_path: &std::path::Path) -> CalDirResult<()> {
+        let home = dirs::home_dir()
+            .ok_or_else(|| CalDirError::Config("Could not determine home directory".into()))?;
+
+        let old_path = home
+            .join("Library")
+            .join("Application Support")
+            .join("caldir");
+
+        if !old_path.exists() {
+            return Ok(());
+        }
+
+        if new_path.exists() {
+            std::fs::remove_dir_all(&old_path)?;
+            return Ok(());
+        }
+
+        if let Some(parent) = new_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        eprintln!(
+            "Migrating caldir config: {} → {}",
+            old_path.display(),
+            new_path.display()
+        );
+
+        std::fs::rename(&old_path, new_path)?;
 
         Ok(())
     }

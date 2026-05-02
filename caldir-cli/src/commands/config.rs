@@ -9,7 +9,7 @@ pub fn run() -> Result<()> {
     let config_path = CaldirConfig::config_path().map_err(|e| anyhow::anyhow!(e))?;
     let caldir = Caldir::load().map_err(|e| anyhow::anyhow!(e))?;
 
-    let config_display = std::env::var("HOME")
+    let pretty_config_path = std::env::var("HOME")
         .ok()
         .and_then(|home| {
             config_path
@@ -19,7 +19,7 @@ pub fn run() -> Result<()> {
         })
         .unwrap_or_else(|| config_path.clone());
 
-    println!("{}", config_display.display().bold());
+    println!("{}", pretty_config_path.display().bold());
 
     let settings = caldir.config().to_toml_string()?;
 

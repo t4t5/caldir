@@ -7,10 +7,12 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use caldir_core::caldir_config::CaldirConfig;
+
 use crate::constants::PROVIDER_NAME;
 
 pub fn base_dir() -> Result<PathBuf> {
-    Ok(caldir_core::paths::caldir_config_dir()
+    Ok(CaldirConfig::config_dir()
         .context("Could not determine caldir config directory")?
         .join("providers")
         .join(PROVIDER_NAME))
