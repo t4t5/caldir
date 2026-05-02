@@ -164,15 +164,19 @@ impl CaldirConfig {
             .join("Application Support")
             .join("caldir");
 
+        // Old config path doesn't exist, all is good!
         if !old_path.exists() {
             return Ok(());
         }
 
+        // Old config path exists, but so does new config path!
+        // Just delete the old path since it's not used anymore
         if new_path.exists() {
             std::fs::remove_dir_all(&old_path)?;
             return Ok(());
         }
 
+        // Old config path exists, but new config path doesn't yet -> migrate!
         if let Some(parent) = new_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
