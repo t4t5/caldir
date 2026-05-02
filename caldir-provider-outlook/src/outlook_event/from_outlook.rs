@@ -5,7 +5,8 @@ use caldir_core::event::{
     Attendee, CustomProperty, Event, EventStatus, EventTime, ParticipationStatus, Recurrence,
     Reminder, Reminders, Transparency,
 };
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono_tz::Tz;
 
 use crate::constants::{HTML_DESC_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
 use crate::graph_api::types::{
@@ -13,8 +14,18 @@ use crate::graph_api::types::{
 };
 
 pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
-    let start = parse_event_time(event.start.as_ref(), event.is_all_day, "start")?;
-    let end = parse_event_time(event.end.as_ref(), event.is_all_day, "end")?;
+    let start = parse_event_time(
+        event.start.as_ref(),
+        event.original_start_time_zone.as_deref(),
+        event.is_all_day,
+        "start",
+    )?;
+    let end = parse_event_time(
+        event.end.as_ref(),
+        event.original_end_time_zone.as_deref(),
+        event.is_all_day,
+        "end",
+    )?;
 
     let status = if event.is_cancelled {
         EventStatus::Cancelled
@@ -178,16 +189,23 @@ fn parse_original_start(s: &str, is_all_day: bool) -> Result<EventTime> {
 
 fn parse_event_time(
     dtz: Option<&crate::graph_api::types::DateTimeTimeZone>,
+    original_timezone: Option<&str>,
     is_all_day: bool,
     field: &str,
 ) -> Result<EventTime> {
     let dtz = dtz.ok_or_else(|| anyhow::anyhow!("Event has no {field} time"))?;
-    parse_datetime_timezone(&dtz.date_time, &dtz.time_zone, is_all_day)
+    parse_datetime_timezone(
+        &dtz.date_time,
+        &dtz.time_zone,
+        original_timezone,
+        is_all_day,
+    )
 }
 
 fn parse_datetime_timezone(
     datetime_str: &str,
     timezone: &str,
+    original_timezone: Option<&str>,
     is_all_day: bool,
 ) -> Result<EventTime> {
     if is_all_day {
@@ -205,6 +223,25 @@ fn parse_datetime_timezone(
     let dt = parse_graph_datetime(datetime_str)?;
 
     if timezone == "UTC" || timezone == "tzone://Microsoft/Utc" {
+        // Graph defaults `start.timeZone` to UTC on read, but `originalStartTimeZone`
+        // preserves what the event was created in. Recover that zone so a
+        // round-trip (push 12:00 Europe/London → fetch → status) doesn't show
+        // a phantom "11:00 → 12:00" change. Fall back to UTC if the original
+        // is itself UTC, missing, or a Windows name we can't map to IANA.
+        if let Some(original) = original_timezone
+            && !original.is_empty()
+            && original != "UTC"
+            && original != "tzone://Microsoft/Utc"
+        {
+            let tzid = normalize_timezone(original);
+            if let Ok(tz) = tzid.parse::<Tz>() {
+                let local = Utc.from_utc_datetime(&dt).with_timezone(&tz).naive_local();
+                return Ok(EventTime::DateTimeZoned {
+                    datetime: local,
+                    tzid,
+                });
+            }
+        }
         Ok(EventTime::DateTimeUtc(dt.and_utc()))
     } else {
         Ok(EventTime::DateTimeZoned {
@@ -443,6 +480,8 @@ mod tests {
                 date_time: "2025-03-20T16:00:00.0000000".to_string(),
                 time_zone: "UTC".to_string(),
             }),
+            original_start_time_zone: None,
+            original_end_time_zone: None,
             location: None,
             is_all_day: false,
             is_cancelled: false,
@@ -695,5 +734,72 @@ mod tests {
             organizer_attendee.response_status,
             Some(ParticipationStatus::NeedsAction)
         );
+    }
+
+    #[test]
+    fn utc_response_with_original_timezone_recovers_zoned_time() {
+        // Regression: Graph defaults `start.timeZone` to UTC on read, but the
+        // POST response echoes back the timezone we sent. Without using
+        // `originalStartTimeZone` on read, an event created as
+        // "12:00 Europe/London" lands locally as DateTimeZoned, then the next
+        // status fetch sees DateTimeUtc(11:00Z) and the diff engine reports
+        // a phantom "11:00 → 12:00" change.
+        let mut event = minimal_graph_event();
+        event.start = Some(DateTimeTimeZone {
+            date_time: "2026-05-05T11:00:00.0000000".to_string(),
+            time_zone: "UTC".to_string(),
+        });
+        event.end = Some(DateTimeTimeZone {
+            date_time: "2026-05-05T12:00:00.0000000".to_string(),
+            time_zone: "UTC".to_string(),
+        });
+        event.original_start_time_zone = Some("GMT Standard Time".to_string());
+        event.original_end_time_zone = Some("GMT Standard Time".to_string());
+
+        let result = from_outlook(event, "me@example.com").unwrap();
+        match result.start {
+            EventTime::DateTimeZoned { datetime, tzid } => {
+                assert_eq!(tzid, "Europe/London");
+                assert_eq!(
+                    datetime.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                    "2026-05-05T12:00:00"
+                );
+            }
+            other => panic!("expected DateTimeZoned, got {other:?}"),
+        }
+        match result.end {
+            EventTime::DateTimeZoned { datetime, tzid } => {
+                assert_eq!(tzid, "Europe/London");
+                assert_eq!(
+                    datetime.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                    "2026-05-05T13:00:00"
+                );
+            }
+            other => panic!("expected DateTimeZoned, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn utc_response_with_utc_original_stays_utc() {
+        // If the event was actually created in UTC, keep it as DateTimeUtc.
+        let mut event = minimal_graph_event();
+        event.original_start_time_zone = Some("UTC".to_string());
+        event.original_end_time_zone = Some("UTC".to_string());
+
+        let result = from_outlook(event, "me@example.com").unwrap();
+        assert!(matches!(result.start, EventTime::DateTimeUtc(_)));
+    }
+
+    #[test]
+    fn utc_response_with_unknown_original_falls_back_to_utc() {
+        // An unmappable Windows zone name (or a tzone://Microsoft/Custom
+        // legacy value) shouldn't crash — fall back to UTC rather than
+        // producing a DateTimeZoned with an unparseable tzid.
+        let mut event = minimal_graph_event();
+        event.original_start_time_zone = Some("tzone://Microsoft/Custom".to_string());
+        event.original_end_time_zone = Some("tzone://Microsoft/Custom".to_string());
+
+        let result = from_outlook(event, "me@example.com").unwrap();
+        assert!(matches!(result.start, EventTime::DateTimeUtc(_)));
     }
 }

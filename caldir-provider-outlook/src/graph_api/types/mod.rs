@@ -52,6 +52,14 @@ pub struct GraphEvent {
     pub start: Option<DateTimeTimeZone>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end: Option<DateTimeTimeZone>,
+    /// The timezone the event was created in. Graph defaults `start.timeZone`
+    /// to UTC on read, so this is the only way to recover the user's intended
+    /// display timezone after a round-trip — without it, an event created as
+    /// "12:00 Europe/London" comes back as "11:00 UTC" and looks modified.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_start_time_zone: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_end_time_zone: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<GraphLocation>,
     #[serde(default)]

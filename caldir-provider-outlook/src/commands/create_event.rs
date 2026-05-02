@@ -171,6 +171,8 @@ mod tests {
             body: None,
             start: None,
             end: None,
+            original_start_time_zone: None,
+            original_end_time_zone: None,
             location: None,
             is_all_day: false,
             is_cancelled: false,

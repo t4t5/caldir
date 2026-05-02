@@ -60,6 +60,8 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
         start: Some(event_time_to_graph(&event.start)),
         end: Some(event_time_to_graph(&event.end)),
         location,
+        original_start_time_zone: None,
+        original_end_time_zone: None,
         is_all_day: event.start.is_date(),
         is_cancelled: false,
         recurrence,

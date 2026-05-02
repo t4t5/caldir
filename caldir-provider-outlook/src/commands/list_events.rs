@@ -27,7 +27,7 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
     // so a long-running meeting started years ago would be excluded even if
     // it has occurrences in our window.
     let path = format!(
-        "/me/calendars/{}/events?$top=100&$select=id,iCalUId,subject,body,start,end,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,showAs,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus,type",
+        "/me/calendars/{}/events?$top=100&$select=id,iCalUId,subject,body,start,end,originalStartTimeZone,originalEndTimeZone,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,showAs,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus,type",
         config.outlook_calendar_id
     );
 
@@ -114,7 +114,7 @@ async fn fetch_exceptions(
     to: &str,
 ) -> Result<Vec<GraphEvent>> {
     let path = format!(
-        "/me/events/{}/instances?$top=100&startDateTime={}&endDateTime={}&$select=id,iCalUId,subject,body,start,end,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,showAs,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus,type",
+        "/me/events/{}/instances?$top=100&startDateTime={}&endDateTime={}&$select=id,iCalUId,subject,body,start,end,originalStartTimeZone,originalEndTimeZone,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,showAs,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus,type",
         master_id, from, to
     );
 
