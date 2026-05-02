@@ -13,17 +13,29 @@ pub async fn run(calendars: Vec<Calendar>, verbose: bool, force: bool) -> Result
 
     let mut diffs = Vec::new();
 
-    for cal in &calendars {
-        let spinner = tui::create_spinner(cal.render());
-        let result = CalendarDiff::from_calendar(cal, &range).await;
-        spinner.finish_and_clear();
+    for (i, cal) in calendars.iter().enumerate() {
+        if cal.remote().is_none() {
+            println!("{}", cal.render());
+            println!("   {}", "(local only)".dimmed());
+        } else {
+            let spinner = tui::create_spinner(cal.render());
+            let result = CalendarDiff::from_calendar(cal, &range).await;
+            spinner.finish_and_clear();
+            println!("{}", cal.render());
 
-        match result {
-            Ok(diff) => diffs.push(diff),
-            Err(e) => {
-                println!("{}", cal.render());
-                println!("   {}", e.to_string().red());
+            match result {
+                Ok(diff) => {
+                    println!("{}", diff.render_discard(verbose));
+                    diffs.push(diff);
+                }
+                Err(e) => {
+                    println!("   {}", e.to_string().red());
+                }
             }
+        }
+
+        if i < calendars.len() - 1 {
+            println!();
         }
     }
 
@@ -31,20 +43,7 @@ pub async fn run(calendars: Vec<Calendar>, verbose: bool, force: bool) -> Result
     let total = batch.push_total();
 
     if total == 0 {
-        println!("{}", "Nothing to discard".dimmed());
         return Ok(());
-    }
-
-    // Show what will be discarded
-    for (i, diff) in batch.0.iter().enumerate() {
-        if !diff.to_push.is_empty() {
-            println!("{}", diff.calendar.render());
-            println!("{}", diff.render_discard(verbose));
-
-            if i < batch.0.len() - 1 {
-                println!();
-            }
-        }
     }
 
     // Confirm unless --force
