@@ -3,8 +3,8 @@ use caldir_core::event::{Event, ParticipationStatus};
 use caldir_core::remote::protocol::UpdateEvent;
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
-use crate::graph_client::GraphClient;
-use crate::graph_types::GraphEvent;
+use crate::graph_api::client::GraphClient;
+use crate::graph_api::types::GraphEvent;
 use crate::outlook_event::from_outlook::from_outlook;
 use crate::outlook_event::to_outlook::to_outlook;
 use crate::remote_config::OutlookRemoteConfig;
@@ -18,10 +18,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
 
     let outlook_event_id = cmd
         .event
-        .custom_properties
-        .iter()
-        .find(|(k, _)| k == PROVIDER_EVENT_ID_PROPERTY)
-        .map(|(_, v)| v.as_str())
+        .custom_property(PROVIDER_EVENT_ID_PROPERTY)
         .ok_or_else(|| {
             anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}")
         })?;

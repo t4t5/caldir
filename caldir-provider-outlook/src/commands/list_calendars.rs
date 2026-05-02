@@ -4,8 +4,8 @@ use caldir_core::remote::Remote;
 use caldir_core::remote::protocol::ListCalendars;
 use caldir_core::remote::provider::Provider;
 
-use crate::graph_client::GraphClient;
-use crate::graph_types::{GraphCalendar, GraphResponse};
+use crate::graph_api::client::GraphClient;
+use crate::graph_api::types::{GraphCalendar, GraphResponse};
 use crate::remote_config::OutlookRemoteConfig;
 use crate::session::Session;
 

@@ -107,9 +107,16 @@ pub fn generate_ics(event: &Event) -> CalDirResult<String> {
         ics_event.add_property("URL", url);
     }
 
-    // Custom properties (provider-specific, preserved for round-tripping)
-    for (key, value) in &event.custom_properties {
-        ics_event.add_property(key, value);
+    // Custom properties (provider-specific, preserved for round-tripping).
+    // Providers populate any parameters they need — caldir-core is agnostic
+    // about specific X-properties. Setting `VALUE=TEXT` on a property is how
+    // a provider opts into icalendar's text-value escaping (`\n`, `\,`, ...).
+    for prop in &event.custom_properties {
+        let mut p = Property::new(&prop.name, &prop.value);
+        for (pkey, pval) in &prop.params {
+            p.add_parameter(pkey, pval);
+        }
+        ics_event.append_property(p);
     }
 
     let ics_event = ics_event.done();

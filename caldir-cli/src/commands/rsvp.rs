@@ -99,7 +99,7 @@ fn run_interactive() -> Result<()> {
         }
     }
 
-    invites.sort_by(|a, b| a.1.start.to_utc().cmp(&b.1.start.to_utc()));
+    invites.sort_by_key(|a| a.1.start.to_utc());
 
     if invites.is_empty() {
         println!("{}", "No pending invites.".dimmed());

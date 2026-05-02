@@ -42,13 +42,17 @@ static CACHE: LazyLock<Mutex<HashMap<PathBuf, DirCache>>> =
 pub(super) fn cached_events_for_dir(dir: &Path) -> CalDirResult<Vec<CalendarEvent>> {
     // Phase 1: enumerate `.ics` files and grab mtimes (one stat each).
     let mut entries: Vec<(PathBuf, Option<SystemTime>)> = Vec::new();
+
     for entry in std::fs::read_dir(dir)? {
         let Ok(entry) = entry else { continue };
         let path = entry.path();
-        if !path.extension().is_some_and(|e| e == "ics") {
+
+        if path.extension().is_none_or(|e| e != "ics") {
             continue;
         }
+
         let mtime = entry.metadata().ok().and_then(|m| m.modified().ok());
+
         entries.push((path, mtime));
     }
 

@@ -1,88 +1,105 @@
-//! Convert caldir Event to Microsoft Graph event JSON.
+//! Convert caldir Event to a Microsoft Graph event.
 
 use caldir_core::event::{Event, EventTime, ParticipationStatus, Transparency};
-use serde_json::{Value, json};
+use chrono::{Datelike, Duration, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
-use crate::graph_types::{
-    DateTimeTimeZone, PatternedRecurrence, RecurrencePattern, RecurrenceRange,
+use crate::constants::HTML_DESC_PROPERTY;
+use crate::graph_api::types::{
+    DateTimeTimeZone, EmailAddress, GraphAttendee, GraphBody, GraphEvent, GraphLocation,
+    PatternedRecurrence, RecurrencePattern, RecurrenceRange, ResponseStatus,
 };
+use crate::outlook_event::from_outlook::html_to_plaintext;
 
-pub fn to_outlook(event: &Event) -> Value {
-    let mut body = json!({
-        "subject": event.summary,
-        "start": event_time_to_graph(&event.start),
-        "end": event_time_to_graph(&event.end),
-        "isAllDay": event.start.is_date(),
+pub fn to_outlook(event: &Event) -> GraphEvent {
+    let body = build_body(event);
+
+    let location = event.location.as_ref().map(|loc| GraphLocation {
+        display_name: loc.clone(),
     });
 
-    // Safety: json!({...}) always returns Value::Object
-    let Some(obj) = body.as_object_mut() else {
-        return body;
-    };
-
-    if let Some(ref desc) = event.description {
-        obj.insert(
-            "body".to_string(),
-            json!({ "contentType": "text", "content": desc }),
-        );
-    }
-
-    if let Some(ref loc) = event.location {
-        obj.insert("location".to_string(), json!({ "displayName": loc }));
-    }
-
-    // ShowAs / transparency
     let show_as = match event.transparency {
         Transparency::Transparent => "free",
         Transparency::Opaque => "busy",
+    }
+    .to_string();
+
+    let (reminder_minutes, is_reminder_on) = match event.reminders.first() {
+        Some(r) => (r.minutes, true),
+        None => (0, false),
     };
-    obj.insert("showAs".to_string(), json!(show_as));
 
-    // Reminders
-    if let Some(reminder) = event.reminders.first() {
-        obj.insert(
-            "reminderMinutesBeforeStart".to_string(),
-            json!(reminder.minutes),
-        );
-        obj.insert("isReminderOn".to_string(), json!(true));
-    } else {
-        obj.insert("isReminderOn".to_string(), json!(false));
+    let attendees = event
+        .attendees
+        .iter()
+        .map(|a| GraphAttendee {
+            email_address: EmailAddress {
+                name: a.name.clone().unwrap_or_default(),
+                address: a.email.clone(),
+            },
+            status: Some(ResponseStatus {
+                response: a
+                    .response_status
+                    .map(participation_status_to_outlook)
+                    .unwrap_or("none")
+                    .to_string(),
+            }),
+            attendee_type: "required".to_string(),
+        })
+        .collect();
+
+    let recurrence = event
+        .recurrence
+        .as_ref()
+        .and_then(|rec| rrule_to_outlook(&rec.rrule, &event.start));
+
+    GraphEvent {
+        id: String::new(),
+        i_cal_uid: String::new(),
+        subject: event.summary.clone(),
+        body,
+        start: Some(event_time_to_graph(&event.start)),
+        end: Some(event_time_to_graph(&event.end)),
+        location,
+        original_start_time_zone: None,
+        original_end_time_zone: None,
+        is_all_day: event.start.is_date(),
+        is_cancelled: false,
+        recurrence,
+        attendees,
+        organizer: None,
+        reminder_minutes_before_start: reminder_minutes,
+        is_reminder_on,
+        show_as,
+        last_modified_date_time: None,
+        online_meeting: None,
+        original_start: None,
+        response_status: None,
+        event_type: String::new(),
     }
+}
 
-    // Attendees
-    if !event.attendees.is_empty() {
-        let attendees: Vec<Value> = event
-            .attendees
-            .iter()
-            .map(|a| {
-                json!({
-                    "emailAddress": {
-                        "address": a.email,
-                        "name": a.name.as_deref().unwrap_or(""),
-                    },
-                    "type": "required",
-                    "status": {
-                        "response": a.response_status
-                            .map(participation_status_to_outlook)
-                            .unwrap_or("none"),
-                    },
-                })
-            })
-            .collect();
-        obj.insert("attendees".to_string(), json!(attendees));
+/// Pick the right body for Graph: HTML when we have an X-ALT-DESC that still
+/// matches DESCRIPTION (faithful round-trip of an Outlook event we pulled),
+/// otherwise plain text — so a local edit to DESCRIPTION wins over the stale
+/// HTML and the user's intent reaches Outlook.
+fn build_body(event: &Event) -> Option<GraphBody> {
+    let html = event.custom_property(HTML_DESC_PROPERTY);
+
+    match (html, event.description.as_deref()) {
+        (Some(html), Some(desc)) if html_to_plaintext(html) == desc => Some(GraphBody {
+            content: html.to_string(),
+            content_type: "html".to_string(),
+        }),
+        (Some(html), None) if html_to_plaintext(html).is_empty() => Some(GraphBody {
+            content: html.to_string(),
+            content_type: "html".to_string(),
+        }),
+        (_, Some(desc)) => Some(GraphBody {
+            content: desc.to_string(),
+            content_type: "text".to_string(),
+        }),
+        (_, None) => None,
     }
-
-    // Recurrence
-    if let Some(ref rec) = event.recurrence
-        && let Some(patterned) = rrule_to_outlook(&rec.rrule, &event.start)
-    {
-        obj.insert(
-            "recurrence".to_string(),
-            serde_json::to_value(patterned).unwrap_or(json!(null)),
-        );
-    }
-
-    body
 }
 
 fn event_time_to_graph(time: &EventTime) -> DateTimeTimeZone {
@@ -100,7 +117,7 @@ fn event_time_to_graph(time: &EventTime) -> DateTimeTimeZone {
             time_zone: "UTC".to_string(),
         },
         EventTime::DateTimeZoned { datetime, tzid } => DateTimeTimeZone {
-            date_time: datetime.format("%Y-%m-%dT%H:%M:%S%.7f").to_string(),
+            date_time: datetime.format("%Y-%m-%dT%H:%M:%S.0000000").to_string(),
             time_zone: iana_to_windows_timezone(tzid),
         },
     }
@@ -115,7 +132,9 @@ fn participation_status_to_outlook(status: ParticipationStatus) -> &'static str 
     }
 }
 
-/// Convert RRULE string to Graph PatternedRecurrence.
+/// Build a `PatternedRecurrence` from an RRULE string, picking the variant
+/// whose required fields match the FREQ. Each variant only carries the fields
+/// its pattern type uses, so unrelated fields can't leak into the request.
 fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<PatternedRecurrence> {
     let mut freq = "";
     let mut interval = 1i32;
@@ -139,10 +158,10 @@ fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<PatternedRecurrenc
         }
     }
 
-    let (pattern_type, days_of_week, index, day_of_month, month) = match freq {
-        "DAILY" => ("daily".to_string(), vec![], String::new(), 0, 0),
+    let pattern = match freq {
+        "DAILY" => RecurrencePattern::Daily { interval },
         "WEEKLY" => {
-            let days: Vec<String> = byday
+            let days_of_week: Vec<String> = byday
                 .iter()
                 .filter_map(|d| {
                     rrule_day_to_outlook(
@@ -151,60 +170,57 @@ fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<PatternedRecurrenc
                 })
                 .map(String::from)
                 .collect();
-            ("weekly".to_string(), days, String::new(), 0, 0)
-        }
-        "MONTHLY" => {
-            if !byday.is_empty() {
-                // relativeMonthly: e.g., BYDAY=2MO
-                let (index, days) = parse_relative_byday(&byday);
-                ("relativeMonthly".to_string(), days, index, 0, 0)
-            } else {
-                let dom = if bymonthday > 0 {
-                    bymonthday
-                } else {
-                    // Extract from start date
-                    extract_day_of_month(start)
-                };
-                ("absoluteMonthly".to_string(), vec![], String::new(), dom, 0)
+            RecurrencePattern::Weekly {
+                interval,
+                days_of_week,
+                first_day_of_week: "sunday".to_string(),
             }
         }
-        "YEARLY" => {
-            if !byday.is_empty() {
-                let (index, days) = parse_relative_byday(&byday);
-                ("relativeYearly".to_string(), days, index, 0, bymonth)
+        "MONTHLY" if !byday.is_empty() => {
+            let (index, days_of_week) = parse_relative_byday(&byday);
+            RecurrencePattern::RelativeMonthly {
+                interval,
+                days_of_week,
+                index: index.to_string(),
+            }
+        }
+        "MONTHLY" => RecurrencePattern::AbsoluteMonthly {
+            interval,
+            day_of_month: if bymonthday > 0 {
+                bymonthday
             } else {
-                let dom = if bymonthday > 0 {
-                    bymonthday
-                } else {
-                    extract_day_of_month(start)
-                };
-                let m = if bymonth > 0 {
+                extract_day_of_month(start)
+            },
+        },
+        "YEARLY" if !byday.is_empty() => {
+            let (index, days_of_week) = parse_relative_byday(&byday);
+            RecurrencePattern::RelativeYearly {
+                interval,
+                days_of_week,
+                index: index.to_string(),
+                month: if bymonth > 0 {
                     bymonth
                 } else {
                     extract_month(start)
-                };
-                ("absoluteYearly".to_string(), vec![], String::new(), dom, m)
+                },
             }
         }
+        "YEARLY" => RecurrencePattern::AbsoluteYearly {
+            interval,
+            day_of_month: if bymonthday > 0 {
+                bymonthday
+            } else {
+                extract_day_of_month(start)
+            },
+            month: if bymonth > 0 {
+                bymonth
+            } else {
+                extract_month(start)
+            },
+        },
         _ => return None,
     };
 
-    // Range
-    let (range_type, end_date, number_of_occurrences) = if !until.is_empty() {
-        // Convert "20251231" or "20251231T235959Z" to "2025-12-31"
-        let date_part = if until.len() >= 8 {
-            format!("{}-{}-{}", &until[..4], &until[4..6], &until[6..8])
-        } else {
-            until.clone()
-        };
-        ("endDate".to_string(), date_part, 0)
-    } else if count > 0 {
-        ("numbered".to_string(), String::new(), count)
-    } else {
-        ("noEnd".to_string(), String::new(), 0)
-    };
-
-    // Start date for range
     let start_date = match start {
         EventTime::Date(d) => d.format("%Y-%m-%d").to_string(),
         EventTime::DateTimeUtc(dt) => dt.format("%Y-%m-%d").to_string(),
@@ -212,34 +228,95 @@ fn rrule_to_outlook(rrule: &str, start: &EventTime) -> Option<PatternedRecurrenc
         EventTime::DateTimeZoned { datetime, .. } => datetime.format("%Y-%m-%d").to_string(),
     };
 
-    Some(PatternedRecurrence {
-        pattern: RecurrencePattern {
-            pattern_type,
-            interval,
-            days_of_week,
-            day_of_month,
-            month,
-            index,
-            first_day_of_week: "sunday".to_string(),
-        },
-        range: RecurrenceRange {
-            range_type,
+    let range = if !until.is_empty() {
+        let end_date = until_to_end_date(&until, start)?;
+        RecurrenceRange::EndDate {
             start_date,
             end_date,
-            number_of_occurrences,
-            recurrence_time_zone: String::new(),
-        },
-    })
+        }
+    } else if count > 0 {
+        RecurrenceRange::Numbered {
+            start_date,
+            number_of_occurrences: count,
+        }
+    } else {
+        RecurrenceRange::NoEnd { start_date }
+    };
+
+    Some(PatternedRecurrence { pattern, range })
+}
+
+/// Convert an RRULE `UNTIL` value to a Graph `endDate` string ("YYYY-MM-DD").
+///
+/// Graph's `recurrenceRange.endDate` is day-level and inclusive, interpreted
+/// in the event's start timezone. RFC 5545 `UNTIL` is an inclusive datetime,
+/// often produced as `split_start - 1s` when truncating a series. Naively
+/// taking the date portion of UNTIL keeps the would-be occurrence on that day
+/// in the series — the bug that produced two events on the split day.
+///
+/// We detect that case by comparing UNTIL's local time-of-day to the start's
+/// time-of-day. If UNTIL falls before the would-be occurrence on its date,
+/// we step back a day so Outlook excludes that occurrence too.
+fn until_to_end_date(until: &str, start: &EventTime) -> Option<String> {
+    if !until.contains('T') {
+        if until.len() < 8 {
+            return None;
+        }
+        return Some(format!("{}-{}-{}", &until[..4], &until[4..6], &until[6..8]));
+    }
+
+    let local = until_local(until, start)?;
+    let start_time_of_day = start_time_of_day(start);
+    let occurrence_on_until_date = local.date().and_time(start_time_of_day);
+
+    let end_date = if local < occurrence_on_until_date {
+        local.date() - Duration::days(1)
+    } else {
+        local.date()
+    };
+
+    Some(end_date.format("%Y-%m-%d").to_string())
+}
+
+/// Interpret UNTIL in the start's timezone, returning the corresponding naive
+/// local datetime. UNTIL with a `Z` suffix is UTC; without it, it's floating
+/// (used as-is, since there's no timezone to convert through).
+fn until_local(until: &str, start: &EventTime) -> Option<NaiveDateTime> {
+    let trimmed = until.trim_end_matches('Z');
+    let naive = NaiveDateTime::parse_from_str(trimmed, "%Y%m%dT%H%M%S").ok()?;
+
+    if !until.ends_with('Z') {
+        return Some(naive);
+    }
+
+    let utc = Utc.from_utc_datetime(&naive);
+    let local = match start {
+        EventTime::DateTimeZoned { tzid, .. } => {
+            let tz: chrono_tz::Tz = tzid.parse().ok()?;
+            utc.with_timezone(&tz).naive_local()
+        }
+        _ => utc.naive_utc(),
+    };
+    Some(local)
+}
+
+fn start_time_of_day(start: &EventTime) -> NaiveTime {
+    let midnight = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
+    match start {
+        EventTime::Date(_) => midnight,
+        EventTime::DateTimeUtc(dt) => dt.time(),
+        EventTime::DateTimeFloating(dt) => dt.time(),
+        EventTime::DateTimeZoned { datetime, .. } => datetime.time(),
+    }
 }
 
 /// Parse BYDAY values that may have numeric prefixes (e.g., "2MO", "-1FR").
-fn parse_relative_byday(byday: &[&str]) -> (String, Vec<String>) {
-    let mut index = "first".to_string();
+fn parse_relative_byday(byday: &[&str]) -> (&'static str, Vec<String>) {
+    let mut index = "first";
     let mut days = Vec::new();
 
     for entry in byday {
         let entry = entry.trim();
-        // Extract numeric prefix if present
         let (num_str, day_str) = split_byday_prefix(entry);
         if !num_str.is_empty() {
             index = number_to_outlook_index(num_str);
@@ -257,7 +334,7 @@ fn split_byday_prefix(s: &str) -> (&str, &str) {
     (&s[..pos], &s[pos..])
 }
 
-fn number_to_outlook_index(n: &str) -> String {
+fn number_to_outlook_index(n: &str) -> &'static str {
     match n {
         "1" => "first",
         "2" => "second",
@@ -266,7 +343,6 @@ fn number_to_outlook_index(n: &str) -> String {
         "-1" => "last",
         _ => "first",
     }
-    .to_string()
 }
 
 fn rrule_day_to_outlook(day: &str) -> Option<&'static str> {
@@ -342,4 +418,339 @@ fn iana_to_windows_timezone(tz: &str) -> String {
     .to_string()
 }
 
-use chrono::Datelike;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caldir_core::event::{
+        CustomProperty, Event, EventStatus, EventTime, Reminders, Transparency,
+    };
+    use chrono::NaiveDate;
+
+    fn html_event() -> Event {
+        let html = "<html><body><div>Here's a <b>fun</b>&nbsp;little tricky thing to <span style=\"color:red\">decode</span>!</div></body></html>";
+        let mut e = Event::new(
+            "Event with HTML".into(),
+            EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 4, 29)
+                    .unwrap()
+                    .and_hms_opt(7, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 4, 29)
+                    .unwrap()
+                    .and_hms_opt(8, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            Some("Here's a fun little tricky thing to decode!".into()),
+            None,
+            None,
+            vec![],
+        );
+        e.custom_properties = vec![
+            CustomProperty::new(HTML_DESC_PROPERTY, html)
+                .with_param("FMTTYPE", "text/html")
+                .with_param("VALUE", "TEXT"),
+        ];
+        e
+    }
+
+    #[test]
+    fn untouched_html_event_pushes_html_body() {
+        // Pulled an Outlook HTML event, didn't edit it locally — push must
+        // preserve the original markup so bold/color/&nbsp; don't get
+        // flattened on round-trip.
+        let body = build_body(&html_event()).expect("body must be present");
+        assert_eq!(body.content_type, "html");
+        assert!(body.content.contains("<b>fun</b>"));
+    }
+
+    #[test]
+    fn edited_description_drops_stale_html() {
+        // User edited DESCRIPTION locally — the X-ALT-DESC carries the
+        // pre-edit HTML, so trusting it would silently revert the edit.
+        // The plaintext must win and the body goes back as text.
+        let mut e = html_event();
+        e.description = Some("totally rewritten body".into());
+        let body = build_body(&e).expect("body must be present");
+        assert_eq!(body.content_type, "text");
+        assert_eq!(body.content, "totally rewritten body");
+    }
+
+    #[test]
+    fn cleared_description_with_html_still_treated_as_empty() {
+        // Treat "no description" as empty when the HTML strips to empty —
+        // matches how `from_outlook` drops Outlook's auto-generated
+        // whitespace-only HTML bodies.
+        let mut e = Event {
+            uid: "u".into(),
+            summary: "x".into(),
+            description: None,
+            location: None,
+            start: EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 4, 29)
+                    .unwrap()
+                    .and_hms_opt(7, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            end: EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 4, 29)
+                    .unwrap()
+                    .and_hms_opt(8, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            status: EventStatus::Confirmed,
+            recurrence: None,
+            recurrence_id: None,
+            reminders: Reminders(vec![]),
+            transparency: Transparency::Opaque,
+            organizer: None,
+            attendees: vec![],
+            conference_url: None,
+            updated: None,
+            sequence: None,
+            custom_properties: vec![],
+        };
+        // No description, no html → no body
+        assert!(build_body(&e).is_none());
+        // Empty-stripping HTML + no description → still send the empty html
+        e.custom_properties = vec![CustomProperty::new(
+            HTML_DESC_PROPERTY,
+            "<html><body><div>&nbsp;</div></body></html>",
+        )];
+        let body = build_body(&e).expect("empty html still produces a body");
+        assert_eq!(body.content_type, "html");
+    }
+
+    fn start_on(year: i32, month: u32, day: u32) -> EventTime {
+        EventTime::DateTimeUtc(
+            NaiveDate::from_ymd_opt(year, month, day)
+                .unwrap()
+                .and_hms_opt(16, 0, 0)
+                .unwrap()
+                .and_utc(),
+        )
+    }
+
+    // Make sure our different event times get converted properly:
+    #[test]
+    fn event_time_to_graph_renders_every_variant() {
+        let date = EventTime::Date(NaiveDate::from_ymd_opt(2026, 5, 5).unwrap());
+        let utc = EventTime::DateTimeUtc(
+            NaiveDate::from_ymd_opt(2026, 5, 5)
+                .unwrap()
+                .and_hms_opt(11, 0, 0)
+                .unwrap()
+                .and_utc(),
+        );
+        let floating = EventTime::DateTimeFloating(
+            NaiveDate::from_ymd_opt(2026, 5, 5)
+                .unwrap()
+                .and_hms_opt(11, 0, 0)
+                .unwrap(),
+        );
+        let zoned = EventTime::DateTimeZoned {
+            datetime: NaiveDate::from_ymd_opt(2026, 5, 5)
+                .unwrap()
+                .and_hms_opt(11, 0, 0)
+                .unwrap(),
+            tzid: "Europe/London".to_string(),
+        };
+
+        assert_eq!(
+            event_time_to_graph(&date).date_time,
+            "2026-05-05T00:00:00.0000000"
+        );
+        assert_eq!(
+            event_time_to_graph(&utc).date_time,
+            "2026-05-05T11:00:00.0000000"
+        );
+        assert_eq!(
+            event_time_to_graph(&floating).date_time,
+            "2026-05-05T11:00:00.0000000"
+        );
+        let zoned_graph = event_time_to_graph(&zoned);
+        assert_eq!(zoned_graph.date_time, "2026-05-05T11:00:00.0000000");
+        assert_eq!(zoned_graph.time_zone, "GMT Standard Time");
+    }
+
+    #[test]
+    fn daily_pattern_serializes_without_unrelated_fields() {
+        // Regression: a `daily` pattern that included an empty `index` field
+        // got rejected by Microsoft Graph as
+        //   "Cannot parse 'null' as a value of type 'microsoft.graph.weekIndex'".
+        // The tagged-enum encoding guarantees only the variant's own fields
+        // appear in the JSON.
+        let rec = rrule_to_outlook("FREQ=DAILY;UNTIL=20260801", &start_on(2026, 5, 1)).unwrap();
+        assert!(matches!(
+            rec.pattern,
+            RecurrencePattern::Daily { interval: 1 }
+        ));
+        assert!(matches!(
+            rec.range,
+            RecurrenceRange::EndDate { ref start_date, ref end_date }
+                if start_date == "2026-05-01" && end_date == "2026-08-01"
+        ));
+
+        let json = serde_json::to_value(&rec).unwrap();
+        let pattern = json.get("pattern").unwrap().as_object().unwrap();
+        assert_eq!(pattern.get("type").unwrap(), "daily");
+        assert_eq!(pattern.get("interval").unwrap(), 1);
+        assert!(!pattern.contains_key("index"));
+        assert!(!pattern.contains_key("daysOfWeek"));
+        assert!(!pattern.contains_key("dayOfMonth"));
+        assert!(!pattern.contains_key("month"));
+        assert!(!pattern.contains_key("firstDayOfWeek"));
+
+        let range = json.get("range").unwrap().as_object().unwrap();
+        assert!(!range.contains_key("numberOfOccurrences"));
+    }
+
+    #[test]
+    fn weekly_pattern_emits_days_and_first_day_of_week() {
+        let rec = rrule_to_outlook("FREQ=WEEKLY;BYDAY=MO,WE", &start_on(2026, 5, 4)).unwrap();
+        match rec.pattern {
+            RecurrencePattern::Weekly {
+                ref days_of_week,
+                ref first_day_of_week,
+                ..
+            } => {
+                assert_eq!(days_of_week, &vec!["monday", "wednesday"]);
+                assert_eq!(first_day_of_week, "sunday");
+            }
+            other => panic!("expected Weekly variant, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn relative_monthly_pattern_carries_index_and_days() {
+        let rec = rrule_to_outlook("FREQ=MONTHLY;BYDAY=2MO", &start_on(2026, 5, 11)).unwrap();
+        match rec.pattern {
+            RecurrencePattern::RelativeMonthly {
+                ref days_of_week,
+                ref index,
+                ..
+            } => {
+                assert_eq!(days_of_week, &vec!["monday"]);
+                assert_eq!(index, "second");
+            }
+            other => panic!("expected RelativeMonthly variant, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn absolute_monthly_pattern_uses_day_of_month_from_start() {
+        // No BYMONTHDAY in RRULE, so we extract it from the start date (15th).
+        let rec = rrule_to_outlook("FREQ=MONTHLY", &start_on(2026, 5, 15)).unwrap();
+        match rec.pattern {
+            RecurrencePattern::AbsoluteMonthly { day_of_month, .. } => {
+                assert_eq!(day_of_month, 15);
+            }
+            other => panic!("expected AbsoluteMonthly variant, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn count_range_uses_numbered_variant() {
+        let rec = rrule_to_outlook("FREQ=DAILY;COUNT=10", &start_on(2026, 5, 1)).unwrap();
+        assert!(matches!(
+            rec.range,
+            RecurrenceRange::Numbered {
+                number_of_occurrences: 10,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn no_end_range_uses_no_end_variant() {
+        let rec = rrule_to_outlook("FREQ=DAILY", &start_on(2026, 5, 1)).unwrap();
+        assert!(matches!(rec.range, RecurrenceRange::NoEnd { .. }));
+    }
+
+    /// Regression: splitting a daily series at May 6 18:00 used to send
+    /// `endDate = 2026-05-06`, leaving the May 6 occurrence in the truncated
+    /// series — so both old and new masters showed up on May 6 in Outlook.
+    /// UNTIL = `split_start - 1s` is before the would-be occurrence on its
+    /// own date, so endDate should step back a day.
+    #[test]
+    fn until_just_before_occurrence_steps_end_date_back_one_day() {
+        let rec = rrule_to_outlook(
+            "FREQ=DAILY;UNTIL=20260506T175959Z",
+            &EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 5, 1)
+                    .unwrap()
+                    .and_hms_opt(18, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+        )
+        .unwrap();
+        match rec.range {
+            RecurrenceRange::EndDate { end_date, .. } => assert_eq!(end_date, "2026-05-05"),
+            other => panic!("expected EndDate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn until_after_occurrence_keeps_end_date_same_day() {
+        // UNTIL is later in the day than the start time-of-day, so the
+        // occurrence on UNTIL's date is included.
+        let rec = rrule_to_outlook(
+            "FREQ=DAILY;UNTIL=20260506T235959Z",
+            &EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 5, 1)
+                    .unwrap()
+                    .and_hms_opt(8, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+        )
+        .unwrap();
+        match rec.range {
+            RecurrenceRange::EndDate { end_date, .. } => assert_eq!(end_date, "2026-05-06"),
+            other => panic!("expected EndDate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn date_only_until_passes_through() {
+        // Date-only UNTIL (from all-day events) is already at day-level,
+        // so we just reformat without shifting.
+        let rec = rrule_to_outlook(
+            "FREQ=DAILY;UNTIL=20260801",
+            &EventTime::Date(NaiveDate::from_ymd_opt(2026, 5, 1).unwrap()),
+        )
+        .unwrap();
+        match rec.range {
+            RecurrenceRange::EndDate { end_date, .. } => assert_eq!(end_date, "2026-08-01"),
+            other => panic!("expected EndDate, got {other:?}"),
+        }
+    }
+
+    /// Zoned start: UNTIL is in UTC but endDate must be in the start's local
+    /// timezone. A NY 10:00 daily series split at May 6 → UNTIL = 13:59:59Z
+    /// (= 09:59:59 NY) on May 6. The May 6 occurrence at 10:00 NY is excluded.
+    #[test]
+    fn until_zoned_start_compares_in_local_timezone() {
+        let rec = rrule_to_outlook(
+            "FREQ=DAILY;UNTIL=20260506T135959Z",
+            &EventTime::DateTimeZoned {
+                datetime: NaiveDate::from_ymd_opt(2026, 5, 1)
+                    .unwrap()
+                    .and_hms_opt(10, 0, 0)
+                    .unwrap(),
+                tzid: "America/New_York".to_string(),
+            },
+        )
+        .unwrap();
+        match rec.range {
+            RecurrenceRange::EndDate { end_date, .. } => assert_eq!(end_date, "2026-05-05"),
+            other => panic!("expected EndDate, got {other:?}"),
+        }
+    }
+}

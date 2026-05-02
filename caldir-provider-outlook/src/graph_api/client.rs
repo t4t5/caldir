@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use reqwest::Client;
+use serde::Serialize;
 
 const GRAPH_BASE_URL: &str = "https://graph.microsoft.com/v1.0";
 
@@ -41,7 +42,11 @@ impl GraphClient {
         check_status(response).await
     }
 
-    pub async fn post(&self, path: &str, body: &serde_json::Value) -> Result<reqwest::Response> {
+    pub async fn post<B: Serialize + ?Sized>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<reqwest::Response> {
         let url = format!("{}{}", GRAPH_BASE_URL, path);
         let response = self
             .client
@@ -54,7 +59,11 @@ impl GraphClient {
         check_status(response).await
     }
 
-    pub async fn patch(&self, path: &str, body: &serde_json::Value) -> Result<reqwest::Response> {
+    pub async fn patch<B: Serialize + ?Sized>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<reqwest::Response> {
         let url = format!("{}{}", GRAPH_BASE_URL, path);
         let response = self
             .client

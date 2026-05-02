@@ -1,8 +1,8 @@
 //! ICS file parsing using the icalendar crate's parser.
 
 use crate::event::{
-    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder, Reminders,
-    Transparency,
+    Attendee, CustomProperty, Event, EventStatus, EventTime, ParticipationStatus, Recurrence,
+    Reminder, Reminders, Transparency,
 };
 use icalendar::{
     DatePerhapsTime,
@@ -110,12 +110,30 @@ fn parse_vevent(vevent: &icalendar::parser::Component) -> Option<Event> {
         .and_then(|p| chrono::NaiveDateTime::parse_from_str(p.val.as_ref(), "%Y%m%dT%H%M%SZ").ok())
         .map(|dt| dt.and_utc());
 
-    // Custom X- properties (preserved for round-tripping provider-specific data)
-    let custom_properties: Vec<(String, String)> = vevent
+    // Custom X- properties (preserved for round-tripping provider-specific data).
+    // Parameters are kept so providers that need them (e.g. FMTTYPE/VALUE on
+    // X-ALT-DESC for HTML descriptions) survive a pull → write → read → push.
+    let custom_properties: Vec<CustomProperty> = vevent
         .properties
         .iter()
         .filter(|p| p.name.as_ref().starts_with("X-"))
-        .map(|p| (p.name.to_string(), p.val.to_string()))
+        .map(|p| {
+            let params = p
+                .params
+                .iter()
+                .filter_map(|param| {
+                    param
+                        .val
+                        .as_ref()
+                        .map(|v| (param.key.to_string(), v.to_string()))
+                })
+                .collect();
+            CustomProperty {
+                name: p.name.to_string(),
+                value: p.val.to_string(),
+                params,
+            }
+        })
         .collect();
 
     Some(Event {
