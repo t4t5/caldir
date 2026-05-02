@@ -6,6 +6,8 @@ use chrono::Duration;
 use dialoguer::{Input, Select};
 use owo_colors::OwoColorize;
 
+use crate::utils::path::PathExt;
+
 #[allow(clippy::too_many_arguments)]
 pub fn run(
     title: Option<String>,
@@ -89,20 +91,10 @@ pub fn run(
 
     let path = calendar.create_event(&event)?;
 
-    let display_path = if let Ok(home) = std::env::var("HOME") {
-        if let Ok(relative) = path.strip_prefix(&home) {
-            format!("~/{}", relative.display())
-        } else {
-            path.display().to_string()
-        }
-    } else {
-        path.display().to_string()
-    };
-
     if interactive {
         println!();
     }
-    println!("{}", format!("  Created: {}", display_path).green());
+    println!("{}", format!("  Created: {}", path.tilde()).green());
 
     Ok(())
 }

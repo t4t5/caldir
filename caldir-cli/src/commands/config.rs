@@ -1,25 +1,15 @@
-use std::path::PathBuf;
-
 use anyhow::Result;
 use caldir_core::caldir::Caldir;
 use caldir_core::caldir_config::CaldirConfig;
 use owo_colors::OwoColorize;
 
+use crate::utils::path::PathExt;
+
 pub fn run() -> Result<()> {
     let config_path = CaldirConfig::config_path().map_err(|e| anyhow::anyhow!(e))?;
     let caldir = Caldir::load().map_err(|e| anyhow::anyhow!(e))?;
 
-    let pretty_config_path = std::env::var("HOME")
-        .ok()
-        .and_then(|home| {
-            config_path
-                .strip_prefix(&home)
-                .ok()
-                .map(|p| PathBuf::from("~").join(p))
-        })
-        .unwrap_or_else(|| config_path.clone());
-
-    println!("{} {}", "Path:".bold(), pretty_config_path.display());
+    println!("{} {}", "Path:".bold(), config_path.tilde());
     println!();
     println!("{}", caldir.config());
 
