@@ -3,7 +3,8 @@
 use crate::calendar::Calendar;
 use crate::constants::DEFAULT_SYNC_DAYS;
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::{Event, EventTime};
+use crate::event::Event;
+use crate::event_time::EventTime;
 use crate::ics::parse_event;
 use crate::utils::slugify;
 use chrono::{DateTime, Duration, Utc};

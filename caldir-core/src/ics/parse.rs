@@ -1,8 +1,11 @@
 //! ICS file parsing using the icalendar crate's parser.
 
-use crate::event::{
-    Attendee, CustomProperty, Event, EventStatus, EventTime, ParticipationStatus, Recurrence,
-    Reminder, Reminders, Transparency,
+use crate::{
+    event::{
+        Attendee, CustomProperty, Event, EventStatus, ParticipationStatus, Recurrence, Reminder,
+        Reminders, Transparency,
+    },
+    event_time::EventTime,
 };
 use icalendar::{
     DatePerhapsTime,

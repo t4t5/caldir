@@ -1,7 +1,8 @@
 //! ICS file generation.
 
 use crate::error::CalDirResult;
-use crate::event::{Event, EventStatus, EventTime, Transparency};
+use crate::event::{Event, EventStatus, Transparency};
+use crate::event_time::EventTime;
 use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger, ValueType};
 
 /// Generate .ics content for an event with calendar metadata

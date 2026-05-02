@@ -6,6 +6,7 @@ pub mod date_range;
 pub mod diff;
 pub mod error;
 pub mod event;
+pub mod event_time;
 pub mod ics;
 pub mod paths;
 pub mod recurrence;
