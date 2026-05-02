@@ -17,7 +17,8 @@ use crate::calendar::config::CalendarConfig;
 use crate::calendar::event::CalendarEvent;
 use crate::calendar::state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::{Event, EventTime, Recurrence};
+use crate::event::{Event, Recurrence};
+use crate::event_time::EventTime;
 use crate::recurrence::{expand_recurring_event, truncate_recurrence_before};
 use crate::remote::Remote;
 use crate::utils::slugify;
@@ -158,8 +159,14 @@ impl Calendar {
 
     /// Update a local event file by finding it via uid and replacing its content.
     /// For recurring event instances, also matches on recurrence_id.
-    pub fn update_event(&self, uid: &str, event: &Event) -> CalDirResult<()> {
-        self.delete_event(uid, event.recurrence_id.as_ref())?;
+    pub fn update_event(
+        &self,
+        uid: &str,
+        recurrence_id: Option<&EventTime>,
+        event: &Event,
+    ) -> CalDirResult<()> {
+        // Delete first so that we don't end up with file with same name + suffix
+        self.delete_event(uid, recurrence_id)?;
         self.create_event(event)?;
         Ok(())
     }
@@ -219,7 +226,11 @@ impl Calendar {
             sequence: master.sequence.map(|s| s + 1).or(Some(1)),
             ..master.clone()
         };
-        self.update_event(&master.uid, &truncated_master)?;
+        self.update_event(
+            &master.uid,
+            master.recurrence_id.as_ref(),
+            &truncated_master,
+        )?;
 
         // 3. Create the new master, inheriting all metadata from the original.
         let new_master = Event {

@@ -62,7 +62,11 @@ fn run_direct(path_str: &str, response_str: &str) -> Result<()> {
         .with_response(email, status)
         .context("Failed to update event response")?;
 
-    calendar.update_event(&updated_event.uid, &updated_event)?;
+    calendar.update_event(
+        &updated_event.uid,
+        updated_event.recurrence_id.as_ref(),
+        &updated_event,
+    )?;
 
     println!("{} {} → {}", "✓".green(), event.summary, status);
     println!();
@@ -99,7 +103,7 @@ fn run_interactive() -> Result<()> {
         }
     }
 
-    invites.sort_by(|a, b| a.1.start.to_utc().cmp(&b.1.start.to_utc()));
+    invites.sort_by_key(|a| a.1.start.to_utc());
 
     if invites.is_empty() {
         println!("{}", "No pending invites.".dimmed());
@@ -159,7 +163,7 @@ fn run_interactive() -> Result<()> {
             let updated = event
                 .with_response(email, status)
                 .context("Failed to update response")?;
-            calendar.update_event(&updated.uid, &updated)?;
+            calendar.update_event(&updated.uid, updated.recurrence_id.as_ref(), &updated)?;
             println!("  {} → {}", "✓".green(), status);
             responded += 1;
         } else {

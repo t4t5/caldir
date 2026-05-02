@@ -95,7 +95,11 @@ for e in events:
 
 ## Going below the provider
 
-When you suspect the provider itself is misinterpreting what the upstream API returned, hit the upstream directly. For Google:
+When you suspect the provider itself is misinterpreting what the upstream API returned, hit the upstream directly.
+
+Comparing the upstream response to what the provider emits is the fastest way to localize a bug to "upstream is weird" vs. "we're parsing it wrong".
+
+### Google Calendar API
 
 ```bash
 TOKEN=$(grep "^access_token" ~/.config/caldir/providers/google/session/<account>.toml | cut -d'"' -f2)
@@ -109,7 +113,29 @@ Useful Google flags:
 - `showDeleted=true` — include cancelled instances/events (returns full data when used with `singleEvents=true`)
 - Default (`singleEvents=false`, `showDeleted=false`) returns master events plus bare cancellation tombstones
 
-Comparing the upstream response to what the provider emits is the fastest way to localize a bug to "upstream is weird" vs. "we're parsing it wrong".
+### Microsoft Graph (Outlook)
+
+```bash
+TOKEN=$(grep "^access_token" ~/.config/caldir/providers/outlook/session/<account>.toml | cut -d'"' -f2)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://graph.microsoft.com/v1.0/me/calendars/<id>/events?\$select=id,iCalUId,subject,start,recurrence,type" \
+  | jq '.value[] | select(.subject | test("foo"; "i"))'
+```
+
+Picking the right endpoint matters — Graph has three with very different semantics:
+
+- `/me/calendars/{id}/events` — series **masters** and **standalones** only. Does NOT include exceptions or expanded occurrences. Best for "what discrete events does this calendar contain".
+- `/me/events/{master_id}/instances?startDateTime=...&endDateTime=...` — every occurrence of one series in the window, including overrides. Each item carries a `type` field: `occurrence` (auto-expanded, identical to master) or `exception` (overridden). caldir's `list_events` calls this once per master and keeps only `type=exception`.
+- `/me/calendarView?startDateTime=...&endDateTime=...` — every occurrence of every series, fully expanded. Convenient for "show me the calendar" but a long-running weekly meeting becomes ~50 indistinguishable rows, so caldir avoids it.
+
+URL gotcha: Graph rejects RFC3339 timestamps containing `+` (e.g. `2026-05-01T16:00:00+00:00`) because URL-decoders read `+` as a space. Use the `Z` form (`2026-05-01T16:00:00Z`).
+
+OData syntax for the curl shell: prefix `$select`, `$top`, `$filter` etc. with a backslash so the shell doesn't try to expand them. Inside `jq`, the `@odata.nextLink` field is the pagination cursor.
+
+Useful fields on a Graph event:
+- `type` — `singleInstance` | `seriesMaster` | `occurrence` | `exception`
+- `iCalUId` — RFC 5545 UID. Microsoft mints a **fresh** one per exception (RFC violation), so caldir rewrites exceptions to share their master's UID
+- `originalStart` — UTC ISO-8601, the scheduled start of the recurring slot this exception overrides; this is what caldir matches against `recurrence_id`
 
 ## When NOT to use this
 

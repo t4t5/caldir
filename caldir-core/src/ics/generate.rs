@@ -1,7 +1,8 @@
 //! ICS file generation.
 
 use crate::error::CalDirResult;
-use crate::event::{Event, EventStatus, EventTime, Transparency};
+use crate::event::{Event, EventStatus, Transparency};
+use crate::event_time::EventTime;
 use icalendar::{Alarm, Calendar, Component, EventLike, Property, Trigger, ValueType};
 
 /// Generate .ics content for an event with calendar metadata
@@ -107,9 +108,14 @@ pub fn generate_ics(event: &Event) -> CalDirResult<String> {
         ics_event.add_property("URL", url);
     }
 
-    // Custom properties (provider-specific, preserved for round-tripping)
-    for (key, value) in &event.custom_properties {
-        ics_event.add_property(key, value);
+    // Custom properties (X-*)
+    // e.g. X-GOOGLE-COLOR-ID, X-ALT-DESC
+    for prop in &event.custom_properties {
+        let mut p = Property::new(&prop.name, &prop.value);
+        for (pkey, pval) in &prop.params {
+            p.add_parameter(pkey, pval);
+        }
+        ics_event.append_property(p);
     }
 
     let ics_event = ics_event.done();

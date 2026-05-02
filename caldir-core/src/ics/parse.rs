@@ -1,12 +1,15 @@
 //! ICS file parsing using the icalendar crate's parser.
 
-use crate::event::{
-    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder, Reminders,
-    Transparency,
+use crate::{
+    event::{
+        Attendee, CustomProperty, Event, EventStatus, ParticipationStatus, Recurrence, Reminder,
+        Reminders, Transparency,
+    },
+    event_time::EventTime,
 };
 use icalendar::{
     DatePerhapsTime,
-    parser::{Property, read_calendar, unfold},
+    parser::{Parameter, Property, read_calendar, unfold},
 };
 
 /// Parse ICS content into an Event struct (returns the first VEVENT)
@@ -110,12 +113,12 @@ fn parse_vevent(vevent: &icalendar::parser::Component) -> Option<Event> {
         .and_then(|p| chrono::NaiveDateTime::parse_from_str(p.val.as_ref(), "%Y%m%dT%H%M%SZ").ok())
         .map(|dt| dt.and_utc());
 
-    // Custom X- properties (preserved for round-tripping provider-specific data)
-    let custom_properties: Vec<(String, String)> = vevent
+    // e.g. X-GOOGLE-COLOR-ID
+    let custom_properties: Vec<CustomProperty> = vevent
         .properties
         .iter()
         .filter(|p| p.name.as_ref().starts_with("X-"))
-        .map(|p| (p.name.to_string(), p.val.to_string()))
+        .map(parse_custom_property)
         .collect();
 
     Some(Event {
@@ -236,6 +239,26 @@ fn parse_attendee(prop: &Property) -> Attendee {
         email,
         response_status,
     }
+}
+
+/// Parse an X- property into a CustomProperty, preserving its params.
+fn parse_custom_property(prop: &Property) -> CustomProperty {
+    CustomProperty {
+        name: prop.name.to_string(),
+        value: prop.val.to_string(),
+        params: parse_params(&prop.params),
+    }
+}
+
+// e.g. the FMTTYPE in X-ALT-DESC;FMTTYPE=text/html:<html>...</html>
+fn parse_params(params: &[Parameter]) -> Vec<(String, String)> {
+    params
+        .iter()
+        .filter_map(|p| {
+            let v = p.val.as_ref()?;
+            Some((p.key.to_string(), v.to_string()))
+        })
+        .collect()
 }
 
 /// Parse TRIGGER value to minutes before event (-PT30M, -P1D, etc.)

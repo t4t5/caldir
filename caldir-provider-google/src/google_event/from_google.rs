@@ -1,7 +1,7 @@
 use anyhow::Result;
 use caldir_core::event::{
-    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder, Reminders,
-    Transparency,
+    Attendee, CustomProperty, Event, EventStatus, EventTime, ParticipationStatus, Recurrence,
+    Reminder, Reminders, Transparency,
 };
 
 use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
@@ -79,12 +79,15 @@ impl FromGoogle for Event {
 
         let mut custom_properties = Vec::new();
         // Store Google's event ID for API calls (updates, deletes)
-        custom_properties.push((PROVIDER_EVENT_ID_PROPERTY.to_string(), event.id));
+        custom_properties.push(CustomProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id));
         if let Some(ref url) = conference_url {
-            custom_properties.push(("X-GOOGLE-CONFERENCE".to_string(), url.clone()));
+            custom_properties.push(CustomProperty::new("X-GOOGLE-CONFERENCE", url));
         }
         if !event.color_id.is_empty() {
-            custom_properties.push((PROVIDER_COLOR_ID_PROPERTY.to_string(), event.color_id));
+            custom_properties.push(CustomProperty::new(
+                PROVIDER_COLOR_ID_PROPERTY,
+                event.color_id,
+            ));
         }
 
         Ok(Event {

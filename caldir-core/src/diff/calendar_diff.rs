@@ -39,15 +39,26 @@ impl CalendarDiff {
                 DiffKind::Create => {
                     let event = diff.new.as_ref().expect("Create must have new event");
                     let created = remote.create_event(event).await?;
-                    // Update local file with remote-assigned ID and fields (find by uid)
-                    self.calendar.update_event(&event.uid, &created)?;
+
+                    // Replace local data with what was returned by provider
+                    // (ID might have changed)
+                    self.calendar.update_event(
+                        &event.uid,
+                        event.recurrence_id.as_ref(),
+                        &created,
+                    )?;
+
                     known_ids.insert(created.unique_id());
                 }
                 DiffKind::Update => {
                     let event = diff.new.as_ref().expect("Update must have new event");
                     let updated = remote.update_event(event).await?;
                     // Update local file with any remote changes (find by uid)
-                    self.calendar.update_event(&event.uid, &updated)?;
+                    self.calendar.update_event(
+                        &event.uid,
+                        event.recurrence_id.as_ref(),
+                        &updated,
+                    )?;
                 }
                 DiffKind::Delete => {
                     let event = diff.old.as_ref().expect("Delete must have old event");
@@ -75,7 +86,8 @@ impl CalendarDiff {
                 DiffKind::Update => {
                     let old = diff.old.as_ref().expect("Update must have old event");
                     let new = diff.new.as_ref().expect("Update must have new event");
-                    self.calendar.update_event(&new.uid, old)?;
+                    self.calendar
+                        .update_event(&new.uid, new.recurrence_id.as_ref(), old)?;
                 }
                 DiffKind::Delete => {
                     let event = diff.old.as_ref().expect("Delete must have old event");
@@ -105,7 +117,8 @@ impl CalendarDiff {
                 }
                 DiffKind::Update => {
                     let event = diff.new.as_ref().expect("Update must have new event");
-                    self.calendar.update_event(&event.uid, event)?;
+                    self.calendar
+                        .update_event(&event.uid, event.recurrence_id.as_ref(), event)?;
                 }
                 DiffKind::Delete => {
                     let event = diff.old.as_ref().expect("Delete must have old event");

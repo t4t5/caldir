@@ -9,7 +9,8 @@ use chrono::{DateTime, Duration, Utc};
 use rrule::RRuleSet;
 
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::{Event, EventStatus, EventTime, Recurrence};
+use crate::event::{Event, EventStatus, Recurrence};
+use crate::event_time::EventTime;
 
 /// Ensure the UNTIL parameter in an RRULE string matches the DTSTART timezone convention.
 ///

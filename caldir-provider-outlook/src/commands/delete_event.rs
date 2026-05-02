@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use caldir_core::remote::protocol::DeleteEvent;
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
-use crate::graph_client::GraphClient;
+use crate::graph_api::client::GraphClient;
 use crate::remote_config::OutlookRemoteConfig;
 use crate::session::Session;
 
@@ -13,10 +13,7 @@ pub async fn handle(cmd: DeleteEvent) -> Result<()> {
 
     let outlook_event_id = cmd
         .event
-        .custom_properties
-        .iter()
-        .find(|(k, _)| k == PROVIDER_EVENT_ID_PROPERTY)
-        .map(|(_, v)| v.as_str())
+        .custom_property(PROVIDER_EVENT_ID_PROPERTY)
         .ok_or_else(|| {
             anyhow::anyhow!("Cannot delete event without {PROVIDER_EVENT_ID_PROPERTY}")
         })?;

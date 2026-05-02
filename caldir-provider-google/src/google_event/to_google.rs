@@ -55,18 +55,14 @@ impl ToGoogle for Event {
 
         // Get Google's event ID from custom properties (if available)
         let google_event_id = self
-            .custom_properties
-            .iter()
-            .find(|(k, _)| k == PROVIDER_EVENT_ID_PROPERTY)
-            .map(|(_, v)| v.clone())
-            .unwrap_or_default();
+            .custom_property(PROVIDER_EVENT_ID_PROPERTY)
+            .unwrap_or_default()
+            .to_string();
 
         let color_id = self
-            .custom_properties
-            .iter()
-            .find(|(k, _)| k == PROVIDER_COLOR_ID_PROPERTY)
-            .map(|(_, v)| v.clone())
-            .unwrap_or_default();
+            .custom_property(PROVIDER_COLOR_ID_PROPERTY)
+            .unwrap_or_default()
+            .to_string();
 
         google_calendar::types::Event {
             id: google_event_id,

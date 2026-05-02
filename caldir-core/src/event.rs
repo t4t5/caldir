@@ -4,10 +4,12 @@
 //! Providers convert their API responses into these types, and caldir-cli
 //! works exclusively with them for sync, diff, and ICS generation.
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
+
+pub use crate::event_time::EventTime;
 
 /// Typed recurrence data for a master event.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,9 +75,35 @@ pub struct Event {
     pub sequence: Option<i64>,
 
     // Provider-specific (excluded from PartialEq)
-    /// Custom properties from the provider (e.g., X-GOOGLE-CONFERENCE)
-    /// These are preserved for round-tripping back to the provider
-    pub custom_properties: Vec<(String, String)>,
+    /// Non-standard X-properties carried through sync round-trips
+    /// (e.g. `X-GOOGLE-EVENT-ID`, `X-ALT-DESC`).
+    pub custom_properties: Vec<CustomProperty>,
+}
+
+/// A non-standard X-property, e.g:
+/// `X-GOOGLE-EVENT-ID`
+/// X-ALT-DESC` with `FMTTYPE=x/html` param
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomProperty {
+    pub name: String,
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub params: Vec<(String, String)>,
+}
+
+impl CustomProperty {
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+            params: Vec::new(),
+        }
+    }
+
+    pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.params.push((key.into(), value.into()));
+        self
+    }
 }
 
 impl PartialEq for Event {
@@ -202,6 +230,14 @@ impl Event {
         updated.sequence = Some(self.sequence.unwrap_or(0) + 1);
         updated.updated = Some(Utc::now());
         Some(updated)
+    }
+
+    /// Look up a custom (X-) property's value by name.
+    pub fn custom_property(&self, name: &str) -> Option<&str> {
+        self.custom_properties
+            .iter()
+            .find(|p| p.name == name)
+            .map(|p| p.value.as_str())
     }
 
     /// Whether this event's start falls inside `[from, to]`, interpreting
@@ -358,112 +394,6 @@ pub enum Transparency {
     Transparent,
 }
 
-/// Event start/end time with timezone support
-///
-/// Supports three datetime forms (matching RFC 5545 / ICS format):
-/// - UTC: explicit UTC time (DTSTART:20250320T150000Z)
-/// - Floating: local time without timezone (DTSTART:20250320T150000)
-/// - Zoned: time with explicit timezone (DTSTART;TZID=America/New_York:20250320T150000)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum EventTime {
-    /// All-day event date (VALUE=DATE)
-    Date(NaiveDate),
-    /// UTC datetime (suffix Z)
-    DateTimeUtc(DateTime<Utc>),
-    /// Floating datetime - local time, no timezone
-    /// Used for events that should happen at "9am wherever you are"
-    DateTimeFloating(NaiveDateTime),
-    /// Datetime with specific timezone (TZID parameter)
-    DateTimeZoned {
-        datetime: NaiveDateTime,
-        tzid: String,
-    },
-}
-
-impl EventTime {
-    /// Resolve to the UTC instant this event actually starts at, given a host
-    /// timezone for interpreting wall-clock-only variants.
-    ///
-    /// - `Date`: midnight in `host_tz`.
-    /// - `DateTimeFloating`: wall-clock interpreted in `host_tz` (RFC 5545
-    ///   floating time = "9am wherever you are").
-    /// - `DateTimeUtc` / `DateTimeZoned`: instant is already unambiguous;
-    ///   `host_tz` is ignored.
-    ///
-    /// Use this (not `to_utc`) whenever the result drives a real-world time
-    /// decision: range filtering, reminder scheduling, etc. `to_utc` is an
-    /// ordering projection only.
-    pub fn resolve_instant_in_zone<Tz: TimeZone>(&self, host_tz: &Tz) -> Option<DateTime<Utc>> {
-        match self {
-            EventTime::Date(d) => host_tz
-                .from_local_datetime(&d.and_hms_opt(0, 0, 0)?)
-                .single()
-                .map(|l| l.with_timezone(&Utc)),
-            EventTime::DateTimeFloating(dt) => host_tz
-                .from_local_datetime(dt)
-                .single()
-                .map(|l| l.with_timezone(&Utc)),
-            EventTime::DateTimeUtc(_) | EventTime::DateTimeZoned { .. } => self.to_utc(),
-        }
-    }
-
-    /// Get the start time as UTC DateTime (for comparison/sorting)
-    /// Note: For floating and zoned times, this converts to UTC using naive interpretation
-    pub fn to_utc(&self) -> Option<DateTime<Utc>> {
-        match self {
-            EventTime::Date(d) => d.and_hms_opt(0, 0, 0).map(|dt| dt.and_utc()),
-            EventTime::DateTimeUtc(dt) => Some(*dt),
-            EventTime::DateTimeFloating(dt) => Some(dt.and_utc()),
-            EventTime::DateTimeZoned { datetime, tzid } => {
-                if let Ok(tz) = tzid.parse::<chrono_tz::Tz>()
-                    && let Some(zoned) = datetime.and_local_timezone(tz).single()
-                {
-                    return Some(zoned.with_timezone(&Utc));
-                }
-                Some(datetime.and_utc())
-            }
-        }
-    }
-
-    /// Check if this is an all-day date (not a datetime)
-    pub fn is_date(&self) -> bool {
-        matches!(self, EventTime::Date(_))
-    }
-
-    /// Format as ICS datetime string (for RECURRENCE-ID)
-    pub fn to_ics_string(&self) -> String {
-        match self {
-            EventTime::Date(d) => d.format("%Y%m%d").to_string(),
-            EventTime::DateTimeUtc(dt) => dt.format("%Y%m%dT%H%M%SZ").to_string(),
-            EventTime::DateTimeFloating(dt) => dt.format("%Y%m%dT%H%M%S").to_string(),
-            EventTime::DateTimeZoned { datetime, .. } => {
-                datetime.format("%Y%m%dT%H%M%S").to_string()
-            }
-        }
-    }
-
-    /// Format as ISO 8601 string (for JSON/JavaScript compatibility)
-    pub fn to_iso_string(&self) -> String {
-        match self {
-            EventTime::Date(d) => d.format("%Y-%m-%d").to_string(),
-            _ => self.to_utc().map(|dt| dt.to_rfc3339()).unwrap_or_default(),
-        }
-    }
-}
-
-impl fmt::Display for EventTime {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            EventTime::Date(d) => write!(f, "{}", d.format("%Y-%m-%d")),
-            EventTime::DateTimeUtc(dt) => write!(f, "{}", dt.format("%Y-%m-%d %H:%M")),
-            EventTime::DateTimeFloating(dt) => write!(f, "{}", dt.format("%Y-%m-%d %H:%M")),
-            EventTime::DateTimeZoned { datetime, .. } => {
-                write!(f, "{}", datetime.format("%Y-%m-%d %H:%M"))
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EventStatus {
     Confirmed,
@@ -473,6 +403,8 @@ pub enum EventStatus {
 
 #[cfg(test)]
 mod tests {
+    use crate::event_time::EventTime;
+
     use super::*;
     use chrono::NaiveDate;
 

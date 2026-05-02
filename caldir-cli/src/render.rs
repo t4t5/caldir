@@ -239,16 +239,16 @@ fn render_field_diffs(diff: &EventDiff) -> Vec<String> {
             lines.push(format!(
                 "{}: {} → {}",
                 "start".dimmed(),
-                old.start.to_string().red(),
-                new.start.to_string().green()
+                format_datetime(&old.start).red(),
+                format_datetime(&new.start).green()
             ));
         }
         if old.end != new.end {
             lines.push(format!(
                 "{}: {} → {}",
                 "end".dimmed(),
-                old.end.to_string().red(),
-                new.end.to_string().green()
+                format_datetime(&old.end).red(),
+                format_datetime(&new.end).green()
             ));
         }
         if old.status != new.status {
