@@ -40,3 +40,6 @@ jobs:
 
       - name: Run just check
         run: just check
+
+      - name: Run just test
+        run: just test

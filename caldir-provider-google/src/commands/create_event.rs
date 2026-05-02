@@ -61,7 +61,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
                 )
             })?;
 
-        return Ok(Event::from_google(response.body)?);
+        return Event::from_google(response.body);
     }
 
     // Let google change the ID

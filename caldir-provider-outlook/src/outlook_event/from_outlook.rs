@@ -401,7 +401,7 @@ fn strip_html_tags(html: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph_types::*;
+    use crate::graph_api::types::*;
 
     fn minimal_graph_event() -> GraphEvent {
         GraphEvent {
