@@ -1,5 +1,6 @@
 //! Global caldir configuration.
 
+use std::fmt;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -72,14 +73,6 @@ impl CaldirConfig {
         Ok(Self::config_dir()?.join("config.toml"))
     }
 
-    /// Serialize the config to TOML. Fields with a concrete default (like
-    /// `calendar_dir` and `time_format`) are always emitted so the file
-    /// documents the effective values; `Option` fields are omitted when
-    /// `None` since there's no value to write.
-    pub fn to_toml_string(&self) -> CalDirResult<String> {
-        toml::to_string_pretty(self).map_err(|e| CalDirError::Config(e.to_string()))
-    }
-
     /// Save the current config to ~/.config/caldir/config.toml
     pub fn save(&self) -> CalDirResult<()> {
         let config_path = Self::config_path()?;
@@ -136,6 +129,14 @@ impl CaldirConfig {
         Ok(())
     }
 
+    /// Serialize the config to TOML. Fields with a concrete default (like
+    /// `calendar_dir` and `time_format`) are always emitted so the file
+    /// documents the effective values; `Option` fields are omitted when
+    /// `None` since there's no value to write.
+    fn to_toml_string(&self) -> CalDirResult<String> {
+        toml::to_string_pretty(self).map_err(|e| CalDirError::Config(e.to_string()))
+    }
+
     /// Make the macOS path ~/.config/caldir (like Linux)
     /// instead of the dirs::config_dir default of ~/Library/Application Support
     #[cfg(target_os = "macos")]
@@ -185,5 +186,12 @@ impl CaldirConfig {
         std::fs::rename(&old_path, new_path)?;
 
         Ok(())
+    }
+}
+
+impl fmt::Display for CaldirConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let toml = toml::to_string_pretty(self).map_err(|_| fmt::Error)?;
+        f.write_str(&toml)
     }
 }

@@ -19,13 +19,9 @@ pub fn run() -> Result<()> {
         })
         .unwrap_or_else(|| config_path.clone());
 
-    println!("{}", pretty_config_path.display().bold());
-
-    let settings = caldir.config().to_toml_string()?;
-
-    for line in settings.lines() {
-        println!("  {line}");
-    }
+    println!("{} {}", "Path:".bold(), pretty_config_path.display());
+    println!();
+    println!("{}", caldir.config());
 
     Ok(())
 }
