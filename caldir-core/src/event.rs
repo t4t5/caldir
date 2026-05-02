@@ -78,15 +78,9 @@ pub struct Event {
     pub custom_properties: Vec<CustomProperty>,
 }
 
-/// A non-standard X-property preserved through a sync round-trip.
-///
-/// Most X-properties are simple `key:value` strings (event IDs, color codes),
-/// but some carry RFC 5545 parameters and need value-type-aware escaping
-/// (e.g. `X-ALT-DESC;FMTTYPE=text/html;VALUE=TEXT:<html>...</html>` — the
-/// VALUE=TEXT triggers the `\n` / `\,` / `\;` escape rules so multi-line
-/// HTML survives line folding). caldir-core stays provider-agnostic by
-/// preserving whatever parameters the provider sets, rather than knowing
-/// about specific X-properties itself.
+/// A non-standard X-property, e.g:
+/// - `X-GOOGLE-EVENT-ID`
+/// -`X-ALT-DESC` with `FMTTYPE=x/html` param
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CustomProperty {
     pub name: String,
