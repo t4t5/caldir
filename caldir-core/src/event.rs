@@ -73,9 +73,41 @@ pub struct Event {
     pub sequence: Option<i64>,
 
     // Provider-specific (excluded from PartialEq)
-    /// Custom properties from the provider (e.g., X-GOOGLE-CONFERENCE)
-    /// These are preserved for round-tripping back to the provider
-    pub custom_properties: Vec<(String, String)>,
+    /// Non-standard X-properties carried through sync round-trips
+    /// (e.g. `X-GOOGLE-EVENT-ID`, `X-ALT-DESC`).
+    pub custom_properties: Vec<CustomProperty>,
+}
+
+/// A non-standard X-property preserved through a sync round-trip.
+///
+/// Most X-properties are simple `key:value` strings (event IDs, color codes),
+/// but some carry RFC 5545 parameters and need value-type-aware escaping
+/// (e.g. `X-ALT-DESC;FMTTYPE=text/html;VALUE=TEXT:<html>...</html>` — the
+/// VALUE=TEXT triggers the `\n` / `\,` / `\;` escape rules so multi-line
+/// HTML survives line folding). caldir-core stays provider-agnostic by
+/// preserving whatever parameters the provider sets, rather than knowing
+/// about specific X-properties itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomProperty {
+    pub name: String,
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub params: Vec<(String, String)>,
+}
+
+impl CustomProperty {
+    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            value: value.into(),
+            params: Vec::new(),
+        }
+    }
+
+    pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.params.push((key.into(), value.into()));
+        self
+    }
 }
 
 impl PartialEq for Event {
@@ -202,6 +234,14 @@ impl Event {
         updated.sequence = Some(self.sequence.unwrap_or(0) + 1);
         updated.updated = Some(Utc::now());
         Some(updated)
+    }
+
+    /// Look up a custom (X-) property's value by name.
+    pub fn custom_property(&self, name: &str) -> Option<&str> {
+        self.custom_properties
+            .iter()
+            .find(|p| p.name == name)
+            .map(|p| p.value.as_str())
     }
 
     /// Whether this event's start falls inside `[from, to]`, interpreting

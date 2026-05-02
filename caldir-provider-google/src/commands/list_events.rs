@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use caldir_core::event::{Event, EventStatus, EventTime, Reminders};
+use caldir_core::event::{CustomProperty, Event, EventStatus, EventTime, Reminders};
 use caldir_core::remote::protocol::ListEvents;
 use google_calendar::types::OrderBy;
 
@@ -133,7 +133,7 @@ fn cancellation_to_event(
         } else {
             None
         },
-        custom_properties: vec![(PROVIDER_EVENT_ID_PROPERTY.to_string(), ge.id.clone())],
+        custom_properties: vec![CustomProperty::new(PROVIDER_EVENT_ID_PROPERTY, &ge.id)],
     })
 }
 

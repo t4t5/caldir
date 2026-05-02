@@ -38,3 +38,6 @@ chrono-tz = "0.10"
 # URL parsing
 url = "2"
 
+# HTML → plaintext (Outlook bodies are HTML by default)
+html2text = "0.17"
+

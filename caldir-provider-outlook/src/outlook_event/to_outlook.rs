@@ -3,16 +3,15 @@
 use caldir_core::event::{Event, EventTime, ParticipationStatus, Transparency};
 use chrono::{Datelike, Duration, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
+use crate::constants::HTML_DESC_PROPERTY;
 use crate::graph_api::types::{
     DateTimeTimeZone, EmailAddress, GraphAttendee, GraphBody, GraphEvent, GraphLocation,
     PatternedRecurrence, RecurrencePattern, RecurrenceRange, ResponseStatus,
 };
+use crate::outlook_event::from_outlook::html_to_plaintext;
 
 pub fn to_outlook(event: &Event) -> GraphEvent {
-    let body = event.description.as_ref().map(|desc| GraphBody {
-        content: desc.clone(),
-        content_type: "text".to_string(),
-    });
+    let body = build_body(event);
 
     let location = event.location.as_ref().map(|loc| GraphLocation {
         display_name: loc.clone(),
@@ -74,6 +73,30 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
         original_start: None,
         response_status: None,
         event_type: String::new(),
+    }
+}
+
+/// Pick the right body for Graph: HTML when we have an X-ALT-DESC that still
+/// matches DESCRIPTION (faithful round-trip of an Outlook event we pulled),
+/// otherwise plain text — so a local edit to DESCRIPTION wins over the stale
+/// HTML and the user's intent reaches Outlook.
+fn build_body(event: &Event) -> Option<GraphBody> {
+    let html = event.custom_property(HTML_DESC_PROPERTY);
+
+    match (html, event.description.as_deref()) {
+        (Some(html), Some(desc)) if html_to_plaintext(html) == desc => Some(GraphBody {
+            content: html.to_string(),
+            content_type: "html".to_string(),
+        }),
+        (Some(html), None) if html_to_plaintext(html).is_empty() => Some(GraphBody {
+            content: html.to_string(),
+            content_type: "html".to_string(),
+        }),
+        (_, Some(desc)) => Some(GraphBody {
+            content: desc.to_string(),
+            content_type: "text".to_string(),
+        }),
+        (_, None) => None,
     }
 }
 
@@ -396,7 +419,110 @@ fn iana_to_windows_timezone(tz: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caldir_core::event::{
+        CustomProperty, Event, EventStatus, EventTime, Reminders, Transparency,
+    };
     use chrono::NaiveDate;
+
+    fn html_event() -> Event {
+        let html = "<html><body><div>Here's a <b>fun</b>&nbsp;little tricky thing to <span style=\"color:red\">decode</span>!</div></body></html>";
+        let mut e = Event::new(
+            "Event with HTML".into(),
+            EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 4, 29)
+                    .unwrap()
+                    .and_hms_opt(7, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 4, 29)
+                    .unwrap()
+                    .and_hms_opt(8, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            Some("Here's a fun little tricky thing to decode!".into()),
+            None,
+            None,
+            vec![],
+        );
+        e.custom_properties = vec![
+            CustomProperty::new(HTML_DESC_PROPERTY, html)
+                .with_param("FMTTYPE", "text/html")
+                .with_param("VALUE", "TEXT"),
+        ];
+        e
+    }
+
+    #[test]
+    fn untouched_html_event_pushes_html_body() {
+        // Pulled an Outlook HTML event, didn't edit it locally — push must
+        // preserve the original markup so bold/color/&nbsp; don't get
+        // flattened on round-trip.
+        let body = build_body(&html_event()).expect("body must be present");
+        assert_eq!(body.content_type, "html");
+        assert!(body.content.contains("<b>fun</b>"));
+    }
+
+    #[test]
+    fn edited_description_drops_stale_html() {
+        // User edited DESCRIPTION locally — the X-ALT-DESC carries the
+        // pre-edit HTML, so trusting it would silently revert the edit.
+        // The plaintext must win and the body goes back as text.
+        let mut e = html_event();
+        e.description = Some("totally rewritten body".into());
+        let body = build_body(&e).expect("body must be present");
+        assert_eq!(body.content_type, "text");
+        assert_eq!(body.content, "totally rewritten body");
+    }
+
+    #[test]
+    fn cleared_description_with_html_still_treated_as_empty() {
+        // Treat "no description" as empty when the HTML strips to empty —
+        // matches how `from_outlook` drops Outlook's auto-generated
+        // whitespace-only HTML bodies.
+        let mut e = Event {
+            uid: "u".into(),
+            summary: "x".into(),
+            description: None,
+            location: None,
+            start: EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 4, 29)
+                    .unwrap()
+                    .and_hms_opt(7, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            end: EventTime::DateTimeUtc(
+                NaiveDate::from_ymd_opt(2026, 4, 29)
+                    .unwrap()
+                    .and_hms_opt(8, 0, 0)
+                    .unwrap()
+                    .and_utc(),
+            ),
+            status: EventStatus::Confirmed,
+            recurrence: None,
+            recurrence_id: None,
+            reminders: Reminders(vec![]),
+            transparency: Transparency::Opaque,
+            organizer: None,
+            attendees: vec![],
+            conference_url: None,
+            updated: None,
+            sequence: None,
+            custom_properties: vec![],
+        };
+        // No description, no html → no body
+        assert!(build_body(&e).is_none());
+        // Empty-stripping HTML + no description → still send the empty html
+        e.custom_properties = vec![CustomProperty::new(
+            HTML_DESC_PROPERTY,
+            "<html><body><div>&nbsp;</div></body></html>",
+        )];
+        let body = build_body(&e).expect("empty html still produces a body");
+        assert_eq!(body.content_type, "html");
+    }
 
     fn start_on(year: i32, month: u32, day: u32) -> EventTime {
         EventTime::DateTimeUtc(

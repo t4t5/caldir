@@ -2,12 +2,12 @@
 
 use anyhow::Result;
 use caldir_core::event::{
-    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Reminder, Reminders,
-    Transparency,
+    Attendee, CustomProperty, Event, EventStatus, EventTime, ParticipationStatus, Recurrence,
+    Reminder, Reminders, Transparency,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 
-use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
+use crate::constants::{HTML_DESC_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
 use crate::graph_api::types::{
     GraphEvent, PatternedRecurrence, RecurrencePattern, RecurrenceRange,
 };
@@ -95,23 +95,26 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         .as_ref()
         .and_then(|m| m.join_url.clone());
 
-    let description = event.body.as_ref().and_then(|b| {
-        if b.content.is_empty() {
-            None
-        } else {
-            // Strip HTML tags for plain text if contentType is "html"
+    // Outlook bodies arrive as HTML by default. We keep the original markup
+    // in an X-ALT-DESC custom property so it round-trips back to Outlook,
+    // and store a normalized plaintext version in DESCRIPTION for `ls` /
+    // grep / LLM-friendliness. `to_outlook` only re-sends the HTML if the
+    // plaintext still matches — so a local edit to DESCRIPTION wins.
+    let (description, html_body) = match event.body.as_ref() {
+        Some(b) if !b.content.is_empty() => {
             if b.content_type == "html" {
-                let text = strip_html_tags(&b.content);
-                if text.trim().is_empty() {
-                    None
+                let text = html_to_plaintext(&b.content);
+                if text.is_empty() {
+                    (None, None)
                 } else {
-                    Some(text)
+                    (Some(text), Some(b.content.clone()))
                 }
             } else {
-                Some(b.content.clone())
+                (Some(b.content.clone()), None)
             }
         }
-    });
+        _ => (None, None),
+    };
 
     let location = event.location.as_ref().and_then(|l| {
         if l.display_name.is_empty() {
@@ -127,7 +130,18 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&Utc));
 
-    let custom_properties = vec![(PROVIDER_EVENT_ID_PROPERTY.to_string(), event.id)];
+    let mut custom_properties = vec![CustomProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id)];
+    if let Some(html) = html_body {
+        // FMTTYPE=text/html identifies the alternate description as HTML per
+        // the Outlook/IBM convention. VALUE=TEXT routes the value through
+        // RFC 5545 text escaping when written to .ics, so embedded `\r\n`
+        // and `;` survive line folding without breaking the file.
+        custom_properties.push(
+            CustomProperty::new(HTML_DESC_PROPERTY, html)
+                .with_param("FMTTYPE", "text/html")
+                .with_param("VALUE", "TEXT"),
+        );
+    }
 
     Ok(Event {
         uid: event.i_cal_uid,
@@ -383,20 +397,32 @@ fn outlook_index_to_number(index: &str) -> &'static str {
     }
 }
 
-/// Simple HTML tag stripper for event body content.
-fn strip_html_tags(html: &str) -> String {
-    let mut result = String::with_capacity(html.len());
-    let mut in_tag = false;
-    for ch in html.chars() {
-        match ch {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => result.push(ch),
-            _ => {}
-        }
-    }
-    result
+/// Render an Outlook HTML body as the plaintext we store in DESCRIPTION.
+///
+/// We use html2text's `TrivialDecorator` to get clean plaintext (no
+/// markdown markup like `**bold**` or `[link][1]` references), then trim —
+/// trailing newlines and the non-breaking spaces Outlook auto-inserts for
+/// empty bodies are both `is_whitespace`, so trim collapses them away.
+/// Empty HTML maps to "" so the caller can treat that as "no description".
+///
+/// The result is also used by `to_outlook` to detect a local edit to
+/// DESCRIPTION (compare stripped HTML with the current description); both
+/// sides go through this same function so they stay byte-equal.
+pub(super) fn html_to_plaintext(html: &str) -> String {
+    let cfg = html2text::config::with_decorator(html2text::render::TrivialDecorator::new());
+    // Outlook freely sprinkles `&nbsp;` between words (Word-ism). Those
+    // arrive as U+00A0 from html2text and look identical to spaces but
+    // break grep and our edit-detection comparison — collapse to ASCII.
+    cfg.string_from_read(html.as_bytes(), HTML_RENDER_WIDTH)
+        .unwrap_or_default()
+        .replace('\u{a0}', " ")
+        .trim()
+        .to_string()
 }
+
+/// Effectively-no-wrap width for html2text. Calendar bodies are short and
+/// we don't want spurious line breaks in DESCRIPTION.
+const HTML_RENDER_WIDTH: usize = 10_000;
 
 #[cfg(test)]
 mod tests {
@@ -530,6 +556,86 @@ mod tests {
             .recurrence
             .expect("series master must carry recurrence");
         assert_eq!(rec.rrule, "FREQ=DAILY;UNTIL=20260801");
+    }
+
+    #[test]
+    fn html_body_keeps_original_in_x_alt_desc_and_normalizes_description() {
+        // Outlook bodies are HTML by default and arrive full of `\r\n`
+        // between tags. We want a clean plaintext DESCRIPTION for ls/grep,
+        // and the original markup preserved in X-ALT-DESC so a round-trip
+        // back to Outlook keeps the formatting (bold, color, images).
+        let mut event = minimal_graph_event();
+        let html = "<html>\r\n<body>\r\n<div>Here's a <b>fun</b>&nbsp;little tricky thing to <span style=\"color:red\">decode</span>!</div>\r\n</body>\r\n</html>";
+        event.body = Some(GraphBody {
+            content: html.to_string(),
+            content_type: "html".to_string(),
+        });
+
+        let result = from_outlook(event, "me@example.com").unwrap();
+
+        assert_eq!(
+            result.description.as_deref(),
+            Some("Here's a fun little tricky thing to decode!"),
+            "DESCRIPTION should be normalized plaintext"
+        );
+        let alt = result
+            .custom_properties
+            .iter()
+            .find(|p| p.name == "X-ALT-DESC")
+            .expect("X-ALT-DESC must be set when body is HTML");
+        assert_eq!(alt.value, html, "X-ALT-DESC must hold the unmodified HTML");
+        assert!(
+            alt.params
+                .iter()
+                .any(|(k, v)| k == "FMTTYPE" && v == "text/html"),
+            "X-ALT-DESC must carry FMTTYPE=text/html"
+        );
+        assert!(
+            alt.params.iter().any(|(k, v)| k == "VALUE" && v == "TEXT"),
+            "X-ALT-DESC must carry VALUE=TEXT for proper escape on .ics write"
+        );
+    }
+
+    #[test]
+    fn html_body_with_only_whitespace_is_dropped() {
+        // Outlook auto-generates a near-empty HTML body (just &nbsp; and
+        // tags) for events created without a description. That should
+        // collapse to no description at all rather than leaking a wall of
+        // empty markup into X-ALT-DESC.
+        let mut event = minimal_graph_event();
+        event.body = Some(GraphBody {
+            content: "<html><body><div>&nbsp;</div></body></html>".to_string(),
+            content_type: "html".to_string(),
+        });
+
+        let result = from_outlook(event, "me@example.com").unwrap();
+        assert!(result.description.is_none());
+        assert!(
+            result
+                .custom_properties
+                .iter()
+                .all(|p| p.name != "X-ALT-DESC"),
+            "no X-ALT-DESC should be set when the HTML body is empty"
+        );
+    }
+
+    #[test]
+    fn plain_text_body_does_not_set_x_alt_desc() {
+        // If Outlook ever returns a `text` body, there's no HTML to preserve.
+        let mut event = minimal_graph_event();
+        event.body = Some(GraphBody {
+            content: "just plain text".to_string(),
+            content_type: "text".to_string(),
+        });
+
+        let result = from_outlook(event, "me@example.com").unwrap();
+        assert_eq!(result.description.as_deref(), Some("just plain text"));
+        assert!(
+            result
+                .custom_properties
+                .iter()
+                .all(|p| p.name != "X-ALT-DESC")
+        );
     }
 
     #[test]

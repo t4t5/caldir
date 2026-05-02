@@ -18,10 +18,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
 
     let outlook_event_id = cmd
         .event
-        .custom_properties
-        .iter()
-        .find(|(k, _)| k == PROVIDER_EVENT_ID_PROPERTY)
-        .map(|(_, v)| v.as_str())
+        .custom_property(PROVIDER_EVENT_ID_PROPERTY)
         .ok_or_else(|| {
             anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}")
         })?;

@@ -24,10 +24,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     if let Some(rid) = cmd.event.recurrence_id.as_ref() {
         let master_id = cmd
             .event
-            .custom_properties
-            .iter()
-            .find(|(k, _)| k == PROVIDER_EVENT_ID_PROPERTY)
-            .map(|(_, v)| v.as_str())
+            .custom_property(PROVIDER_EVENT_ID_PROPERTY)
             .ok_or_else(|| {
                 anyhow!(
                     "Cannot create recurring instance override without master's \
