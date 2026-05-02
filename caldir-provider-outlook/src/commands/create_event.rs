@@ -4,8 +4,8 @@ use caldir_core::remote::protocol::CreateEvent;
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
-use crate::graph_client::GraphClient;
-use crate::graph_types::{GraphEvent, GraphResponse};
+use crate::graph_api::client::GraphClient;
+use crate::graph_api::types::{GraphEvent, GraphResponse};
 use crate::outlook_event::from_outlook::from_outlook;
 use crate::outlook_event::to_outlook::to_outlook;
 use crate::remote_config::OutlookRemoteConfig;

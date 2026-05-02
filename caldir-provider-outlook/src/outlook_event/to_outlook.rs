@@ -3,7 +3,7 @@
 use caldir_core::event::{Event, EventTime, ParticipationStatus, Transparency};
 use chrono::{Datelike, Duration, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
-use crate::graph_types::{
+use crate::graph_api::types::{
     DateTimeTimeZone, EmailAddress, GraphAttendee, GraphBody, GraphEvent, GraphLocation,
     PatternedRecurrence, RecurrencePattern, RecurrenceRange, ResponseStatus,
 };

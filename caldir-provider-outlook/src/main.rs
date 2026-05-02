@@ -4,8 +4,7 @@
 mod app_config;
 mod commands;
 mod constants;
-mod graph_client;
-mod graph_types;
+mod graph_api;
 mod outlook_event;
 mod remote_config;
 mod session;

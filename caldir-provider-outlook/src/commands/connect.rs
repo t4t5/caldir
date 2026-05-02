@@ -14,8 +14,8 @@ use caldir_core::remote::protocol::{
 use url::Url;
 
 use crate::app_config::AppConfig;
-use crate::graph_client::GraphClient;
-use crate::graph_types::GraphUser;
+use crate::graph_api::client::GraphClient;
+use crate::graph_api::types::GraphUser;
 use crate::session::{AuthMode, Session, SessionData};
 
 const AUTHORIZE_URL: &str = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";

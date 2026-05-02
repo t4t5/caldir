@@ -8,7 +8,9 @@ use caldir_core::event::{
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
-use crate::graph_types::{GraphEvent, PatternedRecurrence, RecurrencePattern, RecurrenceRange};
+use crate::graph_api::types::{
+    GraphEvent, PatternedRecurrence, RecurrencePattern, RecurrenceRange,
+};
 
 pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
     let start = parse_event_time(event.start.as_ref(), event.is_all_day, "start")?;
@@ -161,7 +163,7 @@ fn parse_original_start(s: &str, is_all_day: bool) -> Result<EventTime> {
 }
 
 fn parse_event_time(
-    dtz: Option<&crate::graph_types::DateTimeTimeZone>,
+    dtz: Option<&crate::graph_api::types::DateTimeTimeZone>,
     is_all_day: bool,
     field: &str,
 ) -> Result<EventTime> {

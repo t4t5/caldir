@@ -3,8 +3,8 @@ use caldir_core::event::{Event, ParticipationStatus};
 use caldir_core::remote::protocol::UpdateEvent;
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
-use crate::graph_client::GraphClient;
-use crate::graph_types::GraphEvent;
+use crate::graph_api::client::GraphClient;
+use crate::graph_api::types::GraphEvent;
 use crate::outlook_event::from_outlook::from_outlook;
 use crate::outlook_event::to_outlook::to_outlook;
 use crate::remote_config::OutlookRemoteConfig;

@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use caldir_core::remote::protocol::DeleteEvent;
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
-use crate::graph_client::GraphClient;
+use crate::graph_api::client::GraphClient;
 use crate::remote_config::OutlookRemoteConfig;
 use crate::session::Session;
 
