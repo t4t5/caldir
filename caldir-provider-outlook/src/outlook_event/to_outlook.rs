@@ -92,7 +92,7 @@ fn event_time_to_graph(time: &EventTime) -> DateTimeTimeZone {
             time_zone: "UTC".to_string(),
         },
         EventTime::DateTimeZoned { datetime, tzid } => DateTimeTimeZone {
-            date_time: datetime.format("%Y-%m-%dT%H:%M:%S%.7f").to_string(),
+            date_time: datetime.format("%Y-%m-%dT%H:%M:%S.0000000").to_string(),
             time_zone: iana_to_windows_timezone(tzid),
         },
     }
@@ -406,6 +406,48 @@ mod tests {
                 .unwrap()
                 .and_utc(),
         )
+    }
+
+    // Make sure our different event times get converted properly:
+    #[test]
+    fn event_time_to_graph_renders_every_variant() {
+        let date = EventTime::Date(NaiveDate::from_ymd_opt(2026, 5, 5).unwrap());
+        let utc = EventTime::DateTimeUtc(
+            NaiveDate::from_ymd_opt(2026, 5, 5)
+                .unwrap()
+                .and_hms_opt(11, 0, 0)
+                .unwrap()
+                .and_utc(),
+        );
+        let floating = EventTime::DateTimeFloating(
+            NaiveDate::from_ymd_opt(2026, 5, 5)
+                .unwrap()
+                .and_hms_opt(11, 0, 0)
+                .unwrap(),
+        );
+        let zoned = EventTime::DateTimeZoned {
+            datetime: NaiveDate::from_ymd_opt(2026, 5, 5)
+                .unwrap()
+                .and_hms_opt(11, 0, 0)
+                .unwrap(),
+            tzid: "Europe/London".to_string(),
+        };
+
+        assert_eq!(
+            event_time_to_graph(&date).date_time,
+            "2026-05-05T00:00:00.0000000"
+        );
+        assert_eq!(
+            event_time_to_graph(&utc).date_time,
+            "2026-05-05T11:00:00.0000000"
+        );
+        assert_eq!(
+            event_time_to_graph(&floating).date_time,
+            "2026-05-05T11:00:00.0000000"
+        );
+        let zoned_graph = event_time_to_graph(&zoned);
+        assert_eq!(zoned_graph.date_time, "2026-05-05T11:00:00.0000000");
+        assert_eq!(zoned_graph.time_zone, "GMT Standard Time");
     }
 
     #[test]
