@@ -9,23 +9,24 @@ use std::path::{Path, PathBuf};
 use crate::caldir_config::{CaldirConfig, TimeFormat};
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Reminder;
+use crate::remote::provider::Provider;
 use crate::utils::expand_tilde;
 
 #[derive(Clone, Debug)]
 pub struct CaldirSettings {
     config_path: PathBuf,
     config: CaldirConfig,
-    provider_search_dirs: Vec<PathBuf>,
+    providers: Vec<Provider>,
 }
 
 impl CaldirSettings {
     pub fn load() -> CalDirResult<Self> {
-        Self::load_from(
-            CaldirConfig::config_path()?,
-            provider_search_dirs_from_process(),
-        )
+        Self::load_from(CaldirConfig::config_path()?, Self::provider_search_dirs())
     }
 
+    /// Load settings from a config path and discover providers from the given
+    /// search dirs. The search dirs are construction input only; the resulting
+    /// settings store the resolved provider snapshot.
     pub fn load_from<I, P>(
         config_path: impl Into<PathBuf>,
         provider_search_dirs: I,
@@ -36,22 +37,16 @@ impl CaldirSettings {
     {
         let config_path = config_path.into();
         let config = CaldirConfig::load_from(&config_path)?;
-        Ok(Self::from_config(config_path, config, provider_search_dirs))
+        let provider_search_dirs: Vec<PathBuf> =
+            provider_search_dirs.into_iter().map(Into::into).collect();
+        Ok(Self::from_config(config_path, config).with_discovered_providers(provider_search_dirs))
     }
 
-    pub fn from_config<I, P>(
-        config_path: impl Into<PathBuf>,
-        config: CaldirConfig,
-        provider_search_dirs: I,
-    ) -> Self
-    where
-        I: IntoIterator<Item = P>,
-        P: Into<PathBuf>,
-    {
+    pub fn from_config(config_path: impl Into<PathBuf>, config: CaldirConfig) -> Self {
         Self {
             config_path: config_path.into(),
             config,
-            provider_search_dirs: provider_search_dirs.into_iter().map(Into::into).collect(),
+            providers: Vec::new(),
         }
     }
 
@@ -75,8 +70,38 @@ impl CaldirSettings {
             .unwrap_or_else(|| default_providers_data_dir(&self.config_path))
     }
 
-    pub fn provider_search_dirs(&self) -> &[PathBuf] {
-        &self.provider_search_dirs
+    pub fn providers(&self) -> &[Provider] {
+        &self.providers
+    }
+
+    pub fn provider_names(&self) -> Vec<String> {
+        self.providers
+            .iter()
+            .map(|provider| provider.name().to_string())
+            .collect()
+    }
+
+    pub fn provider(&self, name: &str) -> CalDirResult<Provider> {
+        self.providers
+            .iter()
+            .find(|provider| provider.name() == name)
+            .cloned()
+            .ok_or_else(|| CalDirError::ProviderNotInstalled(name.to_string()))
+    }
+
+    pub fn with_providers(mut self, providers: Vec<Provider>) -> Self {
+        self.providers = providers;
+        self
+    }
+
+    pub fn with_discovered_providers<I, P>(self, provider_search_dirs: I) -> Self
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<Path>,
+    {
+        let providers =
+            Provider::discover_installed(self.providers_data_dir(), provider_search_dirs);
+        self.with_providers(providers)
     }
 
     pub fn default_calendar(&self) -> Option<&str> {
@@ -110,21 +135,30 @@ impl CaldirSettings {
     pub fn save_config(&self) -> CalDirResult<()> {
         self.config.save_to(&self.config_path)
     }
+
+    /// Returns the default provider binary search dirs from `PATH`.
+    /// GUI clients can prepend bundled provider dirs to this list and pass the
+    /// combined list to [`Self::load_from`].
+    pub fn provider_search_dirs() -> Vec<PathBuf> {
+        unique_paths(provider_search_dirs_from_env("PATH"))
+    }
 }
 
-/// Returns directories from `CALDIR_PROVIDER_PATH` followed by `PATH`.
-fn provider_search_dirs_from_process() -> Vec<PathBuf> {
-    let provider_path = std::env::var_os("CALDIR_PROVIDER_PATH");
-    let system_path = std::env::var_os("PATH");
-    provider_path
+fn provider_search_dirs_from_env(name: &str) -> Vec<PathBuf> {
+    std::env::var_os(name)
         .into_iter()
-        .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
-        .chain(
-            system_path
-                .into_iter()
-                .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>()),
-        )
+        .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
         .collect()
+}
+
+fn unique_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
+    let mut unique = Vec::new();
+    for path in paths {
+        if !unique.contains(&path) {
+            unique.push(path);
+        }
+    }
+    unique
 }
 
 fn default_providers_data_dir(config_path: &Path) -> PathBuf {
@@ -139,7 +173,6 @@ fn default_providers_data_dir(config_path: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use crate::caldir::Caldir;
-    use crate::remote::provider::Provider;
 
     #[cfg(unix)]
     fn make_executable(path: &std::path::Path) {
@@ -157,14 +190,6 @@ mod tests {
         format!("caldir-provider-{provider}{}", std::env::consts::EXE_SUFFIX)
     }
 
-    fn caldir_from_settings(settings: CaldirSettings) -> Caldir {
-        let providers = Provider::discover_installed(
-            settings.providers_data_dir(),
-            settings.provider_search_dirs().iter(),
-        );
-        Caldir::new(settings, providers)
-    }
-
     #[test]
     fn provider_data_is_stored_next_to_config_by_default() {
         let home = tempfile::tempdir().unwrap();
@@ -177,8 +202,10 @@ mod tests {
 
         let random_path = home.path().join("random_path");
         let config_path = random_path.join("config.toml");
+
         let settings = CaldirSettings::load_from(&config_path, [&bin_dir]).unwrap();
-        let caldir = caldir_from_settings(settings);
+
+        let caldir = Caldir::new(settings);
 
         assert_eq!(
             caldir.provider("google").unwrap().provider_dir(),
@@ -209,7 +236,7 @@ mod tests {
         .unwrap();
 
         let settings = CaldirSettings::load_from(&config_path, [&bin_dir]).unwrap();
-        let caldir = caldir_from_settings(settings);
+        let caldir = Caldir::new(settings);
 
         assert_eq!(
             caldir.provider("google").unwrap().provider_dir(),

@@ -4,31 +4,22 @@ use std::path::PathBuf;
 
 use crate::caldir_settings::CaldirSettings;
 use crate::calendar::Calendar;
-use crate::error::{CalDirError, CalDirResult};
+use crate::error::CalDirResult;
 use crate::remote::provider::Provider;
 
 pub struct Caldir {
     settings: CaldirSettings,
-    providers: Vec<Provider>,
 }
 
 impl Caldir {
     /// Load from the current process environment.
     pub fn load() -> CalDirResult<Self> {
-        let settings = CaldirSettings::load()?;
-        let providers = Provider::discover_installed(
-            settings.providers_data_dir(),
-            settings.provider_search_dirs().iter(),
-        );
-        Ok(Self::new(settings, providers))
+        Ok(Self::new(CaldirSettings::load()?))
     }
 
-    /// Construct a Caldir directly from resolved settings and provider list.
-    pub fn new(settings: CaldirSettings, providers: Vec<Provider>) -> Self {
-        Caldir {
-            settings,
-            providers,
-        }
+    /// Construct a Caldir from resolved settings.
+    pub fn new(settings: CaldirSettings) -> Self {
+        Caldir { settings }
     }
 
     pub fn settings(&self) -> &CaldirSettings {
@@ -45,22 +36,15 @@ impl Caldir {
     }
 
     pub fn providers(&self) -> &[Provider] {
-        &self.providers
+        self.settings.providers()
     }
 
     pub fn provider_names(&self) -> Vec<String> {
-        self.providers
-            .iter()
-            .map(|provider| provider.name().to_string())
-            .collect()
+        self.settings.provider_names()
     }
 
     pub fn provider(&self, name: &str) -> CalDirResult<Provider> {
-        self.providers
-            .iter()
-            .find(|provider| provider.name() == name)
-            .cloned()
-            .ok_or_else(|| CalDirError::ProviderNotInstalled(name.to_string()))
+        self.settings.provider(name)
     }
 
     /// Load a single calendar by slug, anchored at this caldir's data path.
@@ -156,9 +140,8 @@ pub(crate) mod test_support {
                     calendar_dir,
                     ..CaldirConfig::new()
                 },
-                Vec::<PathBuf>::new(),
             );
-            let caldir = Caldir::new(settings, Vec::new());
+            let caldir = Caldir::new(settings);
 
             Self { _tmp: tmp, caldir }
         }
@@ -189,6 +172,7 @@ pub(crate) mod test_support {
 mod tests {
     use super::*;
     use crate::caldir_config::CaldirConfig;
+    use crate::error::CalDirError;
     use test_support::mock_caldir;
 
     #[test]
@@ -214,9 +198,8 @@ mod tests {
                 calendar_dir: tmp.path().join("missing"),
                 ..CaldirConfig::new()
             },
-            Vec::<PathBuf>::new(),
         );
-        let caldir = Caldir::new(settings, Vec::new());
+        let caldir = Caldir::new(settings);
 
         assert!(caldir.calendars().unwrap().is_empty());
     }
