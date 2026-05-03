@@ -253,7 +253,7 @@ pub async fn run(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Resul
         }
     });
     if let Some(slug) = first_writable
-        && caldir.set_default_calendar_if_unset(&slug)
+        && caldir.config.set_default_calendar_if_unset(&slug)
     {
         caldir.save_config()?;
     }

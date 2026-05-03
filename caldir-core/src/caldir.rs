@@ -226,7 +226,7 @@ mod tests {
         let mut caldir = TestCaldir::new();
         let config_path = caldir.config_path.to_path_buf();
 
-        assert!(caldir.set_default_calendar_if_unset("work"));
+        assert!(caldir.config.set_default_calendar_if_unset("work"));
         caldir.save_config().unwrap();
 
         let contents = std::fs::read_to_string(config_path).unwrap();
