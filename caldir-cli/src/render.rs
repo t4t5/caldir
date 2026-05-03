@@ -44,7 +44,7 @@ impl Render for EventDiff {
     fn render(&self, caldir: &Caldir) -> String {
         let event = self.event();
         let summary = colorize_diff(self.kind, &event.to_string());
-        let time = format_datetime(&event.start, caldir.time_format());
+        let time = format_datetime(&event.start, caldir.config.time_format);
         let recurring = if event.recurrence.is_some() {
             " 🔁"
         } else {
@@ -216,6 +216,7 @@ impl CalendarDiffRender for CalendarDiff {
 /// Render field-by-field differences for an EventDiff (only for updates)
 fn render_field_diffs(diff: &EventDiff, caldir: &Caldir) -> Vec<String> {
     let mut lines = Vec::new();
+    let time_format = caldir.config.time_format;
 
     // Only show field diffs for updates
     if let (Some(old), Some(new)) = (&diff.old, &diff.new) {
@@ -245,16 +246,16 @@ fn render_field_diffs(diff: &EventDiff, caldir: &Caldir) -> Vec<String> {
             lines.push(format!(
                 "{}: {} → {}",
                 "start".dimmed(),
-                format_datetime(&old.start, caldir.time_format()).red(),
-                format_datetime(&new.start, caldir.time_format()).green()
+                format_datetime(&old.start, time_format).red(),
+                format_datetime(&new.start, time_format).green()
             ));
         }
         if old.end != new.end {
             lines.push(format!(
                 "{}: {} → {}",
                 "end".dimmed(),
-                format_datetime(&old.end, caldir.time_format()).red(),
-                format_datetime(&new.end, caldir.time_format()).green()
+                format_datetime(&old.end, time_format).red(),
+                format_datetime(&new.end, time_format).green()
             ));
         }
         if old.status != new.status {
@@ -383,7 +384,7 @@ fn render_attendee_diffs(
 
 /// Format a standard event line: "  {time} {summary} [{cal_slug}]{status}"
 pub fn format_event_line(event: &Event, cal_slug: &str, status: &str, caldir: &Caldir) -> String {
-    let time = format_time_only(&event.start, caldir.time_format());
+    let time = format_time_only(&event.start, caldir.config.time_format);
     let cal_tag = format!("[{}]", cal_slug);
     format!(
         "  {} {} {}{}",

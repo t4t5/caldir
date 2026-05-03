@@ -258,7 +258,7 @@ pub async fn run(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Resul
         caldir.save_config()?;
     }
 
-    println!("\nCalendars saved to {}\n", caldir.data_path().tilde());
+    println!("\nCalendars saved to {}\n", caldir.data_dir.tilde());
 
     // Load the newly created calendars and do an initial pull
     let calendars: Vec<Calendar> = created_slugs

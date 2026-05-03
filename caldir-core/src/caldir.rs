@@ -1,108 +1,19 @@
 //! Master struct. Everything else flows from here.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::caldir_config::{CaldirConfig, TimeFormat};
+pub use crate::caldir_builder::CaldirBuilder;
+use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Reminder;
 use crate::remote::provider::Provider;
-use crate::utils::expand_tilde;
 
 pub struct Caldir {
-    config_path: PathBuf,
-    config: CaldirConfig,
-    calendar_dir: PathBuf,
-    providers_data_dir: PathBuf,
+    pub config_path: PathBuf,
+    pub config: CaldirConfig,
+    pub data_dir: PathBuf,
     providers: Vec<Provider>,
-}
-
-#[derive(Default)]
-pub struct CaldirBuilder {
-    config_path: Option<PathBuf>,
-    config: Option<CaldirConfig>,
-    provider_search_dirs: Option<Vec<PathBuf>>,
-    providers: Option<Vec<Provider>>,
-}
-
-impl CaldirBuilder {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn config_path(mut self, path: impl Into<PathBuf>) -> Self {
-        self.config_path = Some(path.into());
-        self
-    }
-
-    pub fn config(mut self, config: CaldirConfig) -> Self {
-        self.config = Some(config);
-        self
-    }
-
-    /// Set provider binary search directories. This overrides the default `PATH`
-    /// lookup, so tests can use an empty list and GUI apps can prepend bundled
-    /// provider directories.
-    pub fn provider_search_dirs<I, P>(mut self, dirs: I) -> Self
-    where
-        I: IntoIterator<Item = P>,
-        P: Into<PathBuf>,
-    {
-        self.provider_search_dirs = Some(dirs.into_iter().map(Into::into).collect());
-        self
-    }
-
-    /// Provide an already-resolved provider snapshot directly.
-    pub fn providers(mut self, providers: Vec<Provider>) -> Self {
-        self.providers = Some(providers);
-        self
-    }
-
-    /// Disable provider discovery and build with an empty provider snapshot.
-    pub fn without_providers(mut self) -> Self {
-        self.providers = Some(Vec::new());
-        self
-    }
-
-    pub fn build(self) -> CalDirResult<Caldir> {
-        let config_path = match self.config_path {
-            Some(path) => path,
-            None => CaldirConfig::config_path()?,
-        };
-        let config = match self.config {
-            Some(config) => config,
-            None => CaldirConfig::load_from(&config_path)?,
-        };
-
-        let calendar_dir = expand_tilde(&config.calendar_dir);
-        let providers_data_dir = config
-            .providers_data_dir
-            .as_ref()
-            .map(|path| expand_tilde(path))
-            .unwrap_or_else(|| default_providers_data_dir(&config_path));
-        let providers = match self.providers {
-            Some(providers) => providers,
-            None => {
-                let provider_search_dirs = self
-                    .provider_search_dirs
-                    .unwrap_or_else(Self::default_provider_search_dirs);
-                Provider::discover_installed(&providers_data_dir, provider_search_dirs)
-            }
-        };
-
-        Ok(Caldir {
-            config_path,
-            config,
-            calendar_dir,
-            providers_data_dir,
-            providers,
-        })
-    }
-
-    /// Returns the default provider binary search dirs from `PATH`.
-    pub fn default_provider_search_dirs() -> Vec<PathBuf> {
-        unique_paths(provider_search_dirs_from_env("PATH"))
-    }
 }
 
 impl Caldir {
@@ -115,29 +26,23 @@ impl Caldir {
         Self::builder().build()
     }
 
-    pub fn config(&self) -> &CaldirConfig {
-        &self.config
-    }
-
-    pub fn config_path(&self) -> &Path {
-        &self.config_path
+    pub(crate) fn from_resolved(
+        config_path: PathBuf,
+        config: CaldirConfig,
+        data_dir: PathBuf,
+        providers: Vec<Provider>,
+    ) -> Self {
+        Self {
+            config_path,
+            config,
+            data_dir,
+            providers,
+        }
     }
 
     /// Persist the current config back to the config file.
     pub fn save_config(&self) -> CalDirResult<()> {
         self.config.save_to(&self.config_path)
-    }
-
-    pub fn data_path(&self) -> &Path {
-        &self.calendar_dir
-    }
-
-    pub fn providers_data_dir(&self) -> &Path {
-        &self.providers_data_dir
-    }
-
-    pub fn providers(&self) -> &[Provider] {
-        &self.providers
     }
 
     pub fn provider_names(&self) -> Vec<String> {
@@ -155,10 +60,6 @@ impl Caldir {
             .ok_or_else(|| CalDirError::ProviderNotInstalled(name.to_string()))
     }
 
-    pub fn time_format(&self) -> TimeFormat {
-        self.config.time_format
-    }
-
     /// Parse default_reminders strings into Reminder structs.
     pub fn parse_default_reminders(&self) -> CalDirResult<Option<Vec<Reminder>>> {
         let Some(ref strs) = self.config.default_reminders else {
@@ -173,7 +74,7 @@ impl Caldir {
 
     /// Load a single calendar by slug, anchored at this caldir's data path.
     pub fn calendar(&self, slug: &str) -> CalDirResult<Calendar> {
-        Calendar::load(slug, self.data_path())
+        Calendar::load(slug, &self.data_dir)
     }
 
     /// Construct an in-memory calendar (not yet on disk) anchored at this
@@ -183,20 +84,20 @@ impl Caldir {
         slug: &str,
         config: crate::calendar::config::CalendarConfig,
     ) -> Calendar {
-        Calendar::new(slug, self.data_path(), config)
+        Calendar::new(slug, &self.data_dir, config)
     }
 
     /// Generate a slug for a new calendar with the given display name that
     /// doesn't collide with any existing directory in this caldir.
     pub fn unique_slug_for(&self, name: Option<&str>) -> CalDirResult<String> {
-        Calendar::unique_slug(name, self.data_path())
+        Calendar::unique_slug(name, &self.data_dir)
     }
 
     /// Discover calendars by scanning calendar_dir for subdirectories.
     /// Every non-hidden directory is a calendar; `.caldir/config.toml`
     /// is optional and only carries metadata + remote sync settings.
     pub fn calendars(&self) -> CalDirResult<Vec<Calendar>> {
-        let data_path = self.data_path();
+        let data_path = &self.data_dir;
 
         let entries = match std::fs::read_dir(data_path) {
             Ok(entries) => entries,
@@ -241,31 +142,6 @@ impl Caldir {
         self.config.default_calendar = Some(slug.to_string());
         true
     }
-}
-
-fn provider_search_dirs_from_env(name: &str) -> Vec<PathBuf> {
-    std::env::var_os(name)
-        .into_iter()
-        .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
-        .collect()
-}
-
-fn unique_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
-    let mut unique = Vec::new();
-    for path in paths {
-        if !unique.contains(&path) {
-            unique.push(path);
-        }
-    }
-    unique
-}
-
-fn default_providers_data_dir(config_path: &Path) -> PathBuf {
-    config_path
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_default()
-        .join("providers")
 }
 
 #[cfg(test)]
@@ -341,7 +217,7 @@ mod tests {
     #[test]
     fn calendars_returns_error_for_invalid_calendar_config() {
         let caldir = TestCaldir::new();
-        let config_dir = caldir.data_path().join("work/.caldir");
+        let config_dir = caldir.data_dir.join("work/.caldir");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("config.toml"), "remote =").unwrap();
 
@@ -371,7 +247,7 @@ mod tests {
     #[test]
     fn save_config_writes_to_the_configured_path() {
         let mut caldir = TestCaldir::new();
-        let config_path = caldir.config_path().to_path_buf();
+        let config_path = caldir.config_path.to_path_buf();
 
         assert!(caldir.set_default_calendar_if_unset("work"));
         caldir.save_config().unwrap();
@@ -396,18 +272,14 @@ mod tests {
             .build()
             .unwrap();
 
-        assert_eq!(caldir.config().calendar_dir, PathBuf::from("~/calendars"));
+        assert_eq!(caldir.config.calendar_dir, PathBuf::from("~/calendars"));
         assert_eq!(
-            caldir.config().providers_data_dir,
+            caldir.config.providers_data_dir,
             Some(PathBuf::from("~/provider-data"))
         );
         assert_eq!(
-            caldir.data_path(),
+            caldir.data_dir,
             crate::utils::expand_tilde(std::path::Path::new("~/calendars"))
-        );
-        assert_eq!(
-            caldir.providers_data_dir(),
-            crate::utils::expand_tilde(std::path::Path::new("~/provider-data"))
         );
     }
 
