@@ -160,12 +160,6 @@ pub(crate) mod test_support {
             &mut self.caldir
         }
     }
-
-    /// Build a fresh Caldir rooted at a tempdir, with no providers.
-    /// The wrapper owns the tempdir for the test's lifetime.
-    pub fn mock_caldir() -> TestCaldir {
-        TestCaldir::new()
-    }
 }
 
 #[cfg(test)]
@@ -173,11 +167,11 @@ mod tests {
     use super::*;
     use crate::caldir_config::CaldirConfig;
     use crate::error::CalDirError;
-    use test_support::mock_caldir;
+    use test_support::TestCaldir;
 
     #[test]
     fn calendars_returns_error_for_invalid_calendar_config() {
-        let caldir = mock_caldir();
+        let caldir = TestCaldir::new();
         let config_dir = caldir.data_path().join("work/.caldir");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("config.toml"), "remote =").unwrap();
@@ -206,7 +200,7 @@ mod tests {
 
     #[test]
     fn save_config_writes_to_the_configured_path() {
-        let mut caldir = mock_caldir();
+        let mut caldir = TestCaldir::new();
         let config_path = caldir.environment().config_path().to_path_buf();
 
         assert!(caldir.set_default_calendar_if_unset("work"));
