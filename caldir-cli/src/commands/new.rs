@@ -84,7 +84,7 @@ pub fn run(
     };
 
     // --- Calendar ---
-    let calendars = caldir.calendars();
+    let calendars = caldir.calendars()?;
     let calendar = resolve_calendar(caldir, calendar_slug, &calendars, interactive)?;
 
     let event = Event::new(title, start_time, end_time, None, location, None, reminders);
@@ -345,7 +345,7 @@ fn resolve_calendar<'a>(
     }
 
     // Try the default calendar
-    if let Some(default) = caldir.default_calendar()
+    if let Some(default) = caldir.default_calendar()?
         && let Some(cal) = calendars.iter().find(|c| c.slug == default.slug)
     {
         return Ok(cal);

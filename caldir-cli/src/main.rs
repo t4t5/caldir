@@ -420,7 +420,7 @@ fn resolve_provider(caldir: &Caldir, provider: Option<String>) -> Result<Provide
 }
 
 fn require_calendars(caldir: &Caldir) -> Result<()> {
-    if caldir.calendars().is_empty() {
+    if caldir.calendars()?.is_empty() {
         anyhow::bail!(
             "No calendars found.\n\n\
             Connect your first calendar with:\n  \
@@ -434,13 +434,14 @@ fn require_calendars(caldir: &Caldir) -> Result<()> {
 }
 
 fn resolve_calendars(caldir: &Caldir, calendar_filter: Option<&str>) -> Result<Vec<Calendar>> {
-    let all_calendars = caldir.calendars();
+    let all_calendars = caldir.calendars()?;
 
     match calendar_filter {
         Some(slug) => match all_calendars.into_iter().find(|c| c.slug == slug) {
             Some(cal) => Ok(vec![cal]),
             None => {
-                let available: Vec<_> = caldir.calendars().iter().map(|c| c.slug.clone()).collect();
+                let available: Vec<_> =
+                    caldir.calendars()?.iter().map(|c| c.slug.clone()).collect();
                 anyhow::bail!(
                     "Calendar '{}' not found. Available: {}",
                     slug,

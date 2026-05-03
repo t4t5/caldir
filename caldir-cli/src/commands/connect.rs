@@ -176,7 +176,7 @@ pub async fn run(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Resul
 
     // Skip calendars whose remote already matches a local one — keeps re-running
     // `connect` idempotent instead of spawning `personal-2/` next to `personal/`.
-    let existing = caldir.calendars();
+    let existing = caldir.calendars()?;
 
     let mut new_configs: Vec<CalendarConfig> = Vec::new();
     let mut skipped: Vec<(CalendarConfig, String)> = Vec::new();

@@ -105,32 +105,41 @@ impl Caldir {
     /// Discover calendars by scanning calendar_dir for subdirectories.
     /// Every non-hidden directory is a calendar; `.caldir/config.toml`
     /// is optional and only carries metadata + remote sync settings.
-    pub fn calendars(&self) -> Vec<Calendar> {
+    pub fn calendars(&self) -> CalDirResult<Vec<Calendar>> {
         let data_path = self.data_path();
 
-        let Ok(entries) = std::fs::read_dir(&data_path) else {
-            return Vec::new();
+        let entries = match std::fs::read_dir(&data_path) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error.into()),
         };
 
-        let mut calendars: Vec<Calendar> = entries
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.path())
-            .filter(|path| path.is_dir())
-            .filter_map(|path| {
-                path.file_name()
-                    .and_then(|n| n.to_str())
-                    .filter(|name| !name.starts_with('.'))
-                    .and_then(|name| Calendar::load(name, &data_path).ok())
-            })
-            .collect();
+        let mut calendars = Vec::new();
+        for entry in entries {
+            let path = entry?.path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if name.starts_with('.') {
+                continue;
+            }
+
+            calendars.push(Calendar::load(name, &data_path)?);
+        }
 
         calendars.sort_by(|a, b| a.slug.cmp(&b.slug));
-        calendars
+        Ok(calendars)
     }
 
-    pub fn default_calendar(&self) -> Option<Calendar> {
-        let name = self.config.default_calendar.as_ref()?;
-        self.calendars().into_iter().find(|c| &c.slug == name)
+    pub fn default_calendar(&self) -> CalDirResult<Option<Calendar>> {
+        let Some(name) = self.config.default_calendar.as_ref() else {
+            return Ok(None);
+        };
+        Ok(self.calendars()?.into_iter().find(|c| &c.slug == name))
     }
 
     /// Set the default calendar if one isn't already configured.
@@ -185,5 +194,33 @@ mod tests {
 
         let contents = std::fs::read_to_string(config_path).unwrap();
         assert!(contents.contains("default_calendar = \"work\""));
+    }
+
+    #[test]
+    fn calendars_returns_error_for_invalid_calendar_config() {
+        let (_tmp, caldir) = mock_caldir();
+        let config_dir = caldir.data_path().join("work/.caldir");
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(config_dir.join("config.toml"), "remote =").unwrap();
+
+        let Err(error) = caldir.calendars() else {
+            panic!("expected invalid calendar config to fail");
+        };
+
+        assert!(matches!(error, CalDirError::Config(_)));
+    }
+
+    #[test]
+    fn calendars_returns_empty_when_data_path_does_not_exist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let caldir = Caldir::new(
+            CaldirConfig {
+                calendar_dir: tmp.path().join("missing"),
+                ..CaldirConfig::default()
+            },
+            Vec::new(),
+        );
+
+        assert!(caldir.calendars().unwrap().is_empty());
     }
 }

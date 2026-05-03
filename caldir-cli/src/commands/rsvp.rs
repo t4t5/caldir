@@ -78,7 +78,7 @@ fn run_direct(caldir: &Caldir, path_str: &str, response_str: &str) -> Result<()>
 
 fn run_interactive(caldir: &Caldir) -> Result<()> {
     let config = caldir.config();
-    let calendars = caldir.calendars();
+    let calendars = caldir.calendars()?;
 
     let today = start_of_today();
     let from = today;

@@ -109,6 +109,29 @@ fn default_providers_data_dir(config_path: &Path) -> PathBuf {
 mod tests {
     use super::*;
 
+    fn make_executable(path: &Path) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let mut permissions = std::fs::metadata(path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            std::fs::set_permissions(path, permissions).unwrap();
+        }
+    }
+
+    fn provider_binary_name(provider: &str) -> String {
+        #[cfg(windows)]
+        {
+            format!("caldir-provider-{provider}.exe")
+        }
+
+        #[cfg(not(windows))]
+        {
+            format!("caldir-provider-{provider}")
+        }
+    }
+
     #[test]
     fn provider_data_is_stored_next_to_config_by_default() {
         let home = tempfile::tempdir().unwrap();
@@ -116,7 +139,9 @@ mod tests {
         // provider binary:
         let bin_dir = home.path().join("bin");
         std::fs::create_dir_all(&bin_dir).unwrap();
-        std::fs::write(bin_dir.join("caldir-provider-google"), "").unwrap();
+        let provider_binary = bin_dir.join(provider_binary_name("google"));
+        std::fs::write(&provider_binary, "").unwrap();
+        make_executable(&provider_binary);
 
         // custom config path:
         let random_path = &home.path().join("random_path");
@@ -140,7 +165,9 @@ mod tests {
         // provider binary:
         let bin_dir = &home.path().join("bin");
         std::fs::create_dir_all(bin_dir).unwrap();
-        std::fs::write(bin_dir.join("caldir-provider-google"), "").unwrap();
+        let provider_binary = bin_dir.join(provider_binary_name("google"));
+        std::fs::write(&provider_binary, "").unwrap();
+        make_executable(&provider_binary);
 
         // custom config path:
         let random_path = &home.path().join("random_path");
