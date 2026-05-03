@@ -14,23 +14,22 @@ pub async fn run(
     range: DateRange,
     verbose: bool,
 ) -> Result<()> {
-    let environment = caldir.environment();
     let mut diffs = Vec::new();
 
     for (i, cal) in calendars.iter().enumerate() {
         if cal.remote().is_none() {
-            println!("{}", cal.render(environment));
+            println!("{}", cal.render(caldir));
             println!("   {}", "(local only)".dimmed());
         } else {
-            let spinner = tui::create_spinner(cal.render(environment));
+            let spinner = tui::create_spinner(cal.render(caldir));
             let result = CalendarDiff::from_calendar(caldir, cal, &range).await;
             spinner.finish_and_clear();
 
-            println!("{}", cal.render(environment));
+            println!("{}", cal.render(caldir));
 
             match result {
                 Ok(diff) => {
-                    println!("{}", diff.render_pull(verbose, environment));
+                    println!("{}", diff.render_pull(verbose, caldir));
                     diff.apply_pull()?;
                     diffs.push(diff);
                 }

@@ -77,7 +77,6 @@ fn run_direct(caldir: &Caldir, path_str: &str, response_str: &str) -> Result<()>
 }
 
 fn run_interactive(caldir: &Caldir) -> Result<()> {
-    let environment = caldir.environment();
     let calendars = caldir.calendars()?;
 
     let today = start_of_today();
@@ -140,10 +139,7 @@ fn run_interactive(caldir: &Caldir) -> Result<()> {
             .map(|o| o.name.as_deref().unwrap_or(&o.email).to_string())
             .unwrap_or_else(|| "(unknown)".to_string());
 
-        println!(
-            "{}",
-            format_event_line(event, &calendar.slug, "", environment)
-        );
+        println!("{}", format_event_line(event, &calendar.slug, "", caldir));
         println!("       {} {}", "from:".dimmed(), organizer.dimmed());
         print!("  [a]ccept  [d]ecline  [m]aybe  [s]kip: ");
         io::stdout().flush()?;

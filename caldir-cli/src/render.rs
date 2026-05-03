@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use caldir_core::caldir_environment::CaldirEnvironment;
+use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
 use caldir_core::diff::{CalendarDiff, DiffKind, EventDiff};
 use caldir_core::event::{Event, ParticipationStatus};
@@ -14,14 +14,14 @@ use owo_colors::OwoColorize;
 use crate::utils::date::{format_datetime, format_time_only};
 
 /// Extension trait for TUI rendering with colors. Implementations that format
-/// event times take resolved environment explicitly, so rendering has no global
+/// event times take the caldir context explicitly, so rendering has no global
 /// config dependency.
 pub trait Render {
-    fn render(&self, environment: &CaldirEnvironment) -> String;
+    fn render(&self, caldir: &Caldir) -> String;
 }
 
 impl Render for DiffKind {
-    fn render(&self, _environment: &CaldirEnvironment) -> String {
+    fn render(&self, _caldir: &Caldir) -> String {
         let symbol = self.symbol();
         match self {
             DiffKind::Create => symbol.green().to_string(),
@@ -41,10 +41,10 @@ fn colorize_diff(kind: DiffKind, text: &str) -> String {
 }
 
 impl Render for EventDiff {
-    fn render(&self, environment: &CaldirEnvironment) -> String {
+    fn render(&self, caldir: &Caldir) -> String {
         let event = self.event();
         let summary = colorize_diff(self.kind, &event.to_string());
-        let time = format_datetime(&event.start, environment);
+        let time = format_datetime(&event.start, caldir.time_format());
         let recurring = if event.recurrence.is_some() {
             " 🔁"
         } else {
@@ -53,7 +53,7 @@ impl Render for EventDiff {
 
         format!(
             "{} {} {}{}",
-            self.kind.render(environment),
+            self.kind.render(caldir),
             summary,
             time.dimmed(),
             recurring
@@ -62,7 +62,7 @@ impl Render for EventDiff {
 }
 
 impl Render for Calendar {
-    fn render(&self, _environment: &CaldirEnvironment) -> String {
+    fn render(&self, _caldir: &Caldir) -> String {
         format!("📅 {}", self.slug)
     }
 }
@@ -71,20 +71,15 @@ impl Render for Calendar {
 const COMPACT_THRESHOLD: usize = 5;
 
 /// Render a list of diffs, using compact view if there are many events and verbose is false
-fn render_diff_list(
-    diffs: &[EventDiff],
-    verbose: bool,
-    environment: &CaldirEnvironment,
-    lines: &mut Vec<String>,
-) {
+fn render_diff_list(diffs: &[EventDiff], verbose: bool, caldir: &Caldir, lines: &mut Vec<String>) {
     if verbose || diffs.len() <= COMPACT_THRESHOLD {
         // Full view: show each event
         for diff in diffs {
-            lines.push(format!("   {}", diff.render(environment)));
+            lines.push(format!("   {}", diff.render(caldir)));
             // Always show field diffs for updates when in full view
             if diff.kind == DiffKind::Update {
                 lines.extend(
-                    render_field_diffs(diff, environment)
+                    render_field_diffs(diff, caldir)
                         .into_iter()
                         .map(|l| format!("     {}", l)),
                 );
@@ -125,17 +120,17 @@ fn pluralize(word: &str, count: usize) -> &str {
 
 /// Extended rendering for CalendarDiff with directional output
 pub trait CalendarDiffRender {
-    fn render(&self, verbose: bool, environment: &CaldirEnvironment) -> String;
-    fn render_sync(&self, verbose: bool, environment: &CaldirEnvironment) -> String;
-    fn render_pull(&self, verbose: bool, environment: &CaldirEnvironment) -> String;
-    fn render_push(&self, verbose: bool, environment: &CaldirEnvironment) -> String;
-    fn render_discard(&self, verbose: bool, environment: &CaldirEnvironment) -> String;
+    fn render(&self, verbose: bool, caldir: &Caldir) -> String;
+    fn render_sync(&self, verbose: bool, caldir: &Caldir) -> String;
+    fn render_pull(&self, verbose: bool, caldir: &Caldir) -> String;
+    fn render_push(&self, verbose: bool, caldir: &Caldir) -> String;
+    fn render_discard(&self, verbose: bool, caldir: &Caldir) -> String;
 }
 
 fn render_bidirectional(
     diff: &CalendarDiff,
     verbose: bool,
-    environment: &CaldirEnvironment,
+    caldir: &Caldir,
     push_label: &str,
     pull_label: &str,
 ) -> String {
@@ -147,7 +142,7 @@ fn render_bidirectional(
 
     if !diff.to_push.is_empty() {
         lines.push(format!("   {}:", push_label).dimmed().to_string());
-        render_diff_list(&diff.to_push, verbose, environment, &mut lines);
+        render_diff_list(&diff.to_push, verbose, caldir, &mut lines);
     }
 
     if !diff.to_pull.is_empty() {
@@ -155,54 +150,54 @@ fn render_bidirectional(
             lines.push(String::new());
         }
         lines.push(format!("   {}:", pull_label).dimmed().to_string());
-        render_diff_list(&diff.to_pull, verbose, environment, &mut lines);
+        render_diff_list(&diff.to_pull, verbose, caldir, &mut lines);
     }
 
     lines.join("\n")
 }
 
 impl CalendarDiffRender for CalendarDiff {
-    fn render(&self, verbose: bool, environment: &CaldirEnvironment) -> String {
+    fn render(&self, verbose: bool, caldir: &Caldir) -> String {
         render_bidirectional(
             self,
             verbose,
-            environment,
+            caldir,
             "Local changes (to push)",
             "Remote changes (to pull)",
         )
     }
 
-    fn render_sync(&self, verbose: bool, environment: &CaldirEnvironment) -> String {
+    fn render_sync(&self, verbose: bool, caldir: &Caldir) -> String {
         render_bidirectional(
             self,
             verbose,
-            environment,
+            caldir,
             "Local changes (pushed)",
             "Remote changes (pulled)",
         )
     }
 
-    fn render_pull(&self, verbose: bool, environment: &CaldirEnvironment) -> String {
+    fn render_pull(&self, verbose: bool, caldir: &Caldir) -> String {
         if self.to_pull.is_empty() {
             return "   No changes to pull".dimmed().to_string();
         }
 
         let mut lines = Vec::new();
-        render_diff_list(&self.to_pull, verbose, environment, &mut lines);
+        render_diff_list(&self.to_pull, verbose, caldir, &mut lines);
         lines.join("\n")
     }
 
-    fn render_push(&self, verbose: bool, environment: &CaldirEnvironment) -> String {
+    fn render_push(&self, verbose: bool, caldir: &Caldir) -> String {
         if self.to_push.is_empty() {
             return "   No changes to push".dimmed().to_string();
         }
 
         let mut lines = Vec::new();
-        render_diff_list(&self.to_push, verbose, environment, &mut lines);
+        render_diff_list(&self.to_push, verbose, caldir, &mut lines);
         lines.join("\n")
     }
 
-    fn render_discard(&self, verbose: bool, environment: &CaldirEnvironment) -> String {
+    fn render_discard(&self, verbose: bool, caldir: &Caldir) -> String {
         if self.to_push.is_empty() {
             return "   Nothing to discard".dimmed().to_string();
         }
@@ -213,13 +208,13 @@ impl CalendarDiffRender for CalendarDiff {
                 .dimmed()
                 .to_string(),
         );
-        render_diff_list(&self.to_push, verbose, environment, &mut lines);
+        render_diff_list(&self.to_push, verbose, caldir, &mut lines);
         lines.join("\n")
     }
 }
 
 /// Render field-by-field differences for an EventDiff (only for updates)
-fn render_field_diffs(diff: &EventDiff, environment: &CaldirEnvironment) -> Vec<String> {
+fn render_field_diffs(diff: &EventDiff, caldir: &Caldir) -> Vec<String> {
     let mut lines = Vec::new();
 
     // Only show field diffs for updates
@@ -250,16 +245,16 @@ fn render_field_diffs(diff: &EventDiff, environment: &CaldirEnvironment) -> Vec<
             lines.push(format!(
                 "{}: {} → {}",
                 "start".dimmed(),
-                format_datetime(&old.start, environment).red(),
-                format_datetime(&new.start, environment).green()
+                format_datetime(&old.start, caldir.time_format()).red(),
+                format_datetime(&new.start, caldir.time_format()).green()
             ));
         }
         if old.end != new.end {
             lines.push(format!(
                 "{}: {} → {}",
                 "end".dimmed(),
-                format_datetime(&old.end, environment).red(),
-                format_datetime(&new.end, environment).green()
+                format_datetime(&old.end, caldir.time_format()).red(),
+                format_datetime(&new.end, caldir.time_format()).green()
             ));
         }
         if old.status != new.status {
@@ -387,13 +382,8 @@ fn render_attendee_diffs(
 }
 
 /// Format a standard event line: "  {time} {summary} [{cal_slug}]{status}"
-pub fn format_event_line(
-    event: &Event,
-    cal_slug: &str,
-    status: &str,
-    environment: &CaldirEnvironment,
-) -> String {
-    let time = format_time_only(&event.start, environment);
+pub fn format_event_line(event: &Event, cal_slug: &str, status: &str, caldir: &Caldir) -> String {
+    let time = format_time_only(&event.start, caldir.time_format());
     let cal_tag = format!("[{}]", cal_slug);
     format!(
         "  {} {} {}{}",
