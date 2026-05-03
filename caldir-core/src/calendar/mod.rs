@@ -1,8 +1,8 @@
 //! Calendar directory management.
 
 mod cache;
+mod calendar_event;
 pub mod config;
-mod event;
 mod split;
 mod state;
 #[cfg(test)]
@@ -16,8 +16,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::caldir::Caldir;
+use crate::calendar::calendar_event::CalendarEvent;
 use crate::calendar::config::CalendarConfig;
-use crate::calendar::event::CalendarEvent;
 use crate::calendar::state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Event;

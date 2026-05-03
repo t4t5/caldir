@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::SystemTime;
 
-use crate::calendar::event::CalendarEvent;
+use crate::calendar::calendar_event::CalendarEvent;
 use crate::error::CalDirResult;
 
 /// Per-file cache entry. `event` is `None` when parsing failed — cached so we
