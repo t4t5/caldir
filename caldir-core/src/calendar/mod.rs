@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::caldir::Caldir;
 use crate::calendar::config::CalendarConfig;
 use crate::calendar::state::CalendarState;
 use crate::error::{CalDirError, CalDirResult};
@@ -35,7 +34,7 @@ impl Calendar {
 
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
     /// If the base slug exists, tries slug-2, slug-3, etc.
-    pub fn unique_slug_in(name: Option<&str>, caldir_data_path: &Path) -> CalDirResult<String> {
+    pub fn unique_slug(name: Option<&str>, caldir_data_path: &Path) -> CalDirResult<String> {
         let base = Self::base_slug_for(name);
 
         if !caldir_data_path.join(&base).exists() {
@@ -55,14 +54,9 @@ impl Calendar {
         )))
     }
 
-    pub fn load(slug: &str) -> CalDirResult<Self> {
-        let caldir = Caldir::load()?;
-        Self::load_in(slug, caldir.data_path())
-    }
-
     /// Load a calendar at `caldir_data_path/slug`
-    /// (caldir_data_path` is `~/caldir` in production, a tempdir in tests)
-    pub fn load_in(slug: &str, caldir_data_path: impl AsRef<Path>) -> CalDirResult<Self> {
+    /// (caldir_data_path` is `~/caldir` in production, a tempdir in tests).
+    pub fn load(slug: &str, caldir_data_path: impl AsRef<Path>) -> CalDirResult<Self> {
         let data_path = caldir_data_path.as_ref().join(slug);
         let config = CalendarConfig::load(&data_path)?;
 
@@ -76,7 +70,7 @@ impl Calendar {
     /// Construct an in-memory calendar without touching disk.
     /// Used by the `connect` flow when materializing a new calendar
     /// from a remote config before saving it.
-    pub fn new_in(slug: &str, caldir_data_path: impl AsRef<Path>, config: CalendarConfig) -> Self {
+    pub fn new(slug: &str, caldir_data_path: impl AsRef<Path>, config: CalendarConfig) -> Self {
         Calendar {
             slug: slug.to_string(),
             data_path: caldir_data_path.as_ref().join(slug),

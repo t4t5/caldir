@@ -77,7 +77,7 @@ impl Caldir {
                 path.file_name()
                     .and_then(|n| n.to_str())
                     .filter(|name| !name.starts_with('.'))
-                    .and_then(|name| Calendar::load_in(name, &data_path).ok())
+                    .and_then(|name| Calendar::load(name, &data_path).ok())
             })
             .collect();
 
