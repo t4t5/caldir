@@ -35,7 +35,7 @@ pub struct CaldirEnvironment {
 pub struct Caldir {
     config: CaldirConfig,
     config_store: CaldirConfigStore,
-    installed_providers: Vec<Provider>,
+    providers: Vec<Provider>,
 }
 
 impl CaldirConfigStore {
@@ -62,7 +62,11 @@ impl CaldirEnvironment {
         })
     }
 
-    pub fn new(config_path: impl Into<PathBuf>) -> Self {
+    /// Bare-bones environment anchored at `config_path` with no provider
+    /// search dirs. Intended for tests; chain
+    /// [`with_provider_search_dirs`](Self::with_provider_search_dirs) to add
+    /// any providers the test needs.
+    pub fn at(config_path: impl Into<PathBuf>) -> Self {
         Self {
             config_path: config_path.into(),
             provider_search_dirs: Vec::new(),
@@ -145,15 +149,11 @@ impl Caldir {
         CaldirEnvironment::from_process()?.load()
     }
 
-    pub fn load_from(environment: &CaldirEnvironment) -> CalDirResult<Self> {
-        environment.load()
-    }
-
     pub fn new(options: CaldirOptions) -> Self {
         Caldir {
             config: options.config,
             config_store: options.config_store,
-            installed_providers: options.providers,
+            providers: options.providers,
         }
     }
 
@@ -179,19 +179,19 @@ impl Caldir {
         self.config.calendar_dir.clone()
     }
 
-    pub fn installed_providers(&self) -> &[Provider] {
-        &self.installed_providers
+    pub fn providers(&self) -> &[Provider] {
+        &self.providers
     }
 
-    pub fn installed_provider_names(&self) -> Vec<String> {
-        self.installed_providers
+    pub fn provider_names(&self) -> Vec<String> {
+        self.providers
             .iter()
             .map(|provider| provider.name().to_string())
             .collect()
     }
 
     pub fn provider(&self, name: &str) -> CalDirResult<Provider> {
-        self.installed_providers
+        self.providers
             .iter()
             .find(|provider| provider.name() == name)
             .cloned()
@@ -287,7 +287,7 @@ mod tests {
         std::fs::write(bin_dir.join("caldir-provider-google"), "").unwrap();
 
         let environment =
-            CaldirEnvironment::new(&config_path).with_provider_search_dirs([bin_dir.clone()]);
+            CaldirEnvironment::at(&config_path).with_provider_search_dirs([bin_dir.clone()]);
         let caldir = environment.load().unwrap();
         let provider = caldir.provider("google").unwrap();
 
@@ -314,7 +314,7 @@ mod tests {
         });
 
         assert_eq!(caldir.data_path(), tmp.path().join("caldir"));
-        assert!(caldir.installed_providers().is_empty());
+        assert!(caldir.providers().is_empty());
         assert!(caldir.config_path().is_none());
         assert!(caldir.set_default_calendar_if_unset("personal"));
         caldir.save_config().unwrap();
@@ -337,7 +337,7 @@ mod tests {
         .unwrap();
 
         let environment =
-            CaldirEnvironment::new(&config_path).with_provider_search_dirs([bin_dir.clone()]);
+            CaldirEnvironment::at(&config_path).with_provider_search_dirs([bin_dir.clone()]);
         let caldir = environment.load().unwrap();
         let provider = caldir.provider("google").unwrap();
 
