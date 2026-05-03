@@ -181,6 +181,18 @@ impl Calendar {
         Ok(master)
     }
 
+    /// Resolves either:
+    /// - on-disk event (non-recurring, master recurring, instance override)
+    /// - synthetic event (generic instance of recurring event)
+    pub fn event_by_unique_id(&self, unique_id: &str) -> CalDirResult<Option<Event>> {
+        let events: Vec<Event> = self.events()?.into_iter().map(|ce| ce.event).collect();
+        Ok(events
+            .iter()
+            .find(|e| e.unique_id() == unique_id)
+            .cloned()
+            .or_else(|| synthesize_recurring_instance(unique_id, &events)))
+    }
+
     /// Split a recurring series at `split_start`.
     ///
     /// The original master's RRULE is truncated to end strictly before
@@ -284,6 +296,28 @@ impl fmt::Display for Calendar {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.slug)
     }
+}
+
+/// Build an in-memory override skeleton for a synthetic recurring-instance id
+/// (`{uid}__{rid_ics}`) by inheriting the master's metadata. Returns `None`
+/// when `unique_id` isn't synthetic, no master matches, or `rid_ics` won't
+/// parse against the master's start.
+fn synthesize_recurring_instance(unique_id: &str, events: &[Event]) -> Option<Event> {
+    let (uid, rid_ics) = unique_id.split_once("__")?;
+
+    let master = events
+        .iter()
+        .find(|e| e.uid == uid && e.recurrence.is_some())?;
+
+    let recurrence_id = EventTime::from_ics_string_like(rid_ics, &master.start).ok()?;
+
+    Some(Event {
+        recurrence: None,
+        recurrence_id: Some(recurrence_id),
+        sequence: None,
+        updated: None,
+        ..master.clone()
+    })
 }
 
 /// Filter and expand an in-memory event set for the given UTC range.
