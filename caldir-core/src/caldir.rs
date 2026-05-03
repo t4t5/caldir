@@ -1,22 +1,13 @@
-//! Caldir root directory management.
+//! Master struct. Everything else flows from here
 
 use std::path::{Path, PathBuf};
 
 use crate::caldir_config::CaldirConfig;
+use crate::caldir_environment::CaldirEnvironment;
 use crate::calendar::Calendar;
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::provider::Provider;
-use config::{Config, File};
-
-/// Filesystem and process environment used to construct a [`Caldir`] in
-/// production. Resolves platform config paths and provider search dirs.
-///
-/// Tests don't need this — build a `Caldir` directly with [`Caldir::new`].
-#[derive(Clone, Debug)]
-pub struct CaldirEnvironment {
-    config_path: PathBuf,
-    provider_search_dirs: Vec<PathBuf>,
-}
+use crate::utils::expand_tilde;
 
 #[derive(Clone)]
 pub struct Caldir {
@@ -25,97 +16,13 @@ pub struct Caldir {
     providers: Vec<Provider>,
 }
 
-impl CaldirEnvironment {
-    pub fn from_process() -> CalDirResult<Self> {
-        Ok(Self {
-            config_path: CaldirConfig::config_path()?,
-            provider_search_dirs: Self::provider_search_dirs_from_process(),
-        })
-    }
-
-    /// Bare-bones environment anchored at `config_path` with no provider
-    /// search dirs. Intended for tests of the environment itself; chain
-    /// [`with_provider_search_dirs`](Self::with_provider_search_dirs) to add
-    /// any providers the test needs.
-    pub fn at(config_path: impl Into<PathBuf>) -> Self {
-        Self {
-            config_path: config_path.into(),
-            provider_search_dirs: Vec::new(),
-        }
-    }
-
-    pub fn with_provider_search_dirs<I, P>(mut self, dirs: I) -> Self
-    where
-        I: IntoIterator<Item = P>,
-        P: Into<PathBuf>,
-    {
-        self.provider_search_dirs = dirs.into_iter().map(Into::into).collect();
-        self
-    }
-
-    pub fn config_path(&self) -> &Path {
-        &self.config_path
-    }
-
-    pub fn load(&self) -> CalDirResult<Caldir> {
-        let config = self.load_config()?;
-        let providers_data_dir = self.providers_data_dir_for(&config);
-        let providers =
-            Provider::discover_installed(&providers_data_dir, self.provider_search_dirs.iter());
-
-        Ok(Caldir::new(config, providers).with_config_path(self.config_path.clone()))
-    }
-
-    pub fn providers_data_dir_for(&self, config: &CaldirConfig) -> PathBuf {
-        config
-            .providers_data_dir
-            .as_ref()
-            .map(|path| expand_tilde(path))
-            .unwrap_or_else(|| default_providers_data_dir(&self.config_path))
-    }
-
-    fn load_config(&self) -> CalDirResult<CaldirConfig> {
-        if !self.config_path.exists() {
-            CaldirConfig::create_default_config(&self.config_path)?;
-        }
-
-        Config::builder()
-            .add_source(File::from(self.config_path.clone()).required(false))
-            .build()
-            .map_err(|e| CalDirError::Config(e.to_string()))?
-            .try_deserialize()
-            .map_err(|e| CalDirError::Config(e.to_string()))
-    }
-
-    /// Returns directories from `CALDIR_PROVIDER_PATH` followed by `PATH`.
-    fn provider_search_dirs_from_process() -> Vec<PathBuf> {
-        let provider_path = std::env::var_os("CALDIR_PROVIDER_PATH");
-        let system_path = std::env::var_os("PATH");
-        provider_path
-            .into_iter()
-            .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
-            .chain(
-                system_path
-                    .into_iter()
-                    .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>()),
-            )
-            .collect()
-    }
-}
-
 impl Caldir {
     /// Load from the current process environment.
-    ///
-    /// Tests should use [`Caldir::new`] with an explicit config and provider
-    /// list instead.
     pub fn load() -> CalDirResult<Self> {
         CaldirEnvironment::from_process()?.load()
     }
 
     /// Construct a Caldir directly from a config and provider list.
-    ///
-    /// `save_config` is a no-op until a path is set with
-    /// [`with_config_path`](Self::with_config_path).
     pub fn new(config: CaldirConfig, providers: Vec<Provider>) -> Self {
         Caldir {
             config,
@@ -237,19 +144,6 @@ impl Caldir {
     }
 }
 
-fn default_providers_data_dir(config_path: &Path) -> PathBuf {
-    config_path
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_default()
-        .join("providers")
-}
-
-fn expand_tilde(path: &Path) -> PathBuf {
-    let path = path.to_string_lossy();
-    PathBuf::from(shellexpand::tilde(path.as_ref()).into_owned())
-}
-
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::*;
@@ -259,9 +153,6 @@ pub(crate) mod test_support {
     /// Build a fresh Caldir rooted at a tempdir, with no providers and no
     /// config save path. The TempDir is returned alongside so it stays alive
     /// for the test's lifetime — drop it and the calendar dir disappears.
-    ///
-    /// Chain [`Caldir::with_config_path`] on the returned Caldir if the test
-    /// needs `save_config` to actually write somewhere.
     pub fn mock_caldir() -> (TempDir, Caldir) {
         let tmp = tempfile::tempdir().unwrap();
         let calendar_dir = tmp.path().join("caldir");
@@ -281,72 +172,6 @@ pub(crate) mod test_support {
 mod tests {
     use super::*;
     use test_support::mock_caldir;
-
-    #[test]
-    fn environment_loads_provider_data_next_to_config_by_default() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config_path = tmp.path().join("profile/config.toml");
-        let bin_dir = tmp.path().join("bin");
-        std::fs::create_dir_all(&bin_dir).unwrap();
-        std::fs::write(bin_dir.join("caldir-provider-google"), "").unwrap();
-
-        let environment =
-            CaldirEnvironment::at(&config_path).with_provider_search_dirs([bin_dir.clone()]);
-        let caldir = environment.load().unwrap();
-        let provider = caldir.provider("google").unwrap();
-
-        assert_eq!(
-            environment.providers_data_dir_for(caldir.config()),
-            tmp.path().join("profile/providers")
-        );
-        assert_eq!(
-            provider.provider_dir(),
-            tmp.path().join("profile/providers/google")
-        );
-    }
-
-    #[test]
-    fn mock_caldir_builds_a_minimal_instance_for_tests() {
-        let (tmp, mut caldir) = mock_caldir();
-
-        assert_eq!(caldir.data_path(), tmp.path().join("caldir"));
-        assert!(caldir.providers().is_empty());
-        assert!(caldir.config_path().is_none());
-        assert!(caldir.set_default_calendar_if_unset("personal"));
-        // No path set -> save_config is a no-op.
-        caldir.save_config().unwrap();
-    }
-
-    #[test]
-    fn explicit_provider_data_dir_overrides_config_path_default() {
-        let tmp = tempfile::tempdir().unwrap();
-        let config_path = tmp.path().join("profile/config.toml");
-        let bin_dir = tmp.path().join("bin");
-        std::fs::create_dir_all(&bin_dir).unwrap();
-        std::fs::write(bin_dir.join("caldir-provider-google"), "").unwrap();
-        std::fs::create_dir_all(config_path.parent().unwrap()).unwrap();
-        CaldirConfig {
-            calendar_dir: tmp.path().join("calendars"),
-            providers_data_dir: Some(tmp.path().join("provider-data")),
-            ..CaldirConfig::default()
-        }
-        .save_to(&config_path)
-        .unwrap();
-
-        let environment =
-            CaldirEnvironment::at(&config_path).with_provider_search_dirs([bin_dir.clone()]);
-        let caldir = environment.load().unwrap();
-        let provider = caldir.provider("google").unwrap();
-
-        assert_eq!(
-            environment.providers_data_dir_for(caldir.config()),
-            tmp.path().join("provider-data")
-        );
-        assert_eq!(
-            provider.provider_dir(),
-            tmp.path().join("provider-data/google")
-        );
-    }
 
     #[test]
     fn caldir_with_config_path_saves_to_that_path() {

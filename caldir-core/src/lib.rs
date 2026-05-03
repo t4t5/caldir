@@ -1,5 +1,6 @@
 pub mod caldir;
 pub mod caldir_config;
+pub mod caldir_environment;
 pub mod calendar;
 pub mod constants;
 pub mod date_range;
