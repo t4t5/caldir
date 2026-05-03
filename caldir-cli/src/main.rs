@@ -378,7 +378,7 @@ fn resolve_provider(caldir: &Caldir, provider: Option<String>) -> Result<Provide
     let name = match provider {
         Some(name) => name,
         None => {
-            let installed = caldir.providers().installed_names();
+            let installed = caldir.installed_provider_names();
             if installed.is_empty() {
                 anyhow::bail!(
                     "Missing provider argument.\n\n\
@@ -404,7 +404,7 @@ fn resolve_provider(caldir: &Caldir, provider: Option<String>) -> Result<Provide
     match caldir.provider(&name) {
         Ok(provider) => Ok(provider),
         Err(_) => {
-            let installed = caldir.providers().installed_names();
+            let installed = caldir.installed_provider_names();
             if installed.is_empty() {
                 anyhow::bail!(
                     "Unknown provider \"{name}\".\n\n\

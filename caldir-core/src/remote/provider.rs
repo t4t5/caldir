@@ -15,7 +15,6 @@ use crate::remote::protocol::{
 };
 use crate::remote::provider_account::ProviderAccount;
 use serde::Serialize;
-use std::collections::BTreeMap;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -28,16 +27,10 @@ const PROVIDER_TIMEOUT: Duration = Duration::from_secs(15);
 const AUTH_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Clone, Debug)]
-pub struct ProviderRegistry {
-    providers_dir: PathBuf,
-    installed: BTreeMap<String, PathBuf>,
-}
-
-#[derive(Clone, Debug)]
 pub struct Provider {
     name: String,
     binary_path: PathBuf,
-    context: ProviderRequestContext,
+    data_dir: PathBuf,
 }
 
 impl fmt::Display for Provider {
@@ -46,9 +39,18 @@ impl fmt::Display for Provider {
     }
 }
 
-impl ProviderRegistry {
-    pub fn discover(providers_dir: PathBuf) -> Self {
-        let mut installed = BTreeMap::new();
+impl Provider {
+    pub fn new(name: impl Into<String>, binary_path: PathBuf, data_dir: PathBuf) -> Self {
+        Provider {
+            name: name.into(),
+            binary_path,
+            data_dir,
+        }
+    }
+
+    pub fn discover_installed(providers_data_dir: impl AsRef<Path>) -> Vec<Self> {
+        let providers_data_dir = providers_data_dir.as_ref();
+        let mut providers = Vec::new();
         let prefix = "caldir-provider-";
 
         for dir in Self::provider_search_dirs() {
@@ -64,26 +66,18 @@ impl ProviderRegistry {
                 };
 
                 let path = entry.path();
-                if path.is_file() {
-                    installed.entry(provider_name.to_string()).or_insert(path);
+                if path.is_file() && !providers.iter().any(|p: &Provider| p.name == provider_name) {
+                    providers.push(Provider::new(
+                        provider_name,
+                        path,
+                        providers_data_dir.join(provider_name),
+                    ));
                 }
             }
         }
 
-        ProviderRegistry {
-            providers_dir,
-            installed,
-        }
-    }
-
-    pub fn from_installed(
-        providers_dir: PathBuf,
-        installed: impl IntoIterator<Item = (String, PathBuf)>,
-    ) -> Self {
-        ProviderRegistry {
-            providers_dir,
-            installed: installed.into_iter().collect(),
-        }
+        providers.sort_by(|a, b| a.name.cmp(&b.name));
+        providers
     }
 
     /// Returns directories from `CALDIR_PROVIDER_PATH` followed by `PATH`.
@@ -100,36 +94,6 @@ impl ProviderRegistry {
             )
     }
 
-    pub fn providers_dir(&self) -> &Path {
-        &self.providers_dir
-    }
-
-    pub fn provider_dir(&self, name: &str) -> PathBuf {
-        self.providers_dir.join(name)
-    }
-
-    pub fn installed_names(&self) -> Vec<String> {
-        self.installed.keys().cloned().collect()
-    }
-
-    pub fn get(&self, name: &str) -> CalDirResult<Provider> {
-        let binary_path = self
-            .installed
-            .get(name)
-            .ok_or_else(|| CalDirError::ProviderNotInstalled(name.to_string()))?
-            .clone();
-
-        Ok(Provider {
-            name: name.to_string(),
-            binary_path,
-            context: ProviderRequestContext {
-                provider_dir: self.provider_dir(name),
-            },
-        })
-    }
-}
-
-impl Provider {
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -138,8 +102,12 @@ impl Provider {
         &self.binary_path
     }
 
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
     pub fn provider_dir(&self) -> &Path {
-        &self.context.provider_dir
+        self.data_dir()
     }
 
     /// Advance the connect flow by one step.
@@ -186,7 +154,9 @@ impl Provider {
             serde_json::to_value(params).map_err(|e| CalDirError::Serialization(e.to_string()))?;
         let request = Request {
             command,
-            context: self.context.clone(),
+            context: ProviderRequestContext {
+                provider_dir: self.data_dir.clone(),
+            },
             params,
         };
         let request_json = serde_json::to_string(&request)
@@ -244,15 +214,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_resolves_provider_with_runtime_context() {
+    fn provider_carries_runtime_context() {
         let providers_dir = PathBuf::from("/tmp/caldir/providers");
         let binary_path = PathBuf::from("/tmp/bin/caldir-provider-google");
-        let registry = ProviderRegistry::from_installed(
-            providers_dir.clone(),
-            vec![("google".to_string(), binary_path.clone())],
-        );
-
-        let provider = registry.get("google").unwrap();
+        let provider = Provider::new("google", binary_path.clone(), providers_dir.join("google"));
 
         assert_eq!(provider.name(), "google");
         assert_eq!(provider.binary_path(), binary_path.as_path());
@@ -260,18 +225,5 @@ mod tests {
             provider.provider_dir(),
             providers_dir.join("google").as_path()
         );
-    }
-
-    #[test]
-    fn registry_reports_missing_provider() {
-        let registry = ProviderRegistry::from_installed(
-            PathBuf::from("/tmp/caldir/providers"),
-            Vec::<(String, PathBuf)>::new(),
-        );
-
-        assert!(matches!(
-            registry.get("google"),
-            Err(CalDirError::ProviderNotInstalled(name)) if name == "google"
-        ));
     }
 }

@@ -34,6 +34,9 @@ pub struct CaldirConfig {
     pub calendar_dir: PathBuf,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub providers_data_dir: Option<PathBuf>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub default_calendar: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -47,6 +50,7 @@ impl Default for CaldirConfig {
     fn default() -> Self {
         Self {
             calendar_dir: default_caldir_path(),
+            providers_data_dir: None,
             default_calendar: None,
             default_reminders: None,
             time_format: TimeFormat::default(),
@@ -104,6 +108,9 @@ impl CaldirConfig {
 
 # Where your calendars live:
 # calendar_dir = \"{}\"
+
+# Where providers store credentials and tokens:
+# providers_data_dir = \"~/.config/caldir/providers\"
 
 # Default calendar for new events:
 # default_calendar = \"personal\"
