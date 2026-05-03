@@ -56,9 +56,7 @@ impl Provider {
         I: IntoIterator<Item = P>,
         P: AsRef<Path>,
     {
-        let providers_data_dir = providers_data_dir.as_ref();
         let mut providers = Vec::new();
-        let prefix = "caldir-provider-";
 
         for dir in search_dirs {
             let Ok(entries) = std::fs::read_dir(dir.as_ref()) else {
@@ -68,18 +66,18 @@ impl Provider {
             for entry in entries.flatten() {
                 let name = entry.file_name();
                 let name = name.to_string_lossy();
-                let Some(provider_name) = provider_name_from_filename(&name, prefix) else {
+                let Some(provider_name) = provider_name_from_filename(&name) else {
                     continue;
                 };
 
                 let path = entry.path();
-                if is_executable_file(&path)
+                if is_executable(&path)
                     && !providers.iter().any(|p: &Provider| p.name == provider_name)
                 {
                     providers.push(Provider::new(
                         provider_name,
                         path,
-                        providers_data_dir.join(provider_name),
+                        providers_data_dir.as_ref().join(provider_name),
                     ));
                 }
             }
@@ -204,85 +202,56 @@ impl Provider {
     }
 }
 
-fn provider_name_from_filename<'a>(filename: &'a str, prefix: &str) -> Option<&'a str> {
-    let provider_name = filename.strip_prefix(prefix)?;
-
-    #[cfg(windows)]
-    let provider_name = provider_name.strip_suffix(".exe").unwrap_or(provider_name);
-
-    if provider_name.is_empty() {
-        None
-    } else {
-        Some(provider_name)
-    }
-}
-
-fn is_executable_file(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
-
-    is_executable(path)
+fn provider_name_from_filename(filename: &str) -> Option<&str> {
+    let name = filename.strip_prefix("caldir-provider-")?;
+    let name = name.strip_suffix(std::env::consts::EXE_SUFFIX)?;
+    (!name.is_empty()).then_some(name)
 }
 
 #[cfg(unix)]
 fn is_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
 
-    path.metadata()
-        .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
+    path.is_file()
+        && path
+            .metadata()
+            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
 }
 
 #[cfg(windows)]
 fn is_executable(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+    path.is_file()
+        && path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| format!(".{extension}"))
+            .is_some_and(|extension| extension.eq_ignore_ascii_case(std::env::consts::EXE_SUFFIX))
 }
 
 #[cfg(not(any(unix, windows)))]
-fn is_executable(_path: &Path) -> bool {
-    true
+fn is_executable(path: &Path) -> bool {
+    path.is_file()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn make_executable(path: &Path) {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::fs::PermissionsExt;
 
-            let mut permissions = std::fs::metadata(path).unwrap().permissions();
-            permissions.set_mode(0o755);
-            std::fs::set_permissions(path, permissions).unwrap();
-        }
+        let mut permissions = std::fs::metadata(path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(path, permissions).unwrap();
     }
+
+    #[cfg(not(unix))]
+    fn make_executable(_path: &Path) {}
 
     fn provider_binary_name(provider: &str) -> String {
-        #[cfg(windows)]
-        {
-            format!("caldir-provider-{provider}.exe")
-        }
-
-        #[cfg(not(windows))]
-        {
-            format!("caldir-provider-{provider}")
-        }
-    }
-
-    fn non_executable_provider_filename(provider: &str) -> String {
-        #[cfg(windows)]
-        {
-            format!("caldir-provider-{provider}.txt")
-        }
-
-        #[cfg(not(windows))]
-        {
-            format!("caldir-provider-{provider}")
-        }
+        format!("caldir-provider-{provider}{}", std::env::consts::EXE_SUFFIX)
     }
 
     #[test]
@@ -299,24 +268,18 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn discover_installed_ignores_non_executable_provider_files() {
         let tmp = tempfile::tempdir().unwrap();
         let bin_dir = tmp.path().join("bin");
         std::fs::create_dir_all(&bin_dir).unwrap();
 
-        std::fs::write(bin_dir.join(non_executable_provider_filename("google")), "").unwrap();
+        std::fs::write(bin_dir.join(provider_binary_name("google")), "").unwrap();
 
         let providers = Provider::discover_installed(tmp.path().join("providers"), [&bin_dir]);
 
-        #[cfg(unix)]
         assert!(providers.is_empty());
-
-        #[cfg(windows)]
-        assert!(providers.is_empty());
-
-        #[cfg(not(any(unix, windows)))]
-        assert_eq!(providers.len(), 1);
     }
 
     #[test]

@@ -121,15 +121,7 @@ mod tests {
     }
 
     fn provider_binary_name(provider: &str) -> String {
-        #[cfg(windows)]
-        {
-            format!("caldir-provider-{provider}.exe")
-        }
-
-        #[cfg(not(windows))]
-        {
-            format!("caldir-provider-{provider}")
-        }
+        format!("caldir-provider-{provider}{}", std::env::consts::EXE_SUFFIX)
     }
 
     #[test]
