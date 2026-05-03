@@ -1,8 +1,8 @@
-//! Resolved runtime settings for a [`Caldir`](crate::caldir::Caldir).
+//! Resolved runtime environment for a [`Caldir`](crate::caldir::Caldir).
 //!
 //! [`CaldirConfig`](crate::caldir_config::CaldirConfig) is the TOML file schema.
-//! `CaldirSettings` is what the running process uses after defaults and paths
-//! have been resolved.
+//! `CaldirEnvironment` is what the running process uses after defaults, paths,
+//! and provider discovery have been resolved.
 
 use std::path::{Path, PathBuf};
 
@@ -13,7 +13,7 @@ use crate::remote::provider::Provider;
 use crate::utils::expand_tilde;
 
 #[derive(Clone, Debug)]
-pub struct CaldirSettings {
+pub struct CaldirEnvironment {
     config_path: PathBuf,
     config: CaldirConfig,
     calendar_dir: PathBuf,
@@ -21,14 +21,14 @@ pub struct CaldirSettings {
     providers: Vec<Provider>,
 }
 
-impl CaldirSettings {
+impl CaldirEnvironment {
     pub fn load() -> CalDirResult<Self> {
         Self::load_from(CaldirConfig::config_path()?, Self::provider_search_dirs())
     }
 
-    /// Load settings from a config path and discover providers from the given
+    /// Load an environment from a config path and discover providers from the given
     /// search dirs. The search dirs are construction input only; the resulting
-    /// settings store the resolved provider snapshot.
+    /// environment stores the resolved provider snapshot.
     pub fn load_from<I, P>(
         config_path: impl Into<PathBuf>,
         provider_search_dirs: I,
@@ -199,11 +199,11 @@ mod tests {
     }
 
     #[test]
-    fn paths_are_resolved_when_settings_are_constructed() {
+    fn paths_are_resolved_when_environment_is_constructed() {
         let tmp = tempfile::tempdir().unwrap();
         let config_path = tmp.path().join("config.toml");
 
-        let settings = CaldirSettings::from_config(
+        let environment = CaldirEnvironment::from_config(
             &config_path,
             CaldirConfig {
                 calendar_dir: "~/calendars".into(),
@@ -212,17 +212,20 @@ mod tests {
             },
         );
 
-        assert_eq!(settings.config().calendar_dir, PathBuf::from("~/calendars"));
         assert_eq!(
-            settings.config().providers_data_dir,
+            environment.config().calendar_dir,
+            PathBuf::from("~/calendars")
+        );
+        assert_eq!(
+            environment.config().providers_data_dir,
             Some(PathBuf::from("~/provider-data"))
         );
         assert_eq!(
-            settings.calendar_dir(),
+            environment.calendar_dir(),
             crate::utils::expand_tilde(std::path::Path::new("~/calendars"))
         );
         assert_eq!(
-            settings.providers_data_dir(),
+            environment.providers_data_dir(),
             crate::utils::expand_tilde(std::path::Path::new("~/provider-data"))
         );
     }
@@ -240,9 +243,9 @@ mod tests {
         let random_path = home.path().join("random_path");
         let config_path = random_path.join("config.toml");
 
-        let settings = CaldirSettings::load_from(&config_path, [&bin_dir]).unwrap();
+        let environment = CaldirEnvironment::load_from(&config_path, [&bin_dir]).unwrap();
 
-        let caldir = Caldir::new(settings);
+        let caldir = Caldir::new(environment);
 
         assert_eq!(
             caldir.provider("google").unwrap().provider_dir(),
@@ -272,8 +275,8 @@ mod tests {
         .save_to(&config_path)
         .unwrap();
 
-        let settings = CaldirSettings::load_from(&config_path, [&bin_dir]).unwrap();
-        let caldir = Caldir::new(settings);
+        let environment = CaldirEnvironment::load_from(&config_path, [&bin_dir]).unwrap();
+        let caldir = Caldir::new(environment);
 
         assert_eq!(
             caldir.provider("google").unwrap().provider_dir(),

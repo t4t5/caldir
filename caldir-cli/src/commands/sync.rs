@@ -16,23 +16,23 @@ pub async fn run(
     verbose: bool,
     force: bool,
 ) -> Result<()> {
-    let settings = caldir.settings();
+    let environment = caldir.environment();
     let mut diffs = Vec::new();
 
     for (i, cal) in calendars.iter().enumerate() {
         if cal.remote().is_none() {
-            println!("{}", cal.render(settings));
+            println!("{}", cal.render(environment));
             println!("   {}", "(local only)".dimmed());
         } else {
-            let spinner = tui::create_spinner(cal.render(settings));
+            let spinner = tui::create_spinner(cal.render(environment));
             let result = CalendarDiff::from_calendar(caldir, cal, &range).await;
             spinner.finish_and_clear();
 
-            println!("{}", cal.render(settings));
+            println!("{}", cal.render(environment));
 
             match result {
                 Ok(diff) => {
-                    println!("{}", diff.render_sync(verbose, settings));
+                    println!("{}", diff.render_sync(verbose, environment));
                     diff.apply_pull()?;
                     if !allow_mass_delete(&diff, force) {
                         continue;

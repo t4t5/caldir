@@ -8,7 +8,7 @@ use crate::render::{format_event_line, render_participation_status};
 use crate::utils::date::{format_date_only, start_of_today};
 
 pub fn run(caldir: &Caldir, calendars: Vec<Calendar>, all: bool) -> Result<()> {
-    let settings = caldir.settings();
+    let environment = caldir.environment();
     let today = start_of_today();
     let from = today;
     let to = today + Duration::days(30);
@@ -69,7 +69,10 @@ pub fn run(caldir: &Caldir, calendars: Vec<Calendar>, all: bool) -> Result<()> {
             .my_status(email)
             .map(|s| format!(" ({})", render_participation_status(s)))
             .unwrap_or_default();
-        println!("{}", format_event_line(event, cal_slug, &status, settings));
+        println!(
+            "{}",
+            format_event_line(event, cal_slug, &status, environment)
+        );
 
         if let Some(organizer) = event.organizer.as_ref().filter(|o| !o.email.is_empty()) {
             println!("       {} {}", "from:".dimmed(), organizer.email.dimmed());

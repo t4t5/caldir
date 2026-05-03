@@ -8,10 +8,10 @@ pub fn run(caldir: &Caldir) -> Result<()> {
     println!(
         "{} {}",
         "Path:".bold(),
-        caldir.settings().config_path().tilde()
+        caldir.environment().config_path().tilde()
     );
     println!();
-    println!("{}", caldir.settings().config());
+    println!("{}", caldir.environment().config());
 
     Ok(())
 }

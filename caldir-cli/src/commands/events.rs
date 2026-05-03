@@ -13,7 +13,7 @@ pub fn run(
     from: Option<DateTime<Utc>>,
     to: Option<DateTime<Utc>>,
 ) -> Result<()> {
-    let settings = caldir.settings();
+    let environment = caldir.environment();
     let today = start_of_today();
     let from = from.unwrap_or(today);
     let to = to.unwrap_or(today + Duration::days(3));
@@ -63,7 +63,7 @@ pub fn run(
             .unwrap_or_default();
         println!(
             "{}",
-            format_event_line(event, cal_slug, &invite_indicator, settings)
+            format_event_line(event, cal_slug, &invite_indicator, environment)
         );
     }
 
