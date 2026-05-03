@@ -70,12 +70,12 @@ impl CaldirEnvironment {
         &self.config_path
     }
 
-    pub fn calendar_dir(&self) -> PathBuf {
-        self.calendar_dir.clone()
+    pub fn calendar_dir(&self) -> &Path {
+        &self.calendar_dir
     }
 
-    pub fn providers_data_dir(&self) -> PathBuf {
-        self.providers_data_dir.clone()
+    pub fn providers_data_dir(&self) -> &Path {
+        &self.providers_data_dir
     }
 
     pub fn providers(&self) -> &[Provider] {

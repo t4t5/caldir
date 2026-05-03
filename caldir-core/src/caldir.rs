@@ -1,6 +1,6 @@
 //! Master struct. Everything else flows from here.
 
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::caldir_environment::CaldirEnvironment;
 use crate::calendar::Calendar;
@@ -31,7 +31,7 @@ impl Caldir {
         self.environment.save_config()
     }
 
-    pub fn data_path(&self) -> PathBuf {
+    pub fn data_path(&self) -> &Path {
         self.environment.calendar_dir()
     }
 
@@ -65,7 +65,7 @@ impl Caldir {
     /// Generate a slug for a new calendar with the given display name that
     /// doesn't collide with any existing directory in this caldir.
     pub fn unique_slug_for(&self, name: Option<&str>) -> CalDirResult<String> {
-        Calendar::unique_slug(name, &self.data_path())
+        Calendar::unique_slug(name, self.data_path())
     }
 
     /// Discover calendars by scanning calendar_dir for subdirectories.
@@ -74,7 +74,7 @@ impl Caldir {
     pub fn calendars(&self) -> CalDirResult<Vec<Calendar>> {
         let data_path = self.data_path();
 
-        let entries = match std::fs::read_dir(&data_path) {
+        let entries = match std::fs::read_dir(data_path) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(error.into()),
@@ -94,7 +94,7 @@ impl Caldir {
                 continue;
             }
 
-            calendars.push(Calendar::load(name, &data_path)?);
+            calendars.push(Calendar::load(name, data_path)?);
         }
 
         calendars.sort_by(|a, b| a.slug.cmp(&b.slug));
