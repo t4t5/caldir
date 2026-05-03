@@ -59,6 +59,27 @@ impl Caldir {
         self.config.calendar_dir.clone()
     }
 
+    /// Load a single calendar by slug, anchored at this caldir's data path.
+    pub fn calendar(&self, slug: &str) -> CalDirResult<Calendar> {
+        Calendar::load(slug, self.data_path())
+    }
+
+    /// Construct an in-memory calendar (not yet on disk) anchored at this
+    /// caldir's data path. Used by the `connect` flow.
+    pub fn new_calendar(
+        &self,
+        slug: &str,
+        config: crate::calendar::config::CalendarConfig,
+    ) -> Calendar {
+        Calendar::new(slug, self.data_path(), config)
+    }
+
+    /// Generate a slug for a new calendar with the given display name that
+    /// doesn't collide with any existing directory in this caldir.
+    pub fn unique_slug_for(&self, name: Option<&str>) -> CalDirResult<String> {
+        Calendar::unique_slug(name, &self.data_path())
+    }
+
     /// Discover calendars by scanning calendar_dir for subdirectories.
     /// Every non-hidden directory is a calendar; `.caldir/config.toml`
     /// is optional and only carries metadata + remote sync settings.

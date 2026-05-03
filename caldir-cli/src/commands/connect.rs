@@ -180,7 +180,6 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     // `connect` idempotent instead of spawning `personal-2/` next to `personal/`.
     let mut caldir = Caldir::load()?;
     let existing = caldir.calendars();
-    let caldir_data_path = caldir.data_path();
 
     let mut new_configs: Vec<CalendarConfig> = Vec::new();
     let mut skipped: Vec<(CalendarConfig, String)> = Vec::new();
@@ -235,9 +234,9 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     let mut created_slugs = Vec::new();
     for &idx in &selections {
         let config = &calendar_configs[idx];
-        let slug = Calendar::unique_slug(config.name.as_deref(), &caldir_data_path)?;
+        let slug = caldir.unique_slug_for(config.name.as_deref())?;
 
-        let calendar = Calendar::new(&slug, &caldir_data_path, config.clone());
+        let calendar = caldir.new_calendar(&slug, config.clone());
 
         calendar.save_config()?;
         created_slugs.push(slug.clone());
@@ -263,7 +262,7 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     // Load the newly created calendars and do an initial pull
     let calendars: Vec<Calendar> = created_slugs
         .iter()
-        .filter_map(|slug| Calendar::load(slug, &caldir_data_path).ok())
+        .filter_map(|slug| caldir.calendar(slug).ok())
         .collect();
 
     if !calendars.is_empty() {
