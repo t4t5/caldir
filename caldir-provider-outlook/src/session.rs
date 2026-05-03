@@ -1,10 +1,12 @@
 //! Creates a valid Outlook session (access token) for calling the Microsoft Graph API.
 
 use anyhow::{Context, Result};
+use caldir_core::remote::protocol::ProviderRequestContext;
 use chrono::{DateTime, TimeDelta, Utc};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
-use crate::app_config::{AppConfig, base_dir};
+use crate::app_config::AppConfig;
 
 const TOKEN_ENDPOINT: &str = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const HOSTED_REFRESH_URL: &str = "https://caldir.org/auth/outlook/refresh";
@@ -59,15 +61,16 @@ impl SessionData {
 }
 
 impl Session {
-    fn path_for_account_email(account_email: &str) -> Result<std::path::PathBuf> {
+    fn path_for_account_email(context: &ProviderRequestContext, account_email: &str) -> PathBuf {
         let email_slug = account_email.replace(['/', '\\', ':'], "_");
-        Ok(base_dir()?
+        context
+            .provider_dir
             .join("session")
-            .join(format!("{}.toml", email_slug)))
+            .join(format!("{}.toml", email_slug))
     }
 
-    fn path(&self) -> Result<std::path::PathBuf> {
-        Self::path_for_account_email(&self.account_email)
+    fn path(&self, context: &ProviderRequestContext) -> PathBuf {
+        Self::path_for_account_email(context, &self.account_email)
     }
 
     pub fn access_token(&self) -> &str {
@@ -84,16 +87,16 @@ impl Session {
     }
 
     /// Load a session and refresh it if expired.
-    pub async fn load_valid(account_email: &str) -> Result<Self> {
-        let mut session = Self::load(account_email)?;
+    pub async fn load_valid(context: &ProviderRequestContext, account_email: &str) -> Result<Self> {
+        let mut session = Self::load(context, account_email)?;
         if session.is_expired() {
-            session.refresh().await?;
+            session.refresh(context).await?;
         }
         Ok(session)
     }
 
-    fn load(account_email: &str) -> Result<Self> {
-        let path = Self::path_for_account_email(account_email)?;
+    fn load(context: &ProviderRequestContext, account_email: &str) -> Result<Self> {
+        let path = Self::path_for_account_email(context, account_email);
         if !path.exists() {
             anyhow::bail!("Outlook OAuth session for {} not found!", account_email);
         }
@@ -115,9 +118,9 @@ impl Session {
         })
     }
 
-    pub fn save(&self) -> Result<()> {
+    pub fn save(&self, context: &ProviderRequestContext) -> Result<()> {
         let contents = toml::to_string_pretty(&self.data).context("Failed to serialize session")?;
-        let path = self.path()?;
+        let path = self.path(context);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directory {}", parent.display()))?;
@@ -138,14 +141,14 @@ impl Session {
         Utc::now() >= self.data.expires_at
     }
 
-    async fn refresh(&mut self) -> Result<()> {
+    async fn refresh(&mut self, context: &ProviderRequestContext) -> Result<()> {
         match self.data.auth_mode {
-            AuthMode::Hosted => self.refresh_hosted().await,
-            AuthMode::Local => self.refresh_local().await,
+            AuthMode::Hosted => self.refresh_hosted(context).await,
+            AuthMode::Local => self.refresh_local(context).await,
         }
     }
 
-    async fn refresh_hosted(&mut self) -> Result<()> {
+    async fn refresh_hosted(&mut self, context: &ProviderRequestContext) -> Result<()> {
         let client = reqwest::Client::new();
 
         let response = client
@@ -182,13 +185,13 @@ impl Session {
             refresh_data.refresh_token,
             refresh_data.expires_in,
         );
-        self.save()?;
+        self.save(context)?;
 
         Ok(())
     }
 
-    async fn refresh_local(&mut self) -> Result<()> {
-        let app_config = AppConfig::load()?;
+    async fn refresh_local(&mut self, context: &ProviderRequestContext) -> Result<()> {
+        let app_config = AppConfig::load(context)?;
 
         let client = reqwest::Client::new();
         let response = client
@@ -222,7 +225,7 @@ impl Session {
 
         self.data =
             SessionData::from_tokens(tokens.access_token, tokens.refresh_token, tokens.expires_in);
-        self.save()?;
+        self.save(context)?;
 
         Ok(())
     }

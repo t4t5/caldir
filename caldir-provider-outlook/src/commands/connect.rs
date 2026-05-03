@@ -9,7 +9,7 @@
 use anyhow::{Context, Result};
 use caldir_core::remote::protocol::{
     Connect, ConnectResponse, ConnectStepKind, CredentialField, FieldType, HostedOAuthData,
-    OAuthData, SetupData,
+    OAuthData, ProviderRequestContext, SetupData,
 };
 use url::Url;
 
@@ -22,7 +22,7 @@ const AUTHORIZE_URL: &str = "https://login.microsoftonline.com/common/oauth2/v2.
 const TOKEN_URL: &str = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const SCOPES: &str = "Calendars.ReadWrite User.Read offline_access";
 
-pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
+pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<ConnectResponse> {
     let redirect_uri = cmd
         .options
         .get("redirect_uri")
@@ -59,7 +59,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
             client_id,
             client_secret,
         }
-        .save()?;
+        .save(&context)?;
         // Fall through to generate OAuth URL
     }
 
@@ -67,14 +67,14 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
     let has_auth_data = cmd.data.contains_key("code") || cmd.data.contains_key("access_token");
 
     if has_auth_data {
-        let account_email = complete_auth(&cmd, &redirect_uri).await?;
+        let account_email = complete_auth(&context, &cmd, &redirect_uri).await?;
         return Ok(ConnectResponse::Done {
             account_identifier: account_email,
         });
     }
 
     // Initial step: check if app config exists
-    if !AppConfig::exists()? {
+    if !AppConfig::exists(&context) {
         if hosted {
             let port = Url::parse(&redirect_uri)?
                 .port()
@@ -124,7 +124,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
     }
 
     // Self-hosted path: generate OAuth redirect URL
-    let app_config = AppConfig::load()?;
+    let app_config = AppConfig::load(&context)?;
 
     let state = format!("{:x}", rand_u64());
 
@@ -149,7 +149,11 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
 }
 
 /// Complete authentication by exchanging credentials for tokens.
-async fn complete_auth(cmd: &Connect, redirect_uri: &str) -> Result<String> {
+async fn complete_auth(
+    context: &ProviderRequestContext,
+    cmd: &Connect,
+    redirect_uri: &str,
+) -> Result<String> {
     let (session_data, auth_mode, access_token) =
         if let Some(access_token) = cmd.data.get("access_token").and_then(|v| v.as_str()) {
             // Hosted flow: tokens already exchanged by caldir.org
@@ -184,7 +188,7 @@ async fn complete_auth(cmd: &Connect, redirect_uri: &str) -> Result<String> {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow::anyhow!("Missing 'code' in credentials"))?;
 
-            let app_config = AppConfig::load()?;
+            let app_config = AppConfig::load(context)?;
 
             let client = reqwest::Client::new();
             let response = client
@@ -238,7 +242,7 @@ async fn complete_auth(cmd: &Connect, redirect_uri: &str) -> Result<String> {
     let account_email = user.email().to_string();
 
     let session = Session::new(&account_email, session_data, auth_mode);
-    session.save()?;
+    session.save(context)?;
 
     Ok(account_email)
 }

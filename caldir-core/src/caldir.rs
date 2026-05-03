@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
 use crate::error::{CalDirError, CalDirResult};
+use crate::remote::protocol::ProviderRequestContext;
+use crate::remote::provider::Provider;
 use config::{Config, File};
 
 #[derive(Clone)]
@@ -77,6 +79,29 @@ impl Caldir {
         self.config.calendar_dir.clone()
     }
 
+    /// Directory containing provider-private storage directories.
+    ///
+    /// For the default config this is `~/.config/caldir/providers`. For tests
+    /// loaded from an explicit config path, provider storage stays next to that
+    /// config instead of falling back to the user's real config directory.
+    pub fn providers_dir(&self) -> PathBuf {
+        self.config_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_default()
+            .join("providers")
+    }
+
+    pub fn provider_dir(&self, provider: &Provider) -> PathBuf {
+        self.providers_dir().join(provider.name())
+    }
+
+    pub fn provider_request_context(&self, provider: &Provider) -> ProviderRequestContext {
+        ProviderRequestContext {
+            provider_dir: self.provider_dir(provider),
+        }
+    }
+
     /// Load a single calendar by slug, anchored at this caldir's data path.
     pub fn calendar(&self, slug: &str) -> CalDirResult<Calendar> {
         Calendar::load(slug, self.data_path())
@@ -138,5 +163,36 @@ impl Caldir {
         self.config.default_calendar = Some(slug.to_string());
         self.config.save_to(&self.config_path)?;
         Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::remote::provider::Provider;
+
+    #[test]
+    fn provider_storage_stays_next_to_loaded_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("profile/config.toml");
+
+        let caldir = Caldir::load(&config_path).unwrap();
+
+        assert_eq!(caldir.providers_dir(), tmp.path().join("profile/providers"));
+        assert_eq!(
+            caldir.provider_dir(&Provider::from_name("google")),
+            tmp.path().join("profile/providers/google")
+        );
+    }
+
+    #[test]
+    fn with_data_path_keeps_provider_storage_in_data_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let caldir = Caldir::with_data_path(tmp.path().join("caldir"));
+
+        assert_eq!(
+            caldir.provider_dir(&Provider::from_name("icloud")),
+            tmp.path().join("caldir/providers/icloud")
+        );
     }
 }

@@ -1,14 +1,14 @@
 use anyhow::{Context, Result};
-use caldir_core::remote::protocol::DeleteEvent;
+use caldir_core::remote::protocol::{DeleteEvent, ProviderRequestContext};
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
 use crate::graph_api::client::GraphClient;
 use crate::remote_config::OutlookRemoteConfig;
 use crate::session::Session;
 
-pub async fn handle(cmd: DeleteEvent) -> Result<()> {
+pub async fn handle(context: ProviderRequestContext, cmd: DeleteEvent) -> Result<()> {
     let config = OutlookRemoteConfig::try_from(&cmd.remote_config)?;
-    let session = Session::load_valid(&config.outlook_account).await?;
+    let session = Session::load_valid(&context, &config.outlook_account).await?;
     let graph = GraphClient::new(session.access_token());
 
     let outlook_event_id = cmd

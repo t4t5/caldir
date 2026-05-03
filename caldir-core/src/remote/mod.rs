@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use crate::date_range::DateRange;
 use crate::error::CalDirResult;
 use crate::event::Event;
+use crate::remote::protocol::ProviderRequestContext;
 use crate::remote::protocol::{CreateEvent, DeleteEvent, ListEvents, UpdateEvent};
 use crate::remote::provider::Provider;
 use serde::{Deserialize, Serialize};
@@ -52,40 +53,68 @@ impl Remote {
         self.config.0.get(&key).and_then(|v| v.as_str())
     }
 
-    pub async fn events(&self, range: &DateRange) -> CalDirResult<Vec<Event>> {
+    pub async fn events(
+        &self,
+        range: &DateRange,
+        context: &ProviderRequestContext,
+    ) -> CalDirResult<Vec<Event>> {
         self.provider
-            .call(ListEvents {
-                remote_config: self.remote_config(),
-                from: range.from_rfc3339(),
-                to: range.to_rfc3339(),
-            })
+            .call(
+                context,
+                ListEvents {
+                    remote_config: self.remote_config(),
+                    from: range.from_rfc3339(),
+                    to: range.to_rfc3339(),
+                },
+            )
             .await
     }
 
-    pub async fn create_event(&self, event: &Event) -> CalDirResult<Event> {
+    pub async fn create_event(
+        &self,
+        event: &Event,
+        context: &ProviderRequestContext,
+    ) -> CalDirResult<Event> {
         self.provider
-            .call(CreateEvent {
-                remote_config: self.remote_config(),
-                event: event.clone(),
-            })
+            .call(
+                context,
+                CreateEvent {
+                    remote_config: self.remote_config(),
+                    event: event.clone(),
+                },
+            )
             .await
     }
 
-    pub async fn update_event(&self, event: &Event) -> CalDirResult<Event> {
+    pub async fn update_event(
+        &self,
+        event: &Event,
+        context: &ProviderRequestContext,
+    ) -> CalDirResult<Event> {
         self.provider
-            .call(UpdateEvent {
-                remote_config: self.remote_config(),
-                event: event.clone(),
-            })
+            .call(
+                context,
+                UpdateEvent {
+                    remote_config: self.remote_config(),
+                    event: event.clone(),
+                },
+            )
             .await
     }
 
-    pub async fn delete_event(&self, event: &Event) -> CalDirResult<()> {
+    pub async fn delete_event(
+        &self,
+        event: &Event,
+        context: &ProviderRequestContext,
+    ) -> CalDirResult<()> {
         self.provider
-            .call(DeleteEvent {
-                remote_config: self.remote_config(),
-                event: event.clone(),
-            })
+            .call(
+                context,
+                DeleteEvent {
+                    remote_config: self.remote_config(),
+                    event: event.clone(),
+                },
+            )
             .await
     }
 }

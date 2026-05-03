@@ -1,11 +1,13 @@
 //! Creates a valid Google session (access token) that we can use to call the gcal API
 
 use anyhow::{Context, Result};
+use caldir_core::remote::protocol::ProviderRequestContext;
 use chrono::{DateTime, Duration, Utc};
 use google_calendar::{AccessToken, Client};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
-use crate::app_config::{AppConfig, base_dir};
+use crate::app_config::AppConfig;
 
 const HOSTED_REFRESH_URL: &str = "https://caldir.org/auth/google/refresh";
 
@@ -59,23 +61,24 @@ impl SessionData {
 }
 
 impl Session {
-    fn path_for_account_email(account_email: &str) -> Result<std::path::PathBuf> {
+    fn path_for_account_email(context: &ProviderRequestContext, account_email: &str) -> PathBuf {
         let email_slug = account_email.replace(['/', '\\', ':'], "_");
 
-        Ok(base_dir()?
+        context
+            .provider_dir
             .join("session")
-            .join(format!("{}.toml", email_slug)))
+            .join(format!("{}.toml", email_slug))
     }
 
-    fn path(&self) -> Result<std::path::PathBuf> {
-        Self::path_for_account_email(&self.account_email)
+    fn path(&self, context: &ProviderRequestContext) -> PathBuf {
+        Self::path_for_account_email(context, &self.account_email)
     }
 
     pub fn access_token(&self) -> &str {
         &self.data.access_token
     }
 
-    pub fn client(&self) -> Result<Client> {
+    pub fn client(&self, context: &ProviderRequestContext) -> Result<Client> {
         match self.data.auth_mode {
             AuthMode::Hosted => {
                 // Hosted mode: no local client_id/secret needed for API calls
@@ -88,7 +91,7 @@ impl Session {
                 ))
             }
             AuthMode::Local => {
-                let app_config = AppConfig::load()?;
+                let app_config = AppConfig::load(context)?;
 
                 Ok(Client::new(
                     app_config.client_id,
@@ -117,20 +120,20 @@ impl Session {
     }
 
     // Load a session and refresh it if expired:
-    pub async fn load_valid(account_email: &str) -> Result<Self> {
-        let session = Self::load(account_email)?;
+    pub async fn load_valid(context: &ProviderRequestContext, account_email: &str) -> Result<Self> {
+        let session = Self::load(context, account_email)?;
 
         if session.is_expired() {
             let mut session = session;
-            session.refresh().await?;
+            session.refresh(context).await?;
             Ok(session)
         } else {
             Ok(session)
         }
     }
 
-    fn load(account_email: &str) -> Result<Self> {
-        let path = Self::path_for_account_email(account_email)?;
+    fn load(context: &ProviderRequestContext, account_email: &str) -> Result<Self> {
+        let path = Self::path_for_account_email(context, account_email);
 
         if !path.exists() {
             anyhow::bail!("Google OAuth session for {} not found!", account_email);
@@ -156,10 +159,10 @@ impl Session {
         })
     }
 
-    pub fn save(&self) -> Result<()> {
+    pub fn save(&self, context: &ProviderRequestContext) -> Result<()> {
         let contents = toml::to_string_pretty(&self.data).context("Failed to serialize session")?;
 
-        let path = self.path()?;
+        let path = self.path(context);
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -184,14 +187,14 @@ impl Session {
         Utc::now() >= self.data.expires_at
     }
 
-    async fn refresh(&mut self) -> Result<()> {
+    async fn refresh(&mut self, context: &ProviderRequestContext) -> Result<()> {
         match self.data.auth_mode {
-            AuthMode::Hosted => self.refresh_hosted().await,
-            AuthMode::Local => self.refresh_local().await,
+            AuthMode::Hosted => self.refresh_hosted(context).await,
+            AuthMode::Local => self.refresh_local(context).await,
         }
     }
 
-    async fn refresh_hosted(&mut self) -> Result<()> {
+    async fn refresh_hosted(&mut self, context: &ProviderRequestContext) -> Result<()> {
         let client = reqwest::Client::new();
 
         let response = client
@@ -221,13 +224,13 @@ impl Session {
 
         self.data.access_token = refresh_data.access_token;
         self.data.expires_at = Utc::now() + Duration::seconds(refresh_data.expires_in);
-        self.save()?;
+        self.save(context)?;
 
         Ok(())
     }
 
-    async fn refresh_local(&mut self) -> Result<()> {
-        let app_config = AppConfig::load()?;
+    async fn refresh_local(&mut self, context: &ProviderRequestContext) -> Result<()> {
+        let app_config = AppConfig::load(context)?;
 
         let client = Client::new(
             app_config.client_id,
@@ -250,7 +253,7 @@ impl Session {
         let session_data: SessionData = (&tokens).into();
 
         self.data = session_data;
-        self.save()?;
+        self.save(context)?;
 
         Ok(())
     }

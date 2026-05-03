@@ -1,6 +1,6 @@
 use anyhow::Result;
 use caldir_core::event::{Event, ParticipationStatus};
-use caldir_core::remote::protocol::UpdateEvent;
+use caldir_core::remote::protocol::{ProviderRequestContext, UpdateEvent};
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
 use crate::graph_api::client::GraphClient;
@@ -10,10 +10,10 @@ use crate::outlook_event::to_outlook::to_outlook;
 use crate::remote_config::OutlookRemoteConfig;
 use crate::session::Session;
 
-pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
+pub async fn handle(context: ProviderRequestContext, cmd: UpdateEvent) -> Result<Event> {
     let config = OutlookRemoteConfig::try_from(&cmd.remote_config)?;
     let account_email = &config.outlook_account;
-    let session = Session::load_valid(account_email).await?;
+    let session = Session::load_valid(&context, account_email).await?;
     let graph = GraphClient::new(session.access_token());
 
     let outlook_event_id = cmd

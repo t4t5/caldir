@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use caldir_core::event::{Event, EventTime};
-use caldir_core::remote::protocol::CreateEvent;
+use caldir_core::remote::protocol::{CreateEvent, ProviderRequestContext};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
@@ -11,9 +11,9 @@ use crate::outlook_event::to_outlook::to_outlook;
 use crate::remote_config::OutlookRemoteConfig;
 use crate::session::Session;
 
-pub async fn handle(cmd: CreateEvent) -> Result<Event> {
+pub async fn handle(context: ProviderRequestContext, cmd: CreateEvent) -> Result<Event> {
     let config = OutlookRemoteConfig::try_from(&cmd.remote_config)?;
-    let session = Session::load_valid(&config.outlook_account).await?;
+    let session = Session::load_valid(&context, &config.outlook_account).await?;
     let graph = GraphClient::new(session.access_token());
 
     // Recurring instance overrides share the master's iCalUId, so POSTing one

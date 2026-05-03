@@ -1,22 +1,12 @@
 //! Credential storage for generic CalDAV authentication.
 //!
-//! Stores server URL, username, password, and discovered URLs at:
-//!   ~/.config/caldir/providers/caldav/session/{slug}.toml
+//! Stores server URL, username, password, and discovered URLs under
+//! `{provider_dir}/session/`.
 
 use anyhow::{Context, Result};
+use caldir_core::remote::protocol::ProviderRequestContext;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-
-use caldir_core::caldir_config::CaldirConfig;
-
-use crate::constants::PROVIDER_NAME;
-
-pub fn base_dir() -> Result<PathBuf> {
-    Ok(CaldirConfig::config_dir()
-        .context("Could not determine caldir config directory")?
-        .join("providers")
-        .join(PROVIDER_NAME))
-}
 
 /// Generic CalDAV session (credentials + discovered URLs).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -41,13 +31,16 @@ impl Session {
         raw.replace(['/', '\\', ':', '@', '.'], "_")
     }
 
-    fn path_for(username: &str, server_url: &str) -> Result<PathBuf> {
+    fn path_for(context: &ProviderRequestContext, username: &str, server_url: &str) -> PathBuf {
         let slug = Self::slug(username, server_url);
-        Ok(base_dir()?.join("session").join(format!("{}.toml", slug)))
+        context
+            .provider_dir
+            .join("session")
+            .join(format!("{}.toml", slug))
     }
 
-    fn path(&self) -> Result<PathBuf> {
-        Self::path_for(&self.username, &self.server_url)
+    fn path(&self, context: &ProviderRequestContext) -> PathBuf {
+        Self::path_for(context, &self.username, &self.server_url)
     }
 
     /// Build an account identifier like "user@host".
@@ -75,10 +68,10 @@ impl Session {
         }
     }
 
-    pub fn load(account_identifier: &str) -> Result<Self> {
+    pub fn load(context: &ProviderRequestContext, account_identifier: &str) -> Result<Self> {
         // account_identifier is "user@host" — we need to find the session file
         // by scanning the session directory since slug encoding may differ
-        let session_dir = base_dir()?.join("session");
+        let session_dir = context.provider_dir.join("session");
         if !session_dir.exists() {
             anyhow::bail!("CalDAV session for {} not found!", account_identifier);
         }
@@ -100,8 +93,8 @@ impl Session {
         anyhow::bail!("CalDAV session for {} not found!", account_identifier);
     }
 
-    pub fn save(&self) -> Result<()> {
-        let path = self.path()?;
+    pub fn save(&self, context: &ProviderRequestContext) -> Result<()> {
+        let path = self.path(context);
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).with_context(|| {

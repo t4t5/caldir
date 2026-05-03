@@ -2,12 +2,19 @@
 
 use anyhow::Result;
 use caldir_core::calendar::config::CalendarConfig;
-use caldir_core::remote::{Remote, protocol::ListCalendars, provider::Provider};
+use caldir_core::remote::{
+    Remote,
+    protocol::{ListCalendars, ProviderRequestContext},
+    provider::Provider,
+};
 
 use crate::constants::PROVIDER_NAME;
 use crate::remote_config::WebcalRemoteConfig;
 
-pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
+pub async fn handle(
+    _context: ProviderRequestContext,
+    cmd: ListCalendars,
+) -> Result<Vec<CalendarConfig>> {
     // The account_identifier IS the URL for webcal subscriptions
     let url = &cmd.account_identifier;
 

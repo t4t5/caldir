@@ -26,7 +26,7 @@ pub async fn run(
             println!("   {}", "(local only)".dimmed());
         } else {
             let spinner = tui::create_spinner(cal.render(config));
-            let result = CalendarDiff::from_calendar(cal, &range).await;
+            let result = CalendarDiff::from_calendar(caldir, cal, &range).await;
             spinner.finish_and_clear();
             println!("{}", cal.render(config));
 

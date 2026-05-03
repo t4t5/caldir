@@ -2,15 +2,22 @@
 
 use anyhow::Result;
 use caldir_core::calendar::config::CalendarConfig;
-use caldir_core::remote::{Remote, protocol::ListCalendars, provider::Provider};
+use caldir_core::remote::{
+    Remote,
+    protocol::{ListCalendars, ProviderRequestContext},
+    provider::Provider,
+};
 use caldir_provider_caldav::ops;
 
 use crate::constants::PROVIDER_NAME;
 use crate::remote_config::CaldavRemoteConfig;
 use crate::session::Session;
 
-pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
-    let session = Session::load(&cmd.account_identifier)?;
+pub async fn handle(
+    context: ProviderRequestContext,
+    cmd: ListCalendars,
+) -> Result<Vec<CalendarConfig>> {
+    let session = Session::load(&context, &cmd.account_identifier)?;
     let (username, password) = session.credentials();
 
     let raw_calendars =

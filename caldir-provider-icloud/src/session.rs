@@ -1,22 +1,11 @@
 //! Credential storage for iCloud CalDAV authentication.
 //!
-//! Stores Apple ID + app-specific password at:
-//!   ~/.config/caldir/providers/icloud/session/{apple_id_slug}.toml
+//! Stores Apple ID + app-specific password under `{provider_dir}/session/`.
 
 use anyhow::{Context, Result};
+use caldir_core::remote::protocol::ProviderRequestContext;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-
-use caldir_core::caldir_config::CaldirConfig;
-
-use crate::constants::PROVIDER_NAME;
-
-pub fn base_dir() -> Result<PathBuf> {
-    Ok(CaldirConfig::config_dir()
-        .context("Could not determine caldir config directory")?
-        .join("providers")
-        .join(PROVIDER_NAME))
-}
 
 /// iCloud CalDAV session (credentials + discovered URLs).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,13 +19,16 @@ pub struct Session {
 }
 
 impl Session {
-    fn path_for_apple_id(apple_id: &str) -> Result<PathBuf> {
+    fn path_for_apple_id(context: &ProviderRequestContext, apple_id: &str) -> PathBuf {
         let slug = apple_id.replace(['/', '\\', ':', '@', '.'], "_");
-        Ok(base_dir()?.join("session").join(format!("{}.toml", slug)))
+        context
+            .provider_dir
+            .join("session")
+            .join(format!("{}.toml", slug))
     }
 
-    fn path(&self) -> Result<PathBuf> {
-        Self::path_for_apple_id(&self.apple_id)
+    fn path(&self, context: &ProviderRequestContext) -> PathBuf {
+        Self::path_for_apple_id(context, &self.apple_id)
     }
 
     pub fn new(
@@ -53,8 +45,8 @@ impl Session {
         }
     }
 
-    pub fn load(apple_id: &str) -> Result<Self> {
-        let path = Self::path_for_apple_id(apple_id)?;
+    pub fn load(context: &ProviderRequestContext, apple_id: &str) -> Result<Self> {
+        let path = Self::path_for_apple_id(context, apple_id);
 
         if !path.exists() {
             anyhow::bail!("iCloud session for {} not found!", apple_id);
@@ -69,8 +61,8 @@ impl Session {
         Ok(session)
     }
 
-    pub fn save(&self) -> Result<()> {
-        let path = self.path()?;
+    pub fn save(&self, context: &ProviderRequestContext) -> Result<()> {
+        let path = self.path(context);
 
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {

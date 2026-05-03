@@ -1,15 +1,15 @@
 //! Delete an event from iCloud Calendar.
 
 use anyhow::Result;
-use caldir_core::remote::protocol::DeleteEvent;
+use caldir_core::remote::protocol::{DeleteEvent, ProviderRequestContext};
 use caldir_provider_caldav::ops;
 
 use crate::remote_config::ICloudRemoteConfig;
 use crate::session::Session;
 
-pub async fn handle(cmd: DeleteEvent) -> Result<()> {
+pub async fn handle(context: ProviderRequestContext, cmd: DeleteEvent) -> Result<()> {
     let config = ICloudRemoteConfig::try_from(&cmd.remote_config)?;
-    let session = Session::load(&config.icloud_account)?;
+    let session = Session::load(&context, &config.icloud_account)?;
     let (username, password) = session.credentials();
 
     ops::delete_event(

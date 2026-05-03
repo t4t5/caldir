@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use caldir_core::event::{CustomProperty, Event, EventStatus, EventTime, Reminders};
-use caldir_core::remote::protocol::ListEvents;
+use caldir_core::remote::protocol::{ListEvents, ProviderRequestContext};
 use google_calendar::types::OrderBy;
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
@@ -10,12 +10,14 @@ use crate::google_event::{FromGoogle, google_dt_to_event_time};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::Session;
 
-pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
+pub async fn handle(context: ProviderRequestContext, cmd: ListEvents) -> Result<Vec<Event>> {
     let config = GoogleRemoteConfig::try_from(&cmd.remote_config)?;
     let account_email = &config.google_account;
     let calendar_id = &config.google_calendar_id;
 
-    let client = Session::load_valid(account_email).await?.client()?;
+    let client = Session::load_valid(&context, account_email)
+        .await?
+        .client(&context)?;
 
     let google_events = client
         .events()

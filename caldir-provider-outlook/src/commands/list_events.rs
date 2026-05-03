@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use caldir_core::event::Event;
-use caldir_core::remote::protocol::ListEvents;
+use caldir_core::remote::protocol::{ListEvents, ProviderRequestContext};
 use chrono::{DateTime, Utc};
 
 use crate::graph_api::client::GraphClient;
@@ -11,9 +11,9 @@ use crate::outlook_event::from_outlook::from_outlook;
 use crate::remote_config::OutlookRemoteConfig;
 use crate::session::Session;
 
-pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
+pub async fn handle(context: ProviderRequestContext, cmd: ListEvents) -> Result<Vec<Event>> {
     let config = OutlookRemoteConfig::try_from(&cmd.remote_config)?;
-    let session = Session::load_valid(&config.outlook_account).await?;
+    let session = Session::load_valid(&context, &config.outlook_account).await?;
     let graph = GraphClient::new(session.access_token());
 
     // `/events` returns single events and recurring series masters (with

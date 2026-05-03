@@ -8,13 +8,14 @@
 use anyhow::Result;
 use caldir_core::remote::protocol::{
     Connect, ConnectResponse, ConnectStepKind, CredentialField, CredentialsData, FieldType,
+    ProviderRequestContext,
 };
 use caldir_provider_caldav::ops;
 
 use crate::constants::CALDAV_ENDPOINT;
 use crate::session::Session;
 
-pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
+pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<ConnectResponse> {
     // If data contains credentials, this is the submit step.
     if cmd.data.contains_key("apple_id") {
         let apple_id = cmd
@@ -37,7 +38,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
             &endpoints.principal_url,
             &endpoints.calendar_home_url,
         );
-        session.save()?;
+        session.save(&context)?;
 
         return Ok(ConnectResponse::Done {
             account_identifier: apple_id.to_string(),

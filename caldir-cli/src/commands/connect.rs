@@ -25,6 +25,8 @@ fn build_options(hosted: bool, redirect_uri: &str) -> serde_json::Map<String, se
 
 pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     let provider = Provider::from_name(provider_name);
+    let mut caldir = Caldir::load(CaldirConfig::config_path()?)?;
+    let provider_context = caldir.provider_request_context(&provider);
 
     // Bind to port 0 so the OS picks a free port
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -39,7 +41,9 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     // Connect loop: keep calling `connect` until the provider says Done.
     let mut data = serde_json::Map::new();
     let account_identifier = loop {
-        let response = provider.connect(options.clone(), data.clone()).await?;
+        let response = provider
+            .connect(&provider_context, options.clone(), data.clone())
+            .await?;
 
         match response {
             ConnectResponse::Done { account_identifier } => {
@@ -162,7 +166,8 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
         }
     };
 
-    let provider_account = provider.provider_account(account_identifier.clone());
+    let provider_account =
+        provider.provider_account(account_identifier.clone(), provider_context.clone());
 
     println!("Authenticated as: {}\n", account_identifier);
     println!("Fetching calendars...");
@@ -179,7 +184,6 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
 
     // Skip calendars whose remote already matches a local one — keeps re-running
     // `connect` idempotent instead of spawning `personal-2/` next to `personal/`.
-    let mut caldir = Caldir::load(CaldirConfig::config_path()?)?;
     let existing = caldir.calendars();
 
     let mut new_configs: Vec<CalendarConfig> = Vec::new();

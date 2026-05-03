@@ -5,16 +5,26 @@
 
 use anyhow::{Context, Result};
 use caldir_core::calendar::config::CalendarConfig;
-use caldir_core::remote::{Remote, protocol::ListCalendars, provider::Provider};
+use caldir_core::remote::{
+    Remote,
+    protocol::{ListCalendars, ProviderRequestContext},
+    provider::Provider,
+};
 use google_calendar::types::MinAccessRole;
 
+use crate::constants::PROVIDER_NAME;
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::Session;
 
-pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
+pub async fn handle(
+    context: ProviderRequestContext,
+    cmd: ListCalendars,
+) -> Result<Vec<CalendarConfig>> {
     let account_email = &cmd.account_identifier;
 
-    let client = Session::load_valid(account_email).await?.client()?;
+    let client = Session::load_valid(&context, account_email)
+        .await?
+        .client(&context)?;
 
     let google_calendars = client
         .calendar_list()
@@ -27,7 +37,7 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
         .iter()
         .map(|cal| {
             let remote_config = GoogleRemoteConfig::new(account_email, &cal.id);
-            let remote = Remote::new(Provider::from_name("google"), remote_config.into());
+            let remote = Remote::new(Provider::from_name(PROVIDER_NAME), remote_config.into());
             let read_only = !matches!(cal.access_role.as_str(), "writer" | "owner");
 
             CalendarConfig {

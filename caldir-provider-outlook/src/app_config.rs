@@ -1,22 +1,11 @@
 //! App-level configuration for the Outlook provider.
 //!
-//! User-provided Azure AD OAuth credentials stored at:
-//!   ~/.config/caldir/providers/outlook/app_config.toml
+//! User-provided Azure AD OAuth credentials stored at `{provider_dir}/app_config.toml`.
 
 use anyhow::{Context, Result};
+use caldir_core::remote::protocol::ProviderRequestContext;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-
-use caldir_core::caldir_config::CaldirConfig;
-
-use crate::constants::PROVIDER_NAME;
-
-pub fn base_dir() -> Result<PathBuf> {
-    Ok(CaldirConfig::config_dir()
-        .context("Could not determine caldir config directory")?
-        .join("providers")
-        .join(PROVIDER_NAME))
-}
 
 /// Azure AD OAuth client credentials (user-provided).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,16 +15,16 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    fn path() -> Result<PathBuf> {
-        Ok(base_dir()?.join("app_config.toml"))
+    fn path(context: &ProviderRequestContext) -> PathBuf {
+        context.provider_dir.join("app_config.toml")
     }
 
-    pub fn exists() -> Result<bool> {
-        Ok(Self::path()?.exists())
+    pub fn exists(context: &ProviderRequestContext) -> bool {
+        Self::path(context).exists()
     }
 
-    pub fn load() -> Result<Self> {
-        let path = Self::path()?;
+    pub fn load(context: &ProviderRequestContext) -> Result<Self> {
+        let path = Self::path(context);
 
         if !path.exists() {
             anyhow::bail!(
@@ -53,8 +42,8 @@ impl AppConfig {
         Ok(app_config)
     }
 
-    pub fn save(&self) -> Result<()> {
-        let path = Self::path()?;
+    pub fn save(&self, context: &ProviderRequestContext) -> Result<()> {
+        let path = Self::path(context);
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)

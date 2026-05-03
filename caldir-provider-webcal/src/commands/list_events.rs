@@ -3,12 +3,12 @@
 use anyhow::Result;
 use caldir_core::event::Event;
 use caldir_core::ics::parse_events;
-use caldir_core::remote::protocol::ListEvents;
+use caldir_core::remote::protocol::{ListEvents, ProviderRequestContext};
 use chrono::{DateTime, Utc};
 
 use crate::remote_config::WebcalRemoteConfig;
 
-pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
+pub async fn handle(_context: ProviderRequestContext, cmd: ListEvents) -> Result<Vec<Event>> {
     let config = WebcalRemoteConfig::try_from(&cmd.remote_config)?;
 
     // Fetch the ICS feed

@@ -11,7 +11,7 @@
 
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::protocol::{
-    Command, Connect, ConnectResponse, ProviderCommand, Request, Response,
+    Command, Connect, ConnectResponse, ProviderCommand, ProviderRequestContext, Request, Response,
 };
 use crate::remote::provider_account::ProviderAccount;
 use serde::{Deserialize, Serialize};
@@ -108,30 +108,44 @@ impl Provider {
     /// or `ConnectResponse::Done` with the account identifier when complete.
     pub async fn connect(
         &self,
+        context: &ProviderRequestContext,
         options: serde_json::Map<String, serde_json::Value>,
         data: serde_json::Map<String, serde_json::Value>,
     ) -> CalDirResult<ConnectResponse> {
-        self.call_no_timeout(Connect { options, data }).await
+        self.call_no_timeout(context, Connect { options, data })
+            .await
     }
 
     /// Wrap a `ConnectResponse::Done` into a `ProviderAccount`.
-    pub fn provider_account(&self, identifier: String) -> ProviderAccount {
-        ProviderAccount::new(self.clone(), identifier)
+    pub fn provider_account(
+        &self,
+        identifier: String,
+        context: ProviderRequestContext,
+    ) -> ProviderAccount {
+        ProviderAccount::new(self.clone(), identifier, context)
     }
 
     /// Call a typed provider command and return the result.
     ///
     /// The response type is inferred from the command's associated type,
     /// ensuring compile-time type safety.
-    pub async fn call<C: ProviderCommand>(&self, cmd: C) -> CalDirResult<C::Response> {
-        timeout(PROVIDER_TIMEOUT, self.call_raw(C::command(), cmd))
+    pub async fn call<C: ProviderCommand>(
+        &self,
+        context: &ProviderRequestContext,
+        cmd: C,
+    ) -> CalDirResult<C::Response> {
+        timeout(PROVIDER_TIMEOUT, self.call_raw(context, C::command(), cmd))
             .await
             .map_err(|_| CalDirError::ProviderTimeout(PROVIDER_TIMEOUT.as_secs()))?
     }
 
     /// Call a typed provider command without timeout (for auth commands that involve user interaction).
-    pub async fn call_no_timeout<C: ProviderCommand>(&self, cmd: C) -> CalDirResult<C::Response> {
-        timeout(AUTH_TIMEOUT, self.call_raw(C::command(), cmd))
+    pub async fn call_no_timeout<C: ProviderCommand>(
+        &self,
+        context: &ProviderRequestContext,
+        cmd: C,
+    ) -> CalDirResult<C::Response> {
+        timeout(AUTH_TIMEOUT, self.call_raw(context, C::command(), cmd))
             .await
             .map_err(|_| CalDirError::ProviderTimeout(AUTH_TIMEOUT.as_secs()))?
     }
@@ -139,12 +153,17 @@ impl Provider {
     /// Low-level call that sends a command with params and deserializes the response.
     async fn call_raw<P: Serialize, R: serde::de::DeserializeOwned>(
         &self,
+        context: &ProviderRequestContext,
         command: Command,
         params: P,
     ) -> CalDirResult<R> {
         let params =
             serde_json::to_value(params).map_err(|e| CalDirError::Serialization(e.to_string()))?;
-        let request = Request { command, params };
+        let request = Request {
+            command,
+            context: context.clone(),
+            params,
+        };
         let request_json = serde_json::to_string(&request)
             .map_err(|e| CalDirError::Serialization(e.to_string()))?;
 

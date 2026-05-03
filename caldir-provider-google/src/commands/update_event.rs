@@ -1,6 +1,6 @@
 use anyhow::Result;
 use caldir_core::event::Event;
-use caldir_core::remote::protocol::UpdateEvent;
+use caldir_core::remote::protocol::{ProviderRequestContext, UpdateEvent};
 use google_calendar::types::SendUpdates;
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
@@ -9,12 +9,12 @@ use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::Session;
 
-pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
+pub async fn handle(context: ProviderRequestContext, cmd: UpdateEvent) -> Result<Event> {
     let config = GoogleRemoteConfig::try_from(&cmd.remote_config)?;
     let account_email = &config.google_account;
     let calendar_id = &config.google_calendar_id;
 
-    let session = Session::load_valid(account_email).await?;
+    let session = Session::load_valid(&context, account_email).await?;
 
     // Get Google's event ID from custom properties
     let google_event_id = cmd
@@ -37,7 +37,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
         Ok(Event::from_google(google_event)?)
     } else {
         // Organizer or own event: full PUT update
-        let client = session.client()?;
+        let client = session.client(&context)?;
         let google_event = cmd.event.to_google();
 
         let response = client

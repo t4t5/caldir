@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use caldir_core::event::{Event, EventTime};
-use caldir_core::remote::protocol::CreateEvent;
+use caldir_core::remote::protocol::{CreateEvent, ProviderRequestContext};
 use google_calendar::types::SendUpdates;
 
 use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
@@ -8,12 +8,14 @@ use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::Session;
 
-pub async fn handle(cmd: CreateEvent) -> Result<Event> {
+pub async fn handle(context: ProviderRequestContext, cmd: CreateEvent) -> Result<Event> {
     let config = GoogleRemoteConfig::try_from(&cmd.remote_config)?;
     let account_email = &config.google_account;
     let calendar_id = &config.google_calendar_id;
 
-    let client = Session::load_valid(account_email).await?.client()?;
+    let client = Session::load_valid(&context, account_email)
+        .await?
+        .client(&context)?;
 
     // Recurring instance overrides share the master's iCalUID, so creating
     // them via events().insert() trips Google's "duplicate identifier" check.
