@@ -127,7 +127,7 @@ fn provider_search_dirs_from_process() -> Vec<PathBuf> {
         .collect()
 }
 
-pub fn default_providers_data_dir(config_path: &Path) -> PathBuf {
+fn default_providers_data_dir(config_path: &Path) -> PathBuf {
     config_path
         .parent()
         .map(Path::to_path_buf)

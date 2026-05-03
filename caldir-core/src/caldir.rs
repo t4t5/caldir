@@ -1,13 +1,12 @@
 //! Master struct. Everything else flows from here.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::caldir_settings::CaldirSettings;
 use crate::calendar::Calendar;
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::provider::Provider;
 
-#[derive(Clone)]
 pub struct Caldir {
     settings: CaldirSettings,
     providers: Vec<Provider>,
@@ -34,10 +33,6 @@ impl Caldir {
 
     pub fn settings(&self) -> &CaldirSettings {
         &self.settings
-    }
-
-    pub fn config_path(&self) -> &Path {
-        self.settings.config_path()
     }
 
     /// Persist the current settings back to the config file.
@@ -141,26 +136,52 @@ pub(crate) mod test_support {
     use super::*;
     use crate::caldir_config::CaldirConfig;
     use crate::caldir_settings::CaldirSettings;
+    use std::ops::{Deref, DerefMut};
     use tempfile::TempDir;
 
-    /// Build a fresh Caldir rooted at a tempdir, with no providers. The
-    /// TempDir is returned alongside so it stays alive for the test's
-    /// lifetime — drop it and the calendar dir disappears.
-    pub fn mock_caldir() -> (TempDir, Caldir) {
-        let tmp = tempfile::tempdir().unwrap();
-        let calendar_dir = tmp.path().join("caldir");
-        let config_path = tmp.path().join("config.toml");
-        std::fs::create_dir_all(&calendar_dir).unwrap();
-        let settings = CaldirSettings::from_config(
-            &config_path,
-            CaldirConfig {
-                calendar_dir,
-                ..CaldirConfig::new()
-            },
-            Vec::<PathBuf>::new(),
-        );
-        let caldir = Caldir::new(settings, Vec::new());
-        (tmp, caldir)
+    pub struct TestCaldir {
+        _tmp: TempDir,
+        caldir: Caldir,
+    }
+
+    impl TestCaldir {
+        pub fn new() -> Self {
+            let tmp = tempfile::tempdir().unwrap();
+            let calendar_dir = tmp.path().join("caldir");
+            let config_path = tmp.path().join("config.toml");
+            std::fs::create_dir_all(&calendar_dir).unwrap();
+            let settings = CaldirSettings::from_config(
+                &config_path,
+                CaldirConfig {
+                    calendar_dir,
+                    ..CaldirConfig::new()
+                },
+                Vec::<PathBuf>::new(),
+            );
+            let caldir = Caldir::new(settings, Vec::new());
+
+            Self { _tmp: tmp, caldir }
+        }
+    }
+
+    impl Deref for TestCaldir {
+        type Target = Caldir;
+
+        fn deref(&self) -> &Self::Target {
+            &self.caldir
+        }
+    }
+
+    impl DerefMut for TestCaldir {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.caldir
+        }
+    }
+
+    /// Build a fresh Caldir rooted at a tempdir, with no providers.
+    /// The wrapper owns the tempdir for the test's lifetime.
+    pub fn mock_caldir() -> TestCaldir {
+        TestCaldir::new()
     }
 }
 
@@ -172,7 +193,7 @@ mod tests {
 
     #[test]
     fn calendars_returns_error_for_invalid_calendar_config() {
-        let (_tmp, caldir) = mock_caldir();
+        let caldir = mock_caldir();
         let config_dir = caldir.data_path().join("work/.caldir");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("config.toml"), "remote =").unwrap();
@@ -202,10 +223,9 @@ mod tests {
 
     #[test]
     fn save_config_writes_to_the_configured_path() {
-        let (tmp, mut caldir) = mock_caldir();
-        let config_path = tmp.path().join("config.toml");
+        let mut caldir = mock_caldir();
+        let config_path = caldir.settings().config_path().to_path_buf();
 
-        assert_eq!(caldir.config_path(), config_path.as_path());
         assert!(caldir.set_default_calendar_if_unset("work"));
         caldir.save_config().unwrap();
 
