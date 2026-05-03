@@ -4,7 +4,6 @@ use std::str::FromStr;
 
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
-use caldir_core::caldir_config::CaldirConfig;
 use caldir_core::calendar::Calendar;
 use caldir_core::event::ParticipationStatus;
 
@@ -15,20 +14,20 @@ use caldir_core::ics::parse_event;
 use chrono::Duration;
 use owo_colors::OwoColorize;
 
-pub fn run(path: Option<String>, response: Option<String>) -> Result<()> {
+pub fn run(caldir: &Caldir, path: Option<String>, response: Option<String>) -> Result<()> {
     match (path, response) {
-        (Some(path), Some(response)) => run_direct(&path, &response),
+        (Some(path), Some(response)) => run_direct(caldir, &path, &response),
         (Some(path), None) => {
             anyhow::bail!(
                 "Missing response. Usage: caldir rsvp {} accept|decline|maybe",
                 path
             );
         }
-        _ => run_interactive(),
+        _ => run_interactive(caldir),
     }
 }
 
-fn run_direct(path_str: &str, response_str: &str) -> Result<()> {
+fn run_direct(caldir: &Caldir, path_str: &str, response_str: &str) -> Result<()> {
     let path = PathBuf::from(path_str);
     if !path.exists() {
         anyhow::bail!("File not found: {}", path.display());
@@ -46,7 +45,6 @@ fn run_direct(path_str: &str, response_str: &str) -> Result<()> {
         .and_then(|n| n.to_str())
         .context("Cannot determine calendar slug")?;
 
-    let caldir = Caldir::load(CaldirConfig::config_path()?)?;
     let calendar = caldir
         .calendar(cal_slug)
         .context(format!("Failed to load calendar '{}'", cal_slug))?;
@@ -78,8 +76,8 @@ fn run_direct(path_str: &str, response_str: &str) -> Result<()> {
     Ok(())
 }
 
-fn run_interactive() -> Result<()> {
-    let caldir = Caldir::load(CaldirConfig::config_path()?)?;
+fn run_interactive(caldir: &Caldir) -> Result<()> {
+    let config = caldir.config();
     let calendars = caldir.calendars();
 
     let today = start_of_today();
@@ -142,7 +140,7 @@ fn run_interactive() -> Result<()> {
             .map(|o| o.name.as_deref().unwrap_or(&o.email).to_string())
             .unwrap_or_else(|| "(unknown)".to_string());
 
-        println!("{}", format_event_line(event, &calendar.slug, ""));
+        println!("{}", format_event_line(event, &calendar.slug, "", config));
         println!("       {} {}", "from:".dimmed(), organizer.dimmed());
         print!("  [a]ccept  [d]ecline  [m]aybe  [s]kip: ");
         io::stdout().flush()?;

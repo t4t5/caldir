@@ -1,17 +1,6 @@
-use std::sync::LazyLock;
-
-use caldir_core::caldir::Caldir;
 use caldir_core::caldir_config::{CaldirConfig, TimeFormat};
 use caldir_core::event::EventTime;
 use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
-
-/// Lazily loaded time format from global config. Defaults to 24h if config can't be read.
-static TIME_FORMAT: LazyLock<TimeFormat> = LazyLock::new(|| {
-    CaldirConfig::config_path()
-        .and_then(Caldir::load)
-        .map(|c| c.config().time_format)
-        .unwrap_or_default()
-});
 
 /// Convert a zoned datetime to the system's local NaiveDateTime.
 /// Falls back to the original datetime if the timezone can't be parsed.
@@ -76,24 +65,24 @@ fn format_naive_time(dt: &NaiveDateTime, time_format: TimeFormat) -> String {
 }
 
 /// Format the time portion of an event (e.g. "  15:00" or " 3:00pm" or "all-day"), right-padded to 7 chars
-pub fn format_time_only(time: &EventTime) -> String {
+pub fn format_time_only(time: &EventTime, config: &CaldirConfig) -> String {
     match time {
         EventTime::Date(_) => "all-day".to_string(),
         EventTime::DateTimeUtc(dt) => {
             let local = dt.with_timezone(&chrono::Local).naive_local();
-            format_naive_time(&local, *TIME_FORMAT)
+            format_naive_time(&local, config.time_format)
         }
-        EventTime::DateTimeFloating(dt) => format_naive_time(dt, *TIME_FORMAT),
+        EventTime::DateTimeFloating(dt) => format_naive_time(dt, config.time_format),
         EventTime::DateTimeZoned { datetime, tzid } => {
-            format_naive_time(&zoned_to_local(datetime, tzid), *TIME_FORMAT)
+            format_naive_time(&zoned_to_local(datetime, tzid), config.time_format)
         }
     }
 }
 
 /// Format a compact date+time string (e.g. "Today 15:00", "Tomorrow all-day", "Wed Mar 20 15:00")
 /// Used in contexts where events are not grouped by date (e.g. status/diff output).
-pub fn format_datetime(time: &EventTime) -> String {
+pub fn format_datetime(time: &EventTime, config: &CaldirConfig) -> String {
     let date_label = format_date_only(time);
-    let time_label = format_time_only(time).trim_start().to_string();
+    let time_label = format_time_only(time, config).trim_start().to_string();
     format!("{}, {}", date_label, time_label)
 }

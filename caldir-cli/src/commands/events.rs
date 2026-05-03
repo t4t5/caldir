@@ -1,4 +1,5 @@
 use anyhow::Result;
+use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
 use chrono::{DateTime, Duration, Utc};
 use owo_colors::OwoColorize;
@@ -7,10 +8,12 @@ use crate::render::{format_event_line, render_participation_status};
 use crate::utils::date::{format_date_only, start_of_today};
 
 pub fn run(
+    caldir: &Caldir,
     calendars: Vec<Calendar>,
     from: Option<DateTime<Utc>>,
     to: Option<DateTime<Utc>>,
 ) -> Result<()> {
+    let config = caldir.config();
     let today = start_of_today();
     let from = from.unwrap_or(today);
     let to = to.unwrap_or(today + Duration::days(3));
@@ -58,7 +61,10 @@ pub fn run(
             .and_then(|e| event.my_status(e))
             .map(|status| format!(" ({})", render_participation_status(status)))
             .unwrap_or_default();
-        println!("{}", format_event_line(event, cal_slug, &invite_indicator));
+        println!(
+            "{}",
+            format_event_line(event, cal_slug, &invite_indicator, config)
+        );
     }
 
     Ok(())

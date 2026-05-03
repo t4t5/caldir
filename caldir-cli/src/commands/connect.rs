@@ -268,7 +268,7 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
 
     if !calendars.is_empty() {
         println!("Pulling events...\n");
-        super::pull::run(calendars, DateRange::default(), false).await?;
+        super::pull::run(&caldir, calendars, DateRange::default(), false).await?;
     }
 
     Ok(())

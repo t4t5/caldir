@@ -1,4 +1,5 @@
 use anyhow::Result;
+use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
 use chrono::Duration;
 use owo_colors::OwoColorize;
@@ -6,7 +7,8 @@ use owo_colors::OwoColorize;
 use crate::render::{format_event_line, render_participation_status};
 use crate::utils::date::{format_date_only, start_of_today};
 
-pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
+pub fn run(caldir: &Caldir, calendars: Vec<Calendar>, all: bool) -> Result<()> {
+    let config = caldir.config();
     let today = start_of_today();
     let from = today;
     let to = today + Duration::days(30);
@@ -67,7 +69,8 @@ pub fn run(calendars: Vec<Calendar>, all: bool) -> Result<()> {
             .my_status(email)
             .map(|s| format!(" ({})", render_participation_status(s)))
             .unwrap_or_default();
-        println!("{}", format_event_line(event, cal_slug, &status));
+        println!("{}", format_event_line(event, cal_slug, &status, config));
+
         if let Some(organizer) = event.organizer.as_ref().filter(|o| !o.email.is_empty()) {
             println!("       {} {}", "from:".dimmed(), organizer.email.dimmed());
         }

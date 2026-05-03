@@ -1,4 +1,5 @@
 use anyhow::Result;
+use caldir_core::caldir::Caldir;
 use caldir_core::calendar::Calendar;
 use caldir_core::date_range::DateRange;
 use caldir_core::diff::CalendarDiff;
@@ -7,20 +8,26 @@ use owo_colors::OwoColorize;
 use crate::render::{CalendarDiffRender, Render};
 use crate::utils::tui;
 
-pub async fn run(calendars: Vec<Calendar>, range: DateRange, verbose: bool) -> Result<()> {
+pub async fn run(
+    caldir: &Caldir,
+    calendars: Vec<Calendar>,
+    range: DateRange,
+    verbose: bool,
+) -> Result<()> {
+    let config = caldir.config();
     for (i, cal) in calendars.iter().enumerate() {
         if cal.remote().is_none() {
-            println!("{}", cal.render());
+            println!("{}", cal.render(config));
             println!("   {}", "(local only)".dimmed());
         } else {
-            let spinner = tui::create_spinner(cal.render());
+            let spinner = tui::create_spinner(cal.render(config));
             let result = CalendarDiff::from_calendar(cal, &range).await;
             spinner.finish_and_clear();
 
-            println!("{}", cal.render());
+            println!("{}", cal.render(config));
 
             match result {
-                Ok(diff) => println!("{}", diff.render(verbose)),
+                Ok(diff) => println!("{}", diff.render(verbose, config)),
                 Err(e) => println!("   {}", e.to_string().red()),
             }
         }
