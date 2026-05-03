@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
-use caldir_core::caldir_config::CaldirConfig;
 use caldir_core::calendar::Calendar;
 use caldir_core::calendar::config::CalendarConfig;
 use caldir_core::date_range::DateRange;
@@ -23,11 +22,7 @@ fn build_options(hosted: bool, redirect_uri: &str) -> serde_json::Map<String, se
     options
 }
 
-pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
-    let provider = Provider::from_name(provider_name);
-    let mut caldir = Caldir::load(CaldirConfig::config_path()?)?;
-    let provider_context = caldir.provider_request_context(&provider);
-
+pub async fn run(mut caldir: Caldir, provider: Provider, hosted: bool) -> Result<()> {
     // Bind to port 0 so the OS picks a free port
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -36,14 +31,12 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     let redirect_uri = format!("http://localhost:{}/callback", port);
     let options = build_options(hosted, &redirect_uri);
 
-    println!("Connecting to {provider_name}...\n");
+    println!("Connecting to {}...\n", provider.name());
 
     // Connect loop: keep calling `connect` until the provider says Done.
     let mut data = serde_json::Map::new();
     let account_identifier = loop {
-        let response = provider
-            .connect(&provider_context, options.clone(), data.clone())
-            .await?;
+        let response = provider.connect(options.clone(), data.clone()).await?;
 
         match response {
             ConnectResponse::Done { account_identifier } => {
@@ -166,8 +159,7 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
         }
     };
 
-    let provider_account =
-        provider.provider_account(account_identifier.clone(), provider_context.clone());
+    let provider_account = provider.provider_account(account_identifier.clone());
 
     println!("Authenticated as: {}\n", account_identifier);
     println!("Fetching calendars...");

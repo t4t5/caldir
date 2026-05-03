@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use crate::date_range::DateRange;
 use crate::error::CalDirResult;
 use crate::event::Event;
-use crate::remote::protocol::ProviderRequestContext;
 use crate::remote::protocol::{CreateEvent, DeleteEvent, ListEvents, UpdateEvent};
 use crate::remote::provider::Provider;
 use serde::{Deserialize, Serialize};
@@ -28,7 +27,7 @@ impl From<&RemoteConfig> for serde_json::Map<String, serde_json::Value> {
 /// Remote provider configuration (e.g., Google Calendar settings)
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Remote {
-    pub provider: Provider,
+    pub provider: String,
     #[serde(flatten)]
     pub config: RemoteConfig,
 }
@@ -38,8 +37,11 @@ impl Remote {
         serde_json::Map::from(&self.config)
     }
 
-    pub fn new(provider: Provider, config: RemoteConfig) -> Self {
-        Remote { provider, config }
+    pub fn new(provider: impl Into<String>, config: RemoteConfig) -> Self {
+        Remote {
+            provider: provider.into(),
+            config,
+        }
     }
 
     /// Returns the account identifier for this remote, if present.
@@ -49,72 +51,44 @@ impl Remote {
     /// field in their remote config. Providers without accounts (e.g., plain CalDAV
     /// servers) simply omit it.
     pub fn account_identifier(&self) -> Option<&str> {
-        let key = format!("{}_account", self.provider.name());
+        let key = format!("{}_account", self.provider);
         self.config.0.get(&key).and_then(|v| v.as_str())
     }
 
-    pub async fn events(
-        &self,
-        range: &DateRange,
-        context: &ProviderRequestContext,
-    ) -> CalDirResult<Vec<Event>> {
-        self.provider
-            .call(
-                context,
-                ListEvents {
-                    remote_config: self.remote_config(),
-                    from: range.from_rfc3339(),
-                    to: range.to_rfc3339(),
-                },
-            )
+    pub async fn events(&self, provider: &Provider, range: &DateRange) -> CalDirResult<Vec<Event>> {
+        provider
+            .call(ListEvents {
+                remote_config: self.remote_config(),
+                from: range.from_rfc3339(),
+                to: range.to_rfc3339(),
+            })
             .await
     }
 
-    pub async fn create_event(
-        &self,
-        event: &Event,
-        context: &ProviderRequestContext,
-    ) -> CalDirResult<Event> {
-        self.provider
-            .call(
-                context,
-                CreateEvent {
-                    remote_config: self.remote_config(),
-                    event: event.clone(),
-                },
-            )
+    pub async fn create_event(&self, provider: &Provider, event: &Event) -> CalDirResult<Event> {
+        provider
+            .call(CreateEvent {
+                remote_config: self.remote_config(),
+                event: event.clone(),
+            })
             .await
     }
 
-    pub async fn update_event(
-        &self,
-        event: &Event,
-        context: &ProviderRequestContext,
-    ) -> CalDirResult<Event> {
-        self.provider
-            .call(
-                context,
-                UpdateEvent {
-                    remote_config: self.remote_config(),
-                    event: event.clone(),
-                },
-            )
+    pub async fn update_event(&self, provider: &Provider, event: &Event) -> CalDirResult<Event> {
+        provider
+            .call(UpdateEvent {
+                remote_config: self.remote_config(),
+                event: event.clone(),
+            })
             .await
     }
 
-    pub async fn delete_event(
-        &self,
-        event: &Event,
-        context: &ProviderRequestContext,
-    ) -> CalDirResult<()> {
-        self.provider
-            .call(
-                context,
-                DeleteEvent {
-                    remote_config: self.remote_config(),
-                    event: event.clone(),
-                },
-            )
+    pub async fn delete_event(&self, provider: &Provider, event: &Event) -> CalDirResult<()> {
+        provider
+            .call(DeleteEvent {
+                remote_config: self.remote_config(),
+                event: event.clone(),
+            })
             .await
     }
 }

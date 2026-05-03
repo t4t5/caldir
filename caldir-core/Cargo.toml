@@ -21,7 +21,6 @@ dirs = "6"
 icalendar = "0.17"
 iso8601 = "0.6"
 tokio = { version = "1", features = ["process", "io-util", "time"] }
-which = "8"
 config = "0.15"
 shellexpand = "3"
 slug = "0.1"

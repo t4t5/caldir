@@ -8,14 +8,14 @@ use crate::date_range::DateRange;
 use crate::diff::{DiffKind, EventDiff};
 use crate::error::{CalDirError, CalDirResult};
 use crate::event::Event;
-use crate::remote::protocol::ProviderRequestContext;
+use crate::remote::provider::Provider;
 
 /// Represents the differences between local and remote calendar state.
 pub struct CalendarDiff {
     pub calendar: Calendar,
     pub to_push: Vec<EventDiff>,
     pub to_pull: Vec<EventDiff>,
-    provider_context: ProviderRequestContext,
+    provider: Provider,
 }
 
 impl CalendarDiff {
@@ -41,7 +41,7 @@ impl CalendarDiff {
             match diff.kind {
                 DiffKind::Create => {
                     let event = diff.new.as_ref().expect("Create must have new event");
-                    let created = remote.create_event(event, &self.provider_context).await?;
+                    let created = remote.create_event(&self.provider, event).await?;
 
                     // Replace local data with what was returned by provider
                     // (ID might have changed)
@@ -55,7 +55,7 @@ impl CalendarDiff {
                 }
                 DiffKind::Update => {
                     let event = diff.new.as_ref().expect("Update must have new event");
-                    let updated = remote.update_event(event, &self.provider_context).await?;
+                    let updated = remote.update_event(&self.provider, event).await?;
                     // Update local file with any remote changes (find by uid)
                     self.calendar.update_event(
                         &event.uid,
@@ -65,7 +65,7 @@ impl CalendarDiff {
                 }
                 DiffKind::Delete => {
                     let event = diff.old.as_ref().expect("Delete must have old event");
-                    remote.delete_event(event, &self.provider_context).await?;
+                    remote.delete_event(&self.provider, event).await?;
                     known_ids.remove(&event.unique_id());
                 }
             }
@@ -145,9 +145,9 @@ impl CalendarDiff {
         let remote = calendar
             .remote()
             .ok_or_else(|| CalDirError::RemoteNotFound(calendar.slug.to_string()))?;
-        let provider_context = caldir.provider_request_context(&remote.provider);
+        let provider = caldir.provider(&remote.provider)?;
 
-        let remote_events = remote.events(range, &provider_context).await?;
+        let remote_events = remote.events(&provider, range).await?;
         let local_events = calendar.events()?;
         let known_event_ids = calendar.state().read().known_event_ids;
 
@@ -243,7 +243,7 @@ impl CalendarDiff {
             calendar: calendar.clone(),
             to_push,
             to_pull,
-            provider_context,
+            provider,
         })
     }
 }

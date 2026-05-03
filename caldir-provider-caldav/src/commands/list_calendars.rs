@@ -5,7 +5,6 @@ use caldir_core::calendar::config::CalendarConfig;
 use caldir_core::remote::{
     Remote,
     protocol::{ListCalendars, ProviderRequestContext},
-    provider::Provider,
 };
 use caldir_provider_caldav::ops;
 
@@ -29,7 +28,7 @@ pub async fn handle(
         .into_iter()
         .map(|cal| {
             let remote_config = CaldavRemoteConfig::new(&account_id, &cal.url);
-            let remote = Remote::new(Provider::from_name(PROVIDER_NAME), remote_config.into());
+            let remote = Remote::new(PROVIDER_NAME, remote_config.into());
 
             CalendarConfig {
                 name: Some(cal.name),

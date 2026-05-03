@@ -5,13 +5,13 @@ use std::path::{Path, PathBuf};
 use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
 use crate::error::{CalDirError, CalDirResult};
-use crate::remote::protocol::ProviderRequestContext;
-use crate::remote::provider::Provider;
+use crate::remote::provider::{Provider, ProviderRegistry};
 use config::{Config, File};
 
 #[derive(Clone)]
 pub struct Caldir {
     config: CaldirConfig,
+    providers: ProviderRegistry,
     /// Where this caldir's config TOML lives. Saved-back writes target this
     /// path, so tests using tempdirs can never clobber the user's real
     /// `~/.config/caldir/config.toml`.
@@ -40,8 +40,12 @@ impl Caldir {
             .try_deserialize()
             .map_err(|e| CalDirError::Config(e.to_string()))?;
 
+        let providers =
+            ProviderRegistry::discover(Self::providers_dir_for_config_path(&config_path));
+
         Ok(Caldir {
             config,
+            providers,
             config_path,
         })
     }
@@ -53,11 +57,13 @@ impl Caldir {
     /// confined to the tempdir.
     pub fn with_data_path(data_path: PathBuf) -> Self {
         let config_path = data_path.join("caldir.toml");
+        let providers = ProviderRegistry::discover(data_path.join("providers"));
         Caldir {
             config: CaldirConfig {
                 calendar_dir: data_path,
                 ..CaldirConfig::default()
             },
+            providers,
             config_path,
         }
     }
@@ -85,21 +91,27 @@ impl Caldir {
     /// loaded from an explicit config path, provider storage stays next to that
     /// config instead of falling back to the user's real config directory.
     pub fn providers_dir(&self) -> PathBuf {
-        self.config_path
+        self.providers.providers_dir().to_path_buf()
+    }
+
+    fn providers_dir_for_config_path(config_path: &Path) -> PathBuf {
+        config_path
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_default()
             .join("providers")
     }
 
-    pub fn provider_dir(&self, provider: &Provider) -> PathBuf {
-        self.providers_dir().join(provider.name())
+    pub fn providers(&self) -> &ProviderRegistry {
+        &self.providers
     }
 
-    pub fn provider_request_context(&self, provider: &Provider) -> ProviderRequestContext {
-        ProviderRequestContext {
-            provider_dir: self.provider_dir(provider),
-        }
+    pub fn provider(&self, name: &str) -> CalDirResult<Provider> {
+        self.providers.get(name)
+    }
+
+    pub fn provider_dir(&self, name: &str) -> PathBuf {
+        self.providers.provider_dir(name)
     }
 
     /// Load a single calendar by slug, anchored at this caldir's data path.
@@ -169,7 +181,6 @@ impl Caldir {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::remote::provider::Provider;
 
     #[test]
     fn provider_storage_stays_next_to_loaded_config() {
@@ -180,7 +191,7 @@ mod tests {
 
         assert_eq!(caldir.providers_dir(), tmp.path().join("profile/providers"));
         assert_eq!(
-            caldir.provider_dir(&Provider::from_name("google")),
+            caldir.provider_dir("google"),
             tmp.path().join("profile/providers/google")
         );
     }
@@ -191,7 +202,7 @@ mod tests {
         let caldir = Caldir::with_data_path(tmp.path().join("caldir"));
 
         assert_eq!(
-            caldir.provider_dir(&Provider::from_name("icloud")),
+            caldir.provider_dir("icloud"),
             tmp.path().join("caldir/providers/icloud")
         );
     }

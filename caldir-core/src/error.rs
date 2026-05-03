@@ -14,7 +14,7 @@ pub enum CalDirError {
     #[error("Provider error: {0}")]
     Provider(String),
 
-    #[error("Provider '{0}' not found in PATH")]
+    #[error("Provider '{0}' is not installed")]
     ProviderNotInstalled(String),
 
     #[error("Provider request timed out after {0}s")]

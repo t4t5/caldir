@@ -5,7 +5,6 @@ use caldir_core::calendar::config::CalendarConfig;
 use caldir_core::remote::{
     Remote,
     protocol::{ListCalendars, ProviderRequestContext},
-    provider::Provider,
 };
 
 use crate::constants::PROVIDER_NAME;
@@ -44,7 +43,7 @@ pub async fn handle(
     });
 
     let remote_config = WebcalRemoteConfig::new(url);
-    let remote = Remote::new(Provider::from_name(PROVIDER_NAME), remote_config.into());
+    let remote = Remote::new(PROVIDER_NAME, remote_config.into());
 
     let config = CalendarConfig {
         name: Some(name),

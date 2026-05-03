@@ -207,8 +207,9 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Connect { provider, hosted } => {
-            let provider = validate_provider(provider)?;
-            commands::connect::run(&provider, hosted).await
+            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
+            let provider = resolve_provider(&caldir, provider)?;
+            commands::connect::run(caldir, provider, hosted).await
         }
         Commands::Status {
             calendar,
@@ -373,11 +374,11 @@ async fn main() -> Result<()> {
     }
 }
 
-fn validate_provider(provider: Option<String>) -> Result<String> {
+fn resolve_provider(caldir: &Caldir, provider: Option<String>) -> Result<Provider> {
     let name = match provider {
         Some(name) => name,
         None => {
-            let installed = Provider::discover_installed();
+            let installed = caldir.providers().installed_names();
             if installed.is_empty() {
                 anyhow::bail!(
                     "Missing provider argument.\n\n\
@@ -400,29 +401,29 @@ fn validate_provider(provider: Option<String>) -> Result<String> {
         }
     };
 
-    // Check the provider binary exists
-    let installed = Provider::discover_installed();
-    if !installed.contains(&name) {
-        if installed.is_empty() {
-            anyhow::bail!(
-                "Unknown provider \"{name}\".\n\n\
-                No providers detected. Install one with:\n  \
-                cargo install caldir-provider-{name}"
-            );
-        } else {
-            anyhow::bail!(
-                "Unknown provider \"{name}\".\n\n\
-                Detected providers: {}",
-                installed
-                    .iter()
-                    .map(|p| format!("\"{}\"", p))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
+    match caldir.provider(&name) {
+        Ok(provider) => Ok(provider),
+        Err(_) => {
+            let installed = caldir.providers().installed_names();
+            if installed.is_empty() {
+                anyhow::bail!(
+                    "Unknown provider \"{name}\".\n\n\
+                    No providers detected. Install one with:\n  \
+                    cargo install caldir-provider-{name}"
+                );
+            } else {
+                anyhow::bail!(
+                    "Unknown provider \"{name}\".\n\n\
+                    Detected providers: {}",
+                    installed
+                        .iter()
+                        .map(|p| format!("\"{}\"", p))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
         }
     }
-
-    Ok(name)
 }
 
 fn require_calendars(caldir: &Caldir) -> Result<()> {

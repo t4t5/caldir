@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use caldir_core::calendar::config::CalendarConfig;
 use caldir_core::remote::Remote;
 use caldir_core::remote::protocol::{ListCalendars, ProviderRequestContext};
-use caldir_core::remote::provider::Provider;
 
 use crate::constants::PROVIDER_NAME;
 use crate::graph_api::client::GraphClient;
@@ -29,7 +28,7 @@ pub async fn handle(
         .iter()
         .map(|cal| {
             let remote_config = OutlookRemoteConfig::new(account_email, &cal.id);
-            let remote = Remote::new(Provider::from_name(PROVIDER_NAME), remote_config.into());
+            let remote = Remote::new(PROVIDER_NAME, remote_config.into());
             let read_only = !cal.can_edit;
 
             // Map Graph color names to hex colors
