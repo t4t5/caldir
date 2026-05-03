@@ -233,6 +233,7 @@ dependencies = [
  "serde_json",
  "shellexpand",
  "slug",
+ "tempfile",
  "thiserror 2.0.17",
  "tokio",
  "toml",

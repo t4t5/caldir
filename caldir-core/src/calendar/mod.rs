@@ -7,7 +7,7 @@ mod state;
 
 use std::collections::HashMap;
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -26,37 +26,30 @@ use crate::utils::slugify;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Calendar {
     pub slug: String,
+    /// Absolute path to this calendar's directory (`{caldir_data_path}/{slug}`).
+    /// This is the calendar's own data path; `Caldir::data_path()` is the
+    /// parent that holds it.
+    pub data_path: PathBuf,
     pub config: CalendarConfig,
 }
 
 impl Calendar {
-    pub fn new(slug: &str) -> Self {
-        Calendar {
-            slug: slug.to_string(),
-            config: CalendarConfig::default(),
-        }
-    }
-
     fn base_slug_for(name: Option<&str>) -> String {
         name.map(slugify).unwrap_or_else(|| "calendar".to_string())
     }
 
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
     /// If the base slug exists, tries slug-2, slug-3, etc.
-    pub fn unique_slug_for(name: Option<&str>) -> CalDirResult<String> {
+    pub fn unique_slug_in(name: Option<&str>, caldir_data_path: &Path) -> CalDirResult<String> {
         let base = Self::base_slug_for(name);
-        let caldir = Caldir::load()?;
-        let data_path = caldir.data_path();
 
-        // Try base slug first
-        if !data_path.join(&base).exists() {
+        if !caldir_data_path.join(&base).exists() {
             return Ok(base);
         }
 
-        // Collision - try suffixes
         for n in 2..=100 {
             let suffixed = format!("{}-{}", base, n);
-            if !data_path.join(&suffixed).exists() {
+            if !caldir_data_path.join(&suffixed).exists() {
                 return Ok(suffixed);
             }
         }
@@ -67,23 +60,39 @@ impl Calendar {
         )))
     }
 
+    /// Production constructor — resolves the caldir data path via the global
+    /// `Caldir::load()` config. Use [`Calendar::load_in`] in tests or anywhere
+    /// you need to point at a specific caldir.
     pub fn load(slug: &str) -> CalDirResult<Self> {
-        let calendar_dir = Self::path_for(slug)?;
-        let config = CalendarConfig::load(&calendar_dir)?;
+        let caldir = Caldir::load()?;
+        Self::load_in(slug, caldir.data_path())
+    }
 
+    /// Load a calendar at `caldir_data_path/slug`. `caldir_data_path` is the
+    /// root caldir data directory (`~/caldir` in production, a tempdir in tests).
+    pub fn load_in(slug: &str, caldir_data_path: impl AsRef<Path>) -> CalDirResult<Self> {
+        let data_path = caldir_data_path.as_ref().join(slug);
+        let config = CalendarConfig::load(&data_path)?;
         Ok(Calendar {
             slug: slug.to_string(),
+            data_path,
             config,
         })
     }
 
-    pub fn path_for(slug: &str) -> CalDirResult<PathBuf> {
-        let caldir = Caldir::load()?;
-        Ok(caldir.data_path().join(slug))
+    /// Construct an in-memory calendar without touching disk. Used by the
+    /// `connect` flow when materializing a new calendar from a remote config
+    /// before saving it.
+    pub fn new_in(slug: &str, caldir_data_path: impl AsRef<Path>, config: CalendarConfig) -> Self {
+        Calendar {
+            slug: slug.to_string(),
+            data_path: caldir_data_path.as_ref().join(slug),
+            config,
+        }
     }
 
-    pub fn path(&self) -> CalDirResult<PathBuf> {
-        Self::path_for(&self.slug)
+    pub fn data_path(&self) -> &Path {
+        self.data_path.as_path()
     }
 
     // STATE + CONFIG:
@@ -93,7 +102,7 @@ impl Calendar {
     }
 
     pub fn save_config(&self) -> CalDirResult<()> {
-        self.config.save(&self.path()?)
+        self.config.save(self.data_path())
     }
 
     // EVENTS OPERATIONS:
@@ -117,8 +126,7 @@ impl Calendar {
     /// The one-shot CLI gets no benefit (fresh process per
     /// invocation) but pays no meaningful cost either.
     pub fn events(&self) -> CalDirResult<Vec<CalendarEvent>> {
-        let data_path = self.path()?;
-        cache::cached_events_for_dir(&data_path)
+        cache::cached_events_for_dir(self.data_path())
     }
 
     /// Load events in the given date range, expanding recurring events into instances.
@@ -146,8 +154,8 @@ impl Calendar {
     }
 
     pub fn create_event(&self, event: &Event) -> CalDirResult<PathBuf> {
-        let dir = self.path()?;
-        std::fs::create_dir_all(&dir)?;
+        let dir = self.data_path();
+        std::fs::create_dir_all(dir)?;
 
         let event_slug = CalendarEvent::unique_slug_for(event, self)?;
         let event_path = dir.join(format!("{}.ics", event_slug));
@@ -451,5 +459,267 @@ mod tests {
             t(2026, 1, 15, 17, 30),
             &pacific
         ));
+    }
+
+    // --- split_recurring_series_at -------------------------------------------------
+
+    /// Build a recurring master event with a fixed UID so tests can find it
+    /// without depending on the random uuid generator.
+    fn make_master(uid: &str, start_utc: DateTime<Utc>, rrule: &str) -> Event {
+        let start = EventTime::DateTimeUtc(start_utc);
+        let end = EventTime::DateTimeUtc(start_utc + chrono::Duration::hours(1));
+        let mut event = Event::new(
+            "Daily standup".into(),
+            start,
+            end,
+            Some("Notes".into()),
+            Some("Office".into()),
+            Some(Recurrence {
+                rrule: rrule.into(),
+                exdates: vec![],
+            }),
+            vec![],
+        );
+        event.uid = uid.into();
+        event
+    }
+
+    /// Build an instance override sharing `master_uid` at `rid_utc`.
+    fn make_override(master_uid: &str, rid_utc: DateTime<Utc>, summary: &str) -> Event {
+        let start = EventTime::DateTimeUtc(rid_utc);
+        let end = EventTime::DateTimeUtc(rid_utc + chrono::Duration::hours(1));
+        let mut event = Event::new(summary.into(), start, end, None, None, None, vec![]);
+        event.uid = master_uid.into();
+        event.recurrence_id = Some(EventTime::DateTimeUtc(rid_utc));
+        event
+    }
+
+    /// Make a Calendar pointing at a fresh tempdir. The TempDir is returned
+    /// alongside so it stays alive for the test's lifetime.
+    fn make_calendar() -> (tempfile::TempDir, Calendar) {
+        let tmp = tempfile::tempdir().unwrap();
+        let cal = Calendar::load_in("test", tmp.path()).unwrap();
+        std::fs::create_dir_all(cal.data_path()).unwrap();
+        (tmp, cal)
+    }
+
+    /// Find the master (recurring) event for `uid` in the calendar's on-disk events.
+    fn loaded_master(cal: &Calendar, uid: &str) -> Event {
+        cal.events()
+            .unwrap()
+            .into_iter()
+            .map(|ce| ce.event)
+            .find(|e| e.uid == uid && e.recurrence.is_some())
+            .expect("master not found on disk")
+    }
+
+    fn loaded_overrides(cal: &Calendar, uid: &str) -> Vec<Event> {
+        cal.events()
+            .unwrap()
+            .into_iter()
+            .map(|ce| ce.event)
+            .filter(|e| e.uid == uid && e.recurrence_id.is_some())
+            .collect()
+    }
+
+    #[test]
+    fn split_truncates_master_rrule_before_split() {
+        let (_tmp, cal) = make_calendar();
+        let uid = "master@test";
+        let master_start = t(2026, 4, 1, 10, 0);
+        cal.create_event(&make_master(uid, master_start, "FREQ=DAILY"))
+            .unwrap();
+
+        let split_start = EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0));
+        let split_end = EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0));
+        cal.split_recurring_series_at(uid, split_start, split_end, None)
+            .unwrap();
+
+        let master = loaded_master(&cal, uid);
+        let rrule = &master.recurrence.as_ref().unwrap().rrule;
+        // UNTIL is one second before split_start, in UTC form.
+        assert_eq!(rrule, "FREQ=DAILY;UNTIL=20260405T095959Z");
+    }
+
+    #[test]
+    fn split_creates_new_master_with_fresh_uid_and_inherited_metadata() {
+        let (_tmp, cal) = make_calendar();
+        let uid = "master@test";
+        cal.create_event(&make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        let new_recurrence = Some(Recurrence {
+            rrule: "FREQ=WEEKLY".into(),
+            exdates: vec![],
+        });
+        let new_master = cal
+            .split_recurring_series_at(
+                uid,
+                EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+                EventTime::DateTimeUtc(t(2026, 4, 5, 11, 30)),
+                new_recurrence,
+            )
+            .unwrap();
+
+        // Fresh UID, not the master's.
+        assert_ne!(new_master.uid, uid);
+        // Inherits metadata.
+        assert_eq!(new_master.summary, "Daily standup");
+        assert_eq!(new_master.description.as_deref(), Some("Notes"));
+        assert_eq!(new_master.location.as_deref(), Some("Office"));
+        // Uses the new start/end and recurrence.
+        assert_eq!(
+            new_master.start,
+            EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0))
+        );
+        assert_eq!(
+            new_master.end,
+            EventTime::DateTimeUtc(t(2026, 4, 5, 11, 30))
+        );
+        assert_eq!(new_master.recurrence.as_ref().unwrap().rrule, "FREQ=WEEKLY");
+        assert!(new_master.recurrence_id.is_none());
+
+        // And it landed on disk.
+        let on_disk = loaded_master(&cal, &new_master.uid);
+        assert_eq!(on_disk.uid, new_master.uid);
+    }
+
+    #[test]
+    fn split_bumps_master_sequence() {
+        let (_tmp, cal) = make_calendar();
+        let uid = "master@test";
+        let mut master = make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY");
+        master.sequence = Some(3);
+        cal.create_event(&master).unwrap();
+
+        cal.split_recurring_series_at(
+            uid,
+            EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+            EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(loaded_master(&cal, uid).sequence, Some(4));
+    }
+
+    #[test]
+    fn split_drops_overrides_at_or_after_split_keeps_earlier_ones() {
+        let (_tmp, cal) = make_calendar();
+        let uid = "master@test";
+        cal.create_event(&make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        // Three overrides: before, exactly at, and after the split.
+        cal.create_event(&make_override(uid, t(2026, 4, 3, 10, 0), "before"))
+            .unwrap();
+        cal.create_event(&make_override(uid, t(2026, 4, 5, 10, 0), "at-split"))
+            .unwrap();
+        cal.create_event(&make_override(uid, t(2026, 4, 7, 10, 0), "after"))
+            .unwrap();
+
+        cal.split_recurring_series_at(
+            uid,
+            EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+            EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+            None,
+        )
+        .unwrap();
+
+        let overrides = loaded_overrides(&cal, uid);
+        assert_eq!(
+            overrides.len(),
+            1,
+            "only the pre-split override should remain"
+        );
+        assert_eq!(overrides[0].summary, "before");
+    }
+
+    #[test]
+    fn split_drops_exdates_at_or_after_split() {
+        let (_tmp, cal) = make_calendar();
+        let uid = "master@test";
+        let mut master = make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY");
+        let kept = EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0));
+        let dropped_at = EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0));
+        let dropped_after = EventTime::DateTimeUtc(t(2026, 4, 6, 10, 0));
+        master.recurrence = Some(Recurrence {
+            rrule: "FREQ=DAILY".into(),
+            exdates: vec![kept.clone(), dropped_at, dropped_after],
+        });
+        cal.create_event(&master).unwrap();
+
+        cal.split_recurring_series_at(
+            uid,
+            EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+            EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            loaded_master(&cal, uid).recurrence.unwrap().exdates,
+            vec![kept]
+        );
+    }
+
+    #[test]
+    fn split_with_no_new_recurrence_creates_single_event() {
+        let (_tmp, cal) = make_calendar();
+        let uid = "master@test";
+        cal.create_event(&make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        let new_master = cal
+            .split_recurring_series_at(
+                uid,
+                EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+                EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+                None,
+            )
+            .unwrap();
+
+        assert!(new_master.recurrence.is_none());
+    }
+
+    #[test]
+    fn split_errors_when_master_not_found() {
+        let (_tmp, cal) = make_calendar();
+        let err = cal
+            .split_recurring_series_at(
+                "nonexistent",
+                EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+                EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+                None,
+            )
+            .unwrap_err();
+        assert!(format!("{err}").contains("not found"));
+    }
+
+    #[test]
+    fn split_errors_when_master_is_not_recurring() {
+        let (_tmp, cal) = make_calendar();
+        let uid = "single@test";
+        let mut single = Event::new(
+            "Single".into(),
+            EventTime::DateTimeUtc(t(2026, 4, 1, 10, 0)),
+            EventTime::DateTimeUtc(t(2026, 4, 1, 11, 0)),
+            None,
+            None,
+            None,
+            vec![],
+        );
+        single.uid = uid.into();
+        cal.create_event(&single).unwrap();
+
+        let err = cal
+            .split_recurring_series_at(
+                uid,
+                EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+                EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+                None,
+            )
+            .unwrap_err();
+        assert!(format!("{err}").contains("not recurring"));
     }
 }

@@ -30,6 +30,18 @@ impl Caldir {
         Ok(Caldir { config })
     }
 
+    /// Construct a Caldir pointing at an explicit data directory, bypassing
+    /// the global config file. Useful for tests that want to operate on a
+    /// tempdir without touching the user's real `~/.config/caldir/config.toml`.
+    pub fn with_data_path(data_path: PathBuf) -> Self {
+        Caldir {
+            config: CaldirConfig {
+                calendar_dir: data_path,
+                ..CaldirConfig::default()
+            },
+        }
+    }
+
     pub fn config(&self) -> &CaldirConfig {
         &self.config
     }
@@ -65,7 +77,7 @@ impl Caldir {
                 path.file_name()
                     .and_then(|n| n.to_str())
                     .filter(|name| !name.starts_with('.'))
-                    .and_then(|name| Calendar::load(name).ok())
+                    .and_then(|name| Calendar::load_in(name, &data_path).ok())
             })
             .collect();
 

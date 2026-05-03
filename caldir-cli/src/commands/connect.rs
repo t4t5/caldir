@@ -178,7 +178,9 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
 
     // Skip calendars whose remote already matches a local one — keeps re-running
     // `connect` idempotent instead of spawning `personal-2/` next to `personal/`.
-    let existing = Caldir::load()?.calendars();
+    let mut caldir = Caldir::load()?;
+    let existing = caldir.calendars();
+    let caldir_data_path = caldir.data_path();
 
     let mut new_configs: Vec<CalendarConfig> = Vec::new();
     let mut skipped: Vec<(CalendarConfig, String)> = Vec::new();
@@ -233,20 +235,15 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     let mut created_slugs = Vec::new();
     for &idx in &selections {
         let config = &calendar_configs[idx];
-        let slug = Calendar::unique_slug_for(config.name.as_deref())?;
+        let slug = Calendar::unique_slug_in(config.name.as_deref(), &caldir_data_path)?;
 
-        let calendar = Calendar {
-            slug: slug.clone(),
-            config: config.clone(),
-        };
+        let calendar = Calendar::new_in(&slug, &caldir_data_path, config.clone());
 
         calendar.save_config()?;
         created_slugs.push(slug.clone());
 
         println!("  {slug}/ (created)");
     }
-
-    let mut caldir = Caldir::load()?;
 
     // Set the first writable calendar as default if none is configured yet
     let first_writable = selections.iter().enumerate().find_map(|(i, &idx)| {
@@ -266,7 +263,7 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
     // Load the newly created calendars and do an initial pull
     let calendars: Vec<Calendar> = created_slugs
         .iter()
-        .filter_map(|slug| Calendar::load(slug).ok())
+        .filter_map(|slug| Calendar::load_in(slug, &caldir_data_path).ok())
         .collect();
 
     if !calendars.is_empty() {
