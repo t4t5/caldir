@@ -7,6 +7,7 @@ use config::{Config, File};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{CalDirError, CalDirResult};
+use crate::event::Reminder;
 
 /// Time display format: 24-hour ("15:00") or 12-hour ("3:00pm").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -89,6 +90,28 @@ impl CaldirConfig {
             .map_err(|e| CalDirError::Config(e.to_string()))?
             .try_deserialize()
             .map_err(|e| CalDirError::Config(e.to_string()))
+    }
+
+    /// Parse `default_reminders` strings into `Reminder` structs.
+    pub fn parse_default_reminders(&self) -> CalDirResult<Option<Vec<Reminder>>> {
+        let Some(ref strs) = self.default_reminders else {
+            return Ok(None);
+        };
+        let reminders: Vec<Reminder> = strs
+            .iter()
+            .map(|s| Reminder::from_duration_str(s).map_err(CalDirError::Config))
+            .collect::<CalDirResult<_>>()?;
+        Ok(Some(reminders))
+    }
+
+    /// Set the default calendar if one isn't already configured.
+    /// Returns true if the default was set.
+    pub fn set_default_calendar_if_unset(&mut self, slug: &str) -> bool {
+        if self.default_calendar.is_some() {
+            return false;
+        }
+        self.default_calendar = Some(slug.to_string());
+        true
     }
 
     /// Persist this config to `path`.

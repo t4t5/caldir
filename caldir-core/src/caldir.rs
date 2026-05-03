@@ -6,7 +6,6 @@ pub use crate::caldir_builder::CaldirBuilder;
 use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::Reminder;
 use crate::remote::provider::Provider;
 
 pub struct Caldir {
@@ -58,18 +57,6 @@ impl Caldir {
             .find(|provider| provider.name() == name)
             .cloned()
             .ok_or_else(|| CalDirError::ProviderNotInstalled(name.to_string()))
-    }
-
-    /// Parse default_reminders strings into Reminder structs.
-    pub fn parse_default_reminders(&self) -> CalDirResult<Option<Vec<Reminder>>> {
-        let Some(ref strs) = self.config.default_reminders else {
-            return Ok(None);
-        };
-        let reminders: Vec<Reminder> = strs
-            .iter()
-            .map(|s| Reminder::from_duration_str(s).map_err(CalDirError::Config))
-            .collect::<CalDirResult<_>>()?;
-        Ok(Some(reminders))
     }
 
     /// Load a single calendar by slug, anchored at this caldir's data path.
@@ -131,16 +118,6 @@ impl Caldir {
             return Ok(None);
         };
         Ok(self.calendars()?.into_iter().find(|c| c.slug == name))
-    }
-
-    /// Set the default calendar if one isn't already configured.
-    /// Returns true if the default was set.
-    pub fn set_default_calendar_if_unset(&mut self, slug: &str) -> bool {
-        if self.config.default_calendar.is_some() {
-            return false;
-        }
-        self.config.default_calendar = Some(slug.to_string());
-        true
     }
 }
 
