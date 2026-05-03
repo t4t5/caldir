@@ -99,10 +99,6 @@ impl Provider {
         &self.data_dir
     }
 
-    pub fn provider_dir(&self) -> &Path {
-        self.data_dir()
-    }
-
     /// Advance the connect flow by one step.
     ///
     /// Returns `ConnectResponse::NeedsInput` if the provider needs more data,
@@ -262,10 +258,7 @@ mod tests {
 
         assert_eq!(provider.name(), "google");
         assert_eq!(provider.binary_path(), binary_path.as_path());
-        assert_eq!(
-            provider.provider_dir(),
-            providers_dir.join("google").as_path()
-        );
+        assert_eq!(provider.data_dir(), providers_dir.join("google").as_path());
     }
 
     #[cfg(unix)]

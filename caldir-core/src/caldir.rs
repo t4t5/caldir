@@ -302,7 +302,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            caldir.provider("google").unwrap().provider_dir(),
+            caldir.provider("google").unwrap().data_dir(),
             random_path.join("providers/google")
         );
     }
@@ -336,7 +336,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            caldir.provider("google").unwrap().provider_dir(),
+            caldir.provider("google").unwrap().data_dir(),
             custom_data_path.join("google")
         );
     }
