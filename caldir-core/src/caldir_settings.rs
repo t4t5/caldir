@@ -16,6 +16,8 @@ use crate::utils::expand_tilde;
 pub struct CaldirSettings {
     config_path: PathBuf,
     config: CaldirConfig,
+    calendar_dir: PathBuf,
+    providers_data_dir: PathBuf,
     providers: Vec<Provider>,
 }
 
@@ -43,9 +45,19 @@ impl CaldirSettings {
     }
 
     pub fn from_config(config_path: impl Into<PathBuf>, config: CaldirConfig) -> Self {
+        let config_path = config_path.into();
+        let calendar_dir = expand_tilde(&config.calendar_dir);
+        let providers_data_dir = config
+            .providers_data_dir
+            .as_ref()
+            .map(|path| expand_tilde(path))
+            .unwrap_or_else(|| default_providers_data_dir(&config_path));
+
         Self {
-            config_path: config_path.into(),
+            config_path,
             config,
+            calendar_dir,
+            providers_data_dir,
             providers: Vec::new(),
         }
     }
@@ -59,15 +71,11 @@ impl CaldirSettings {
     }
 
     pub fn calendar_dir(&self) -> PathBuf {
-        expand_tilde(&self.config.calendar_dir)
+        self.calendar_dir.clone()
     }
 
     pub fn providers_data_dir(&self) -> PathBuf {
-        self.config
-            .providers_data_dir
-            .as_ref()
-            .map(|path| expand_tilde(path))
-            .unwrap_or_else(|| default_providers_data_dir(&self.config_path))
+        self.providers_data_dir.clone()
     }
 
     pub fn providers(&self) -> &[Provider] {
@@ -188,6 +196,35 @@ mod tests {
 
     fn provider_binary_name(provider: &str) -> String {
         format!("caldir-provider-{provider}{}", std::env::consts::EXE_SUFFIX)
+    }
+
+    #[test]
+    fn paths_are_resolved_when_settings_are_constructed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("config.toml");
+
+        let settings = CaldirSettings::from_config(
+            &config_path,
+            CaldirConfig {
+                calendar_dir: "~/calendars".into(),
+                providers_data_dir: Some("~/provider-data".into()),
+                ..CaldirConfig::new()
+            },
+        );
+
+        assert_eq!(settings.config().calendar_dir, PathBuf::from("~/calendars"));
+        assert_eq!(
+            settings.config().providers_data_dir,
+            Some(PathBuf::from("~/provider-data"))
+        );
+        assert_eq!(
+            settings.calendar_dir(),
+            crate::utils::expand_tilde(std::path::Path::new("~/calendars"))
+        );
+        assert_eq!(
+            settings.providers_data_dir(),
+            crate::utils::expand_tilde(std::path::Path::new("~/provider-data"))
+        );
     }
 
     #[test]
