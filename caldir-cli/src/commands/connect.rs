@@ -250,8 +250,10 @@ pub async fn run(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Resul
             None
         }
     });
-    if let Some(slug) = first_writable {
-        caldir.set_default_calendar_if_unset(&slug)?;
+    if let Some(slug) = first_writable
+        && caldir.set_default_calendar_if_unset(&slug)
+    {
+        caldir.save_config()?;
     }
 
     println!("\nCalendars saved to {}\n", caldir.display_path().display());

@@ -48,13 +48,20 @@ impl Provider {
         }
     }
 
-    pub fn discover_installed(providers_data_dir: impl AsRef<Path>) -> Vec<Self> {
+    pub fn discover_installed<I, P>(
+        providers_data_dir: impl AsRef<Path>,
+        search_dirs: I,
+    ) -> Vec<Self>
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<Path>,
+    {
         let providers_data_dir = providers_data_dir.as_ref();
         let mut providers = Vec::new();
         let prefix = "caldir-provider-";
 
-        for dir in Self::provider_search_dirs() {
-            let Ok(entries) = std::fs::read_dir(&dir) else {
+        for dir in search_dirs {
+            let Ok(entries) = std::fs::read_dir(dir.as_ref()) else {
                 continue;
             };
 
@@ -78,20 +85,6 @@ impl Provider {
 
         providers.sort_by(|a, b| a.name.cmp(&b.name));
         providers
-    }
-
-    /// Returns directories from `CALDIR_PROVIDER_PATH` followed by `PATH`.
-    fn provider_search_dirs() -> impl Iterator<Item = PathBuf> {
-        let provider_path = std::env::var_os("CALDIR_PROVIDER_PATH");
-        let system_path = std::env::var_os("PATH");
-        provider_path
-            .into_iter()
-            .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
-            .chain(
-                system_path
-                    .into_iter()
-                    .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>()),
-            )
     }
 
     pub fn name(&self) -> &str {

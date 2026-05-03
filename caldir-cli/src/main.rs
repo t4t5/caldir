@@ -4,7 +4,6 @@ mod utils;
 
 use anyhow::Result;
 use caldir_core::caldir::Caldir;
-use caldir_core::caldir_config::CaldirConfig;
 use caldir_core::calendar::Calendar;
 use caldir_core::date_range::DateRange;
 use caldir_core::remote::provider::Provider;
@@ -210,7 +209,7 @@ async fn main() -> Result<()> {
         return commands::update::run().await;
     }
 
-    let mut caldir = Caldir::load(CaldirConfig::config_path()?)?;
+    let mut caldir = Caldir::load()?;
 
     match cli.command {
         Commands::Connect { provider, hosted } => {
