@@ -1,8 +1,9 @@
 //! Global caldir configuration.
 
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use config::{Config, File};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{CalDirError, CalDirResult};
@@ -44,18 +45,12 @@ pub struct CaldirConfig {
 
     #[serde(default)]
     pub time_format: TimeFormat,
-}
 
-impl Default for CaldirConfig {
-    fn default() -> Self {
-        Self {
-            calendar_dir: default_caldir_path(),
-            providers_data_dir: None,
-            default_calendar: None,
-            default_reminders: None,
-            time_format: TimeFormat::default(),
-        }
-    }
+    /// Where this config lives on disk — populated by [`load_from`] (and
+    /// preserved through clones) so [`save`] knows where to write back.
+    /// Skipped by serde since it isn't part of the TOML.
+    #[serde(skip)]
+    pub(crate) path: PathBuf,
 }
 
 impl CaldirConfig {
@@ -77,13 +72,48 @@ impl CaldirConfig {
         Ok(Self::config_dir()?.join("config.toml"))
     }
 
-    /// Save the current config to the given path. Callers (like `Caldir`)
-    /// hold the path they originally loaded from so that tests using
-    /// tempdirs don't accidentally overwrite the user's real
-    /// `~/.config/caldir/config.toml`.
-    pub fn save_to(&self, path: &std::path::Path) -> CalDirResult<()> {
+    /// In-memory config rooted at `path` with all other fields defaulted.
+    /// Used as a starting point for tests and for the connect flow before
+    /// anything has been persisted; production goes through
+    /// [`load_from`](Self::load_from) instead.
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self {
+            calendar_dir: default_caldir_path(),
+            providers_data_dir: None,
+            default_calendar: None,
+            default_reminders: None,
+            time_format: TimeFormat::default(),
+            path: path.into(),
+        }
+    }
+
+    /// Load config from `path`, creating a default file there if it doesn't
+    /// exist yet. The returned config carries `path` so [`save`](Self::save)
+    /// can write back without the caller having to remember it.
+    pub fn load_from(path: impl Into<PathBuf>) -> CalDirResult<Self> {
+        let path = path.into();
+        if !path.exists() {
+            Self::create_default_config(&path)?;
+        }
+
+        let mut config: Self = Config::builder()
+            .add_source(File::from(path.clone()).required(false))
+            .build()
+            .map_err(|e| CalDirError::Config(e.to_string()))?
+            .try_deserialize()
+            .map_err(|e| CalDirError::Config(e.to_string()))?;
+        config.path = path;
+        Ok(config)
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Persist this config back to its source path on disk.
+    pub fn save(&self) -> CalDirResult<()> {
         let content = self.to_toml_string()?;
-        std::fs::write(path, content)
+        std::fs::write(&self.path, content)
             .map_err(|e| CalDirError::Config(format!("Could not write config file: {e}")))?;
         Ok(())
     }

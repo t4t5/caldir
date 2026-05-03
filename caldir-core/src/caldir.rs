@@ -12,7 +12,6 @@ use crate::utils::expand_tilde;
 #[derive(Clone)]
 pub struct Caldir {
     config: CaldirConfig,
-    config_path: Option<PathBuf>,
     providers: Vec<Provider>,
 }
 
@@ -22,34 +21,24 @@ impl Caldir {
         CaldirEnvironment::from_process()?.load()
     }
 
-    /// Construct a Caldir directly from a config and provider list.
+    /// Construct a Caldir directly from a config and provider list. The
+    /// config carries its own source path, so [`save_config`](Self::save_config)
+    /// works without any extra plumbing.
     pub fn new(config: CaldirConfig, providers: Vec<Provider>) -> Self {
-        Caldir {
-            config,
-            config_path: None,
-            providers,
-        }
-    }
-
-    /// Set the path that `save_config` writes to.
-    pub fn with_config_path(mut self, path: PathBuf) -> Self {
-        self.config_path = Some(path);
-        self
+        Caldir { config, providers }
     }
 
     pub fn config(&self) -> &CaldirConfig {
         &self.config
     }
 
-    pub fn config_path(&self) -> Option<&Path> {
-        self.config_path.as_deref()
+    pub fn config_path(&self) -> &Path {
+        self.config.path()
     }
 
+    /// Persist the in-memory config back to its source path on disk.
     pub fn save_config(&self) -> CalDirResult<()> {
-        match &self.config_path {
-            Some(path) => self.config.save_to(path),
-            None => Ok(()),
-        }
+        self.config.save()
     }
 
     pub fn data_path(&self) -> PathBuf {
@@ -159,9 +148,9 @@ pub(crate) mod test_support {
     use crate::caldir_config::CaldirConfig;
     use tempfile::TempDir;
 
-    /// Build a fresh Caldir rooted at a tempdir, with no providers and no
-    /// config save path. The TempDir is returned alongside so it stays alive
-    /// for the test's lifetime — drop it and the calendar dir disappears.
+    /// Build a fresh Caldir rooted at a tempdir, with no providers. The
+    /// TempDir is returned alongside so it stays alive for the test's
+    /// lifetime — drop it and the calendar dir disappears.
     pub fn mock_caldir() -> (TempDir, Caldir) {
         let tmp = tempfile::tempdir().unwrap();
         let calendar_dir = tmp.path().join("caldir");
@@ -169,7 +158,7 @@ pub(crate) mod test_support {
         let caldir = Caldir::new(
             CaldirConfig {
                 calendar_dir,
-                ..CaldirConfig::default()
+                ..CaldirConfig::new(tmp.path().join("config.toml"))
             },
             Vec::new(),
         );
@@ -181,20 +170,6 @@ pub(crate) mod test_support {
 mod tests {
     use super::*;
     use test_support::mock_caldir;
-
-    #[test]
-    fn caldir_with_config_path_saves_to_that_path() {
-        let (tmp, caldir) = mock_caldir();
-        let config_path = tmp.path().join("config.toml");
-        let mut caldir = caldir.with_config_path(config_path.clone());
-
-        assert_eq!(caldir.config_path(), Some(config_path.as_path()));
-        assert!(caldir.set_default_calendar_if_unset("work"));
-        caldir.save_config().unwrap();
-
-        let contents = std::fs::read_to_string(config_path).unwrap();
-        assert!(contents.contains("default_calendar = \"work\""));
-    }
 
     #[test]
     fn calendars_returns_error_for_invalid_calendar_config() {
@@ -216,11 +191,24 @@ mod tests {
         let caldir = Caldir::new(
             CaldirConfig {
                 calendar_dir: tmp.path().join("missing"),
-                ..CaldirConfig::default()
+                ..CaldirConfig::new(tmp.path().join("config.toml"))
             },
             Vec::new(),
         );
 
         assert!(caldir.calendars().unwrap().is_empty());
+    }
+
+    #[test]
+    fn save_config_writes_to_the_configured_path() {
+        let (tmp, mut caldir) = mock_caldir();
+        let config_path = tmp.path().join("config.toml");
+
+        assert_eq!(caldir.config_path(), config_path.as_path());
+        assert!(caldir.set_default_calendar_if_unset("work"));
+        caldir.save_config().unwrap();
+
+        let contents = std::fs::read_to_string(config_path).unwrap();
+        assert!(contents.contains("default_calendar = \"work\""));
     }
 }

@@ -5,11 +5,9 @@
 
 use std::path::{Path, PathBuf};
 
-use config::{Config, File};
-
 use crate::caldir::Caldir;
 use crate::caldir_config::CaldirConfig;
-use crate::error::{CalDirError, CalDirResult};
+use crate::error::CalDirResult;
 use crate::remote::provider::Provider;
 use crate::utils::expand_tilde;
 
@@ -52,12 +50,12 @@ impl CaldirEnvironment {
     }
 
     pub fn load(&self) -> CalDirResult<Caldir> {
-        let config = self.load_config()?;
+        let config = CaldirConfig::load_from(&self.config_path)?;
         let providers_data_dir = self.providers_data_dir_for(&config);
         let providers =
             Provider::discover_installed(&providers_data_dir, self.provider_search_dirs.iter());
 
-        Ok(Caldir::new(config, providers).with_config_path(self.config_path.clone()))
+        Ok(Caldir::new(config, providers))
     }
 
     pub fn providers_data_dir_for(&self, config: &CaldirConfig) -> PathBuf {
@@ -66,19 +64,6 @@ impl CaldirEnvironment {
             .as_ref()
             .map(|path| expand_tilde(path))
             .unwrap_or_else(|| default_providers_data_dir(&self.config_path))
-    }
-
-    fn load_config(&self) -> CalDirResult<CaldirConfig> {
-        if !self.config_path.exists() {
-            CaldirConfig::create_default_config(&self.config_path)?;
-        }
-
-        Config::builder()
-            .add_source(File::from(self.config_path.clone()).required(false))
-            .build()
-            .map_err(|e| CalDirError::Config(e.to_string()))?
-            .try_deserialize()
-            .map_err(|e| CalDirError::Config(e.to_string()))
     }
 
     /// Returns directories from `CALDIR_PROVIDER_PATH` followed by `PATH`.
@@ -171,9 +156,9 @@ mod tests {
         CaldirConfig {
             calendar_dir: home.path().join("calendars"),
             providers_data_dir: Some(custom_data_path.clone()),
-            ..CaldirConfig::default()
+            ..CaldirConfig::new(&config_path)
         }
-        .save_to(&config_path)
+        .save()
         .unwrap();
 
         let caldir = CaldirEnvironment::at(&config_path)
