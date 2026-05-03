@@ -27,3 +27,6 @@ shellexpand = "3"
 slug = "0.1"
 rrule = "0.14"
 humantime = "2"
+
+[dev-dependencies]
+tempfile = "3"

@@ -30,6 +30,18 @@ impl Caldir {
         Ok(Caldir { config })
     }
 
+    /// Construct a Caldir pointing at an explicit data directory, bypassing
+    /// the global config file. Useful for tests that want to operate on a
+    /// tempdir without touching the user's real `~/.config/caldir/config.toml`.
+    pub fn with_data_path(data_path: PathBuf) -> Self {
+        Caldir {
+            config: CaldirConfig {
+                calendar_dir: data_path,
+                ..CaldirConfig::default()
+            },
+        }
+    }
+
     pub fn config(&self) -> &CaldirConfig {
         &self.config
     }
@@ -45,6 +57,27 @@ impl Caldir {
     /// keeping `~` instead of expanding to the full home directory.
     pub fn display_path(&self) -> PathBuf {
         self.config.calendar_dir.clone()
+    }
+
+    /// Load a single calendar by slug, anchored at this caldir's data path.
+    pub fn calendar(&self, slug: &str) -> CalDirResult<Calendar> {
+        Calendar::load(slug, self.data_path())
+    }
+
+    /// Construct an in-memory calendar (not yet on disk) anchored at this
+    /// caldir's data path. Used by the `connect` flow.
+    pub fn new_calendar(
+        &self,
+        slug: &str,
+        config: crate::calendar::config::CalendarConfig,
+    ) -> Calendar {
+        Calendar::new(slug, self.data_path(), config)
+    }
+
+    /// Generate a slug for a new calendar with the given display name that
+    /// doesn't collide with any existing directory in this caldir.
+    pub fn unique_slug_for(&self, name: Option<&str>) -> CalDirResult<String> {
+        Calendar::unique_slug(name, &self.data_path())
     }
 
     /// Discover calendars by scanning calendar_dir for subdirectories.
@@ -65,7 +98,7 @@ impl Caldir {
                 path.file_name()
                     .and_then(|n| n.to_str())
                     .filter(|name| !name.starts_with('.'))
-                    .and_then(|name| Calendar::load(name).ok())
+                    .and_then(|name| Calendar::load(name, &data_path).ok())
             })
             .collect();
 

@@ -87,7 +87,7 @@ impl CalendarEvent {
     }
 
     pub fn unique_slug_for(event: &Event, calendar: &Calendar) -> CalDirResult<String> {
-        let data_path = calendar.path()?;
+        let data_path = calendar.data_path();
         let base = Self::base_slug_for(event);
 
         // Try base slug first (check with .ics extension)

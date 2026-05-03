@@ -20,18 +20,13 @@ impl CalendarState {
         CalendarState { calendar }
     }
 
-    fn path(&self) -> CalDirResult<std::path::PathBuf> {
-        let dir = self.calendar.path()?;
-        Ok(dir.join(".caldir/state"))
+    fn path(&self) -> std::path::PathBuf {
+        self.calendar.data_path().join(".caldir/state")
     }
 
     // Read .caldir/state/known_event_ids
     fn known_event_ids(&self) -> Vec<String> {
-        let state_dir = match self.path() {
-            Ok(dir) => dir,
-            Err(_) => return vec![],
-        };
-
+        let state_dir = self.path();
         let path = state_dir.join(KNOWN_EVENT_IDS_FILE);
 
         if path.exists() {
@@ -59,7 +54,7 @@ impl CalendarState {
     }
 
     pub fn save(&self, event_ids: &HashSet<String>) -> CalDirResult<()> {
-        let state_dir = self.path()?;
+        let state_dir = self.path();
         std::fs::create_dir_all(&state_dir)?;
 
         let path = state_dir.join(KNOWN_EVENT_IDS_FILE);

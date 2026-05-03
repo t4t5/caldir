@@ -45,8 +45,10 @@ fn run_direct(path_str: &str, response_str: &str) -> Result<()> {
         .and_then(|n| n.to_str())
         .context("Cannot determine calendar slug")?;
 
-    let calendar =
-        Calendar::load(cal_slug).context(format!("Failed to load calendar '{}'", cal_slug))?;
+    let caldir = Caldir::load()?;
+    let calendar = caldir
+        .calendar(cal_slug)
+        .context(format!("Failed to load calendar '{}'", cal_slug))?;
 
     let email = calendar
         .account_email()
