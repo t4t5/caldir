@@ -1,13 +1,14 @@
 use std::sync::LazyLock;
 
 use caldir_core::caldir::Caldir;
-use caldir_core::caldir_config::TimeFormat;
+use caldir_core::caldir_config::{CaldirConfig, TimeFormat};
 use caldir_core::event::EventTime;
 use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
 
 /// Lazily loaded time format from global config. Defaults to 24h if config can't be read.
 static TIME_FORMAT: LazyLock<TimeFormat> = LazyLock::new(|| {
-    Caldir::load()
+    CaldirConfig::config_path()
+        .and_then(Caldir::load)
         .map(|c| c.config().time_format)
         .unwrap_or_default()
 });

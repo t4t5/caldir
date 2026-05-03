@@ -4,6 +4,7 @@ mod utils;
 
 use anyhow::Result;
 use caldir_core::caldir::Caldir;
+use caldir_core::caldir_config::CaldirConfig;
 use caldir_core::calendar::Calendar;
 use caldir_core::date_range::DateRange;
 use caldir_core::remote::provider::Provider;
@@ -404,7 +405,7 @@ fn validate_provider(provider: Option<String>) -> Result<String> {
 }
 
 fn require_calendars() -> Result<()> {
-    let caldir = Caldir::load()?;
+    let caldir = Caldir::load(CaldirConfig::config_path()?)?;
 
     if caldir.calendars().is_empty() {
         anyhow::bail!(
@@ -420,7 +421,7 @@ fn require_calendars() -> Result<()> {
 }
 
 fn resolve_calendars(calendar_filter: Option<&str>) -> Result<Vec<Calendar>> {
-    let caldir = Caldir::load()?;
+    let caldir = Caldir::load(CaldirConfig::config_path()?)?;
     let all_calendars = caldir.calendars();
 
     match calendar_filter {

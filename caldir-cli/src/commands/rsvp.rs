@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
+use caldir_core::caldir_config::CaldirConfig;
 use caldir_core::calendar::Calendar;
 use caldir_core::event::ParticipationStatus;
 
@@ -45,7 +46,7 @@ fn run_direct(path_str: &str, response_str: &str) -> Result<()> {
         .and_then(|n| n.to_str())
         .context("Cannot determine calendar slug")?;
 
-    let caldir = Caldir::load()?;
+    let caldir = Caldir::load(CaldirConfig::config_path()?)?;
     let calendar = caldir
         .calendar(cal_slug)
         .context(format!("Failed to load calendar '{}'", cal_slug))?;
@@ -78,7 +79,7 @@ fn run_direct(path_str: &str, response_str: &str) -> Result<()> {
 }
 
 fn run_interactive() -> Result<()> {
-    let caldir = Caldir::load()?;
+    let caldir = Caldir::load(CaldirConfig::config_path()?)?;
     let calendars = caldir.calendars();
 
     let today = start_of_today();

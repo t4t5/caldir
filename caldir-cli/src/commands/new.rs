@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
+use caldir_core::caldir_config::CaldirConfig;
 use caldir_core::calendar::Calendar;
 use caldir_core::event::{Event, EventTime, Reminder};
 use chrono::Duration;
@@ -76,7 +77,7 @@ pub fn run(
             .map(|r| parse_reminder(r))
             .collect::<Result<_>>()?
     } else {
-        let caldir = Caldir::load()?;
+        let caldir = Caldir::load(CaldirConfig::config_path()?)?;
         caldir
             .config()
             .parse_default_reminders()
@@ -344,7 +345,7 @@ fn resolve_calendar(
     }
 
     // Try the default calendar
-    let caldir = Caldir::load()?;
+    let caldir = Caldir::load(CaldirConfig::config_path()?)?;
     if let Some(default) = caldir.default_calendar()
         && let Some(cal) = calendars.iter().find(|c| c.slug == default.slug)
     {

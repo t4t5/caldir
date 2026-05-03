@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
+use caldir_core::caldir_config::CaldirConfig;
 use caldir_core::calendar::Calendar;
 use caldir_core::calendar::config::CalendarConfig;
 use caldir_core::date_range::DateRange;
@@ -178,7 +179,7 @@ pub async fn run(provider_name: &str, hosted: bool) -> Result<()> {
 
     // Skip calendars whose remote already matches a local one — keeps re-running
     // `connect` idempotent instead of spawning `personal-2/` next to `personal/`.
-    let mut caldir = Caldir::load()?;
+    let mut caldir = Caldir::load(CaldirConfig::config_path()?)?;
     let existing = caldir.calendars();
 
     let mut new_configs: Vec<CalendarConfig> = Vec::new();

@@ -73,14 +73,14 @@ impl CaldirConfig {
         Ok(Self::config_dir()?.join("config.toml"))
     }
 
-    /// Save the current config to ~/.config/caldir/config.toml
-    pub fn save(&self) -> CalDirResult<()> {
-        let config_path = Self::config_path()?;
+    /// Save the current config to the given path. Callers (like `Caldir`)
+    /// hold the path they originally loaded from so that tests using
+    /// tempdirs don't accidentally overwrite the user's real
+    /// `~/.config/caldir/config.toml`.
+    pub fn save_to(&self, path: &std::path::Path) -> CalDirResult<()> {
         let content = self.to_toml_string()?;
-
-        std::fs::write(&config_path, content)
+        std::fs::write(path, content)
             .map_err(|e| CalDirError::Config(format!("Could not write config file: {e}")))?;
-
         Ok(())
     }
 

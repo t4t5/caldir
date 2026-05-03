@@ -7,7 +7,7 @@ use crate::utils::path::PathExt;
 
 pub fn run() -> Result<()> {
     let config_path = CaldirConfig::config_path().map_err(|e| anyhow::anyhow!(e))?;
-    let caldir = Caldir::load().map_err(|e| anyhow::anyhow!(e))?;
+    let caldir = Caldir::load(&config_path).map_err(|e| anyhow::anyhow!(e))?;
 
     println!("{} {}", "Path:".bold(), config_path.tilde());
     println!();

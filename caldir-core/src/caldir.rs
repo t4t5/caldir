@@ -1,6 +1,6 @@
 //! Caldir root directory management.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
@@ -10,35 +10,53 @@ use config::{Config, File};
 #[derive(Clone)]
 pub struct Caldir {
     config: CaldirConfig,
+    /// Where this caldir's config TOML lives. Saved-back writes target this
+    /// path, so tests using tempdirs can never clobber the user's real
+    /// `~/.config/caldir/config.toml`.
+    config_path: PathBuf,
 }
 
 impl Caldir {
-    pub fn load() -> CalDirResult<Self> {
-        let config_path = CaldirConfig::config_path()?;
+    /// Load a Caldir from the given config TOML path. If the file doesn't
+    /// exist, a default one is created at that path.
+    ///
+    /// There's intentionally no zero-arg variant that resolves the config
+    /// path via global state. CLI entry points compute it explicitly via
+    /// `CaldirConfig::config_path()` so every read of the platform config
+    /// directory is auditable; tests use [`Caldir::with_data_path`] instead.
+    pub fn load(config_path: impl AsRef<Path>) -> CalDirResult<Self> {
+        let config_path = config_path.as_ref().to_path_buf();
 
         if !config_path.exists() {
             CaldirConfig::create_default_config(&config_path)?;
         }
 
         let config: CaldirConfig = Config::builder()
-            .add_source(File::from(config_path).required(false))
+            .add_source(File::from(config_path.clone()).required(false))
             .build()
             .map_err(|e| CalDirError::Config(e.to_string()))?
             .try_deserialize()
             .map_err(|e| CalDirError::Config(e.to_string()))?;
 
-        Ok(Caldir { config })
+        Ok(Caldir {
+            config,
+            config_path,
+        })
     }
 
     /// Construct a Caldir pointing at an explicit data directory, bypassing
-    /// the global config file. Useful for tests that want to operate on a
-    /// tempdir without touching the user's real `~/.config/caldir/config.toml`.
+    /// any config file. Useful for tests that want to operate on a tempdir.
+    /// `set_default_calendar_if_unset` and similar mutating operations write
+    /// a sidecar config file inside the data directory, keeping all writes
+    /// confined to the tempdir.
     pub fn with_data_path(data_path: PathBuf) -> Self {
+        let config_path = data_path.join("caldir.toml");
         Caldir {
             config: CaldirConfig {
                 calendar_dir: data_path,
                 ..CaldirConfig::default()
             },
+            config_path,
         }
     }
 
@@ -118,7 +136,7 @@ impl Caldir {
             return Ok(false);
         }
         self.config.default_calendar = Some(slug.to_string());
-        self.config.save()?;
+        self.config.save_to(&self.config_path)?;
         Ok(true)
     }
 }
