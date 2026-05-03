@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::caldir::Caldir;
-use crate::calendar::Calendar;
+use crate::calendar::{Calendar, CalendarEvent};
 use crate::date_range::DateRange;
 use crate::diff::{DiffKind, EventDiff};
 use crate::error::{CalDirError, CalDirResult};
@@ -16,6 +16,13 @@ pub struct CalendarDiff {
     pub to_push: Vec<EventDiff>,
     pub to_pull: Vec<EventDiff>,
     provider: Provider,
+}
+
+/// Provider-independent result of comparing local and remote event sets.
+#[derive(Debug, Default)]
+pub struct ComputedCalendarDiff {
+    pub to_push: Vec<EventDiff>,
+    pub to_pull: Vec<EventDiff>,
 }
 
 impl CalendarDiff {
@@ -151,6 +158,21 @@ impl CalendarDiff {
         let local_events = calendar.events()?;
         let known_event_ids = calendar.state().read().known_event_ids;
 
+        let computed = Self::compute(local_events, remote_events, known_event_ids);
+
+        Ok(CalendarDiff {
+            calendar: calendar.clone(),
+            to_push: computed.to_push,
+            to_pull: computed.to_pull,
+            provider,
+        })
+    }
+
+    pub fn compute(
+        local_events: Vec<CalendarEvent>,
+        remote_events: Vec<Event>,
+        known_event_ids: Vec<String>,
+    ) -> ComputedCalendarDiff {
         // Build lookup maps by event key (uid, recurrence_id)
         let local_by_key: HashMap<_, _> = local_events
             .into_iter()
@@ -239,12 +261,7 @@ impl CalendarDiff {
         to_push.sort_by(sort_by_start);
         to_pull.sort_by(sort_by_start);
 
-        Ok(CalendarDiff {
-            calendar: calendar.clone(),
-            to_push,
-            to_pull,
-            provider,
-        })
+        ComputedCalendarDiff { to_push, to_pull }
     }
 }
 
@@ -254,4 +271,168 @@ fn event_key(event: &Event) -> (String, Option<String>) {
         event.uid.clone(),
         event.recurrence_id.as_ref().map(|t| t.to_ics_string()),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use chrono::{Duration, Utc};
+
+    use super::*;
+    use crate::constants::DEFAULT_SYNC_DAYS;
+    use crate::event::EventTime;
+
+    fn event(uid: &str, start_offset_days: i64, summary: &str) -> Event {
+        let start = Utc::now() + Duration::days(start_offset_days);
+        let end = start + Duration::hours(1);
+        let mut event = Event::new(
+            summary.to_string(),
+            EventTime::DateTimeUtc(start),
+            EventTime::DateTimeUtc(end),
+            None,
+            None,
+            None,
+            Vec::new(),
+        );
+        event.uid = uid.to_string();
+        event
+    }
+
+    fn local_event(event: Event, modified: Option<chrono::DateTime<Utc>>) -> CalendarEvent {
+        CalendarEvent {
+            path: PathBuf::from(format!("/tmp/{}.ics", event.uid)),
+            event,
+            modified,
+        }
+    }
+
+    #[test]
+    fn compute_pushes_local_only_unknown_events() {
+        let local = event("local", 1, "Local event");
+
+        let computed = CalendarDiff::compute(
+            vec![local_event(local.clone(), None)],
+            Vec::new(),
+            Vec::new(),
+        );
+
+        assert!(computed.to_pull.is_empty());
+        assert_eq!(computed.to_push.len(), 1);
+        assert_eq!(computed.to_push[0].kind, DiffKind::Create);
+        assert_eq!(computed.to_push[0].new.as_ref().unwrap().uid, local.uid);
+    }
+
+    #[test]
+    fn compute_pulls_remote_only_unknown_events() {
+        let remote = event("remote", 1, "Remote event");
+
+        let computed = CalendarDiff::compute(Vec::new(), vec![remote.clone()], Vec::new());
+
+        assert!(computed.to_push.is_empty());
+        assert_eq!(computed.to_pull.len(), 1);
+        assert_eq!(computed.to_pull[0].kind, DiffKind::Create);
+        assert_eq!(computed.to_pull[0].new.as_ref().unwrap().uid, remote.uid);
+    }
+
+    #[test]
+    fn compute_pulls_delete_for_known_local_event_missing_remotely() {
+        let local = event("deleted-remotely", 1, "Deleted remotely");
+        let known_ids = vec![local.unique_id()];
+
+        let computed = CalendarDiff::compute(
+            vec![local_event(local.clone(), None)],
+            Vec::new(),
+            known_ids,
+        );
+
+        assert!(computed.to_push.is_empty());
+        assert_eq!(computed.to_pull.len(), 1);
+        assert_eq!(computed.to_pull[0].kind, DiffKind::Delete);
+        assert_eq!(computed.to_pull[0].old.as_ref().unwrap().uid, local.uid);
+    }
+
+    #[test]
+    fn compute_ignores_known_local_event_missing_remotely_when_outside_sync_window() {
+        let local = event(
+            "outside-window",
+            DEFAULT_SYNC_DAYS + 10,
+            "Outside sync window",
+        );
+        let known_ids = vec![local.unique_id()];
+
+        let computed = CalendarDiff::compute(vec![local_event(local, None)], Vec::new(), known_ids);
+
+        assert!(computed.to_push.is_empty());
+        assert!(computed.to_pull.is_empty());
+    }
+
+    #[test]
+    fn compute_pushes_delete_for_known_remote_event_missing_locally() {
+        let remote = event("deleted-locally", 1, "Deleted locally");
+        let known_ids = vec![remote.unique_id()];
+
+        let computed = CalendarDiff::compute(Vec::new(), vec![remote.clone()], known_ids);
+
+        assert!(computed.to_pull.is_empty());
+        assert_eq!(computed.to_push.len(), 1);
+        assert_eq!(computed.to_push[0].kind, DiffKind::Delete);
+        assert_eq!(computed.to_push[0].old.as_ref().unwrap().uid, remote.uid);
+    }
+
+    #[test]
+    fn compute_pushes_update_when_local_file_is_newer() {
+        let remote_updated = Utc::now() - Duration::days(2);
+        let local_modified = remote_updated + Duration::hours(1);
+        let mut remote = event("updated", 1, "Remote title");
+        remote.updated = Some(remote_updated);
+        let mut local = remote.clone();
+        local.summary = "Local title".to_string();
+
+        let computed = CalendarDiff::compute(
+            vec![local_event(local.clone(), Some(local_modified))],
+            vec![remote.clone()],
+            vec![local.unique_id()],
+        );
+
+        assert!(computed.to_pull.is_empty());
+        assert_eq!(computed.to_push.len(), 1);
+        assert_eq!(computed.to_push[0].kind, DiffKind::Update);
+        assert_eq!(
+            computed.to_push[0].new.as_ref().unwrap().summary,
+            "Local title"
+        );
+        assert_eq!(
+            computed.to_push[0].old.as_ref().unwrap().summary,
+            "Remote title"
+        );
+    }
+
+    #[test]
+    fn compute_pulls_update_when_remote_event_is_newer() {
+        let local_modified = Utc::now() - Duration::days(2);
+        let remote_updated = local_modified + Duration::hours(1);
+        let mut remote = event("updated", 1, "Remote title");
+        remote.updated = Some(remote_updated);
+        let mut local = remote.clone();
+        local.summary = "Local title".to_string();
+
+        let computed = CalendarDiff::compute(
+            vec![local_event(local.clone(), Some(local_modified))],
+            vec![remote.clone()],
+            vec![local.unique_id()],
+        );
+
+        assert!(computed.to_push.is_empty());
+        assert_eq!(computed.to_pull.len(), 1);
+        assert_eq!(computed.to_pull[0].kind, DiffKind::Update);
+        assert_eq!(
+            computed.to_pull[0].new.as_ref().unwrap().summary,
+            "Remote title"
+        );
+        assert_eq!(
+            computed.to_pull[0].old.as_ref().unwrap().summary,
+            "Local title"
+        );
+    }
 }

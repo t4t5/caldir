@@ -9,6 +9,8 @@ mod state;
 #[cfg(test)]
 mod test_support;
 
+pub use calendar_event::CalendarEvent;
+
 use std::fmt;
 use std::path::{Path, PathBuf};
 
