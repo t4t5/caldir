@@ -108,3 +108,49 @@ impl fmt::Display for Calendar {
         write!(f, "{}", self.slug)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unique_slug_returns_base_when_no_collision() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slug = Calendar::unique_slug(Some("Personal"), tmp.path()).unwrap();
+        assert_eq!(slug, "personal");
+    }
+
+    #[test]
+    fn unique_slug_falls_back_to_calendar_when_name_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let slug = Calendar::unique_slug(None, tmp.path()).unwrap();
+        assert_eq!(slug, "calendar");
+    }
+
+    #[test]
+    fn unique_slug_suffixes_when_base_is_taken() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("personal")).unwrap();
+
+        let slug = Calendar::unique_slug(Some("Personal"), tmp.path()).unwrap();
+        assert_eq!(slug, "personal-2");
+
+        std::fs::create_dir_all(tmp.path().join("personal-2")).unwrap();
+        let slug = Calendar::unique_slug(Some("Personal"), tmp.path()).unwrap();
+        assert_eq!(slug, "personal-3");
+    }
+
+    #[test]
+    fn unique_slug_errors_when_collisions_exhausted() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(tmp.path().join("personal")).unwrap();
+        for n in 2..=100 {
+            std::fs::create_dir_all(tmp.path().join(format!("personal-{n}"))).unwrap();
+        }
+
+        let Err(err) = Calendar::unique_slug(Some("Personal"), tmp.path()) else {
+            panic!("expected collision exhaustion to fail");
+        };
+        assert!(matches!(err, CalDirError::Config(_)));
+    }
+}

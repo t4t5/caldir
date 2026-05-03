@@ -219,6 +219,51 @@ mod tests {
     }
 
     #[test]
+    fn new_calendar_appears_in_calendars_after_save() {
+        use crate::calendar::config::CalendarConfig as PerCalendarConfig;
+
+        let caldir = TestCaldir::new();
+        assert!(caldir.calendars().unwrap().is_empty());
+
+        let cal = caldir.new_calendar(
+            "work",
+            PerCalendarConfig {
+                name: Some("Work".into()),
+                color: Some("#0b8043".into()),
+                ..PerCalendarConfig::default()
+            },
+        );
+        cal.save_config().unwrap();
+
+        let calendars = caldir.calendars().unwrap();
+        assert_eq!(calendars.len(), 1);
+        assert_eq!(calendars[0].slug, "work");
+        assert_eq!(calendars[0].config.name.as_deref(), Some("Work"));
+        assert_eq!(calendars[0].config.color.as_deref(), Some("#0b8043"));
+        assert_eq!(calendars[0].dir(), caldir.dir().join("work"));
+    }
+
+    #[test]
+    fn calendars_skips_hidden_dirs_files_and_dotcaldir() {
+        let caldir = TestCaldir::new();
+        let root = caldir.dir();
+
+        std::fs::create_dir_all(root.join("personal")).unwrap();
+        std::fs::create_dir_all(root.join("work")).unwrap();
+        std::fs::create_dir_all(root.join(".caldir")).unwrap();
+        std::fs::create_dir_all(root.join(".hidden")).unwrap();
+        std::fs::write(root.join("notes.txt"), "").unwrap();
+
+        let slugs: Vec<_> = caldir
+            .calendars()
+            .unwrap()
+            .into_iter()
+            .map(|c| c.slug)
+            .collect();
+        assert_eq!(slugs, vec!["personal", "work"]);
+    }
+
+    #[test]
     fn calendars_returns_empty_when_data_path_does_not_exist() {
         let tmp = tempfile::tempdir().unwrap();
         let caldir = Caldir::builder()
