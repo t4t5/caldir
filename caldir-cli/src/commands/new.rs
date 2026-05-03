@@ -345,8 +345,8 @@ fn resolve_calendar<'a>(
     }
 
     // Try the default calendar
-    if let Some(default) = caldir.default_calendar()?
-        && let Some(cal) = calendars.iter().find(|c| c.slug == default.slug)
+    if let Some(default_slug) = caldir.default_calendar_slug()
+        && let Some(cal) = calendars.iter().find(|c| c.slug == default_slug)
     {
         return Ok(cal);
     }

@@ -25,7 +25,7 @@ use crate::utils::slugify;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Calendar {
     pub slug: String,
-    pub data_path: PathBuf, // ~/caldir/{slug}
+    pub dir: PathBuf, // ~/caldir/{slug}
     pub config: CalendarConfig,
 }
 
@@ -36,16 +36,16 @@ impl Calendar {
 
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
     /// If the base slug exists, tries slug-2, slug-3, etc.
-    pub fn unique_slug(name: Option<&str>, caldir_data_path: &Path) -> CalDirResult<String> {
+    pub fn unique_slug(name: Option<&str>, caldir_dir: &Path) -> CalDirResult<String> {
         let base = Self::base_slug_for(name);
 
-        if !caldir_data_path.join(&base).exists() {
+        if !caldir_dir.join(&base).exists() {
             return Ok(base);
         }
 
         for n in 2..=100 {
             let suffixed = format!("{}-{}", base, n);
-            if !caldir_data_path.join(&suffixed).exists() {
+            if !caldir_dir.join(&suffixed).exists() {
                 return Ok(suffixed);
             }
         }
@@ -56,15 +56,15 @@ impl Calendar {
         )))
     }
 
-    /// Load a calendar at `caldir_data_path/slug`
-    /// (caldir_data_path` is `~/caldir` in production, a tempdir in tests).
-    pub fn load(slug: &str, caldir_data_path: impl AsRef<Path>) -> CalDirResult<Self> {
-        let data_path = caldir_data_path.as_ref().join(slug);
-        let config = CalendarConfig::load(&data_path)?;
+    /// Load a calendar at `caldir_dir/slug`
+    /// (`caldir_dir` is `~/caldir` in production, a tempdir in tests).
+    pub fn load(slug: &str, caldir_dir: impl AsRef<Path>) -> CalDirResult<Self> {
+        let dir = caldir_dir.as_ref().join(slug);
+        let config = CalendarConfig::load(&dir)?;
 
         Ok(Calendar {
             slug: slug.to_string(),
-            data_path,
+            dir,
             config,
         })
     }
@@ -72,16 +72,16 @@ impl Calendar {
     /// Construct an in-memory calendar without touching disk.
     /// Used by the `connect` flow when materializing a new calendar
     /// from a remote config before saving it.
-    pub fn new(slug: &str, caldir_data_path: impl AsRef<Path>, config: CalendarConfig) -> Self {
+    pub fn new(slug: &str, caldir_dir: impl AsRef<Path>, config: CalendarConfig) -> Self {
         Calendar {
             slug: slug.to_string(),
-            data_path: caldir_data_path.as_ref().join(slug),
+            dir: caldir_dir.as_ref().join(slug),
             config,
         }
     }
 
-    pub fn data_path(&self) -> &Path {
-        self.data_path.as_path()
+    pub fn dir(&self) -> &Path {
+        self.dir.as_path()
     }
 
     pub fn state(&self) -> CalendarState {
@@ -89,7 +89,7 @@ impl Calendar {
     }
 
     pub fn save_config(&self) -> CalDirResult<()> {
-        self.config.save(self.data_path())
+        self.config.save(self.dir())
     }
 
     /// Get the account email for this calendar (from remote config)

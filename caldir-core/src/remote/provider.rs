@@ -30,7 +30,7 @@ const AUTH_TIMEOUT: Duration = Duration::from_secs(300);
 pub struct Provider {
     name: String,
     binary_path: PathBuf,
-    data_dir: PathBuf,
+    dir: PathBuf,
 }
 
 impl fmt::Display for Provider {
@@ -40,18 +40,15 @@ impl fmt::Display for Provider {
 }
 
 impl Provider {
-    pub fn new(name: impl Into<String>, binary_path: PathBuf, data_dir: PathBuf) -> Self {
+    pub fn new(name: impl Into<String>, binary_path: PathBuf, dir: PathBuf) -> Self {
         Provider {
             name: name.into(),
             binary_path,
-            data_dir,
+            dir,
         }
     }
 
-    pub fn discover_installed<I, P>(
-        providers_data_dir: impl AsRef<Path>,
-        search_dirs: I,
-    ) -> Vec<Self>
+    pub fn discover_installed<I, P>(providers_dir: impl AsRef<Path>, search_dirs: I) -> Vec<Self>
     where
         I: IntoIterator<Item = P>,
         P: AsRef<Path>,
@@ -77,7 +74,7 @@ impl Provider {
                     providers.push(Provider::new(
                         provider_name,
                         path,
-                        providers_data_dir.as_ref().join(provider_name),
+                        providers_dir.as_ref().join(provider_name),
                     ));
                 }
             }
@@ -95,8 +92,8 @@ impl Provider {
         &self.binary_path
     }
 
-    pub fn data_dir(&self) -> &Path {
-        &self.data_dir
+    pub fn dir(&self) -> &Path {
+        &self.dir
     }
 
     /// Advance the connect flow by one step.
@@ -144,7 +141,7 @@ impl Provider {
         let request = Request {
             command,
             context: ProviderRequestContext {
-                provider_dir: self.data_dir.clone(),
+                provider_dir: self.dir.clone(),
             },
             params,
         };
@@ -258,7 +255,7 @@ mod tests {
 
         assert_eq!(provider.name(), "google");
         assert_eq!(provider.binary_path(), binary_path.as_path());
-        assert_eq!(provider.data_dir(), providers_dir.join("google").as_path());
+        assert_eq!(provider.dir(), providers_dir.join("google").as_path());
     }
 
     #[cfg(unix)]

@@ -13,7 +13,7 @@ use crate::recurrence::expand_recurring_event;
 impl Calendar {
     /// Load events from local directory.
     pub fn events(&self) -> CalDirResult<Vec<CalendarEvent>> {
-        super::cache::cached_events_for_dir(self.data_path())
+        super::cache::cached_events_for_dir(self.dir())
     }
 
     /// Load events in the given date range, expanding recurring events into instances.
@@ -38,7 +38,7 @@ impl Calendar {
     }
 
     pub fn create_event(&self, event: &Event) -> CalDirResult<PathBuf> {
-        let dir = self.data_path();
+        let dir = self.dir();
         std::fs::create_dir_all(dir)?;
 
         let event_slug = CalendarEvent::unique_slug_for(event, self)?;

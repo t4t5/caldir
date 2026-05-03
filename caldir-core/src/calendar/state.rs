@@ -21,7 +21,7 @@ impl CalendarState {
     }
 
     fn path(&self) -> std::path::PathBuf {
-        self.calendar.data_path().join(".caldir/state")
+        self.calendar.dir().join(".caldir/state")
     }
 
     // Read .caldir/state/known_event_ids

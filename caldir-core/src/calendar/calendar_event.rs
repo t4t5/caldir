@@ -87,18 +87,18 @@ impl CalendarEvent {
     }
 
     pub fn unique_slug_for(event: &Event, calendar: &Calendar) -> CalDirResult<String> {
-        let data_path = calendar.data_path();
+        let dir = calendar.dir();
         let base = Self::base_slug_for(event);
 
         // Try base slug first (check with .ics extension)
-        if !data_path.join(format!("{}.ics", base)).exists() {
+        if !dir.join(format!("{}.ics", base)).exists() {
             return Ok(base);
         }
 
         // Collision - try suffixes
         for n in 2..=100 {
             let suffixed = format!("{}-{}", base, n);
-            if !data_path.join(format!("{}.ics", suffixed)).exists() {
+            if !dir.join(format!("{}.ics", suffixed)).exists() {
                 return Ok(suffixed);
             }
         }

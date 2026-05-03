@@ -11,7 +11,7 @@ use crate::remote::provider::Provider;
 pub struct Caldir {
     config_path: PathBuf,
     config: CaldirConfig,
-    data_dir: PathBuf,
+    dir: PathBuf,
     providers: Vec<Provider>,
 }
 
@@ -37,20 +37,20 @@ impl Caldir {
         &mut self.config
     }
 
-    pub fn data_dir(&self) -> &Path {
-        &self.data_dir
+    pub fn dir(&self) -> &Path {
+        &self.dir
     }
 
     pub(crate) fn from_resolved(
         config_path: PathBuf,
         config: CaldirConfig,
-        data_dir: PathBuf,
+        dir: PathBuf,
         providers: Vec<Provider>,
     ) -> Self {
         Self {
             config_path,
             config,
-            data_dir,
+            dir,
             providers,
         }
     }
@@ -75,34 +75,34 @@ impl Caldir {
             .ok_or_else(|| CalDirError::ProviderNotInstalled(name.to_string()))
     }
 
-    /// Load a single calendar by slug, anchored at this caldir's data path.
+    /// Load a single calendar by slug, anchored at this caldir's directory.
     pub fn calendar(&self, slug: &str) -> CalDirResult<Calendar> {
-        Calendar::load(slug, &self.data_dir)
+        Calendar::load(slug, &self.dir)
     }
 
     /// Construct an in-memory calendar (not yet on disk) anchored at this
-    /// caldir's data path. Used by the `connect` flow.
+    /// caldir's directory. Used by the `connect` flow.
     pub fn new_calendar(
         &self,
         slug: &str,
         config: crate::calendar::config::CalendarConfig,
     ) -> Calendar {
-        Calendar::new(slug, &self.data_dir, config)
+        Calendar::new(slug, &self.dir, config)
     }
 
     /// Generate a slug for a new calendar with the given display name that
     /// doesn't collide with any existing directory in this caldir.
     pub fn unique_slug_for(&self, name: Option<&str>) -> CalDirResult<String> {
-        Calendar::unique_slug(name, &self.data_dir)
+        Calendar::unique_slug(name, &self.dir)
     }
 
-    /// Discover calendars by scanning calendar_dir for subdirectories.
+    /// Discover calendars by scanning the caldir for subdirectories.
     /// Every non-hidden directory is a calendar; `.caldir/config.toml`
     /// is optional and only carries metadata + remote sync settings.
     pub fn calendars(&self) -> CalDirResult<Vec<Calendar>> {
-        let data_path = &self.data_dir;
+        let dir = &self.dir;
 
-        let entries = match std::fs::read_dir(data_path) {
+        let entries = match std::fs::read_dir(dir) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(error.into()),
@@ -122,18 +122,15 @@ impl Caldir {
                 continue;
             }
 
-            calendars.push(Calendar::load(name, data_path)?);
+            calendars.push(Calendar::load(name, dir)?);
         }
 
         calendars.sort_by(|a, b| a.slug.cmp(&b.slug));
         Ok(calendars)
     }
 
-    pub fn default_calendar(&self) -> CalDirResult<Option<Calendar>> {
-        let Some(slug) = self.config.default_calendar.as_deref() else {
-            return Ok(None);
-        };
-        Ok(Some(self.calendar(slug)?))
+    pub fn default_calendar_slug(&self) -> Option<&str> {
+        self.config.default_calendar.as_deref()
     }
 }
 
@@ -210,7 +207,7 @@ mod tests {
     #[test]
     fn calendars_returns_error_for_invalid_calendar_config() {
         let caldir = TestCaldir::new();
-        let config_dir = caldir.data_dir().join("work/.caldir");
+        let config_dir = caldir.dir().join("work/.caldir");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("config.toml"), "remote =").unwrap();
 
@@ -271,7 +268,7 @@ mod tests {
             Some(PathBuf::from("~/provider-data"))
         );
         let expected = crate::utils::expand_tilde(std::path::Path::new("~/calendars"));
-        assert_eq!(caldir.data_dir(), expected.as_path());
+        assert_eq!(caldir.dir(), expected.as_path());
     }
 
     #[test]
@@ -294,7 +291,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            caldir.provider("google").unwrap().data_dir(),
+            caldir.provider("google").unwrap().dir(),
             random_path.join("providers/google")
         );
     }
@@ -328,7 +325,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            caldir.provider("google").unwrap().data_dir(),
+            caldir.provider("google").unwrap().dir(),
             custom_data_path.join("google")
         );
     }

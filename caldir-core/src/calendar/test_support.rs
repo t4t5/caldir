@@ -45,7 +45,7 @@ pub fn make_override(master_uid: &str, rid_utc: DateTime<Utc>, summary: &str) ->
 pub fn make_calendar() -> (tempfile::TempDir, Calendar) {
     let tmp = tempfile::tempdir().unwrap();
     let cal = Calendar::load("test", tmp.path()).unwrap();
-    std::fs::create_dir_all(cal.data_path()).unwrap();
+    std::fs::create_dir_all(cal.dir()).unwrap();
     (tmp, cal)
 }
 

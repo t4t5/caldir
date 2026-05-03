@@ -62,28 +62,23 @@ impl CaldirBuilder {
             None => CaldirConfig::load_from(&config_path)?,
         };
 
-        let calendar_dir = expand_tilde(&config.calendar_dir);
-        let providers_data_dir = config
+        let dir = expand_tilde(&config.calendar_dir);
+        let providers_dir = config
             .providers_data_dir
             .as_ref()
             .map(|path| expand_tilde(path))
-            .unwrap_or_else(|| default_providers_data_dir(&config_path));
+            .unwrap_or_else(|| default_providers_dir(&config_path));
         let providers = match self.providers {
             Some(providers) => providers,
             None => {
                 let provider_search_dirs = self
                     .provider_search_dirs
                     .unwrap_or_else(Self::default_provider_search_dirs);
-                Provider::discover_installed(&providers_data_dir, provider_search_dirs)
+                Provider::discover_installed(&providers_dir, provider_search_dirs)
             }
         };
 
-        Ok(Caldir::from_resolved(
-            config_path,
-            config,
-            calendar_dir,
-            providers,
-        ))
+        Ok(Caldir::from_resolved(config_path, config, dir, providers))
     }
 
     /// Returns the default provider binary search dirs from `PATH`.
@@ -109,7 +104,7 @@ fn unique_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
     unique
 }
 
-fn default_providers_data_dir(config_path: &Path) -> PathBuf {
+fn default_providers_dir(config_path: &Path) -> PathBuf {
     config_path
         .parent()
         .map(Path::to_path_buf)
