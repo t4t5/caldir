@@ -77,7 +77,6 @@ pub fn run(
             .collect::<Result<_>>()?
     } else {
         caldir
-            .config
             .parse_default_reminders()
             .map_err(|e| anyhow::anyhow!("{}", e))?
             .unwrap_or_default()

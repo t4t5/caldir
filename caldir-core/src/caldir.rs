@@ -1,17 +1,18 @@
 //! Master struct. Everything else flows from here.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub use crate::caldir_builder::CaldirBuilder;
 use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
 use crate::error::{CalDirError, CalDirResult};
+use crate::event::Reminder;
 use crate::remote::provider::Provider;
 
 pub struct Caldir {
-    pub config_path: PathBuf,
-    pub config: CaldirConfig,
-    pub data_dir: PathBuf,
+    config_path: PathBuf,
+    config: CaldirConfig,
+    data_dir: PathBuf,
     providers: Vec<Provider>,
 }
 
@@ -23,6 +24,18 @@ impl Caldir {
     /// Load from the current process environment.
     pub fn load() -> CalDirResult<Self> {
         Self::builder().build()
+    }
+
+    pub fn config_path(&self) -> &Path {
+        &self.config_path
+    }
+
+    pub fn config(&self) -> &CaldirConfig {
+        &self.config
+    }
+
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
     }
 
     pub(crate) fn from_resolved(
@@ -57,6 +70,11 @@ impl Caldir {
             .find(|provider| provider.name() == name)
             .cloned()
             .ok_or_else(|| CalDirError::ProviderNotInstalled(name.to_string()))
+    }
+
+    /// Parse default_reminders strings into Reminder structs.
+    pub fn parse_default_reminders(&self) -> CalDirResult<Option<Vec<Reminder>>> {
+        self.config.parse_default_reminders()
     }
 
     /// Load a single calendar by slug, anchored at this caldir's data path.
@@ -118,6 +136,12 @@ impl Caldir {
             return Ok(None);
         };
         Ok(self.calendars()?.into_iter().find(|c| c.slug == name))
+    }
+
+    /// Set the default calendar if one isn't already configured.
+    /// Returns true if the default was set.
+    pub fn set_default_calendar_if_unset(&mut self, slug: &str) -> bool {
+        self.config.set_default_calendar_if_unset(slug)
     }
 }
 
@@ -194,7 +218,7 @@ mod tests {
     #[test]
     fn calendars_returns_error_for_invalid_calendar_config() {
         let caldir = TestCaldir::new();
-        let config_dir = caldir.data_dir.join("work/.caldir");
+        let config_dir = caldir.data_dir().join("work/.caldir");
         std::fs::create_dir_all(&config_dir).unwrap();
         std::fs::write(config_dir.join("config.toml"), "remote =").unwrap();
 
@@ -224,9 +248,9 @@ mod tests {
     #[test]
     fn save_config_writes_to_the_configured_path() {
         let mut caldir = TestCaldir::new();
-        let config_path = caldir.config_path.to_path_buf();
+        let config_path = caldir.config_path().to_path_buf();
 
-        assert!(caldir.config.set_default_calendar_if_unset("work"));
+        assert!(caldir.set_default_calendar_if_unset("work"));
         caldir.save_config().unwrap();
 
         let contents = std::fs::read_to_string(config_path).unwrap();
@@ -249,15 +273,13 @@ mod tests {
             .build()
             .unwrap();
 
-        assert_eq!(caldir.config.calendar_dir, PathBuf::from("~/calendars"));
+        assert_eq!(caldir.config().calendar_dir, PathBuf::from("~/calendars"));
         assert_eq!(
-            caldir.config.providers_data_dir,
+            caldir.config().providers_data_dir,
             Some(PathBuf::from("~/provider-data"))
         );
-        assert_eq!(
-            caldir.data_dir,
-            crate::utils::expand_tilde(std::path::Path::new("~/calendars"))
-        );
+        let expected = crate::utils::expand_tilde(std::path::Path::new("~/calendars"));
+        assert_eq!(caldir.data_dir(), expected.as_path());
     }
 
     #[test]

@@ -253,12 +253,12 @@ pub async fn run(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Resul
         }
     });
     if let Some(slug) = first_writable
-        && caldir.config.set_default_calendar_if_unset(&slug)
+        && caldir.set_default_calendar_if_unset(&slug)
     {
         caldir.save_config()?;
     }
 
-    println!("\nCalendars saved to {}\n", caldir.data_dir.tilde());
+    println!("\nCalendars saved to {}\n", caldir.data_dir().tilde());
 
     // Load the newly created calendars and do an initial pull
     let calendars: Vec<Calendar> = created_slugs
