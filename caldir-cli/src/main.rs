@@ -205,11 +205,17 @@ enum Commands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // `update` doesn't touch the caldir, so dispatch it before loading anything.
+    if let Commands::Update = cli.command {
+        return commands::update::run().await;
+    }
+
+    let mut caldir = Caldir::load(CaldirConfig::config_path()?)?;
+
     match cli.command {
         Commands::Connect { provider, hosted } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             let provider = resolve_provider(&caldir, provider)?;
-            commands::connect::run(caldir, provider, hosted).await
+            commands::connect::run(&mut caldir, provider, hosted).await
         }
         Commands::Status {
             calendar,
@@ -217,7 +223,6 @@ async fn main() -> Result<()> {
             to,
             verbose,
         } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             require_calendars(&caldir)?;
             let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
             let range = DateRange::from_args(from.as_deref(), to.as_deref())
@@ -230,7 +235,6 @@ async fn main() -> Result<()> {
             to,
             verbose,
         } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             require_calendars(&caldir)?;
             let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
             let range = DateRange::from_args(from.as_deref(), to.as_deref())
@@ -242,7 +246,6 @@ async fn main() -> Result<()> {
             verbose,
             force,
         } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             require_calendars(&caldir)?;
             let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
             commands::push::run(&caldir, calendars, verbose, force).await
@@ -254,7 +257,6 @@ async fn main() -> Result<()> {
             verbose,
             force,
         } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             require_calendars(&caldir)?;
             let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
             let range = DateRange::from_args(from.as_deref(), to.as_deref())
@@ -262,7 +264,6 @@ async fn main() -> Result<()> {
             commands::sync::run(&caldir, calendars, range, verbose, force).await
         }
         Commands::Events { calendar, from, to } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             require_calendars(&caldir)?;
             let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
             use caldir_core::date_range::{parse_date_end, parse_date_start};
@@ -280,7 +281,6 @@ async fn main() -> Result<()> {
             commands::events::run(&caldir, calendars, from_dt, to_dt)
         }
         Commands::Today { calendar } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             require_calendars(&caldir)?;
             let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
             let today = Local::now().date_naive();
@@ -298,7 +298,6 @@ async fn main() -> Result<()> {
             )
         }
         Commands::Week { calendar } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             require_calendars(&caldir)?;
             let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
             let today = Local::now().date_naive();
@@ -333,10 +332,9 @@ async fn main() -> Result<()> {
             reminder,
             no_reminders,
         } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             require_calendars(&caldir)?;
-            let calendars = resolve_calendars(&caldir, None)?;
             commands::new::run(
+                &caldir,
                 title,
                 start,
                 end,
@@ -345,7 +343,6 @@ async fn main() -> Result<()> {
                 calendar,
                 reminder,
                 no_reminders,
-                calendars,
             )
         }
         Commands::Discard {
@@ -353,24 +350,21 @@ async fn main() -> Result<()> {
             verbose,
             force,
         } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             require_calendars(&caldir)?;
             let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
             commands::discard::run(&caldir, calendars, verbose, force).await
         }
         Commands::Invites { calendar, all } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             require_calendars(&caldir)?;
             let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
             commands::invites::run(&caldir, calendars, all)
         }
         Commands::Rsvp { path, response } => {
-            let caldir = Caldir::load(CaldirConfig::config_path()?)?;
             require_calendars(&caldir)?;
             commands::rsvp::run(&caldir, path, response)
         }
-        Commands::Config => commands::config::run(),
-        Commands::Update => commands::update::run().await,
+        Commands::Config => commands::config::run(&caldir),
+        Commands::Update => unreachable!("handled above"),
     }
 }
 

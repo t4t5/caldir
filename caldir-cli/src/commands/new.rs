@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
-use caldir_core::caldir_config::CaldirConfig;
 use caldir_core::calendar::Calendar;
 use caldir_core::event::{Event, EventTime, Reminder};
 use chrono::Duration;
@@ -11,6 +10,7 @@ use crate::utils::path::PathExt;
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
+    caldir: &Caldir,
     title: Option<String>,
     start: Option<String>,
     end: Option<String>,
@@ -19,7 +19,6 @@ pub fn run(
     calendar_slug: Option<String>,
     reminder_args: Vec<String>,
     no_reminders: bool,
-    calendars: Vec<Calendar>,
 ) -> Result<()> {
     let interactive = title.is_none() || start.is_none();
 
@@ -77,7 +76,6 @@ pub fn run(
             .map(|r| parse_reminder(r))
             .collect::<Result<_>>()?
     } else {
-        let caldir = Caldir::load(CaldirConfig::config_path()?)?;
         caldir
             .config()
             .parse_default_reminders()
@@ -86,7 +84,8 @@ pub fn run(
     };
 
     // --- Calendar ---
-    let calendar = resolve_calendar(calendar_slug, &calendars, interactive)?;
+    let calendars = caldir.calendars();
+    let calendar = resolve_calendar(caldir, calendar_slug, &calendars, interactive)?;
 
     let event = Event::new(title, start_time, end_time, None, location, None, reminders);
 
@@ -323,11 +322,12 @@ fn parse_reminder(input: &str) -> Result<Reminder> {
 }
 
 /// Resolve which calendar to use.
-fn resolve_calendar(
+fn resolve_calendar<'a>(
+    caldir: &Caldir,
     slug: Option<String>,
-    calendars: &[Calendar],
+    calendars: &'a [Calendar],
     interactive: bool,
-) -> Result<&Calendar> {
+) -> Result<&'a Calendar> {
     if let Some(slug) = slug {
         return calendars.iter().find(|c| c.slug == slug).ok_or_else(|| {
             let available: Vec<_> = calendars.iter().map(|c| c.slug.as_str()).collect();
@@ -345,7 +345,6 @@ fn resolve_calendar(
     }
 
     // Try the default calendar
-    let caldir = Caldir::load(CaldirConfig::config_path()?)?;
     if let Some(default) = caldir.default_calendar()
         && let Some(cal) = calendars.iter().find(|c| c.slug == default.slug)
     {

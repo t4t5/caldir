@@ -22,7 +22,7 @@ fn build_options(hosted: bool, redirect_uri: &str) -> serde_json::Map<String, se
     options
 }
 
-pub async fn run(mut caldir: Caldir, provider: Provider, hosted: bool) -> Result<()> {
+pub async fn run(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Result<()> {
     // Bind to port 0 so the OS picks a free port
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
@@ -264,7 +264,7 @@ pub async fn run(mut caldir: Caldir, provider: Provider, hosted: bool) -> Result
 
     if !calendars.is_empty() {
         println!("Pulling events...\n");
-        super::pull::run(&caldir, calendars, DateRange::default(), false).await?;
+        super::pull::run(caldir, calendars, DateRange::default(), false).await?;
     }
 
     Ok(())

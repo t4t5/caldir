@@ -75,6 +75,10 @@ impl Caldir {
         &self.config
     }
 
+    pub fn config_path(&self) -> &Path {
+        &self.config_path
+    }
+
     pub fn data_path(&self) -> PathBuf {
         Self::expand_tilde(&self.config.calendar_dir)
     }
