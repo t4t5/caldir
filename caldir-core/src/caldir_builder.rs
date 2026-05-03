@@ -28,18 +28,6 @@ impl CaldirBuilder {
         self
     }
 
-    /// Set provider binary search directories. This overrides the default `PATH`
-    /// lookup, so tests can use an empty list and GUI apps can prepend bundled
-    /// provider directories.
-    pub fn provider_search_dirs<I, P>(mut self, dirs: I) -> Self
-    where
-        I: IntoIterator<Item = P>,
-        P: Into<PathBuf>,
-    {
-        self.provider_search_dirs = Some(dirs.into_iter().map(Into::into).collect());
-        self
-    }
-
     /// Provide an already-resolved provider snapshot directly.
     pub fn providers(mut self, providers: Vec<Provider>) -> Self {
         self.providers = Some(providers);
@@ -63,6 +51,7 @@ impl CaldirBuilder {
         };
 
         let dir = expand_tilde(&config.calendar_dir);
+
         let providers_dir = config
             .providers_data_dir
             .as_ref()

@@ -233,7 +233,7 @@ pub async fn run(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Resul
     let mut created_slugs = Vec::new();
     for &idx in &selections {
         let config = &calendar_configs[idx];
-        let slug = caldir.unique_slug_for(config.name.as_deref())?;
+        let slug = caldir.unique_calendar_slug_for(config.name.as_deref())?;
 
         let calendar = caldir.new_calendar(&slug, config.clone());
 

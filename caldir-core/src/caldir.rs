@@ -25,6 +25,10 @@ impl Caldir {
         Self::builder().build()
     }
 
+    pub fn dir(&self) -> &Path {
+        &self.dir
+    }
+
     pub fn config_path(&self) -> &Path {
         &self.config_path
     }
@@ -35,10 +39,6 @@ impl Caldir {
 
     pub fn config_mut(&mut self) -> &mut CaldirConfig {
         &mut self.config
-    }
-
-    pub fn dir(&self) -> &Path {
-        &self.dir
     }
 
     pub(crate) fn from_resolved(
@@ -92,7 +92,7 @@ impl Caldir {
 
     /// Generate a slug for a new calendar with the given display name that
     /// doesn't collide with any existing directory in this caldir.
-    pub fn unique_slug_for(&self, name: Option<&str>) -> CalDirResult<String> {
+    pub fn unique_calendar_slug_for(&self, name: Option<&str>) -> CalDirResult<String> {
         Calendar::unique_slug(name, &self.dir)
     }
 
@@ -188,22 +188,6 @@ mod tests {
     use crate::error::CalDirError;
     use test_support::TestCaldir;
 
-    #[cfg(unix)]
-    fn make_executable(path: &std::path::Path) {
-        use std::os::unix::fs::PermissionsExt;
-
-        let mut permissions = std::fs::metadata(path).unwrap().permissions();
-        permissions.set_mode(0o755);
-        std::fs::set_permissions(path, permissions).unwrap();
-    }
-
-    #[cfg(not(unix))]
-    fn make_executable(_path: &std::path::Path) {}
-
-    fn provider_binary_name(provider: &str) -> String {
-        format!("caldir-provider-{provider}{}", std::env::consts::EXE_SUFFIX)
-    }
-
     #[test]
     fn calendars_returns_error_for_invalid_calendar_config() {
         let caldir = TestCaldir::new();
@@ -264,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn calendars_returns_empty_when_data_path_does_not_exist() {
+    fn calendars_returns_empty_when_dir_does_not_exist() {
         let tmp = tempfile::tempdir().unwrap();
         let caldir = Caldir::builder()
             .config_path(tmp.path().join("config.toml"))
@@ -314,64 +298,5 @@ mod tests {
         );
         let expected = crate::utils::expand_tilde(std::path::Path::new("~/calendars"));
         assert_eq!(caldir.dir(), expected.as_path());
-    }
-
-    #[test]
-    fn provider_data_is_stored_next_to_config_by_default() {
-        let home = tempfile::tempdir().unwrap();
-
-        let bin_dir = home.path().join("bin");
-        std::fs::create_dir_all(&bin_dir).unwrap();
-        let provider_binary = bin_dir.join(provider_binary_name("google"));
-        std::fs::write(&provider_binary, "").unwrap();
-        make_executable(&provider_binary);
-
-        let random_path = home.path().join("random_path");
-        let config_path = random_path.join("config.toml");
-
-        let caldir = Caldir::builder()
-            .config_path(&config_path)
-            .provider_search_dirs([&bin_dir])
-            .build()
-            .unwrap();
-
-        assert_eq!(
-            caldir.provider("google").unwrap().dir(),
-            random_path.join("providers/google")
-        );
-    }
-
-    #[test]
-    fn provider_data_can_be_stored_elsewhere() {
-        let home = tempfile::tempdir().unwrap();
-
-        let bin_dir = home.path().join("bin");
-        std::fs::create_dir_all(&bin_dir).unwrap();
-        let provider_binary = bin_dir.join(provider_binary_name("google"));
-        std::fs::write(&provider_binary, "").unwrap();
-        make_executable(&provider_binary);
-
-        let random_path = home.path().join("random_path");
-        let config_path = random_path.join("config.toml");
-
-        let custom_data_path = home.path().join("elsewhere");
-        CaldirConfig {
-            calendar_dir: home.path().join("calendars"),
-            providers_data_dir: Some(custom_data_path.clone()),
-            ..CaldirConfig::new()
-        }
-        .save_to(&config_path)
-        .unwrap();
-
-        let caldir = Caldir::builder()
-            .config_path(&config_path)
-            .provider_search_dirs([&bin_dir])
-            .build()
-            .unwrap();
-
-        assert_eq!(
-            caldir.provider("google").unwrap().dir(),
-            custom_data_path.join("google")
-        );
     }
 }
