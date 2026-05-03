@@ -43,11 +43,10 @@ caldir takes a different approach to filenames:
 
 **Why human-readable filenames matter:**
 
-1. **`ls` shows your schedule** — No need for a special viewer to see what's on your calendar
-2. **grep works** — `ls ~/caldir/work/ | grep 2025-03` shows March events
-3. **LLM-friendly** — AI assistants can read your calendar directory and understand it immediately
-4. **Sorting works** — Files sort chronologically by default
-5. **Tab completion** — Start typing the date to find events
+1. **Sorted by default** — Files that start with a datetime (`2026-04-01-xxx`) sort chronologically
+1. **grep works** — `ls ~/caldir/work/ | grep 2025-03` shows March events
+2. **LLM-friendly** — AI assistants can read your calendar directory and understand it immediately
+4. **Tab completion** — Start typing the date to find events
 
 ### Bidirectional Sync
 
@@ -128,75 +127,6 @@ The core CLI is completely provider-agnostic — it just passes provider-prefixe
 - `caldir-provider-icloud` — iCloud (CalDAV + app-specific passwords)
 - `caldir-provider-caldav` — Generic CalDAV servers
 - `caldir-provider-outlook` — Outlook Calendar (OAuth + Microsoft Graph API)
-
-## Module Architecture
-
-```
-caldir-core/                   # Core library (used by CLI and future GUI apps)
-  src/
-    lib.rs              - Module declarations (no re-exports, use full paths)
-    error.rs            - CalDirError enum, CalDirResult type alias
-    constants.rs        - DEFAULT_SYNC_DAYS
-    event.rs            - Provider-neutral event types (Event, Attendee, Reminder, etc.)
-    protocol.rs         - CLI-provider communication protocol (Command enum, Request/Response, connect types)
-    provider.rs         - Provider subprocess protocol (JSON over stdin/stdout)
-    provider_account.rs - ProviderAccount (provider + account identifier for listing calendars)
-    remote.rs           - Remote, RemoteConfig (remote calendar operations)
-    calendar.rs         - Calendar struct, event CRUD, sync state
-    caldir.rs           - Caldir root directory, calendar discovery
-    config/
-      mod.rs
-      global_config.rs   - GlobalConfig (~/.config/caldir/config.toml)
-      calendar_config.rs - CalendarConfig (name, color, remote in .caldir/config.toml)
-    local/
-      mod.rs
-      state.rs        - LocalState (.caldir/state/known_event_ids)
-      event.rs        - LocalEvent (event + file metadata)
-    ics/
-      mod.rs
-      generate.rs     - ICS file generation (RFC 5545)
-      parse.rs        - ICS file parsing
-    sync/
-      mod.rs
-      diff_kind.rs    - DiffKind enum (Create, Update, Delete)
-      event_diff.rs   - EventDiff struct
-      calendar_diff.rs - CalendarDiff (diff computation + apply)
-      batch_diff.rs   - BatchDiff (multiple calendars)
-
-caldir-cli/                    # Thin CLI layer (TUI rendering only)
-  src/
-    main.rs      - CLI parsing and command dispatch
-    render.rs    - Render trait for colored terminal output
-    commands/
-      mod.rs
-      connect.rs - Connect to remote provider
-      pull.rs    - Pull remote → local
-      push.rs    - Push local → remote
-      status.rs  - Show pending changes
-      new.rs     - Create local events
-      invites.rs - List pending invites
-      rsvp.rs    - Respond to invites (direct + interactive)
-    utils/       - Spinners and TUI helpers
-
-caldir-provider-google/        # Google Calendar provider (separate crate)
-  src/
-    main.rs        - JSON protocol handler (reads stdin, writes stdout)
-    app_config.rs  - OAuth credentials (~/.config/caldir/providers/google/app_config.toml)
-    session.rs     - Token storage and refresh (~/.config/caldir/providers/google/session/)
-    commands/      - Command handlers (connect, list_calendars, list_events, etc.)
-    google_event/  - Conversion between Google API types and caldir_core types
-
-caldir-provider-outlook/       # Outlook provider (separate crate)
-  src/
-    main.rs          - JSON protocol handler (reads stdin, writes stdout)
-    app_config.rs    - Azure AD OAuth credentials (~/.config/caldir/providers/outlook/app_config.toml)
-    session.rs       - Token storage and refresh (~/.config/caldir/providers/outlook/session/)
-    graph_client.rs  - Lightweight Microsoft Graph API client (reqwest wrapper)
-    graph_types.rs   - Serde types for Graph API responses
-    remote_config.rs - OutlookRemoteConfig (outlook_account, outlook_calendar_id)
-    commands/        - Command handlers (connect, list_calendars, list_events, etc.)
-    outlook_event/   - Conversion between Graph API types and caldir_core types
-```
 
 ### Key Abstractions
 
