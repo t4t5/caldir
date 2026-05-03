@@ -6,7 +6,6 @@ pub use crate::caldir_builder::CaldirBuilder;
 use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::Reminder;
 use crate::remote::provider::Provider;
 
 pub struct Caldir {
@@ -32,6 +31,10 @@ impl Caldir {
 
     pub fn config(&self) -> &CaldirConfig {
         &self.config
+    }
+
+    pub fn config_mut(&mut self) -> &mut CaldirConfig {
+        &mut self.config
     }
 
     pub fn data_dir(&self) -> &Path {
@@ -70,11 +73,6 @@ impl Caldir {
             .find(|provider| provider.name() == name)
             .cloned()
             .ok_or_else(|| CalDirError::ProviderNotInstalled(name.to_string()))
-    }
-
-    /// Parse default_reminders strings into Reminder structs.
-    pub fn parse_default_reminders(&self) -> CalDirResult<Option<Vec<Reminder>>> {
-        self.config.parse_default_reminders()
     }
 
     /// Load a single calendar by slug, anchored at this caldir's data path.
@@ -136,12 +134,6 @@ impl Caldir {
             return Ok(None);
         };
         Ok(self.calendars()?.into_iter().find(|c| c.slug == name))
-    }
-
-    /// Set the default calendar if one isn't already configured.
-    /// Returns true if the default was set.
-    pub fn set_default_calendar_if_unset(&mut self, slug: &str) -> bool {
-        self.config.set_default_calendar_if_unset(slug)
     }
 }
 
@@ -250,7 +242,7 @@ mod tests {
         let mut caldir = TestCaldir::new();
         let config_path = caldir.config_path().to_path_buf();
 
-        assert!(caldir.set_default_calendar_if_unset("work"));
+        assert!(caldir.config_mut().set_default_calendar_if_unset("work"));
         caldir.save_config().unwrap();
 
         let contents = std::fs::read_to_string(config_path).unwrap();
