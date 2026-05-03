@@ -130,10 +130,10 @@ impl Caldir {
     }
 
     pub fn default_calendar(&self) -> CalDirResult<Option<Calendar>> {
-        let Some(name) = self.config.default_calendar.as_deref() else {
+        let Some(slug) = self.config.default_calendar.as_deref() else {
             return Ok(None);
         };
-        Ok(self.calendars()?.into_iter().find(|c| c.slug == name))
+        Ok(Some(self.calendar(slug)?))
     }
 }
 
