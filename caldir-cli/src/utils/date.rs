@@ -1,4 +1,5 @@
-use caldir_core::caldir_config::{CaldirConfig, TimeFormat};
+use caldir_core::caldir_config::TimeFormat;
+use caldir_core::caldir_settings::CaldirSettings;
 use caldir_core::event::EventTime;
 use chrono::{DateTime, NaiveDateTime, Timelike, Utc};
 
@@ -65,24 +66,24 @@ fn format_naive_time(dt: &NaiveDateTime, time_format: TimeFormat) -> String {
 }
 
 /// Format the time portion of an event (e.g. "  15:00" or " 3:00pm" or "all-day"), right-padded to 7 chars
-pub fn format_time_only(time: &EventTime, config: &CaldirConfig) -> String {
+pub fn format_time_only(time: &EventTime, settings: &CaldirSettings) -> String {
     match time {
         EventTime::Date(_) => "all-day".to_string(),
         EventTime::DateTimeUtc(dt) => {
             let local = dt.with_timezone(&chrono::Local).naive_local();
-            format_naive_time(&local, config.time_format)
+            format_naive_time(&local, settings.time_format())
         }
-        EventTime::DateTimeFloating(dt) => format_naive_time(dt, config.time_format),
+        EventTime::DateTimeFloating(dt) => format_naive_time(dt, settings.time_format()),
         EventTime::DateTimeZoned { datetime, tzid } => {
-            format_naive_time(&zoned_to_local(datetime, tzid), config.time_format)
+            format_naive_time(&zoned_to_local(datetime, tzid), settings.time_format())
         }
     }
 }
 
 /// Format a compact date+time string (e.g. "Today 15:00", "Tomorrow all-day", "Wed Mar 20 15:00")
 /// Used in contexts where events are not grouped by date (e.g. status/diff output).
-pub fn format_datetime(time: &EventTime, config: &CaldirConfig) -> String {
+pub fn format_datetime(time: &EventTime, settings: &CaldirSettings) -> String {
     let date_label = format_date_only(time);
-    let time_label = format_time_only(time, config).trim_start().to_string();
+    let time_label = format_time_only(time, settings).trim_start().to_string();
     format!("{}, {}", date_label, time_label)
 }

@@ -15,6 +15,8 @@ use std::io::{self, Write};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
+use crate::utils::path::PathExt;
+
 fn build_options(hosted: bool, redirect_uri: &str) -> serde_json::Map<String, serde_json::Value> {
     let mut options = serde_json::Map::new();
     options.insert("redirect_uri".into(), redirect_uri.into());
@@ -256,7 +258,7 @@ pub async fn run(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Resul
         caldir.save_config()?;
     }
 
-    println!("\nCalendars saved to {}\n", caldir.display_path().display());
+    println!("\nCalendars saved to {}\n", caldir.data_path().tilde());
 
     // Load the newly created calendars and do an initial pull
     let calendars: Vec<Calendar> = created_slugs

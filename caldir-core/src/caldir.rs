@@ -1,54 +1,52 @@
-//! Master struct. Everything else flows from here
+//! Master struct. Everything else flows from here.
 
 use std::path::{Path, PathBuf};
 
-use crate::caldir_config::CaldirConfig;
-use crate::caldir_environment::CaldirEnvironment;
+use crate::caldir_settings::CaldirSettings;
 use crate::calendar::Calendar;
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::provider::Provider;
-use crate::utils::expand_tilde;
 
 #[derive(Clone)]
 pub struct Caldir {
-    config: CaldirConfig,
+    settings: CaldirSettings,
     providers: Vec<Provider>,
 }
 
 impl Caldir {
     /// Load from the current process environment.
     pub fn load() -> CalDirResult<Self> {
-        CaldirEnvironment::from_process()?.load()
+        let settings = CaldirSettings::load()?;
+        let providers = Provider::discover_installed(
+            settings.providers_data_dir(),
+            settings.provider_search_dirs().iter(),
+        );
+        Ok(Self::new(settings, providers))
     }
 
-    /// Construct a Caldir directly from a config and provider list. The
-    /// config carries its own source path, so [`save_config`](Self::save_config)
-    /// works without any extra plumbing.
-    pub fn new(config: CaldirConfig, providers: Vec<Provider>) -> Self {
-        Caldir { config, providers }
+    /// Construct a Caldir directly from resolved settings and provider list.
+    pub fn new(settings: CaldirSettings, providers: Vec<Provider>) -> Self {
+        Caldir {
+            settings,
+            providers,
+        }
     }
 
-    pub fn config(&self) -> &CaldirConfig {
-        &self.config
+    pub fn settings(&self) -> &CaldirSettings {
+        &self.settings
     }
 
     pub fn config_path(&self) -> &Path {
-        self.config.path()
+        self.settings.config_path()
     }
 
-    /// Persist the in-memory config back to its source path on disk.
+    /// Persist the current settings back to the config file.
     pub fn save_config(&self) -> CalDirResult<()> {
-        self.config.save()
+        self.settings.save_config()
     }
 
     pub fn data_path(&self) -> PathBuf {
-        expand_tilde(&self.config.calendar_dir)
-    }
-
-    /// Returns the calendar directory path in display-friendly form,
-    /// keeping `~` instead of expanding to the full home directory.
-    pub fn display_path(&self) -> PathBuf {
-        self.config.calendar_dir.clone()
+        self.settings.calendar_dir()
     }
 
     pub fn providers(&self) -> &[Provider] {
@@ -125,20 +123,16 @@ impl Caldir {
     }
 
     pub fn default_calendar(&self) -> CalDirResult<Option<Calendar>> {
-        let Some(name) = self.config.default_calendar.as_ref() else {
+        let Some(name) = self.settings.default_calendar() else {
             return Ok(None);
         };
-        Ok(self.calendars()?.into_iter().find(|c| &c.slug == name))
+        Ok(self.calendars()?.into_iter().find(|c| c.slug == name))
     }
 
     /// Set the default calendar if one isn't already configured.
     /// Returns true if the default was set.
     pub fn set_default_calendar_if_unset(&mut self, slug: &str) -> bool {
-        if self.config.default_calendar.is_some() {
-            return false;
-        }
-        self.config.default_calendar = Some(slug.to_string());
-        true
+        self.settings.set_default_calendar_if_unset(slug)
     }
 }
 
@@ -146,6 +140,7 @@ impl Caldir {
 pub(crate) mod test_support {
     use super::*;
     use crate::caldir_config::CaldirConfig;
+    use crate::caldir_settings::CaldirSettings;
     use tempfile::TempDir;
 
     /// Build a fresh Caldir rooted at a tempdir, with no providers. The
@@ -154,14 +149,17 @@ pub(crate) mod test_support {
     pub fn mock_caldir() -> (TempDir, Caldir) {
         let tmp = tempfile::tempdir().unwrap();
         let calendar_dir = tmp.path().join("caldir");
+        let config_path = tmp.path().join("config.toml");
         std::fs::create_dir_all(&calendar_dir).unwrap();
-        let caldir = Caldir::new(
+        let settings = CaldirSettings::from_config(
+            &config_path,
             CaldirConfig {
                 calendar_dir,
-                ..CaldirConfig::new(tmp.path().join("config.toml"))
+                ..CaldirConfig::new()
             },
-            Vec::new(),
+            Vec::<PathBuf>::new(),
         );
+        let caldir = Caldir::new(settings, Vec::new());
         (tmp, caldir)
     }
 }
@@ -169,6 +167,7 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::caldir_config::CaldirConfig;
     use test_support::mock_caldir;
 
     #[test]
@@ -188,13 +187,15 @@ mod tests {
     #[test]
     fn calendars_returns_empty_when_data_path_does_not_exist() {
         let tmp = tempfile::tempdir().unwrap();
-        let caldir = Caldir::new(
+        let settings = CaldirSettings::from_config(
+            tmp.path().join("config.toml"),
             CaldirConfig {
                 calendar_dir: tmp.path().join("missing"),
-                ..CaldirConfig::new(tmp.path().join("config.toml"))
+                ..CaldirConfig::new()
             },
-            Vec::new(),
+            Vec::<PathBuf>::new(),
         );
+        let caldir = Caldir::new(settings, Vec::new());
 
         assert!(caldir.calendars().unwrap().is_empty());
     }

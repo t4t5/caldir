@@ -1,13 +1,12 @@
 //! Global caldir configuration.
 
 use std::fmt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use config::{Config, File};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{CalDirError, CalDirResult};
-use crate::event::Reminder;
 
 /// Time display format: 24-hour ("15:00") or 12-hour ("3:00pm").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -29,7 +28,7 @@ fn default_caldir_path() -> PathBuf {
 ///
 /// Calendar-specific configuration (provider, account, etc.) is stored
 /// in each calendar's .caldir/config.toml file instead.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CaldirConfig {
     #[serde(default = "default_caldir_path")]
     pub calendar_dir: PathBuf,
@@ -45,12 +44,6 @@ pub struct CaldirConfig {
 
     #[serde(default)]
     pub time_format: TimeFormat,
-
-    /// Where this config lives on disk — populated by [`load_from`] (and
-    /// preserved through clones) so [`save`] knows where to write back.
-    /// Skipped by serde since it isn't part of the TOML.
-    #[serde(skip)]
-    pub(crate) path: PathBuf,
 }
 
 impl CaldirConfig {
@@ -72,62 +65,44 @@ impl CaldirConfig {
         Ok(Self::config_dir()?.join("config.toml"))
     }
 
-    /// In-memory config rooted at `path` with all other fields defaulted.
-    /// Used as a starting point for tests and for the connect flow before
-    /// anything has been persisted; production goes through
-    /// [`load_from`](Self::load_from) instead.
-    pub fn new(path: impl Into<PathBuf>) -> Self {
+    pub fn new() -> Self {
         Self {
             calendar_dir: default_caldir_path(),
             providers_data_dir: None,
             default_calendar: None,
             default_reminders: None,
             time_format: TimeFormat::default(),
-            path: path.into(),
         }
     }
 
     /// Load config from `path`, creating a default file there if it doesn't
-    /// exist yet. The returned config carries `path` so [`save`](Self::save)
-    /// can write back without the caller having to remember it.
+    /// exist yet.
     pub fn load_from(path: impl Into<PathBuf>) -> CalDirResult<Self> {
         let path = path.into();
         if !path.exists() {
             Self::create_default_config(&path)?;
         }
 
-        let mut config: Self = Config::builder()
+        Config::builder()
             .add_source(File::from(path.clone()).required(false))
             .build()
             .map_err(|e| CalDirError::Config(e.to_string()))?
             .try_deserialize()
-            .map_err(|e| CalDirError::Config(e.to_string()))?;
-        config.path = path;
-        Ok(config)
+            .map_err(|e| CalDirError::Config(e.to_string()))
     }
 
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    /// Persist this config back to its source path on disk.
-    pub fn save(&self) -> CalDirResult<()> {
+    /// Persist this config to `path`.
+    pub fn save_to(&self, path: impl AsRef<std::path::Path>) -> CalDirResult<()> {
+        let path = path.as_ref();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| {
+                CalDirError::Config(format!("Could not create config directory: {e}"))
+            })?;
+        }
         let content = self.to_toml_string()?;
-        std::fs::write(&self.path, content)
+        std::fs::write(path, content)
             .map_err(|e| CalDirError::Config(format!("Could not write config file: {e}")))?;
         Ok(())
-    }
-
-    /// Parse default_reminders strings into Reminder structs.
-    pub fn parse_default_reminders(&self) -> CalDirResult<Option<Vec<Reminder>>> {
-        let Some(ref strs) = self.default_reminders else {
-            return Ok(None);
-        };
-        let reminders: Vec<Reminder> = strs
-            .iter()
-            .map(|s| Reminder::from_duration_str(s).map_err(CalDirError::Config))
-            .collect::<CalDirResult<_>>()?;
-        Ok(Some(reminders))
     }
 
     /// Create a default config file with all options commented out.
@@ -234,5 +209,11 @@ impl fmt::Display for CaldirConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let toml = toml::to_string_pretty(self).map_err(|_| fmt::Error)?;
         f.write_str(&toml)
+    }
+}
+
+impl Default for CaldirConfig {
+    fn default() -> Self {
+        Self::new()
     }
 }
