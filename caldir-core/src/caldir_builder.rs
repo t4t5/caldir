@@ -9,7 +9,6 @@ use crate::{
 pub struct CaldirBuilder {
     config_path: Option<PathBuf>,
     config: Option<CaldirConfig>,
-    provider_search_dirs: Option<Vec<PathBuf>>,
     providers: Option<Vec<Provider>>,
 }
 
@@ -57,40 +56,26 @@ impl CaldirBuilder {
             .as_ref()
             .map(|path| expand_tilde(path))
             .unwrap_or_else(|| default_providers_dir(&config_path));
+
         let providers = match self.providers {
             Some(providers) => providers,
-            None => {
-                let provider_search_dirs = self
-                    .provider_search_dirs
-                    .unwrap_or_else(Self::default_provider_search_dirs);
-                Provider::discover_installed(&providers_dir, provider_search_dirs)
-            }
+            None => Provider::discover_installed(&providers_dir, Self::default_bin_dirs()),
         };
 
         Ok(Caldir::from_resolved(config_path, config, dir, providers))
     }
 
-    /// Returns the default provider binary search dirs from `PATH`.
-    pub fn default_provider_search_dirs() -> Vec<PathBuf> {
-        unique_paths(provider_search_dirs_from_env("PATH"))
+    // $PATH value
+    pub fn default_bin_dirs() -> Vec<PathBuf> {
+        bin_dirs_from_env("PATH")
     }
 }
 
-fn provider_search_dirs_from_env(name: &str) -> Vec<PathBuf> {
+fn bin_dirs_from_env(name: &str) -> Vec<PathBuf> {
     std::env::var_os(name)
         .into_iter()
         .flat_map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
         .collect()
-}
-
-fn unique_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
-    let mut unique = Vec::new();
-    for path in paths {
-        if !unique.contains(&path) {
-            unique.push(path);
-        }
-    }
-    unique
 }
 
 fn default_providers_dir(config_path: &Path) -> PathBuf {

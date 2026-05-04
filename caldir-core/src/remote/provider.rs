@@ -48,14 +48,14 @@ impl Provider {
         }
     }
 
-    pub fn discover_installed<I, P>(providers_dir: impl AsRef<Path>, search_dirs: I) -> Vec<Self>
+    pub fn discover_installed<I, P>(providers_dir: impl AsRef<Path>, bin_dirs: I) -> Vec<Self>
     where
         I: IntoIterator<Item = P>,
         P: AsRef<Path>,
     {
         let mut providers = Vec::new();
 
-        for dir in search_dirs {
+        for dir in bin_dirs {
             let Ok(entries) = std::fs::read_dir(dir.as_ref()) else {
                 continue;
             };
