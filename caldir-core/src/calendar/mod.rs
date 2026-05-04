@@ -30,36 +30,10 @@ pub struct Calendar {
 }
 
 impl Calendar {
-    fn base_slug_for(name: Option<&str>) -> String {
-        name.map(slugify).unwrap_or_else(|| "calendar".to_string())
-    }
-
-    /// Generate a unique slug that doesn't conflict with existing calendar directories.
-    /// If the base slug exists, tries slug-2, slug-3, etc.
-    pub fn unique_slug(name: Option<&str>, caldir_dir: &Path) -> CalDirResult<String> {
-        let base = Self::base_slug_for(name);
-
-        if !caldir_dir.join(&base).exists() {
-            return Ok(base);
-        }
-
-        for n in 2..=100 {
-            let suffixed = format!("{}-{}", base, n);
-            if !caldir_dir.join(&suffixed).exists() {
-                return Ok(suffixed);
-            }
-        }
-
-        Err(CalDirError::Config(format!(
-            "Too many calendar name collisions for '{}'",
-            base
-        )))
-    }
-
     /// Load a calendar at `caldir_dir/slug`
     /// (`caldir_dir` is `~/caldir` in production, a tempdir in tests).
-    pub fn load(slug: &str, caldir_dir: impl AsRef<Path>) -> CalDirResult<Self> {
-        let dir = caldir_dir.as_ref().join(slug);
+    pub fn load(slug: &str, caldir_dir: &Path) -> CalDirResult<Self> {
+        let dir = caldir_dir.join(slug);
         let config = CalendarConfig::load(&dir)?;
 
         Ok(Calendar {
@@ -71,13 +45,15 @@ impl Calendar {
 
     /// Construct an in-memory calendar without touching disk.
     /// Used by the `connect` flow when materializing a new calendar
-    /// from a remote config before saving it.
-    pub fn new(slug: &str, caldir_dir: impl AsRef<Path>, config: CalendarConfig) -> Self {
-        Calendar {
-            slug: slug.to_string(),
-            dir: caldir_dir.as_ref().join(slug),
-            config,
-        }
+    pub fn new(caldir_dir: &Path, config: &CalendarConfig) -> CalDirResult<Self> {
+        let slug = Self::unique_slug(config.name.as_deref(), caldir_dir)?;
+        let dir = caldir_dir.join(&slug);
+
+        Ok(Calendar {
+            slug,
+            dir,
+            config: config.clone(),
+        })
     }
 
     pub fn dir(&self) -> &Path {
@@ -100,6 +76,32 @@ impl Calendar {
     /// Where changes get pushed to / pulled from (None if no remote configured)
     pub fn remote(&self) -> Option<&Remote> {
         self.config.remote.as_ref()
+    }
+
+    fn base_slug_for(name: Option<&str>) -> String {
+        name.map(slugify).unwrap_or_else(|| "calendar".to_string())
+    }
+
+    /// Generate a unique slug that doesn't conflict with existing calendar directories.
+    /// If the base slug exists, tries slug-2, slug-3, etc.
+    fn unique_slug(name: Option<&str>, caldir_dir: &Path) -> CalDirResult<String> {
+        let base = Self::base_slug_for(name);
+
+        if !caldir_dir.join(&base).exists() {
+            return Ok(base);
+        }
+
+        for n in 2..=100 {
+            let suffixed = format!("{}-{}", base, n);
+            if !caldir_dir.join(&suffixed).exists() {
+                return Ok(suffixed);
+            }
+        }
+
+        Err(CalDirError::Config(format!(
+            "Too many calendar name collisions for '{}'",
+            base
+        )))
     }
 }
 

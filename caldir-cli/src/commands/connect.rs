@@ -233,14 +233,12 @@ pub async fn run(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Resul
     let mut created_slugs = Vec::new();
     for &idx in &selections {
         let config = &calendar_configs[idx];
-        let slug = caldir.unique_calendar_slug_for(config.name.as_deref())?;
-
-        let calendar = caldir.new_calendar(&slug, config.clone());
+        let calendar = caldir.new_calendar(config)?;
 
         calendar.save_config()?;
-        created_slugs.push(slug.clone());
-
+        let slug = calendar.slug.clone();
         println!("  {slug}/ (created)");
+        created_slugs.push(slug);
     }
 
     // Set the first writable calendar as default if none is configured yet

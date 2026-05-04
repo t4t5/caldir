@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 pub use crate::caldir_builder::CaldirBuilder;
 use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
+use crate::calendar::config::CalendarConfig;
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::provider::Provider;
 
@@ -71,25 +72,14 @@ impl Caldir {
             .ok_or_else(|| CalDirError::ProviderNotInstalled(name.to_string()))
     }
 
-    /// Load a single calendar by slug, anchored at this caldir's directory.
     pub fn calendar(&self, slug: &str) -> CalDirResult<Calendar> {
         Calendar::load(slug, &self.dir)
     }
 
-    /// Construct an in-memory calendar (not yet on disk) anchored at this
-    /// caldir's directory. Used by the `connect` flow.
-    pub fn new_calendar(
-        &self,
-        slug: &str,
-        config: crate::calendar::config::CalendarConfig,
-    ) -> Calendar {
-        Calendar::new(slug, &self.dir, config)
-    }
-
-    /// Generate a slug for a new calendar with the given display name that
-    /// doesn't collide with any existing directory in this caldir.
-    pub fn unique_calendar_slug_for(&self, name: Option<&str>) -> CalDirResult<String> {
-        Calendar::unique_slug(name, &self.dir)
+    /// Construct a new in-memory calendar
+    /// (used by the `connect` flow)
+    pub fn new_calendar(&self, config: &CalendarConfig) -> CalDirResult<Calendar> {
+        Calendar::new(&self.dir, config)
     }
 
     /// Discover calendars by scanning the caldir for subdirectories.
@@ -187,6 +177,7 @@ pub(crate) mod test_support {
 mod tests {
     use super::*;
     use crate::caldir_config::CaldirConfig;
+    use crate::calendar::config::CalendarConfig;
     use crate::error::CalDirError;
     use test_support::TestCaldir;
 
@@ -206,19 +197,16 @@ mod tests {
 
     #[test]
     fn new_calendar_appears_in_calendars_after_save() {
-        use crate::calendar::config::CalendarConfig as PerCalendarConfig;
-
         let caldir = TestCaldir::new();
         assert!(caldir.calendars().unwrap().is_empty());
 
-        let cal = caldir.new_calendar(
-            "work",
-            PerCalendarConfig {
+        let cal = caldir
+            .new_calendar(&CalendarConfig {
                 name: Some("Work".into()),
                 color: Some("#0b8043".into()),
-                ..PerCalendarConfig::default()
-            },
-        );
+                ..CalendarConfig::default()
+            })
+            .unwrap();
         cal.save_config().unwrap();
 
         let calendars = caldir.calendars().unwrap();
