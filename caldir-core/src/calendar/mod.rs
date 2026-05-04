@@ -32,7 +32,7 @@ pub struct Calendar {
 impl Calendar {
     /// Load a calendar at `caldir_dir/slug`
     /// (`caldir_dir` is `~/caldir` in production, a tempdir in tests).
-    pub fn load(slug: &str, caldir_dir: &Path) -> CalDirResult<Self> {
+    pub fn load(caldir_dir: &Path, slug: &str) -> CalDirResult<Self> {
         let dir = caldir_dir.join(slug);
         let config = CalendarConfig::load(&dir)?;
 

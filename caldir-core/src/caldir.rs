@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-pub use crate::caldir_builder::CaldirBuilder;
+use crate::caldir_builder::CaldirBuilder;
 use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
 use crate::calendar::config::CalendarConfig;
@@ -73,7 +73,7 @@ impl Caldir {
     }
 
     pub fn calendar(&self, slug: &str) -> CalDirResult<Calendar> {
-        Calendar::load(slug, &self.dir)
+        Calendar::load(&self.dir, slug)
     }
 
     /// Construct a new in-memory calendar
@@ -83,34 +83,35 @@ impl Caldir {
     }
 
     /// Discover calendars by scanning the caldir for subdirectories.
-    /// Every non-hidden directory is a calendar; `.caldir/config.toml`
-    /// is optional and only carries metadata + remote sync settings.
+    /// Every non-hidden directory is a calendar
     pub fn calendars(&self) -> CalDirResult<Vec<Calendar>> {
-        let dir = &self.dir;
+        let mut calendars = Vec::new();
 
-        let entries = match std::fs::read_dir(dir) {
+        // Get all files
+        let entries = match std::fs::read_dir(&self.dir) {
             Ok(entries) => entries,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(error) => return Err(error.into()),
         };
 
-        let mut calendars = Vec::new();
+        // Filter to directories that aren't hidden
         for entry in entries {
             let path = entry?.path();
             if !path.is_dir() {
                 continue;
             }
 
-            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            let Some(slug) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
-            if name.starts_with('.') {
+            if slug.starts_with('.') {
                 continue;
             }
 
-            calendars.push(Calendar::load(name, dir)?);
+            calendars.push(Calendar::load(&self.dir, slug)?);
         }
 
+        // Sort by slug alphabetically:
         calendars.sort_by(|a, b| a.slug.cmp(&b.slug));
         Ok(calendars)
     }

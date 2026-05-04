@@ -44,7 +44,7 @@ pub fn make_override(master_uid: &str, rid_utc: DateTime<Utc>, summary: &str) ->
 /// alongside so it stays alive for the test's lifetime.
 pub fn make_calendar() -> (tempfile::TempDir, Calendar) {
     let tmp = tempfile::tempdir().unwrap();
-    let cal = Calendar::load("test", tmp.path()).unwrap();
+    let cal = Calendar::load(tmp.path(), "test").unwrap();
     std::fs::create_dir_all(cal.dir()).unwrap();
     (tmp, cal)
 }
