@@ -37,10 +37,6 @@ impl Caldir {
         &self.config
     }
 
-    pub fn config_mut(&mut self) -> &mut CaldirConfig {
-        &mut self.config
-    }
-
     pub(crate) fn from_resolved(
         config_path: PathBuf,
         config: CaldirConfig,
@@ -131,6 +127,12 @@ impl Caldir {
 
     pub fn default_calendar_slug(&self) -> Option<&str> {
         self.config.default_calendar.as_deref()
+    }
+
+    /// Set the default calendar if one isn't already configured.
+    /// Returns true if the default was set.
+    pub fn set_default_calendar_if_unset(&mut self, slug: &str) -> bool {
+        self.config.set_default_calendar_if_unset(slug)
     }
 }
 
@@ -268,7 +270,7 @@ mod tests {
         let mut caldir = TestCaldir::new();
         let config_path = caldir.config_path().to_path_buf();
 
-        assert!(caldir.config_mut().set_default_calendar_if_unset("work"));
+        assert!(caldir.set_default_calendar_if_unset("work"));
         caldir.save_config().unwrap();
 
         let contents = std::fs::read_to_string(config_path).unwrap();
