@@ -48,32 +48,13 @@ pub struct CaldirConfig {
 }
 
 impl CaldirConfig {
-    /// Caldir config directory:
-    /// - Linux/BSD: `$XDG_CONFIG_HOME/caldir` or `~/.config/caldir`
-    /// - macOS: `~/.config/caldir`
-    /// - Windows: `%APPDATA%\caldir`
-    pub fn config_dir() -> CalDirResult<PathBuf> {
-        let config_dir_path = Self::platform_config_dir()?.join("caldir");
-
-        #[cfg(target_os = "macos")]
-        Self::migrate_legacy_macos_path(&config_dir_path)?;
-
-        Ok(config_dir_path)
+    pub fn new() -> Self {
+        Self::default()
     }
 
     // ~/config/caldir/config.toml
-    pub fn config_path() -> CalDirResult<PathBuf> {
-        Ok(Self::config_dir()?.join("config.toml"))
-    }
-
-    pub fn new() -> Self {
-        Self {
-            calendar_dir: default_caldir_path(),
-            providers_data_dir: None,
-            default_calendar: None,
-            default_reminders: None,
-            time_format: TimeFormat::default(),
-        }
+    pub fn path() -> CalDirResult<PathBuf> {
+        Ok(Self::dir()?.join("config.toml"))
     }
 
     /// Load config from `path`, creating a default file there if it doesn't
@@ -162,6 +143,19 @@ impl CaldirConfig {
             .map_err(|e| CalDirError::Config(format!("Could not write config file: {e}")))?;
 
         Ok(())
+    }
+
+    /// Caldir config directory:
+    /// - Linux/BSD: `$XDG_CONFIG_HOME/caldir` or `~/.config/caldir`
+    /// - macOS: `~/.config/caldir`
+    /// - Windows: `%APPDATA%\caldir`
+    fn dir() -> CalDirResult<PathBuf> {
+        let config_dir_path = Self::platform_config_dir()?.join("caldir");
+
+        #[cfg(target_os = "macos")]
+        Self::migrate_legacy_macos_path(&config_dir_path)?;
+
+        Ok(config_dir_path)
     }
 
     /// Serialize the config to TOML. Fields with a concrete default (like

@@ -1,38 +1,40 @@
 //! Master struct. Everything else flows from here.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use crate::caldir_builder::CaldirBuilder;
 use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
 use crate::calendar::config::CalendarConfig;
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::provider::Provider;
+use crate::remote::provider_registry::ProviderRegistry;
 
 pub struct Caldir {
-    config_path: PathBuf,
     config: CaldirConfig,
-    dir: PathBuf,
-    providers: Vec<Provider>,
+    providers: ProviderRegistry,
 }
 
 impl Caldir {
-    pub fn builder() -> CaldirBuilder {
-        CaldirBuilder::new()
+    pub fn default() -> Self {
+        Self::new(CaldirConfig::new(), ProviderRegistry::default())
     }
 
-    /// Load from the current process environment.
-    pub fn load() -> CalDirResult<Self> {
-        Self::builder().build()
+    fn new(config: CaldirConfig, providers: ProviderRegistry) -> Self {
+        Self { config, providers }
     }
 
-    pub fn dir(&self) -> &Path {
-        &self.dir
-    }
+    // /// Load from the current process environment.
+    // pub fn load() -> CalDirResult<Self> {
+    //     Self::builder().build()
+    // }
 
-    pub fn config_path(&self) -> &Path {
-        &self.config_path
-    }
+    // pub fn dir(&self) -> &Path {
+    //     &self.dir
+    // }
+    //
+    // pub fn config_path(&self) -> &Path {
+    //     &self.config_path
+    // }
 
     pub fn config(&self) -> &CaldirConfig {
         &self.config

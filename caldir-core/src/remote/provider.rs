@@ -9,11 +9,6 @@
 //! Providers manage their own credentials and tokens. Core just passes
 //! provider-specific parameters from the calendar config.
 
-use crate::error::{CalDirError, CalDirResult};
-use crate::remote::protocol::{
-    Command, Connect, ConnectResponse, ProviderCommand, ProviderRequestContext, Request, Response,
-};
-use crate::remote::provider_account::ProviderAccount;
 use serde::Serialize;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -22,79 +17,66 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command as TokioCommand;
 use tokio::time::timeout;
 
+use crate::error::{CalDirError, CalDirResult};
+use crate::remote::protocol::{
+    Command, Connect, ConnectResponse, ProviderCommand, ProviderRequestContext, Request, Response,
+};
+use crate::remote::provider_account::ProviderAccount;
+
 const PROVIDER_TIMEOUT: Duration = Duration::from_secs(15);
 /// No timeout for auth commands since they involve user interaction.
 const AUTH_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Clone, Debug)]
 pub struct Provider {
-    name: String,
+    slug: String,
     binary_path: PathBuf,
-    dir: PathBuf,
 }
 
 impl fmt::Display for Provider {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.slug)
     }
 }
 
+pub static PROVIDER_BINARY_PREFIX: &str = "caldir-provider-";
+
+fn provider_slug_from_filename(filename: &str) -> Option<&str> {
+    let slug = filename.strip_prefix("caldir-provider-")?;
+    let slug = slug.strip_suffix(std::env::consts::EXE_SUFFIX)?;
+    (!slug.is_empty()).then_some(slug)
+}
+
 impl Provider {
-    pub fn new(name: impl Into<String>, binary_path: PathBuf, dir: PathBuf) -> Self {
+    pub fn from_binary_path(binary_path: PathBuf) -> Option<Self> {
+        if !is_executable(&binary_path) {
+            return None;
+        }
+
+        let filename = &binary_path.file_name()?.to_str()?;
+        let slug = provider_slug_from_filename(filename)?;
+
+        Some(Provider::new(slug, &binary_path))
+    }
+
+    fn new(slug: &str, binary_path: &PathBuf) -> Self {
         Provider {
-            name: name.into(),
-            binary_path,
-            dir,
+            slug: slug.into(),
+            binary_path: binary_path.into(),
         }
     }
 
-    pub fn discover_installed<I, P>(providers_dir: impl AsRef<Path>, bin_dirs: I) -> Vec<Self>
-    where
-        I: IntoIterator<Item = P>,
-        P: AsRef<Path>,
-    {
-        let mut providers = Vec::new();
-
-        for dir in bin_dirs {
-            let Ok(entries) = std::fs::read_dir(dir.as_ref()) else {
-                continue;
-            };
-
-            for entry in entries.flatten() {
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                let Some(provider_name) = provider_name_from_filename(&name) else {
-                    continue;
-                };
-
-                let path = entry.path();
-                if is_executable(&path)
-                    && !providers.iter().any(|p: &Provider| p.name == provider_name)
-                {
-                    providers.push(Provider::new(
-                        provider_name,
-                        path,
-                        providers_dir.as_ref().join(provider_name),
-                    ));
-                }
-            }
-        }
-
-        providers.sort_by(|a, b| a.name.cmp(&b.name));
-        providers
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn binary_path(&self) -> &Path {
-        &self.binary_path
-    }
-
-    pub fn dir(&self) -> &Path {
-        &self.dir
-    }
+    // pub fn name(&self) -> &str {
+    //     &self.name
+    // }
+    //
+    // pub fn binary_path(&self) -> &Path {
+    //     &self.binary_path
+    // }
+    //
+    // pub fn dir(&self) -> &Path {
+    //     &self.dir
+    // }
 
     /// Advance the connect flow by one step.
     ///
@@ -193,12 +175,6 @@ impl Provider {
             Response::Error { error } => Err(CalDirError::Provider(error)),
         }
     }
-}
-
-fn provider_name_from_filename(filename: &str) -> Option<&str> {
-    let name = filename.strip_prefix("caldir-provider-")?;
-    let name = name.strip_suffix(std::env::consts::EXE_SUFFIX)?;
-    (!name.is_empty()).then_some(name)
 }
 
 #[cfg(unix)]
