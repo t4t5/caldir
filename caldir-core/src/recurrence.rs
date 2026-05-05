@@ -366,6 +366,37 @@ mod tests {
         assert!(result.is_ok(), "Failed to parse: {:?}", result.err());
     }
 
+    /// Regression test for Outlook published-calendar feeds, which emit
+    /// Microsoft Windows zone names like "E. South America Standard Time"
+    /// instead of IANA names. Parsing should normalize the TZID, so the
+    /// rrule crate accepts the resulting DTSTART line.
+    #[test]
+    fn test_parsed_outlook_windows_tzid_expands_correctly() {
+        use crate::ics::parse_event;
+
+        let ics = r#"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:TEST
+BEGIN:VEVENT
+UID:outlook-event
+SUMMARY:Outlook Recurring Event
+DTSTART;TZID=E. South America Standard Time:20250320T090000
+DTEND;TZID=E. South America Standard Time:20250320T100000
+RRULE:FREQ=WEEKLY;BYDAY=MO
+END:VEVENT
+END:VCALENDAR"#;
+
+        let event = parse_event(ics).expect("Should parse");
+        let recurrence = event.recurrence.as_ref().expect("Should have recurrence");
+        let rrule_str = build_rrule_string(&event.start, recurrence, rrule::Tz::LOCAL);
+        let result: Result<RRuleSet, _> = rrule_str.parse();
+        assert!(
+            result.is_ok(),
+            "Expected RRULE to parse after Windows->IANA normalization, got: {:?}",
+            result.err()
+        );
+    }
+
     /// Reproduce the all-day event case:
     /// DTSTART;VALUE=DATE:20080508
     /// RRULE:FREQ=YEARLY;UNTIL=20220507
