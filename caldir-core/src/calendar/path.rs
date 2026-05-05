@@ -2,8 +2,8 @@ use crate::calendar::error::CalendarError;
 
 use std::path::{Path, PathBuf};
 
-/// CalendarPath represents a path to a calendar file.
-/// It validates that the path has a UTF-8 file name so that it generates a valid slug.
+/// CalendarPath = path to a calendar directory
+/// Validates that it has UTF-8 file name (so that it generates a valid slug)
 #[derive(Debug)]
 pub struct CalendarPath(PathBuf);
 
