@@ -2,37 +2,28 @@
 default:
   @just --list
 
-format:
-  cargo fmt --all
-
-# Test app commands:
-
-cli +args:
-  cargo run -p caldir-cli -- {{ args }}
-
-auth +args:
-  @just cli auth {{ args }}
-
-pull:
-  @just cli pull
-
-status:
-  @just cli status
-
-push:
-  @just cli push
-
-new +args:
-  @just cli new {{ args }}
-
-# Dev tools:
-
+# TODO: Remove me after refactor:
+[working-directory: 'caldir-core']
 check:
-  cargo check --workspace
-  cargo clippy --workspace -- -D warnings
+  cargo check
+  cargo clippy
 
+# TODO: Remove me after refactor:
+[working-directory: 'caldir-core']
 test:
   cargo test
+
+# TODO: Remove me after refactor:
+[working-directory: 'caldir-core']
+format:
+  cargo fmt
+
+# check:
+#   cargo check --workspace
+#   cargo clippy --workspace -- -D warnings
+
+# test:
+#   cargo test
 
 # Install provider binary to PATH
 install-provider:

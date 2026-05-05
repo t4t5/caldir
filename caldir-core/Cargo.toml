@@ -1,0 +1,11 @@
+[package]
+name = "caldir-core"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+home = "0.5.12"
+serde = { version = "1", features = ["derive"] }
+toml = "1.1.2"
