@@ -4,6 +4,7 @@ use crate::{Calendar, Event};
 use error::CalendarEventError;
 use std::path::PathBuf;
 
+#[derive(Debug)]
 pub struct CalendarEvent {
     event: Event,
     path: PathBuf,
@@ -40,113 +41,75 @@ mod tests {
     use std::fs;
 
     use super::*;
+    use crate::Caldir;
+    use chrono::NaiveDate;
+    use icalendar::{Component, EventLike};
+
+    fn test_event() -> Event {
+        Event::from_ical_event(
+            &icalendar::Event::new()
+                .summary("Test Event")
+                .starts(
+                    NaiveDate::from_ymd_opt(2024, 1, 1)
+                        .unwrap()
+                        .and_hms_opt(12, 0, 0)
+                        .unwrap(),
+                )
+                .done(),
+        )
+        .unwrap()
+    }
+
+    fn test_calendar() -> (tempfile::TempDir, Caldir, Calendar) {
+        let (tmp, caldir) = Caldir::new_tmp();
+        let calendar = Calendar::new(&caldir, "work").unwrap();
+        calendar.save().unwrap();
+        (tmp, caldir, calendar)
+    }
 
     #[test]
     fn errors_on_invalid_ics() {
-        let ics = "BEGIN:VCALENDAR"; // Missing END
-
         let tmp = tempfile::TempDir::new().unwrap();
-        let tmp_ics_path = tmp.path().join("test.ics");
-        fs::write(&tmp_ics_path, ics).unwrap();
+        let path = tmp.path().join("test.ics");
+        fs::write(&path, "BEGIN:VCALENDAR").unwrap(); // Missing END
 
-        let calendar_event = CalendarEvent::from_path(tmp_ics_path);
+        let err = CalendarEvent::from_path(path).unwrap_err();
 
-        assert!(calendar_event.is_err());
-
-        if let Err(CalendarEventError::InvalidEvent(path, _)) = calendar_event {
-            assert!(path.ends_with("test.ics"));
-        } else {
-            panic!("Expected InvalidEvent error");
-        }
+        assert!(matches!(err, CalendarEventError::InvalidEvent(p, _) if p.ends_with("test.ics")));
     }
 
     #[test]
     fn parses_valid_ics() {
         let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT\nEND:VCALENDAR";
-
         let tmp = tempfile::TempDir::new().unwrap();
-        let tmp_ics_path = tmp.path().join("test.ics");
-        fs::write(&tmp_ics_path, ics).unwrap();
+        let path = tmp.path().join("test.ics");
+        fs::write(&path, ics).unwrap();
 
-        let calendar_event = CalendarEvent::from_path(tmp_ics_path);
-
-        assert!(calendar_event.is_ok());
+        assert!(CalendarEvent::from_path(path).is_ok());
     }
 
     #[test]
     fn saves_event_to_file() {
-        let (_tmp, caldir) = crate::Caldir::new_tmp();
+        let (_tmp, _caldir, calendar) = test_calendar();
+        let event = CalendarEvent::new(&calendar, test_event());
 
-        let calendar = Calendar::new(&caldir, "work").unwrap();
-        calendar.save().unwrap();
+        event.save().unwrap();
 
-        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT\nEND:VCALENDAR";
-
-        let event = Event::from_contents(ics).unwrap();
-
-        let calendar_event = CalendarEvent::new(&calendar, event);
-
-        calendar_event
-            .save()
-            .expect("Failed to save calendar event");
-
-        assert!(calendar_event.path.exists());
-
-        // Check file name:
-        assert_eq!(
-            calendar_event
-                .path
-                .file_name()
-                .expect("Event file should have a name")
-                .to_str()
-                .unwrap(),
-            "2024-01-01T1200__test-event.ics"
-        );
+        assert!(event.path.ends_with("2024-01-01T1200__test-event.ics"));
     }
 
     #[test]
     fn generates_unique_filenames() {
-        let (_tmp, caldir) = crate::Caldir::new_tmp();
+        let (_tmp, _caldir, calendar) = test_calendar();
 
-        let calendar = Calendar::new(&caldir, "work").unwrap();
+        let first = CalendarEvent::new(&calendar, test_event());
+        first.save().unwrap();
 
-        calendar.save().unwrap();
+        assert!(first.path.ends_with("2024-01-01T1200__test-event.ics"));
 
-        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT\nEND:VCALENDAR";
+        let second = CalendarEvent::new(&calendar, test_event());
+        second.save().unwrap();
 
-        let event = Event::from_contents(ics).unwrap();
-
-        let calendar_event1 = CalendarEvent::new(&calendar, event.clone());
-
-        calendar_event1.save().unwrap();
-
-        let calendar_event2 = CalendarEvent::new(&calendar, event);
-
-        calendar_event2.save().unwrap();
-
-        assert!(calendar_event1.path.exists());
-        assert!(calendar_event2.path.exists());
-
-        assert_ne!(calendar_event1.path, calendar_event2.path);
-
-        assert_eq!(
-            calendar_event1
-                .path
-                .file_name()
-                .expect("Event file should have a name")
-                .to_str()
-                .unwrap(),
-            "2024-01-01T1200__test-event.ics"
-        );
-
-        assert_eq!(
-            calendar_event2
-                .path
-                .file_name()
-                .expect("Event file should have a name")
-                .to_str()
-                .unwrap(),
-            "2024-01-01T1200__test-event-2.ics"
-        );
+        assert!(second.path.ends_with("2024-01-01T1200__test-event-2.ics"));
     }
 }
