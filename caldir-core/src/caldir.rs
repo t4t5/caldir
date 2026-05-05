@@ -1,6 +1,6 @@
 //! Master struct. Everything else flows from here.
 
-use std::path::PathBuf;
+// use std::path::PathBuf;
 
 use crate::caldir_config::CaldirConfig;
 use crate::calendar::Calendar;
@@ -40,19 +40,19 @@ impl Caldir {
         &self.config
     }
 
-    pub(crate) fn from_resolved(
-        config_path: PathBuf,
-        config: CaldirConfig,
-        dir: PathBuf,
-        providers: Vec<Provider>,
-    ) -> Self {
-        Self {
-            config_path,
-            config,
-            dir,
-            providers,
-        }
-    }
+    // pub(crate) fn from_resolved(
+    //     config_path: PathBuf,
+    //     config: CaldirConfig,
+    //     dir: PathBuf,
+    //     providers: Vec<Provider>,
+    // ) -> Self {
+    //     Self {
+    //         config_path,
+    //         config,
+    //         dir,
+    //         providers,
+    //     }
+    // }
 
     /// Persist the current config back to the config file.
     pub fn save_config(&self) -> CalDirResult<()> {

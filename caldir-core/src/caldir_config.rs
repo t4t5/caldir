@@ -49,7 +49,7 @@ pub struct CaldirConfig {
 
 impl CaldirConfig {
     pub fn new() -> Self {
-        Self::default()
+        Self::default();
     }
 
     // ~/config/caldir/config.toml

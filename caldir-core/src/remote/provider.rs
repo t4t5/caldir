@@ -19,7 +19,7 @@ use tokio::time::timeout;
 
 use crate::error::{CalDirError, CalDirResult};
 use crate::remote::protocol::{
-    Command, Connect, ConnectResponse, ProviderCommand, ProviderRequestContext, Request, Response,
+    Command, Connect, ConnectResponse, ProviderCommand, Request, Response,
 };
 use crate::remote::provider_account::ProviderAccount;
 
@@ -42,7 +42,7 @@ impl fmt::Display for Provider {
 pub static PROVIDER_BINARY_PREFIX: &str = "caldir-provider-";
 
 fn provider_slug_from_filename(filename: &str) -> Option<&str> {
-    let slug = filename.strip_prefix("caldir-provider-")?;
+    let slug = filename.strip_prefix(PROVIDER_BINARY_PREFIX)?;
     let slug = slug.strip_suffix(std::env::consts::EXE_SUFFIX)?;
     (!slug.is_empty()).then_some(slug)
 }
@@ -120,13 +120,7 @@ impl Provider {
     ) -> CalDirResult<R> {
         let params =
             serde_json::to_value(params).map_err(|e| CalDirError::Serialization(e.to_string()))?;
-        let request = Request {
-            command,
-            context: ProviderRequestContext {
-                provider_dir: self.dir.clone(),
-            },
-            params,
-        };
+        let request = Request { command, params };
         let request_json = serde_json::to_string(&request)
             .map_err(|e| CalDirError::Serialization(e.to_string()))?;
 

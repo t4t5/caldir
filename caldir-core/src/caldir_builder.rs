@@ -1,9 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::{
-    caldir::Caldir, caldir_config::CaldirConfig, error::CalDirResult, remote::provider::Provider,
-    utils::expand_tilde,
-};
+use crate::{caldir_config::CaldirConfig, remote::provider::Provider};
 
 #[derive(Default)]
 pub struct CaldirBuilder {
@@ -39,31 +36,31 @@ impl CaldirBuilder {
         self
     }
 
-    pub fn build(self) -> CalDirResult<Caldir> {
-        let config_path = match self.config_path {
-            Some(path) => path,
-            None => CaldirConfig::config_path()?,
-        };
-        let config = match self.config {
-            Some(config) => config,
-            None => CaldirConfig::load_from(&config_path)?,
-        };
-
-        let dir = expand_tilde(&config.calendar_dir);
-
-        let providers_dir = config
-            .providers_data_dir
-            .as_ref()
-            .map(|path| expand_tilde(path))
-            .unwrap_or_else(|| default_providers_dir(&config_path));
-
-        let providers = match self.providers {
-            Some(providers) => providers,
-            None => Provider::discover_installed(&providers_dir, Self::default_bin_dirs()),
-        };
-
-        Ok(Caldir::from_resolved(config_path, config, dir, providers))
-    }
+    // pub fn build(self) -> CalDirResult<Caldir> {
+    //     let config_path = match self.config_path {
+    //         Some(path) => path,
+    //         None => CaldirConfig::config_path()?,
+    //     };
+    //     let config = match self.config {
+    //         Some(config) => config,
+    //         None => CaldirConfig::load_from(&config_path)?,
+    //     };
+    //
+    //     let dir = expand_tilde(&config.calendar_dir);
+    //
+    //     let providers_dir = config
+    //         .providers_data_dir
+    //         .as_ref()
+    //         .map(|path| expand_tilde(path))
+    //         .unwrap_or_else(|| default_providers_dir(&config_path));
+    //
+    //     let providers = match self.providers {
+    //         Some(providers) => providers,
+    //         None => Provider::discover_installed(&providers_dir, Self::default_bin_dirs()),
+    //     };
+    //
+    //     Ok(Caldir::from_resolved(config_path, config, dir, providers))
+    // }
 
     // $PATH value
     pub fn default_bin_dirs() -> Vec<PathBuf> {

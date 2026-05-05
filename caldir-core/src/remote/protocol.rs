@@ -1,8 +1,6 @@
 //! Defines the JSON protocol used for communication between caldir-cli
 //! and provider binaries over stdin/stdout.
 
-use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::{calendar::config::CalendarConfig, event::Event};
@@ -93,19 +91,8 @@ pub enum FieldType {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
     pub command: Command,
-    pub context: ProviderRequestContext,
     #[serde(default)]
     pub params: serde_json::Value,
-}
-
-/// Runtime context sent with every provider request.
-///
-/// `provider_dir` is the provider's private storage directory. Providers use
-/// it for both durable provider configuration, such as OAuth app credentials,
-/// and local runtime state, such as OAuth sessions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProviderRequestContext {
-    pub provider_dir: PathBuf,
 }
 
 /// Response sent from provider to CLI.
