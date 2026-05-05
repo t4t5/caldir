@@ -10,6 +10,10 @@ impl Caldir {
     pub fn new(config: CaldirConfig) -> Self {
         Caldir { config }
     }
+
+    pub fn config(&self) -> &CaldirConfig {
+        &self.config
+    }
 }
 
 impl Default for Caldir {

@@ -8,7 +8,7 @@ const DEFAULT_CALDIR_PATH: &str = "~/caldir";
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CaldirConfig {
-    calendar_dir: PathBuf,
+    pub calendar_dir: PathBuf,
 }
 
 impl Default for CaldirConfig {
