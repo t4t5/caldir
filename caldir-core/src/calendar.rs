@@ -1,12 +1,11 @@
-use std::path::{Path, PathBuf};
-
 mod error;
-pub mod event;
+pub(crate) mod event;
 mod path;
 
-use crate::Caldir;
 use crate::calendar::error::CalendarError;
 use crate::calendar::path::CalendarPath;
+use crate::{Caldir, Event};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Calendar {
@@ -39,18 +38,41 @@ impl Calendar {
         Ok(())
     }
 
-    fn from_path(path: PathBuf) -> Result<Self, CalendarError> {
-        let calendar_path = CalendarPath::new(path)?;
-
-        Ok(Calendar { calendar_path })
-    }
-
     pub fn path(&self) -> &Path {
         self.calendar_path.path()
     }
 
     pub fn slug(&self) -> &str {
         self.calendar_path.slug()
+    }
+
+    /// Generate a unique filename that doesn't conflict with existing event files.
+    /// If `{base_slug}.ics` exists, tries `{base_slug}-2.ics`, `{base_slug}-3.ics`, etc.
+    pub fn unique_event_filename(&self, event: &Event) -> String {
+        let calendar_dir = self.path();
+        let base_slug = event.base_slug();
+
+        let desired = format!("{base_slug}.ics");
+
+        if !calendar_dir.join(&desired).exists() {
+            return desired;
+        }
+
+        let mut suffix = 2;
+
+        loop {
+            let candidate = format!("{base_slug}-{suffix}.ics");
+            if !calendar_dir.join(&candidate).exists() {
+                return candidate;
+            }
+            suffix += 1;
+        }
+    }
+
+    fn from_path(path: PathBuf) -> Result<Self, CalendarError> {
+        let calendar_path = CalendarPath::new(path)?;
+
+        Ok(Calendar { calendar_path })
     }
 }
 

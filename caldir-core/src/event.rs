@@ -1,11 +1,11 @@
-use chrono::{DateTime, Local, TimeZone};
-use icalendar::{CalendarDateTime, Component, DatePerhapsTime};
-
 mod error;
 
+use chrono::{DateTime, Local, TimeZone};
 pub use error::EventError;
+use icalendar::{CalendarDateTime, Component, DatePerhapsTime};
 
-pub struct Event(pub icalendar::Event);
+#[derive(Debug, Clone)]
+pub struct Event(icalendar::Event);
 
 impl Event {
     pub(crate) fn from_contents(contents: &str) -> Result<Self, EventError> {
@@ -35,6 +35,10 @@ impl Event {
 
     pub fn base_slug(&self) -> String {
         format!("{}__{}", self.time_slug(), self.summary_slug())
+    }
+
+    pub fn ical_event(&self) -> &icalendar::Event {
+        &self.0
     }
 
     fn summary(&self) -> Option<&str> {
