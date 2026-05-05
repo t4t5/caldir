@@ -1,4 +1,7 @@
-#[derive(Debug)]
+use std::path::PathBuf;
+
+#[derive(Debug, thiserror::Error)]
 pub enum CalendarError {
-    InvalidCalendarPath,
+    #[error("invalid calendar path: {0}")]
+    InvalidCalendarPath(PathBuf),
 }

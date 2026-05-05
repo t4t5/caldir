@@ -61,6 +61,6 @@ mod tests {
     fn from_path_rejects_path_without_file_name() {
         let result = Calendar::from_path(PathBuf::from("/"));
 
-        assert!(matches!(result, Err(CalendarError::InvalidCalendarPath)));
+        assert!(matches!(result, Err(CalendarError::InvalidCalendarPath(_))));
     }
 }

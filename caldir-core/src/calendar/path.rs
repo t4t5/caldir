@@ -24,6 +24,6 @@ impl CalendarPath {
     fn slug_from(path: &Path) -> Result<&str, CalendarError> {
         path.file_name()
             .and_then(|s| s.to_str())
-            .ok_or(CalendarError::InvalidCalendarPath)
+            .ok_or_else(|| CalendarError::InvalidCalendarPath(path.to_path_buf()))
     }
 }
