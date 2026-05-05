@@ -7,8 +7,8 @@ use crate::{Calendar, Event};
 use error::CalendarEventError;
 
 pub struct CalendarEvent {
-    pub event: Event,
-    pub path: PathBuf,
+    event: Event,
+    path: PathBuf,
 }
 
 impl CalendarEvent {
@@ -23,6 +23,15 @@ impl CalendarEvent {
         CalendarEvent { event, path }
     }
 
+    pub fn save(&self) -> Result<(), CalendarEventError> {
+        let ical_event = &self.event.0;
+        let ical_calendar = icalendar::Calendar::new().push(ical_event).done();
+
+        std::fs::write(&self.path, ical_calendar.to_string())?;
+
+        Ok(())
+    }
+
     // fn base_path(&self, calendar: &Calendar) -> PathBuf {
     //     let calendar_path = calendar.path();
     //     let slug = &self.event.base_slug();
@@ -33,19 +42,48 @@ impl CalendarEvent {
     pub fn from_path(path: PathBuf) -> Result<Self, CalendarEventError> {
         let contents = std::fs::read_to_string(&path)?;
 
-        let calendar: icalendar::Calendar = contents
-            .parse()
-            .map_err(|err| CalendarEventError::IcsParse(path.clone(), err))?;
-
-        let event = calendar
-            .events()
-            .next()
-            .ok_or_else(|| CalendarEventError::NoEventInIcs(path.clone()))?
-            .clone();
-
-        let event = Event::from_ical(event)
+        let event = Event::from_contents(&contents)
             .map_err(|err| CalendarEventError::InvalidEvent(path.clone(), err))?;
 
         Ok(CalendarEvent { event, path })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use super::*;
+
+    #[test]
+    fn errors_on_invalid_ics() {
+        let ics = "BEGIN:VCALENDAR"; // Missing END
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp_ics_path = tmp.path().join("test.ics");
+        fs::write(&tmp_ics_path, ics).unwrap();
+
+        let calendar_event = CalendarEvent::from_path(tmp_ics_path);
+
+        assert!(calendar_event.is_err());
+
+        if let Err(CalendarEventError::InvalidEvent(path, _)) = calendar_event {
+            assert!(path.ends_with("test.ics"));
+        } else {
+            panic!("Expected InvalidEvent error");
+        }
+    }
+
+    #[test]
+    fn parses_valid_ics() {
+        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT\nEND:VCALENDAR";
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp_ics_path = tmp.path().join("test.ics");
+        fs::write(&tmp_ics_path, ics).unwrap();
+
+        let calendar_event = CalendarEvent::from_path(tmp_ics_path);
+
+        assert!(calendar_event.is_ok());
     }
 }

@@ -5,14 +5,36 @@ mod error;
 
 pub use error::EventError;
 
-pub struct Event(icalendar::Event);
+pub struct Event(pub icalendar::Event);
 
 impl Event {
-    pub(crate) fn from_ical(inner: icalendar::Event) -> Result<Self, EventError> {
+    pub(crate) fn from_contents(contents: &str) -> Result<Self, EventError> {
+        let calendar: icalendar::Calendar = contents
+            .parse()
+            .map_err(|err| EventError::IcsParse(contents.to_string(), err))?;
+
+        Self::from_ical_calendar(&calendar)
+    }
+
+    pub(crate) fn from_ical_calendar(icalendar: &icalendar::Calendar) -> Result<Self, EventError> {
+        let ical_event = icalendar
+            .events()
+            .next()
+            .ok_or_else(|| EventError::NoEventInIcs(icalendar.clone()))?;
+
+        Self::from_ical_event(ical_event)
+    }
+
+    pub(crate) fn from_ical_event(inner: &icalendar::Event) -> Result<Self, EventError> {
         if inner.get_start().is_none() {
             return Err(EventError::MissingStart);
         }
-        Ok(Event(inner))
+
+        Ok(Event(inner.clone()))
+    }
+
+    pub fn base_slug(&self) -> String {
+        format!("{}__{}", self.time_slug(), self.summary_slug())
     }
 
     fn summary(&self) -> Option<&str> {
@@ -22,22 +44,18 @@ impl Event {
     fn start(&self) -> DatePerhapsTime {
         self.0
             .get_start()
-            .expect("Event without DTSTART should have been rejected by from_ical")
+            .expect("Event without DTSTART should have been rejected by from_ical_event")
     }
 
-    pub fn time_slug(&self) -> String {
+    fn time_slug(&self) -> String {
         match self.start() {
             DatePerhapsTime::Date(d) => d.format("%Y-%m-%d").to_string(),
             DatePerhapsTime::DateTime(cdt) => cdt_to_local(cdt).format("%Y-%m-%dT%H%M").to_string(),
         }
     }
 
-    pub fn summary_slug(&self) -> String {
+    fn summary_slug(&self) -> String {
         slug::slugify(self.summary().unwrap_or("untitled"))
-    }
-
-    pub fn base_slug(&self) -> String {
-        format!("{}__{}", self.time_slug(), self.summary_slug())
     }
 }
 
@@ -62,8 +80,8 @@ mod tests {
 
     #[test]
     fn generates_correct_base_slug_for_all_day_event() {
-        let event = Event::from_ical(
-            icalendar::Event::new()
+        let event = Event::from_ical_event(
+            &icalendar::Event::new()
                 .summary("Test Event")
                 .starts(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())
                 .done(),
@@ -75,8 +93,8 @@ mod tests {
 
     #[test]
     fn generates_correct_base_slug_for_timed_event() {
-        let event = Event::from_ical(
-            icalendar::Event::new()
+        let event = Event::from_ical_event(
+            &icalendar::Event::new()
                 .summary("Test Event")
                 .starts(
                     NaiveDate::from_ymd_opt(2024, 1, 1)
@@ -93,8 +111,8 @@ mod tests {
 
     #[test]
     fn generates_untitled_base_slug_for_event_without_summary() {
-        let event = Event::from_ical(
-            icalendar::Event::new()
+        let event = Event::from_ical_event(
+            &icalendar::Event::new()
                 .starts(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())
                 .done(),
         )
@@ -105,7 +123,7 @@ mod tests {
 
     #[test]
     fn rejects_event_without_start() {
-        let result = Event::from_ical(icalendar::Event::new().done());
+        let result = Event::from_ical_event(&icalendar::Event::new().done());
 
         assert!(matches!(result, Err(EventError::MissingStart)));
     }
