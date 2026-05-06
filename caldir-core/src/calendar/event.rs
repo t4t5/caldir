@@ -32,15 +32,16 @@ impl CalendarEvent {
         Ok(CalendarEvent { event, path })
     }
 
-    pub fn save(&mut self) -> Result<(), CalendarEventError> {
-        let base_slug = self.event.base_slug();
-        let contents = self.event.to_ics_string();
+    pub fn update(&mut self, event: Event) -> Result<(), CalendarEventError> {
+        let base_slug = event.base_slug();
+        let contents = event.to_ics_string();
         let dir = self.path.parent().unwrap_or_else(|| Path::new("."));
 
         let new_path =
             write_best_event_file(dir, &base_slug, Some(&self.path), contents.as_bytes())?;
 
         if new_path == self.path {
+            self.event = event;
             return Ok(());
         }
 
@@ -49,17 +50,18 @@ impl CalendarEvent {
             return Err(err.into());
         }
 
+        self.event = event;
         self.path = new_path;
 
         Ok(())
     }
 
-    pub fn event(&self) -> &Event {
-        &self.event
+    pub fn delete(self) -> Result<(), CalendarEventError> {
+        std::fs::remove_file(self.path).map_err(Into::into)
     }
 
-    pub fn event_mut(&mut self) -> &mut Event {
-        &mut self.event
+    pub fn event(&self) -> &Event {
+        &self.event
     }
 
     pub fn path(&self) -> &Path {
@@ -191,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn save_updates_filename_when_summary_changes() {
+    fn update_renames_file_when_summary_changes() {
         let (_tmp, mut cal_event) = test_calendar_event();
 
         assert_eq!(
@@ -199,8 +201,9 @@ mod tests {
             Some("2026-01-01T1200__test-event.ics")
         );
 
-        cal_event.event_mut().summary = "Planning Session".to_string();
-        cal_event.save().unwrap();
+        let mut event = cal_event.event().clone();
+        event.summary = "Planning Session".to_string();
+        cal_event.update(event).unwrap();
 
         assert_eq!(
             cal_event.filename(),
@@ -209,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn save_keeps_filename_when_other_properties_change() {
+    fn update_keeps_filename_when_other_properties_change() {
         let (_tmp, mut cal_event) = test_calendar_event();
 
         assert_eq!(
@@ -217,8 +220,9 @@ mod tests {
             Some("2026-01-01T1200__test-event.ics")
         );
 
-        cal_event.event_mut().location = Some("Conference Room".to_string());
-        cal_event.save().unwrap();
+        let mut event = cal_event.event().clone();
+        event.location = Some("Conference Room".to_string());
+        cal_event.update(event).unwrap();
 
         assert_eq!(
             cal_event.filename(),
@@ -230,7 +234,7 @@ mod tests {
     }
 
     #[test]
-    fn save_updates_filename_to_base_when_base_is_available() {
+    fn update_updates_filename_to_base_when_base_is_available() {
         let (_tmp, calendar) = test_calendar();
 
         let cal_event_1 = CalendarEvent::create(&calendar, test_event()).unwrap();
@@ -241,10 +245,13 @@ mod tests {
             Some("2026-01-01T1200__test-event-2.ics")
         );
 
-        // Remove original that took up "test-event" slug
-        fs::remove_file(cal_event_1.path()).unwrap();
+        // Delete original event that had "test-event" slug
+        cal_event_1
+            .delete()
+            .expect("Failed to delete calendar event");
 
-        cal_event_2.save().unwrap();
+        // "test-event" slug is now available for cal_event_2 to use:
+        cal_event_2.update(cal_event_2.event().clone()).unwrap();
 
         assert_eq!(
             cal_event_2.filename(),
