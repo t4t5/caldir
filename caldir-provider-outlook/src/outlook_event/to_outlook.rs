@@ -1,6 +1,7 @@
 //! Convert caldir Event to a Microsoft Graph event.
 
 use caldir_core::event::{Event, EventTime, ParticipationStatus, Transparency};
+use caldir_core::ics::windows_tz;
 use chrono::{Datelike, Duration, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
 use crate::constants::HTML_DESC_PROPERTY;
@@ -118,7 +119,9 @@ fn event_time_to_graph(time: &EventTime) -> DateTimeTimeZone {
         },
         EventTime::DateTimeZoned { datetime, tzid } => DateTimeTimeZone {
             date_time: datetime.format("%Y-%m-%dT%H:%M:%S.0000000").to_string(),
-            time_zone: iana_to_windows_timezone(tzid),
+            time_zone: windows_tz::from_iana(tzid)
+                .map(String::from)
+                .unwrap_or_else(|| tzid.clone()),
         },
     }
 }
@@ -374,48 +377,6 @@ fn extract_month(time: &EventTime) -> i32 {
         EventTime::DateTimeFloating(dt) => dt.date().month() as i32,
         EventTime::DateTimeZoned { datetime, .. } => datetime.date().month() as i32,
     }
-}
-
-/// Map IANA timezone names back to Windows timezone names for Graph API.
-fn iana_to_windows_timezone(tz: &str) -> String {
-    match tz {
-        "America/New_York" => "Eastern Standard Time",
-        "America/Chicago" => "Central Standard Time",
-        "America/Denver" => "Mountain Standard Time",
-        "America/Los_Angeles" => "Pacific Standard Time",
-        "UTC" => "UTC",
-        "Europe/London" => "GMT Standard Time",
-        "Europe/Paris" => "Romance Standard Time",
-        "Europe/Berlin" => "W. Europe Standard Time",
-        "Europe/Warsaw" => "Central European Standard Time",
-        "Europe/Bucharest" => "E. Europe Standard Time",
-        "Europe/Helsinki" => "FLE Standard Time",
-        "Europe/Athens" => "GTB Standard Time",
-        "Europe/Moscow" => "Russian Standard Time",
-        "Asia/Jerusalem" => "Israel Standard Time",
-        "Asia/Dubai" => "Arabian Standard Time",
-        "Asia/Kolkata" => "India Standard Time",
-        "Asia/Shanghai" => "China Standard Time",
-        "Asia/Tokyo" => "Tokyo Standard Time",
-        "Asia/Seoul" => "Korea Standard Time",
-        "Australia/Sydney" => "AUS Eastern Standard Time",
-        "Pacific/Auckland" => "New Zealand Standard Time",
-        "Pacific/Honolulu" => "Hawaiian Standard Time",
-        "America/Anchorage" => "Alaskan Standard Time",
-        "America/Halifax" => "Atlantic Standard Time",
-        "America/Bogota" => "SA Pacific Standard Time",
-        "America/Cayenne" => "SA Eastern Standard Time",
-        "America/Sao_Paulo" => "E. South America Standard Time",
-        "America/Buenos_Aires" => "Argentina Standard Time",
-        "Asia/Bangkok" => "SE Asia Standard Time",
-        "Asia/Singapore" => "Singapore Standard Time",
-        "Asia/Taipei" => "Taipei Standard Time",
-        "Pacific/Port_Moresby" => "West Pacific Standard Time",
-        "Africa/Johannesburg" => "South Africa Standard Time",
-        "Africa/Cairo" => "Egypt Standard Time",
-        _ => tz, // Pass through if already Windows or unknown
-    }
-    .to_string()
 }
 
 #[cfg(test)]

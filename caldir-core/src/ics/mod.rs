@@ -4,7 +4,7 @@
 
 mod generate;
 mod parse;
-mod windows_tz;
+pub mod windows_tz;
 
 pub use generate::generate_ics;
 pub use parse::{parse_event, parse_events};

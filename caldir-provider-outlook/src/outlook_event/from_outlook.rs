@@ -5,6 +5,7 @@ use caldir_core::event::{
     Attendee, CustomProperty, Event, EventStatus, EventTime, ParticipationStatus, Recurrence,
     Reminder, Reminders, Transparency,
 };
+use caldir_core::ics::windows_tz;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
 
@@ -233,7 +234,7 @@ fn parse_datetime_timezone(
             && original != "UTC"
             && original != "tzone://Microsoft/Utc"
         {
-            let tzid = normalize_timezone(original);
+            let tzid = windows_tz::normalize(original.to_string());
             if let Ok(tz) = tzid.parse::<Tz>() {
                 let local = Utc.from_utc_datetime(&dt).with_timezone(&tz).naive_local();
                 return Ok(EventTime::DateTimeZoned {
@@ -246,7 +247,7 @@ fn parse_datetime_timezone(
     } else {
         Ok(EventTime::DateTimeZoned {
             datetime: dt,
-            tzid: normalize_timezone(timezone),
+            tzid: windows_tz::normalize(timezone.to_string()),
         })
     }
 }
@@ -257,49 +258,6 @@ fn parse_graph_datetime(s: &str) -> Result<NaiveDateTime> {
     NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
         .or_else(|_| NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S"))
         .map_err(|e| anyhow::anyhow!("Failed to parse datetime '{}': {}", s, e))
-}
-
-/// Normalize Microsoft timezone names to IANA when possible.
-fn normalize_timezone(tz: &str) -> String {
-    // Graph API uses Windows timezone names; map common ones to IANA
-    match tz {
-        "Eastern Standard Time" => "America/New_York",
-        "Central Standard Time" => "America/Chicago",
-        "Mountain Standard Time" => "America/Denver",
-        "Pacific Standard Time" => "America/Los_Angeles",
-        "UTC" | "tzone://Microsoft/Utc" => "UTC",
-        "GMT Standard Time" => "Europe/London",
-        "Romance Standard Time" => "Europe/Paris",
-        "W. Europe Standard Time" => "Europe/Berlin",
-        "Central European Standard Time" => "Europe/Warsaw",
-        "E. Europe Standard Time" => "Europe/Bucharest",
-        "FLE Standard Time" => "Europe/Helsinki",
-        "GTB Standard Time" => "Europe/Athens",
-        "Russian Standard Time" => "Europe/Moscow",
-        "Israel Standard Time" => "Asia/Jerusalem",
-        "Arabian Standard Time" => "Asia/Dubai",
-        "India Standard Time" => "Asia/Kolkata",
-        "China Standard Time" => "Asia/Shanghai",
-        "Tokyo Standard Time" => "Asia/Tokyo",
-        "Korea Standard Time" => "Asia/Seoul",
-        "AUS Eastern Standard Time" => "Australia/Sydney",
-        "New Zealand Standard Time" => "Pacific/Auckland",
-        "Hawaiian Standard Time" => "Pacific/Honolulu",
-        "Alaskan Standard Time" => "America/Anchorage",
-        "Atlantic Standard Time" => "America/Halifax",
-        "SA Pacific Standard Time" => "America/Bogota",
-        "SA Eastern Standard Time" => "America/Cayenne",
-        "E. South America Standard Time" => "America/Sao_Paulo",
-        "Argentina Standard Time" => "America/Buenos_Aires",
-        "SE Asia Standard Time" => "Asia/Bangkok",
-        "Singapore Standard Time" => "Asia/Singapore",
-        "Taipei Standard Time" => "Asia/Taipei",
-        "West Pacific Standard Time" => "Pacific/Port_Moresby",
-        "South Africa Standard Time" => "Africa/Johannesburg",
-        "Egypt Standard Time" => "Africa/Cairo",
-        _ => tz, // Pass through if already IANA or unknown
-    }
-    .to_string()
 }
 
 fn outlook_to_participation_status(status: &str) -> Option<ParticipationStatus> {
