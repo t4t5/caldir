@@ -135,15 +135,25 @@ mod tests {
     }
 
     #[test]
+    fn to_ics_string_updates_dtstamp() {
+        let original_ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:test@caldir\r\nDTSTAMP:20200101T000000Z\r\nDTSTART:20260101\r\nSUMMARY:Test\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        let event = Event::from_ics_str(original_ics).unwrap();
+        let serialized = event.to_ics_string();
+
+        assert_ne!(dtstamp_line(original_ics), dtstamp_line(&serialized));
+    }
+
+    #[test]
     fn round_trips_advanced_event_without_data_loss() {
         let original_ics = r"BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:CALDIR
 BEGIN:VEVENT
+DTSTAMP:20260502T173914Z
 DESCRIPTION:https://docs.example.com/document/d/abc123def456
  ghijklmnopqrstuv/edit?usp=sharing\n
 DTEND;TZID=Europe/Oslo:20260515T164500
-DTSTAMP:20260502T173914Z
 DTSTART;TZID=Europe/Oslo:20260515T160000
 LAST-MODIFIED:20260502T173914Z
 LOCATION:Conference Room A
@@ -166,6 +176,22 @@ END:VCALENDAR
         let event = Event::from_ics_str(&original_ics).unwrap();
         let serialized_ics = event.to_ics_string();
 
-        assert_eq!(original_ics, serialized_ics);
+        assert_eq!(strip_dtstamp(&original_ics), strip_dtstamp(&serialized_ics));
+    }
+
+    fn dtstamp_line(ics: &str) -> &str {
+        ics.lines()
+            .find(|line| line.starts_with("DTSTAMP:"))
+            .expect("DTSTAMP line should be present")
+    }
+
+    // DTSTAMP updates every time ICS is written
+    // so we need to ignore it when comparing the original and serialized ICS.
+    fn strip_dtstamp(ics: &str) -> String {
+        ics.lines()
+            .filter(|line| !line.starts_with("DTSTAMP:"))
+            .collect::<Vec<_>>()
+            .join("\r\n")
+            + "\r\n"
     }
 }
