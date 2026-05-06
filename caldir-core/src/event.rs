@@ -44,7 +44,13 @@ impl Event {
 
     pub(crate) fn to_ics_string(&self) -> String {
         let ical_event: icalendar::Event = self.into();
-        let calendar = icalendar::Calendar::new().push(ical_event).done();
+
+        let calendar = icalendar::Calendar::empty()
+            .append_property(icalendar::Property::new("VERSION", "2.0"))
+            .append_property(icalendar::Property::new("PRODID", "CALDIR"))
+            .push(ical_event)
+            .done();
+
         calendar.to_string()
     }
 }
@@ -113,6 +119,19 @@ mod tests {
             Err(EventError::InvalidTime(EventTimeError::InvalidTimezone(tzid)))
                 if tzid == "Pacific Standard Time"
         ));
+    }
+
+    #[test]
+    fn to_ics_string_sets_calendar_headers() {
+        let event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+
+        let ics = event.to_ics_string();
+
+        assert!(ics.contains("VERSION:2.0"));
+        assert!(ics.contains("PRODID:CALDIR"));
     }
 
     #[test]
