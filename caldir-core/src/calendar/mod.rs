@@ -99,6 +99,13 @@ impl Calendar {
     pub fn remote(&self) -> Option<&Remote> {
         self.config.remote.as_ref()
     }
+
+    /// True if this calendar is configured as read-only (e.g. webcal feeds,
+    /// view-only Google/iCloud shares). Read-only calendars still pull, but
+    /// callers must not push to them.
+    pub fn is_read_only(&self) -> bool {
+        self.config.read_only == Some(true)
+    }
 }
 
 impl fmt::Display for Calendar {

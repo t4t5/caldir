@@ -31,11 +31,16 @@ pub async fn run(
                 Ok(diff) => {
                     println!("{}", diff.render_sync(verbose));
                     diff.apply_pull()?;
-                    if !allow_mass_delete(&diff, force) {
-                        continue;
+                    if cal.is_read_only() {
+                        println!("   {}", "(read-only, skipping push)".dimmed());
+                        diffs.push(diff);
+                    } else {
+                        if !allow_mass_delete(&diff, force) {
+                            continue;
+                        }
+                        diff.apply_push().await?;
+                        diffs.push(diff);
                     }
-                    diff.apply_push().await?;
-                    diffs.push(diff);
                 }
                 Err(e) => println!("   {}", e.to_string().red()),
             }

@@ -17,6 +17,9 @@ pub async fn run(calendars: Vec<Calendar>, verbose: bool, force: bool) -> Result
         if cal.remote().is_none() {
             println!("{}", cal.render());
             println!("   {}", "(local only)".dimmed());
+        } else if cal.is_read_only() {
+            println!("{}", cal.render());
+            println!("   {}", "(read-only)".dimmed());
         } else {
             let spinner = tui::create_spinner(cal.render());
             let result = CalendarDiff::from_calendar(cal, &range).await;
