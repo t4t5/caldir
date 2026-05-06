@@ -38,27 +38,10 @@ impl CalendarEvent {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-
     use super::*;
     use crate::test_utils::test_calendar;
-    use chrono::NaiveDate;
-    use icalendar::{Component, EventLike};
-
-    fn test_event() -> Event {
-        Event::from_ical_event(
-            &icalendar::Event::new()
-                .summary("Test Event")
-                .starts(
-                    NaiveDate::from_ymd_opt(2024, 1, 1)
-                        .unwrap()
-                        .and_hms_opt(12, 0, 0)
-                        .unwrap(),
-                )
-                .done(),
-        )
-        .unwrap()
-    }
+    use crate::test_utils::test_event;
+    use std::fs;
 
     #[test]
     fn errors_on_invalid_ics() {
@@ -84,30 +67,65 @@ mod tests {
     #[test]
     fn saves_event_to_file() {
         let (_tmp, _caldir, calendar) = test_calendar();
-        let event = CalendarEvent::new(&calendar, test_event());
+        let cal_event = CalendarEvent::new(&calendar, test_event());
 
-        event.save().unwrap();
+        cal_event.save().unwrap();
 
-        assert!(event.path.ends_with("2024-01-01T1200__test-event.ics"));
+        assert!(cal_event.path.ends_with("2026-01-01T1200__test-event.ics"));
     }
 
     #[test]
-    fn generates_unique_filenames() {
+    fn generates_unique_filenames_within_calendar() {
         let (_tmp, _caldir, calendar) = test_calendar();
 
-        let first = CalendarEvent::new(&calendar, test_event());
-        first.save().unwrap();
+        let cal_event_1 = CalendarEvent::new(&calendar, test_event());
+        cal_event_1.save().unwrap();
 
-        assert!(first.path.ends_with("2024-01-01T1200__test-event.ics"));
+        assert!(
+            cal_event_1
+                .path
+                .ends_with("2026-01-01T1200__test-event.ics")
+        );
 
-        let second = CalendarEvent::new(&calendar, test_event());
-        second.save().unwrap();
+        let cal_event_2 = CalendarEvent::new(&calendar, test_event());
+        cal_event_2.save().unwrap();
 
-        assert!(second.path.ends_with("2024-01-01T1200__test-event-2.ics"));
+        assert!(
+            cal_event_2
+                .path
+                .ends_with("2026-01-01T1200__test-event-2.ics")
+        );
 
-        let third = CalendarEvent::new(&calendar, test_event());
-        second.save().unwrap();
+        let cal_event_3 = CalendarEvent::new(&calendar, test_event());
+        cal_event_3.save().unwrap();
 
-        assert!(third.path.ends_with("2024-01-01T1200__test-event-3.ics"));
+        assert!(
+            cal_event_3
+                .path
+                .ends_with("2026-01-01T1200__test-event-3.ics")
+        );
+    }
+
+    #[test]
+    fn keeps_base_filenames_in_different_calendar() {
+        let (_tmp, _caldir, calendar_1) = test_calendar();
+        let cal_event_1 = CalendarEvent::new(&calendar_1, test_event());
+        cal_event_1.save().unwrap();
+
+        assert!(
+            cal_event_1
+                .path
+                .ends_with("2026-01-01T1200__test-event.ics")
+        );
+
+        let (_tmp, _caldir, calendar_2) = test_calendar();
+        let cal_event_2 = CalendarEvent::new(&calendar_2, test_event());
+        cal_event_2.save().unwrap();
+
+        assert!(
+            cal_event_2
+                .path
+                .ends_with("2026-01-01T1200__test-event.ics")
+        );
     }
 }

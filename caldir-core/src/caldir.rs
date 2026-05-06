@@ -17,7 +17,7 @@ impl Caldir {
 
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
     /// If the base slug exists, tries slug-2, slug-3, etc.
-    pub fn unique_calendar_slug(&self, desired: &str) -> String {
+    pub(crate) fn unique_calendar_slug(&self, desired: &str) -> String {
         let calendar_dir = self.config.calendar_dir();
 
         if !calendar_dir.join(desired).exists() {
