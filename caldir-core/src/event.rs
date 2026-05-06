@@ -2,7 +2,7 @@ mod error;
 mod slugify;
 
 pub use error::EventError;
-use icalendar::{CalendarDateTime, Component, DatePerhapsTime};
+use icalendar::{CalendarDateTime, Component, DatePerhapsTime, EventLike};
 
 #[derive(Debug, Clone)]
 pub struct Event(icalendar::Event);
@@ -39,6 +39,14 @@ impl Event {
 
     pub fn ical_event(&self) -> &icalendar::Event {
         &self.0
+    }
+
+    pub fn set_location(&mut self, location: &str) {
+        self.0.location(location);
+    }
+
+    pub fn set_summary(&mut self, summary: &str) {
+        self.0.summary(summary);
     }
 }
 

@@ -11,4 +11,5 @@ pub use caldir::Caldir;
 pub use caldir::config::CaldirConfig;
 pub use calendar::Calendar;
 pub use calendar::event::CalendarEvent;
+pub use calendar::event::CalendarEventError;
 pub use event::Event;

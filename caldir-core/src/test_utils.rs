@@ -1,4 +1,4 @@
-use crate::{Caldir, Calendar, Event, caldir::config::CaldirConfig};
+use crate::{Caldir, Calendar, CalendarEvent, Event, caldir::config::CaldirConfig};
 use chrono::NaiveDate;
 use icalendar::{Component, EventLike};
 
@@ -10,11 +10,18 @@ pub fn test_caldir() -> (tempfile::TempDir, Caldir) {
     (tmp, caldir)
 }
 
-pub fn test_calendar() -> (tempfile::TempDir, Caldir, Calendar) {
+pub fn test_calendar() -> (tempfile::TempDir, Calendar) {
     let (tmp, caldir) = test_caldir();
-    let calendar = Calendar::new(&caldir, "work").unwrap();
-    calendar.save().unwrap();
-    (tmp, caldir, calendar)
+    let calendar = Calendar::create(&caldir, "test").unwrap();
+    (tmp, calendar)
+}
+
+pub fn test_calendar_event() -> (tempfile::TempDir, CalendarEvent) {
+    let (tmp, calendar) = test_calendar();
+    let event = test_event();
+
+    let calendar_event = calendar.create_event(event.clone()).unwrap();
+    (tmp, calendar_event)
 }
 
 pub fn test_event() -> Event {

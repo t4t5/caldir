@@ -4,7 +4,7 @@ mod path;
 
 use crate::calendar::error::CalendarError;
 use crate::calendar::path::CalendarPath;
-use crate::{Caldir, Event};
+use crate::{Caldir, CalendarEvent, CalendarEventError, Event};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
@@ -14,9 +14,10 @@ pub struct Calendar {
 
 impl Calendar {
     /// Create new calendar
-    pub fn new(caldir: &Caldir, desired_slug: &str) -> Result<Self, CalendarError> {
+    pub fn create(caldir: &Caldir, desired_slug: &str) -> Result<Self, CalendarError> {
         let unique_slug = caldir.unique_calendar_slug(desired_slug);
         let path = caldir.config().calendar_dir().join(unique_slug);
+        std::fs::create_dir_all(path.clone())?;
         Self::from_path(path)
     }
 
@@ -33,11 +34,6 @@ impl Calendar {
         Ok(calendar)
     }
 
-    pub fn save(&self) -> Result<(), CalendarError> {
-        std::fs::create_dir_all(self.path())?;
-        Ok(())
-    }
-
     pub fn path(&self) -> &Path {
         self.calendar_path.path()
     }
@@ -46,27 +42,8 @@ impl Calendar {
         self.calendar_path.slug()
     }
 
-    /// Generate a unique filename that doesn't conflict with existing event files.
-    /// If `{base_slug}.ics` exists, tries `{base_slug}-2.ics`, `{base_slug}-3.ics`, etc.
-    pub(crate) fn unique_event_filename(&self, event: &Event) -> String {
-        let calendar_dir = self.path();
-        let base_slug = event.base_slug();
-
-        let desired = format!("{base_slug}.ics");
-
-        if !calendar_dir.join(&desired).exists() {
-            return desired;
-        }
-
-        let mut suffix = 2;
-
-        loop {
-            let candidate = format!("{base_slug}-{suffix}.ics");
-            if !calendar_dir.join(&candidate).exists() {
-                return candidate;
-            }
-            suffix += 1;
-        }
+    pub fn create_event(&self, event: Event) -> Result<CalendarEvent, CalendarEventError> {
+        event::CalendarEvent::create(self, event)
     }
 
     fn from_path(path: PathBuf) -> Result<Self, CalendarError> {
@@ -85,8 +62,7 @@ mod tests {
     fn creates_directory_with_desired_slug() {
         let (tmp, caldir) = test_caldir();
 
-        let calendar = Calendar::new(&caldir, "work").unwrap();
-        calendar.save().unwrap();
+        let calendar = Calendar::create(&caldir, "work").unwrap();
 
         assert_eq!(calendar.path(), tmp.path().join("work"));
         assert_eq!(calendar.slug(), "work");
@@ -97,23 +73,20 @@ mod tests {
     fn appends_suffix_on_slug_collision() {
         let (_tmp, caldir) = test_caldir();
 
-        let calendar_1 = Calendar::new(&caldir, "work").unwrap();
-        calendar_1.save().unwrap();
+        let calendar_1 = Calendar::create(&caldir, "work").unwrap();
         assert_eq!(calendar_1.slug(), "work");
 
-        let calendar_2 = Calendar::new(&caldir, "work").unwrap();
-        calendar_2.save().unwrap();
+        let calendar_2 = Calendar::create(&caldir, "work").unwrap();
         assert_eq!(calendar_2.slug(), "work-2");
 
-        let calendar_3 = Calendar::new(&caldir, "work").unwrap();
-        calendar_3.save().unwrap();
+        let calendar_3 = Calendar::create(&caldir, "work").unwrap();
         assert_eq!(calendar_3.slug(), "work-3");
     }
 
     #[test]
     fn load_returns_existing_calendar() {
         let (_tmp, caldir) = test_caldir();
-        Calendar::new(&caldir, "personal").unwrap().save().unwrap();
+        Calendar::create(&caldir, "personal").unwrap();
 
         let calendar = Calendar::load(&caldir, "personal").unwrap();
 

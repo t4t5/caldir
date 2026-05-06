@@ -1,8 +1,10 @@
 mod error;
 
 use crate::{Calendar, Event};
-use error::CalendarEventError;
-use std::path::PathBuf;
+pub use error::CalendarEventError;
+use std::fs::OpenOptions;
+use std::io::{ErrorKind, Write};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct CalendarEvent {
@@ -11,22 +13,24 @@ pub struct CalendarEvent {
 }
 
 impl CalendarEvent {
-    pub fn new(calendar: &Calendar, event: Event) -> Self {
-        let filename = calendar.unique_event_filename(&event);
-        let path = calendar.path().join(filename);
-        CalendarEvent { event, path }
+    pub fn create(calendar: &Calendar, event: Event) -> Result<Self, CalendarEventError> {
+        let base_slug = event.base_slug();
+
+        let contents = {
+            let ical_event = event.ical_event();
+            icalendar::Calendar::new()
+                .push(ical_event)
+                .done()
+                .to_string()
+        };
+
+        let path = write_best_event_file(calendar.path(), &base_slug, None, contents.as_bytes())?;
+
+        Ok(CalendarEvent { event, path })
     }
 
-    pub fn save(&self) -> Result<(), CalendarEventError> {
-        let ical_event = self.event.ical_event();
-        let ical_calendar = icalendar::Calendar::new().push(ical_event).done();
-
-        std::fs::write(&self.path, ical_calendar.to_string())?;
-
-        Ok(())
-    }
-
-    pub fn from_path(path: PathBuf) -> Result<Self, CalendarEventError> {
+    pub fn load(path: impl Into<PathBuf>) -> Result<Self, CalendarEventError> {
+        let path = path.into();
         let contents = std::fs::read_to_string(&path)?;
 
         let event = Event::from_contents(&contents)
@@ -34,98 +38,230 @@ impl CalendarEvent {
 
         Ok(CalendarEvent { event, path })
     }
+
+    pub fn save(&mut self) -> Result<(), CalendarEventError> {
+        let base_slug = self.event.base_slug();
+        let contents = self.contents();
+
+        let parent = self.path.parent().unwrap_or_else(|| Path::new("."));
+        let new_path =
+            write_best_event_file(parent, &base_slug, Some(&self.path), contents.as_bytes())?;
+
+        if new_path == self.path {
+            return Ok(());
+        }
+
+        if let Err(err) = std::fs::remove_file(&self.path) {
+            let _ = std::fs::remove_file(&new_path);
+            return Err(err.into());
+        }
+
+        self.path = new_path;
+
+        Ok(())
+    }
+
+    pub fn event(&self) -> &Event {
+        &self.event
+    }
+
+    pub fn event_mut(&mut self) -> &mut Event {
+        &mut self.event
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn filename(&self) -> Option<&str> {
+        self.path.file_name().and_then(|name| name.to_str())
+    }
+
+    fn contents(&self) -> String {
+        let ical_event = self.event.ical_event();
+        icalendar::Calendar::new()
+            .push(ical_event)
+            .done()
+            .to_string()
+    }
+}
+
+fn write_best_event_file(
+    calendar_dir: &Path,
+    base_slug: &str,
+    current_path: Option<&Path>,
+    contents: &[u8],
+) -> Result<PathBuf, CalendarEventError> {
+    let mut suffix = 1;
+
+    loop {
+        let filename = if suffix == 1 {
+            format!("{base_slug}.ics")
+        } else {
+            format!("{base_slug}-{suffix}.ics")
+        };
+        let path = calendar_dir.join(filename);
+
+        if current_path == Some(path.as_path()) {
+            std::fs::write(&path, contents)?;
+            return Ok(path);
+        }
+
+        match OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut file) => {
+                if let Err(err) = file.write_all(contents) {
+                    let _ = std::fs::remove_file(&path);
+                    return Err(err.into());
+                }
+
+                return Ok(path);
+            }
+            Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+                suffix += 1;
+            }
+            Err(err) => return Err(err.into()),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_utils::test_calendar;
+    use crate::test_utils::test_calendar_event;
     use crate::test_utils::test_event;
     use std::fs;
 
     #[test]
-    fn errors_on_invalid_ics() {
+    fn load_errors_on_invalid_ics() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("test.ics");
         fs::write(&path, "BEGIN:VCALENDAR").unwrap(); // Missing END
 
-        let err = CalendarEvent::from_path(path).unwrap_err();
+        let err = CalendarEvent::load(path).unwrap_err();
 
         assert!(matches!(err, CalendarEventError::InvalidEvent(p, _) if p.ends_with("test.ics")));
     }
 
     #[test]
-    fn parses_valid_ics() {
+    fn load_parses_valid_ics() {
         let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT\nEND:VCALENDAR";
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("test.ics");
         fs::write(&path, ics).unwrap();
 
-        assert!(CalendarEvent::from_path(path).is_ok());
+        assert!(CalendarEvent::load(path).is_ok());
     }
 
     #[test]
-    fn saves_event_to_file() {
-        let (_tmp, _caldir, calendar) = test_calendar();
-        let cal_event = CalendarEvent::new(&calendar, test_event());
+    fn create_saves_event_to_file() {
+        let (_tmp, calendar) = test_calendar();
+        let cal_event = CalendarEvent::create(&calendar, test_event()).unwrap();
 
+        assert!(cal_event.path().is_file());
+        assert_eq!(
+            cal_event.filename(),
+            Some("2026-01-01T1200__test-event.ics")
+        );
+    }
+
+    #[test]
+    fn create_generates_unique_filenames_within_calendar() {
+        let (_tmp, calendar) = test_calendar();
+
+        let cal_event_1 = CalendarEvent::create(&calendar, test_event()).unwrap();
+
+        assert_eq!(
+            cal_event_1.filename(),
+            Some("2026-01-01T1200__test-event.ics")
+        );
+
+        let cal_event_2 = CalendarEvent::create(&calendar, test_event()).unwrap();
+
+        assert_eq!(
+            cal_event_2.filename(),
+            Some("2026-01-01T1200__test-event-2.ics")
+        );
+
+        let cal_event_3 = CalendarEvent::create(&calendar, test_event()).unwrap();
+
+        assert_eq!(
+            cal_event_3.filename(),
+            Some("2026-01-01T1200__test-event-3.ics")
+        );
+    }
+
+    #[test]
+    fn create_keeps_base_filenames_in_different_calendars() {
+        let (_tmp, calendar_1) = test_calendar();
+        let cal_event_1 = CalendarEvent::create(&calendar_1, test_event()).unwrap();
+
+        let (_tmp, calendar_2) = test_calendar();
+        let cal_event_2 = CalendarEvent::create(&calendar_2, test_event()).unwrap();
+
+        assert_eq!(
+            cal_event_1.filename().unwrap(),
+            cal_event_2.filename().unwrap()
+        );
+    }
+
+    #[test]
+    fn save_updates_filename_when_summary_changes() {
+        let (_tmp, mut cal_event) = test_calendar_event();
+
+        assert_eq!(
+            cal_event.filename(),
+            Some("2026-01-01T1200__test-event.ics")
+        );
+
+        cal_event.event_mut().set_summary("Planning Session");
         cal_event.save().unwrap();
 
-        assert!(cal_event.path.ends_with("2026-01-01T1200__test-event.ics"));
-    }
-
-    #[test]
-    fn generates_unique_filenames_within_calendar() {
-        let (_tmp, _caldir, calendar) = test_calendar();
-
-        let cal_event_1 = CalendarEvent::new(&calendar, test_event());
-        cal_event_1.save().unwrap();
-
-        assert!(
-            cal_event_1
-                .path
-                .ends_with("2026-01-01T1200__test-event.ics")
-        );
-
-        let cal_event_2 = CalendarEvent::new(&calendar, test_event());
-        cal_event_2.save().unwrap();
-
-        assert!(
-            cal_event_2
-                .path
-                .ends_with("2026-01-01T1200__test-event-2.ics")
-        );
-
-        let cal_event_3 = CalendarEvent::new(&calendar, test_event());
-        cal_event_3.save().unwrap();
-
-        assert!(
-            cal_event_3
-                .path
-                .ends_with("2026-01-01T1200__test-event-3.ics")
+        assert_eq!(
+            cal_event.filename(),
+            Some("2026-01-01T1200__planning-session.ics")
         );
     }
 
     #[test]
-    fn keeps_base_filenames_in_different_calendar() {
-        let (_tmp, _caldir, calendar_1) = test_calendar();
-        let cal_event_1 = CalendarEvent::new(&calendar_1, test_event());
-        cal_event_1.save().unwrap();
+    fn save_keeps_filename_when_other_properties_change() {
+        let (_tmp, mut cal_event) = test_calendar_event();
 
-        assert!(
-            cal_event_1
-                .path
-                .ends_with("2026-01-01T1200__test-event.ics")
+        assert_eq!(
+            cal_event.filename(),
+            Some("2026-01-01T1200__test-event.ics")
         );
 
-        let (_tmp, _caldir, calendar_2) = test_calendar();
-        let cal_event_2 = CalendarEvent::new(&calendar_2, test_event());
+        // Change location of event (should not change file name)
+        cal_event.event_mut().set_location("Conference Room");
+        cal_event.save().unwrap();
+
+        assert_eq!(
+            cal_event.filename(),
+            Some("2026-01-01T1200__test-event.ics")
+        );
+    }
+
+    #[test]
+    fn save_updates_filename_to_base_when_base_is_available() {
+        let (_tmp, calendar) = test_calendar();
+
+        let cal_event_1 = CalendarEvent::create(&calendar, test_event()).unwrap();
+        let mut cal_event_2 = CalendarEvent::create(&calendar, test_event()).unwrap();
+
+        assert_eq!(
+            cal_event_2.filename(),
+            Some("2026-01-01T1200__test-event-2.ics")
+        );
+
+        // Remove original that took up "test-event" slug
+        fs::remove_file(cal_event_1.path()).unwrap();
+
         cal_event_2.save().unwrap();
 
-        assert!(
-            cal_event_2
-                .path
-                .ends_with("2026-01-01T1200__test-event.ics")
+        assert_eq!(
+            cal_event_2.filename(),
+            Some("2026-01-01T1200__test-event.ics")
         );
     }
 }
