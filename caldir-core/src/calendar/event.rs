@@ -202,7 +202,7 @@ mod tests {
         );
 
         let mut event = cal_event.event().clone();
-        event.summary = "Planning Session".to_string();
+        event.summary = Some("Planning Session".to_string());
         cal_event.update(event).unwrap();
 
         assert_eq!(
