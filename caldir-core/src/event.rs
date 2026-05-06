@@ -14,7 +14,7 @@ use chrono::{DateTime, Utc};
 pub use error::EventError;
 pub use organizer::Organizer;
 pub use recurrence::Recurrence;
-pub use reminder::{Related, Reminder, ReminderAction, ReminderTrigger};
+pub use reminder::Reminder;
 pub use time::{EventTime, EventTimeError};
 pub use x_property::XProperty;
 
@@ -91,9 +91,9 @@ impl Event {
         }
 
         // VALARMs are emitted directly rather than via icalendar's sub-component
-        // path (see `Reminder::to_ics_block`). Splice them in just before
+        // path (see `Reminder::ics_block`). Splice them in just before
         // `END:VEVENT`.
-        let valarm_blocks: String = self.reminders.iter().map(Reminder::to_ics_block).collect();
+        let valarm_blocks: String = self.reminders.iter().map(Reminder::ics_block).collect();
         ics.replacen(
             "END:VEVENT\r\n",
             &format!("{valarm_blocks}END:VEVENT\r\n"),

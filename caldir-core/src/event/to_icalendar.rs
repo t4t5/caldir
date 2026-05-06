@@ -50,7 +50,7 @@ impl From<&Event> for icalendar::Event {
         // Reminders are emitted directly into the ICS string by
         // `Event::to_ics_string`, not via `event.alarm(...)`, so we sidestep
         // icalendar's auto-UID injection on VALARM sub-components. See
-        // `Reminder::to_ics_block`.
+        // `Reminder::ics_block`.
 
         if let Some(url) = &value.url {
             event.append_property(icalendar::Property::new("URL", url));

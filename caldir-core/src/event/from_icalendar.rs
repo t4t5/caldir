@@ -356,8 +356,8 @@ mod tests {
 
         assert_eq!(event.reminders.len(), 1);
         assert_eq!(
-            event.reminders[0].action,
-            crate::event::ReminderAction::Display
+            event.reminders[0],
+            crate::event::Reminder::minutes_before_start(10)
         );
     }
 
