@@ -97,15 +97,17 @@ mod tests {
     fn appends_suffix_on_slug_collision() {
         let (_tmp, caldir) = test_caldir();
 
-        let first = Calendar::new(&caldir, "work").unwrap();
-        first.save().unwrap();
+        let calendar_1 = Calendar::new(&caldir, "work").unwrap();
+        calendar_1.save().unwrap();
+        assert_eq!(calendar_1.slug(), "work");
 
-        let second = Calendar::new(&caldir, "work").unwrap();
-        second.save().unwrap();
+        let calendar_2 = Calendar::new(&caldir, "work").unwrap();
+        calendar_2.save().unwrap();
+        assert_eq!(calendar_2.slug(), "work-2");
 
-        assert_eq!(first.slug(), "work");
-        assert_eq!(second.slug(), "work-2");
-        assert!(second.path().is_dir());
+        let calendar_3 = Calendar::new(&caldir, "work").unwrap();
+        calendar_3.save().unwrap();
+        assert_eq!(calendar_3.slug(), "work-3");
     }
 
     #[test]
@@ -125,5 +127,17 @@ mod tests {
         let result = Calendar::load(&caldir, "missing");
 
         assert!(matches!(result, Err(CalendarError::NotFound(_))));
+    }
+
+    #[test]
+    fn load_errors_when_not_directory() {
+        let (tmp, caldir) = test_caldir();
+
+        let file_path = tmp.path().join("not_a_directory");
+        std::fs::write(&file_path, "I am a file, not a directory").unwrap();
+
+        let result = Calendar::load(&caldir, "not_a_directory");
+
+        assert!(matches!(result, Err(CalendarError::NotFound(p)) if p == file_path));
     }
 }
