@@ -84,7 +84,21 @@ impl Event {
             .push(ical_event)
             .done();
 
-        calendar.to_string()
+        let ics = calendar.to_string();
+
+        if self.reminders.is_empty() {
+            return ics;
+        }
+
+        // VALARMs are emitted directly rather than via icalendar's sub-component
+        // path (see `Reminder::to_ics_block`). Splice them in just before
+        // `END:VEVENT`.
+        let valarm_blocks: String = self.reminders.iter().map(Reminder::to_ics_block).collect();
+        ics.replacen(
+            "END:VEVENT\r\n",
+            &format!("{valarm_blocks}END:VEVENT\r\n"),
+            1,
+        )
     }
 }
 
@@ -204,6 +218,16 @@ ATTENDEE;PARTSTAT=DECLINED:mailto:alice@example.com
 ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:carol@example.com
 EXDATE;TZID=Europe/Oslo:20260522T160000
 EXDATE;TZID=Europe/Oslo:20260529T160000
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Reminder
+TRIGGER;RELATED=START:-PT1H
+END:VALARM
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Reminder
+TRIGGER;RELATED=START:-PT30M
+END:VALARM
 END:VEVENT
 END:VCALENDAR
 "

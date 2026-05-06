@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration, NaiveDateTime, Utc};
-use icalendar::{Alarm, Component, Property, Related as IcalRelated, Trigger as IcalTrigger};
+use icalendar::{Component, Property};
 
 const DEFAULT_REMINDER_DESCRIPTION: &str = "Reminder";
 
@@ -112,41 +112,51 @@ fn parse_trigger(prop: &Property) -> Result<ReminderTrigger, ()> {
     Ok(ReminderTrigger::Relative { offset, related })
 }
 
-impl From<&Reminder> for Alarm {
-    fn from(value: &Reminder) -> Self {
-        // We can't construct an `Alarm` directly (its `default()` is private),
-        // so we seed one via `Alarm::display(...)` and then overwrite the
-        // properties we care about. This also lets us emit the TRIGGER in
-        // canonical RFC 5545 form (`-PT10M`) rather than chrono's seconds-only
-        // `Duration::Display` (`-PT600S`), which keeps round-trips stable.
-        let placeholder = IcalTrigger::Duration(Duration::zero(), Some(IcalRelated::Start));
-        let description = value
-            .description
-            .as_deref()
-            .unwrap_or(DEFAULT_REMINDER_DESCRIPTION);
-        let mut alarm = Alarm::display(description, placeholder);
+impl Reminder {
+    /// Format this reminder as a `VALARM` block (RFC 5545).
+    ///
+    /// We emit the block ourselves rather than going through
+    /// `icalendar::Alarm` + the icalendar event serializer, because
+    /// `icalendar::Component::fmt_write` injects a random `UID:<uuid>` line
+    /// into every sub-component that doesn't already have one. VALARM doesn't
+    /// require a UID per RFC 5545 and we don't model it on `Reminder`, so
+    /// letting that through would break byte-stable round-trips and surface as
+    /// spurious sync diffs. We still use `icalendar::Property` for individual
+    /// lines so we get correct line folding and text escaping.
+    pub(crate) fn to_ics_block(&self) -> String {
+        let action = match &self.action {
+            ReminderAction::Display => "DISPLAY",
+            ReminderAction::Audio => "AUDIO",
+            ReminderAction::Email => "EMAIL",
+            ReminderAction::Other(name) => name,
+        };
 
-        alarm.append_property(format_trigger_property(&value.trigger));
+        let description = match (&self.description, &self.action) {
+            (Some(desc), _) => Some(desc.as_str()),
+            (None, ReminderAction::Display) => Some(DEFAULT_REMINDER_DESCRIPTION),
+            (None, _) => None,
+        };
 
-        match &value.action {
-            ReminderAction::Display => return alarm,
-            ReminderAction::Audio => {
-                alarm.append_property(Property::new("ACTION", "AUDIO"));
-            }
-            ReminderAction::Email => {
-                alarm.append_property(Property::new("ACTION", "EMAIL"));
-            }
-            ReminderAction::Other(name) => {
-                alarm.append_property(Property::new("ACTION", name));
-            }
+        let mut block = String::from("BEGIN:VALARM\r\n");
+
+        push_property(&mut block, Property::new("ACTION", action));
+
+        if let Some(desc) = description {
+            push_property(&mut block, Property::new("DESCRIPTION", desc));
         }
 
-        if value.description.is_none() {
-            alarm.remove_property("DESCRIPTION");
-        }
+        push_property(&mut block, format_trigger_property(&self.trigger));
 
-        alarm
+        block.push_str("END:VALARM\r\n");
+        block
     }
+}
+
+fn push_property(out: &mut String, property: Property) {
+    let line: String = property
+        .try_into()
+        .expect("formatting an icalendar Property to String never fails");
+    out.push_str(&line);
 }
 
 fn format_trigger_property(trigger: &ReminderTrigger) -> Property {
@@ -377,14 +387,9 @@ mod tests {
             description: Some("Wake up".to_string()),
         };
 
-        let alarm = Alarm::from(&reminder);
+        let block = reminder.to_ics_block();
 
-        let trigger_prop = alarm.properties().get("TRIGGER").unwrap();
-        assert_eq!(trigger_prop.value(), "-PT10M");
-        assert_eq!(
-            trigger_prop.params().get("RELATED").map(|p| p.value()),
-            Some("START")
-        );
+        assert!(block.contains("TRIGGER;RELATED=START:-PT10M\r\n"));
     }
 
     #[test]
@@ -395,10 +400,9 @@ mod tests {
             description: Some(DEFAULT_REMINDER_DESCRIPTION.to_string()),
         };
 
-        let alarm = Alarm::from(&reminder);
+        let block = reminder.to_ics_block();
 
-        let trigger_prop = alarm.properties().get("TRIGGER").unwrap();
-        assert_eq!(trigger_prop.value(), "20260101T120000Z");
+        assert!(block.contains("TRIGGER;VALUE=DATE-TIME:20260101T120000Z\r\n"));
     }
 
     #[test]
@@ -412,10 +416,10 @@ mod tests {
             description: Some("Wake up".to_string()),
         };
 
-        let alarm = Alarm::from(&reminder);
+        let block = reminder.to_ics_block();
 
-        assert_eq!(alarm.property_value("ACTION"), Some("DISPLAY"));
-        assert_eq!(alarm.property_value("DESCRIPTION"), Some("Wake up"));
+        assert!(block.contains("ACTION:DISPLAY\r\n"));
+        assert!(block.contains("DESCRIPTION:Wake up\r\n"));
     }
 
     #[test]
@@ -429,10 +433,10 @@ mod tests {
             description: None,
         };
 
-        let alarm = Alarm::from(&reminder);
+        let block = reminder.to_ics_block();
 
-        assert_eq!(alarm.property_value("ACTION"), Some("AUDIO"));
-        assert!(alarm.properties().get("DESCRIPTION").is_none());
+        assert!(block.contains("ACTION:AUDIO\r\n"));
+        assert!(!block.contains("DESCRIPTION"));
     }
 
     #[test]
@@ -446,10 +450,10 @@ mod tests {
             description: Some("Body".to_string()),
         };
 
-        let alarm = Alarm::from(&reminder);
+        let block = reminder.to_ics_block();
 
-        assert_eq!(alarm.property_value("ACTION"), Some("EMAIL"));
-        assert_eq!(alarm.property_value("DESCRIPTION"), Some("Body"));
+        assert!(block.contains("ACTION:EMAIL\r\n"));
+        assert!(block.contains("DESCRIPTION:Body\r\n"));
     }
 
     #[test]
@@ -463,10 +467,10 @@ mod tests {
             description: None,
         };
 
-        let alarm = Alarm::from(&reminder);
+        let block = reminder.to_ics_block();
 
-        assert_eq!(alarm.property_value("ACTION"), Some("X-CUSTOM"));
-        assert!(alarm.properties().get("DESCRIPTION").is_none());
+        assert!(block.contains("ACTION:X-CUSTOM\r\n"));
+        assert!(!block.contains("DESCRIPTION"));
     }
 
     #[test]
@@ -480,11 +484,30 @@ mod tests {
             description: None,
         };
 
-        let alarm = Alarm::from(&reminder);
+        let block = reminder.to_ics_block();
 
-        assert_eq!(
-            alarm.property_value("DESCRIPTION"),
-            Some(DEFAULT_REMINDER_DESCRIPTION)
+        assert!(block.contains(&format!("DESCRIPTION:{DEFAULT_REMINDER_DESCRIPTION}\r\n")));
+    }
+
+    #[test]
+    fn does_not_emit_uid_inside_valarm() {
+        // icalendar's `Component::fmt_write` auto-injects a random UID into
+        // every sub-component. We sidestep that by formatting VALARM ourselves;
+        // this test guards against accidentally regressing back through it.
+        let reminder = Reminder {
+            trigger: ReminderTrigger::Relative {
+                offset: Duration::minutes(-10),
+                related: Related::Start,
+            },
+            action: ReminderAction::Display,
+            description: None,
+        };
+
+        let block = reminder.to_ics_block();
+
+        assert!(
+            !block.contains("UID"),
+            "VALARM block contained a UID:\n{block}"
         );
     }
 

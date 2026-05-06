@@ -47,9 +47,10 @@ impl From<&Event> for icalendar::Event {
             event.append_multi_property(icalendar::Property::from(attendee));
         }
 
-        for reminder in &value.reminders {
-            event.alarm(icalendar::Alarm::from(reminder));
-        }
+        // Reminders are emitted directly into the ICS string by
+        // `Event::to_ics_string`, not via `event.alarm(...)`, so we sidestep
+        // icalendar's auto-UID injection on VALARM sub-components. See
+        // `Reminder::to_ics_block`.
 
         if let Some(url) = &value.url {
             event.append_property(icalendar::Property::new("URL", url));
@@ -319,45 +320,9 @@ mod tests {
         assert!(ical_event.multi_properties().get("ATTENDEE").is_none());
     }
 
-    #[test]
-    fn converts_reminders() {
-        use chrono::Duration;
-        let mut event = test_event();
-        event.reminders = vec![crate::event::Reminder {
-            trigger: crate::event::ReminderTrigger::Relative {
-                offset: Duration::minutes(-10),
-                related: crate::event::Related::Start,
-            },
-            action: crate::event::ReminderAction::Display,
-            description: Some("Reminder".to_string()),
-        }];
-
-        let ical_event: icalendar::Event = event.into();
-
-        let alarms: Vec<_> = ical_event
-            .components()
-            .iter()
-            .filter(|c| c.component_kind() == "VALARM")
-            .collect();
-        assert_eq!(alarms.len(), 1);
-        assert_eq!(alarms[0].property_value("ACTION"), Some("DISPLAY"));
-        assert_eq!(alarms[0].property_value("TRIGGER"), Some("-PT10M"));
-    }
-
-    #[test]
-    fn omits_reminders_when_empty() {
-        let mut event = test_event();
-        event.reminders = vec![];
-
-        let ical_event: icalendar::Event = event.into();
-
-        let alarms: Vec<_> = ical_event
-            .components()
-            .iter()
-            .filter(|c| c.component_kind() == "VALARM")
-            .collect();
-        assert!(alarms.is_empty());
-    }
+    // Reminders are plumbed via `Event::to_ics_string` rather than
+    // `From<&Event> for icalendar::Event`, so the wire-through test for them
+    // lives in `event.rs` instead.
 
     #[test]
     fn converts_url() {
