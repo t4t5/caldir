@@ -11,6 +11,9 @@ pub enum EventError {
     #[error("event is missing a start time (DTSTART)")]
     MissingStart,
 
+    #[error("event is missing a UID")]
+    MissingUid,
+
     #[error(transparent)]
     InvalidTime(#[from] EventTimeError),
 }

@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn load_parses_valid_ics() {
-        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT\nEND:VCALENDAR";
+        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:test-uid@caldir\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT\nEND:VCALENDAR";
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("test.ics");
         fs::write(&path, ics).unwrap();

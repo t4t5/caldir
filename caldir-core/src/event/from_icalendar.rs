@@ -12,7 +12,10 @@ impl TryFrom<&icalendar::Event> for Event {
 
         let end = value.get_end().map(EventTime::try_from).transpose()?;
 
+        let uid = value.get_uid().ok_or(EventError::MissingUid)?.to_string();
+
         Ok(Event {
+            uid,
             summary: value.get_summary().map(ToString::to_string),
             description: value.get_description().map(ToString::to_string),
             location: value.get_location().map(ToString::to_string),
@@ -36,19 +39,30 @@ mod tests {
     use crate::test_utils::test_icalendar_event;
 
     #[test]
-    fn succeeds_when_ical_event_has_start() {
-        let ical_event = icalendar::Event::new()
-            .starts(icalendar::DatePerhapsTime::Date(
-                chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
-            ))
-            .done();
+    fn succeeds_when_ical_event_has_start_and_uid() {
+        let ical_event = test_icalendar_event().done();
 
         assert!(Event::try_from(ical_event).is_ok());
     }
 
     #[test]
+    fn errors_when_ical_event_missing_uid() {
+        let ical_event = icalendar::Event::new()
+            .starts(icalendar::DatePerhapsTime::Date(
+                chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            ))
+            .summary("Test Event")
+            .done();
+
+        let result = Event::try_from(ical_event);
+
+        assert!(matches!(result, Err(EventError::MissingUid)));
+    }
+
+    #[test]
     fn errors_when_ical_event_missing_start() {
         let ical_event = icalendar::Event::new()
+            .uid("test-uid@caldir")
             .summary("Test Event")
             .location("Test Location")
             .done();
@@ -74,6 +88,15 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.location.as_deref(), Some("London"));
+    }
+
+    #[test]
+    fn converts_uid() {
+        let ical_event = test_icalendar_event().uid("abc123@google.com").done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.uid, "abc123@google.com");
     }
 
     #[test]

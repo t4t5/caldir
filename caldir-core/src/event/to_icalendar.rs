@@ -5,6 +5,7 @@ impl From<&Event> for icalendar::Event {
     fn from(value: &Event) -> Self {
         let mut event = icalendar::Event::new();
         event.starts(icalendar::DatePerhapsTime::from(&value.start));
+        event.uid(&value.uid);
 
         if let Some(end) = &value.end {
             event.ends(icalendar::DatePerhapsTime::from(end));
@@ -56,6 +57,16 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.get_location(), Some("New York"));
+    }
+
+    #[test]
+    fn converts_uid() {
+        let mut event = test_event();
+        event.uid = "abc123@google.com".to_string();
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.get_uid(), Some("abc123@google.com"));
     }
 
     #[test]

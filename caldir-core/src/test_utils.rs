@@ -1,6 +1,6 @@
 use crate::{Caldir, Calendar, CalendarEvent, Event, EventTime, caldir::config::CaldirConfig};
 use chrono::NaiveDate;
-use icalendar::EventLike;
+use icalendar::{Component, EventLike};
 
 pub fn test_caldir() -> (tempfile::TempDir, Caldir) {
     let tmp = tempfile::TempDir::new().unwrap();
@@ -39,6 +39,7 @@ pub fn test_event() -> Event {
 
 pub fn test_icalendar_event() -> icalendar::Event {
     icalendar::Event::new()
+        .uid("test-uid@caldir")
         .starts(icalendar::DatePerhapsTime::Date(
             chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
         ))
