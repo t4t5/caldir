@@ -1,4 +1,4 @@
-use crate::event::{Attendee, Event, EventError, EventTime, Organizer};
+use crate::event::{Attendee, Event, EventError, EventTime, Organizer, XProperty};
 use icalendar::{Component, EventLike};
 
 impl TryFrom<&icalendar::Event> for Event {
@@ -27,6 +27,13 @@ impl TryFrom<&icalendar::Event> for Event {
             .map(|props| props.iter().map(Attendee::from).collect())
             .unwrap_or_default();
 
+        let x_properties = value
+            .properties()
+            .iter()
+            .filter(|(name, _)| name.starts_with("X-"))
+            .map(|(_, prop)| XProperty::from(prop))
+            .collect();
+
         Ok(Event {
             uid,
             summary: value.get_summary().map(ToString::to_string),
@@ -42,6 +49,7 @@ impl TryFrom<&icalendar::Event> for Event {
             organizer,
             attendees,
             url: value.property_value("URL").map(ToString::to_string),
+            x_properties,
         })
     }
 }
@@ -334,5 +342,31 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.url, None);
+    }
+
+    #[test]
+    fn converts_x_properties() {
+        let ical_event = test_icalendar_event()
+            .append_property(icalendar::Property::new(
+                "X-GOOGLE-EVENT-ID",
+                "abc123@google.com",
+            ))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(
+            event.x_properties,
+            vec![XProperty::new("X-GOOGLE-EVENT-ID", "abc123@google.com")]
+        );
+    }
+
+    #[test]
+    fn ignores_non_x_properties() {
+        let ical_event = test_icalendar_event().summary("Hello").done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert!(event.x_properties.is_empty());
     }
 }

@@ -47,6 +47,10 @@ impl From<&Event> for icalendar::Event {
             event.append_property(icalendar::Property::new("URL", url));
         }
 
+        for x in &value.x_properties {
+            event.append_property(icalendar::Property::from(x));
+        }
+
         event.done()
     }
 }
@@ -305,5 +309,31 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.property_value("URL"), None);
+    }
+
+    #[test]
+    fn converts_x_properties() {
+        let mut event = test_event();
+        event.x_properties = vec![crate::event::XProperty::new(
+            "X-GOOGLE-EVENT-ID",
+            "abc123@google.com",
+        )];
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(
+            ical_event.property_value("X-GOOGLE-EVENT-ID"),
+            Some("abc123@google.com")
+        );
+    }
+
+    #[test]
+    fn omits_x_properties_when_empty() {
+        let mut event = test_event();
+        event.x_properties = vec![];
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert!(ical_event.properties().keys().all(|k| !k.starts_with("X-")));
     }
 }

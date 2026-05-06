@@ -5,12 +5,14 @@ mod organizer;
 mod slugify;
 mod time;
 mod to_icalendar;
+mod x_property;
 
 pub use attendee::Attendee;
 use chrono::{DateTime, Utc};
 pub use error::EventError;
 pub use organizer::Organizer;
 pub use time::{EventTime, EventTimeError};
+pub use x_property::XProperty;
 
 const ICS_PRODID: &str = "CALDIR";
 const ICS_VERSION: &str = "2.0";
@@ -30,6 +32,7 @@ pub struct Event {
     pub organizer: Option<Organizer>,
     pub attendees: Vec<Attendee>,
     pub url: Option<String>,
+    pub x_properties: Vec<XProperty>,
 }
 
 impl Event {
@@ -47,6 +50,7 @@ impl Event {
             organizer: None,
             attendees: Vec::new(),
             url: None,
+            x_properties: Vec::new(),
         }
     }
 
