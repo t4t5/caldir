@@ -1,7 +1,5 @@
-use crate::event::Event;
+use crate::event::{Event, EventTime};
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
-use icalendar::CalendarDateTime;
-use icalendar::{Component, DatePerhapsTime};
 
 impl Event {
     /// Generate a slug for an event based on its start time and summary.
@@ -10,16 +8,11 @@ impl Event {
         format!("{}__{}", self.time_slug(), self.summary_slug())
     }
 
-    fn summary(&self) -> Option<&str> {
-        self.0.get_summary()
-    }
-
     fn summary_slug(&self) -> String {
         // Strip non-alphanumeric chars (e.g. emoji) before slugifying.
         // Otherwise `slug` transliterates symbols via `deunicode` (☕ → "coffee").
         let cleaned: String = self
-            .summary()
-            .unwrap_or("")
+            .summary
             .chars()
             .filter(|c| c.is_alphanumeric() || c.is_whitespace())
             .collect();
@@ -33,42 +26,32 @@ impl Event {
         }
     }
 
-    fn start(&self) -> DatePerhapsTime {
-        self.0
-            .get_start()
-            .expect("Event without DTSTART should have been rejected by from_ical_event")
-    }
-
     /// Always uses local time (it's the most intuitive when browsing files).
     /// If a co-worker on the other side of the world creates an event at 9am their time,
     /// my filename should show what time it is for me, not for them.
     fn time_slug(&self) -> String {
-        match self.start() {
-            DatePerhapsTime::Date(d) => d.format("%Y-%m-%d").to_string(),
-            DatePerhapsTime::DateTime(cal_datetime) => {
-                calendar_datetime_to_local(cal_datetime, &Local)
-                    .format("%Y-%m-%dT%H%M")
-                    .to_string()
-            }
+        match &self.start {
+            EventTime::Date(date) => date.format("%Y-%m-%d").to_string(),
+            EventTime::DateTimeUtc(_)
+            | EventTime::DateTimeFloating(_)
+            | EventTime::DateTimeZoned { .. } => event_time_to_local(&self.start, &Local)
+                .format("%Y-%m-%dT%H%M")
+                .to_string(),
         }
     }
 }
 
-fn calendar_datetime_to_local<Tz: TimeZone>(
-    cal_datetime: CalendarDateTime,
-    tz: &Tz,
-) -> DateTime<Tz> {
-    match cal_datetime {
-        CalendarDateTime::Floating(naive) => resolve_local(naive, tz),
-        CalendarDateTime::Utc(utc) => utc.with_timezone(tz),
-        CalendarDateTime::WithTimezone {
-            date_time,
-            tzid: event_tzid,
-        } => {
-            let event_tz: chrono_tz::Tz = event_tzid
-                .parse()
-                .expect("TZID validity should have been checked by from_ical_event");
-            resolve_local(date_time, &event_tz).with_timezone(tz)
+fn event_time_to_local<Tz: TimeZone>(event_time: &EventTime, tz: &Tz) -> DateTime<Tz> {
+    match event_time {
+        EventTime::Date(date) => resolve_local(
+            date.and_hms_opt(0, 0, 0)
+                .expect("midnight should be a valid NaiveDateTime"),
+            tz,
+        ),
+        EventTime::DateTimeFloating(datetime) => resolve_local(*datetime, tz),
+        EventTime::DateTimeUtc(datetime) => datetime.with_timezone(tz),
+        EventTime::DateTimeZoned { datetime, tzid } => {
+            resolve_local(*datetime, tzid).with_timezone(tz)
         }
     }
 }
@@ -91,73 +74,58 @@ fn resolve_local<Tz: TimeZone>(naive: NaiveDateTime, tz: &Tz) -> DateTime<Tz> {
 mod tests {
     use super::*;
     use chrono::{NaiveDate, Utc};
-    use icalendar::EventLike;
 
     #[test]
     fn generates_expected_slug_for_emoji_summary() {
-        let event = Event::from_ical_event(
-            &icalendar::Event::new()
-                .summary("Café ☕️ meeting")
-                .starts(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())
-                .done(),
-        )
-        .unwrap();
+        let event = Event::new(
+            "Café ☕️ meeting",
+            EventTime::Date(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+        );
 
         assert_eq!(event.summary_slug(), "cafe-meeting");
     }
 
     #[test]
     fn generates_expected_slug_for_empty_summary() {
-        let event = Event::from_ical_event(
-            &icalendar::Event::new()
-                .summary("")
-                .starts(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())
-                .done(),
-        )
-        .unwrap();
+        let event = Event::new(
+            "",
+            EventTime::Date(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+        );
 
         assert_eq!(event.summary_slug(), "untitled");
     }
 
     #[test]
     fn generates_correct_base_slug_for_all_day_event() {
-        let event = Event::from_ical_event(
-            &icalendar::Event::new()
-                .summary("Test Event")
-                .starts(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())
-                .done(),
-        )
-        .unwrap();
+        let event = Event::new(
+            "Test Event",
+            EventTime::Date(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+        );
 
         assert_eq!(event.base_slug(), "2024-01-01__test-event");
     }
 
     #[test]
     fn generates_correct_base_slug_for_timed_event() {
-        let event = Event::from_ical_event(
-            &icalendar::Event::new()
-                .summary("Test Event")
-                .starts(
-                    NaiveDate::from_ymd_opt(2024, 1, 1)
-                        .unwrap()
-                        .and_hms_opt(15, 30, 20)
-                        .unwrap(),
-                )
-                .done(),
-        )
-        .unwrap();
+        let event = Event::new(
+            "Test Event",
+            EventTime::DateTimeFloating(
+                NaiveDate::from_ymd_opt(2024, 1, 1)
+                    .unwrap()
+                    .and_hms_opt(15, 30, 20)
+                    .unwrap(),
+            ),
+        );
 
         assert_eq!(event.base_slug(), "2024-01-01T1530__test-event");
     }
 
     #[test]
     fn generates_untitled_base_slug_for_event_without_summary() {
-        let event = Event::from_ical_event(
-            &icalendar::Event::new()
-                .starts(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())
-                .done(),
-        )
-        .unwrap();
+        let event = Event::new(
+            "",
+            EventTime::Date(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+        );
 
         assert_eq!(event.base_slug(), "2024-01-01__untitled");
     }
@@ -169,7 +137,7 @@ mod tests {
 
         // User is in Stockholm
         let local =
-            calendar_datetime_to_local(CalendarDateTime::Utc(utc), &chrono_tz::Europe::Stockholm);
+            event_time_to_local(&EventTime::DateTimeUtc(utc), &chrono_tz::Europe::Stockholm);
 
         // Local time should be CET (UTC+1) in January = 13:00
         assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-01-01T1300");
@@ -184,10 +152,10 @@ mod tests {
             .unwrap();
 
         // User is in Stockholm
-        let local = calendar_datetime_to_local(
-            CalendarDateTime::WithTimezone {
-                date_time,
-                tzid: "America/New_York".into(),
+        let local = event_time_to_local(
+            &EventTime::DateTimeZoned {
+                datetime: date_time,
+                tzid: chrono_tz::America::New_York,
             },
             &chrono_tz::Europe::Stockholm,
         );
@@ -205,8 +173,8 @@ mod tests {
             .and_hms_opt(2, 30, 0)
             .unwrap();
 
-        let local = calendar_datetime_to_local(
-            CalendarDateTime::Floating(naive),
+        let local = event_time_to_local(
+            &EventTime::DateTimeFloating(naive),
             &chrono_tz::Europe::Stockholm,
         );
 
@@ -223,8 +191,8 @@ mod tests {
             .and_hms_opt(2, 30, 0)
             .unwrap();
 
-        let local = calendar_datetime_to_local(
-            CalendarDateTime::Floating(naive),
+        let local = event_time_to_local(
+            &EventTime::DateTimeFloating(naive),
             &chrono_tz::Europe::Stockholm,
         );
 

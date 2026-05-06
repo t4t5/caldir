@@ -1,6 +1,5 @@
-use crate::{Caldir, Calendar, CalendarEvent, Event, caldir::config::CaldirConfig};
+use crate::{Caldir, Calendar, CalendarEvent, Event, EventTime, caldir::config::CaldirConfig};
 use chrono::NaiveDate;
-use icalendar::{Component, EventLike};
 
 pub fn test_caldir() -> (tempfile::TempDir, Caldir) {
     let tmp = tempfile::TempDir::new().unwrap();
@@ -25,16 +24,13 @@ pub fn test_calendar_event() -> (tempfile::TempDir, CalendarEvent) {
 }
 
 pub fn test_event() -> Event {
-    Event::from_ical_event(
-        &icalendar::Event::new()
-            .summary("Test Event")
-            .starts(
-                NaiveDate::from_ymd_opt(2026, 1, 1)
-                    .unwrap()
-                    .and_hms_opt(12, 0, 0)
-                    .unwrap(),
-            )
-            .done(),
+    Event::new(
+        "Test Event",
+        EventTime::DateTimeFloating(
+            NaiveDate::from_ymd_opt(2026, 1, 1)
+                .unwrap()
+                .and_hms_opt(12, 0, 0)
+                .unwrap(),
+        ),
     )
-    .unwrap()
 }

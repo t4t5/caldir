@@ -1,52 +1,45 @@
 mod error;
+mod from_icalendar;
 mod slugify;
+mod time;
+mod to_icalendar;
 
 pub use error::EventError;
-use icalendar::{CalendarDateTime, Component, DatePerhapsTime, EventLike};
+pub use time::{EventTime, EventTimeError};
 
-#[derive(Debug, Clone)]
-pub struct Event(icalendar::Event);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Event {
+    pub summary: String,
+    pub location: Option<String>,
+    pub start: EventTime,
+}
 
 impl Event {
-    pub(crate) fn from_contents(contents: &str) -> Result<Self, EventError> {
-        let calendar: icalendar::Calendar = contents
+    pub fn new(summary: impl Into<String>, start: EventTime) -> Self {
+        Event {
+            summary: summary.into(),
+            location: None,
+            start,
+        }
+    }
+
+    pub(crate) fn from_ics_str(contents: &str) -> Result<Self, EventError> {
+        let icalendar: icalendar::Calendar = contents
             .parse()
             .map_err(|err| EventError::InvalidIcs(contents.to_string(), err))?;
 
-        Self::from_ical_calendar(&calendar)
-    }
-
-    pub(crate) fn from_ical_calendar(icalendar: &icalendar::Calendar) -> Result<Self, EventError> {
         let ical_event = icalendar
             .events()
             .next()
             .ok_or_else(|| EventError::NoEventInIcs(icalendar.clone()))?;
 
-        Self::from_ical_event(ical_event)
+        ical_event.try_into()
     }
 
-    pub(crate) fn from_ical_event(inner: &icalendar::Event) -> Result<Self, EventError> {
-        let start = inner.get_start().ok_or(EventError::MissingStart)?;
-
-        if let DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone { tzid, .. }) = start
-            && tzid.parse::<chrono_tz::Tz>().is_err()
-        {
-            return Err(EventError::InvalidTimezone(tzid));
-        }
-
-        Ok(Event(inner.clone()))
-    }
-
-    pub fn ical_event(&self) -> &icalendar::Event {
-        &self.0
-    }
-
-    pub fn set_location(&mut self, location: &str) {
-        self.0.location(location);
-    }
-
-    pub fn set_summary(&mut self, summary: &str) {
-        self.0.summary(summary);
+    pub(crate) fn to_ics_string(&self) -> String {
+        let ical_event: icalendar::Event = self.into();
+        let calendar = icalendar::Calendar::new().push(ical_event).done();
+        calendar.to_string()
     }
 }
 
@@ -59,20 +52,20 @@ mod tests {
         // Missing "END:VCALENDAR"
         let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT";
 
-        let result = Event::from_contents(ics);
+        let result = Event::from_ics_str(ics);
         assert!(matches!(result, Err(EventError::InvalidIcs(_, _))));
     }
 
     #[test]
     fn rejects_ics_without_events() {
         let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR";
-        let result = Event::from_contents(ics);
+        let result = Event::from_ics_str(ics);
         assert!(matches!(result, Err(EventError::NoEventInIcs(_))));
     }
 
     #[test]
     fn rejects_event_without_start() {
-        let result = Event::from_ical_event(&icalendar::Event::new().done());
+        let result = Event::try_from(&icalendar::Event::new().done());
 
         assert!(matches!(result, Err(EventError::MissingStart)));
     }
@@ -81,10 +74,23 @@ mod tests {
     fn rejects_event_with_unparseable_tzid() {
         let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART;TZID=Pacific Standard Time:20240101T120000\nSUMMARY:Test\nEND:VEVENT\nEND:VCALENDAR";
 
-        let result = Event::from_contents(ics);
+        let result = Event::from_ics_str(ics);
 
-        assert!(
-            matches!(result, Err(EventError::InvalidTimezone(tzid)) if tzid == "Pacific Standard Time")
-        );
+        assert!(matches!(
+            result,
+            Err(EventError::InvalidTime(EventTimeError::InvalidTimezone(tzid)))
+                if tzid == "Pacific Standard Time"
+        ));
+    }
+
+    #[test]
+    fn parses_minimal_event_fields_from_ics() {
+        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nLOCATION:Conference Room\nEND:VEVENT\nEND:VCALENDAR";
+
+        let event = Event::from_ics_str(ics).unwrap();
+
+        assert_eq!(event.summary, "Test Event");
+        assert_eq!(event.location.as_deref(), Some("Conference Room"));
+        assert!(matches!(event.start, EventTime::DateTimeUtc(_)));
     }
 }

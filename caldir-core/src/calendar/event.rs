@@ -15,14 +15,7 @@ pub struct CalendarEvent {
 impl CalendarEvent {
     pub fn create(calendar: &Calendar, event: Event) -> Result<Self, CalendarEventError> {
         let base_slug = event.base_slug();
-
-        let contents = {
-            let ical_event = event.ical_event();
-            icalendar::Calendar::new()
-                .push(ical_event)
-                .done()
-                .to_string()
-        };
+        let contents = event.to_ics_string();
 
         let path = write_best_event_file(calendar.path(), &base_slug, None, contents.as_bytes())?;
 
@@ -33,7 +26,7 @@ impl CalendarEvent {
         let path = path.into();
         let contents = std::fs::read_to_string(&path)?;
 
-        let event = Event::from_contents(&contents)
+        let event = Event::from_ics_str(&contents)
             .map_err(|err| CalendarEventError::InvalidEvent(path.clone(), err))?;
 
         Ok(CalendarEvent { event, path })
@@ -41,11 +34,11 @@ impl CalendarEvent {
 
     pub fn save(&mut self) -> Result<(), CalendarEventError> {
         let base_slug = self.event.base_slug();
-        let contents = self.contents();
+        let contents = self.event.to_ics_string();
+        let dir = self.path.parent().unwrap_or_else(|| Path::new("."));
 
-        let parent = self.path.parent().unwrap_or_else(|| Path::new("."));
         let new_path =
-            write_best_event_file(parent, &base_slug, Some(&self.path), contents.as_bytes())?;
+            write_best_event_file(dir, &base_slug, Some(&self.path), contents.as_bytes())?;
 
         if new_path == self.path {
             return Ok(());
@@ -75,14 +68,6 @@ impl CalendarEvent {
 
     pub fn filename(&self) -> Option<&str> {
         self.path.file_name().and_then(|name| name.to_str())
-    }
-
-    fn contents(&self) -> String {
-        let ical_event = self.event.ical_event();
-        icalendar::Calendar::new()
-            .push(ical_event)
-            .done()
-            .to_string()
     }
 }
 
@@ -214,7 +199,7 @@ mod tests {
             Some("2026-01-01T1200__test-event.ics")
         );
 
-        cal_event.event_mut().set_summary("Planning Session");
+        cal_event.event_mut().summary = "Planning Session".to_string();
         cal_event.save().unwrap();
 
         assert_eq!(
@@ -232,14 +217,16 @@ mod tests {
             Some("2026-01-01T1200__test-event.ics")
         );
 
-        // Change location of event (should not change file name)
-        cal_event.event_mut().set_location("Conference Room");
+        cal_event.event_mut().location = Some("Conference Room".to_string());
         cal_event.save().unwrap();
 
         assert_eq!(
             cal_event.filename(),
             Some("2026-01-01T1200__test-event.ics")
         );
+
+        let contents = fs::read_to_string(cal_event.path()).unwrap();
+        assert!(contents.contains("LOCATION:Conference Room"));
     }
 
     #[test]
