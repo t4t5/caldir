@@ -1,5 +1,11 @@
-use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+mod action;
+mod trigger;
+
+pub use action::ReminderAction;
+pub use trigger::{Related, ReminderTrigger};
+
 use icalendar::{Component, Property};
+use trigger::{format_trigger_property, parse_trigger};
 
 const DEFAULT_REMINDER_DESCRIPTION: &str = "Reminder";
 
@@ -8,30 +14,6 @@ pub struct Reminder {
     pub trigger: ReminderTrigger,
     pub action: ReminderAction,
     pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ReminderTrigger {
-    /// Offset from the event start or end. Negative = before the reference time.
-    Relative { offset: Duration, related: Related },
-    /// Absolute UTC time.
-    Absolute(DateTime<Utc>),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub enum Related {
-    #[default]
-    Start,
-    End,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ReminderAction {
-    Display,
-    Audio,
-    Email,
-    /// IANA / vendor-specific actions (e.g. `X-MARTY`). Preserved for round-trip.
-    Other(String),
 }
 
 impl Reminder {
@@ -73,46 +55,7 @@ impl Reminder {
             description,
         })
     }
-}
 
-/// Parse a TRIGGER property into a [`ReminderTrigger`].
-///
-/// Hand-rolled rather than going through `icalendar::Trigger::try_from(&Property)`
-/// because that path rejects negative durations (`-PT10M`), which is the most
-/// common form for "N minutes before the event".
-fn parse_trigger(prop: &Property) -> Result<ReminderTrigger, ()> {
-    let value_kind = prop.params().get("VALUE").map(|p| p.value());
-    let raw = prop.value();
-
-    if value_kind == Some("DATE-TIME") {
-        let dt = NaiveDateTime::parse_from_str(raw, "%Y%m%dT%H%M%SZ").map_err(|_| ())?;
-        return Ok(ReminderTrigger::Absolute(dt.and_utc()));
-    }
-
-    let (is_negative, duration_str) = match raw.strip_prefix('-') {
-        Some(rest) => (true, rest),
-        None => (false, raw.strip_prefix('+').unwrap_or(raw)),
-    };
-    let parsed = iso8601::duration(duration_str).map_err(|_| ())?;
-    let std_duration: std::time::Duration = parsed.into();
-    let mut offset = Duration::from_std(std_duration).map_err(|_| ())?;
-    if is_negative {
-        offset = -offset;
-    }
-
-    let related = prop
-        .params()
-        .get("RELATED")
-        .map(|p| match p.value() {
-            "END" => Related::End,
-            _ => Related::Start,
-        })
-        .unwrap_or_default();
-
-    Ok(ReminderTrigger::Relative { offset, related })
-}
-
-impl Reminder {
     /// Format this reminder as a `VALARM` block (RFC 5545).
     ///
     /// We emit the block ourselves rather than going through
@@ -124,108 +67,34 @@ impl Reminder {
     /// spurious sync diffs. We still use `icalendar::Property` for individual
     /// lines so we get correct line folding and text escaping.
     pub(crate) fn to_ics_block(&self) -> String {
-        let action = match &self.action {
-            ReminderAction::Display => "DISPLAY",
-            ReminderAction::Audio => "AUDIO",
-            ReminderAction::Email => "EMAIL",
-            ReminderAction::Other(name) => name,
-        };
-
-        let description = match (&self.description, &self.action) {
-            (Some(desc), _) => Some(desc.as_str()),
-            (None, ReminderAction::Display) => Some(DEFAULT_REMINDER_DESCRIPTION),
-            (None, _) => None,
-        };
-
         let mut block = String::from("BEGIN:VALARM\r\n");
-
-        push_property(&mut block, Property::new("ACTION", action));
-
-        if let Some(desc) = description {
-            push_property(&mut block, Property::new("DESCRIPTION", desc));
+        for property in self.properties() {
+            let line: String = property
+                .try_into()
+                .expect("formatting an icalendar Property to String never fails");
+            block.push_str(&line);
         }
-
-        push_property(&mut block, format_trigger_property(&self.trigger));
-
         block.push_str("END:VALARM\r\n");
         block
     }
-}
 
-fn push_property(out: &mut String, property: Property) {
-    let line: String = property
-        .try_into()
-        .expect("formatting an icalendar Property to String never fails");
-    out.push_str(&line);
-}
-
-fn format_trigger_property(trigger: &ReminderTrigger) -> Property {
-    match trigger {
-        ReminderTrigger::Relative { offset, related } => {
-            let mut prop = Property::new("TRIGGER", format_duration(*offset));
-            prop.add_parameter(
-                "RELATED",
-                match related {
-                    Related::Start => "START",
-                    Related::End => "END",
-                },
-            );
-            prop.done()
+    fn properties(&self) -> Vec<Property> {
+        let mut props = vec![Property::new("ACTION", self.action.as_ics_str()).done()];
+        if let Some(desc) = self.effective_description() {
+            props.push(Property::new("DESCRIPTION", desc).done());
         }
-        ReminderTrigger::Absolute(dt) => {
-            let mut prop = Property::new("TRIGGER", dt.format("%Y%m%dT%H%M%SZ").to_string());
-            prop.add_parameter("VALUE", "DATE-TIME");
-            prop.done()
-        }
-    }
-}
-
-/// Format a duration as an RFC 5545 / ISO 8601 duration string.
-///
-/// Chrono's `Duration::Display` always emits seconds (`PT600S` for ten
-/// minutes); we prefer the canonical mixed form (`PT10M`, `P1D`, `P1W`) so
-/// that ICS round-trips don't gratuitously rewrite values pulled from
-/// providers.
-fn format_duration(d: Duration) -> String {
-    let total_seconds = d.num_seconds();
-    if total_seconds == 0 {
-        return "PT0S".to_string();
-    }
-    let abs = total_seconds.unsigned_abs();
-    let sign = if total_seconds < 0 { "-" } else { "" };
-
-    if abs.is_multiple_of(86_400) {
-        let days = abs / 86_400;
-        if days.is_multiple_of(7) {
-            return format!("{sign}P{}W", days / 7);
-        }
-        return format!("{sign}P{days}D");
+        props.push(format_trigger_property(&self.trigger));
+        props
     }
 
-    let hours = abs / 3_600;
-    let minutes = (abs % 3_600) / 60;
-    let seconds = abs % 60;
-
-    let mut s = format!("{sign}PT");
-    if hours > 0 {
-        s.push_str(&format!("{hours}H"));
-    }
-    if minutes > 0 {
-        s.push_str(&format!("{minutes}M"));
-    }
-    if seconds > 0 {
-        s.push_str(&format!("{seconds}S"));
-    }
-    s
-}
-
-impl From<&str> for ReminderAction {
-    fn from(value: &str) -> Self {
-        match value {
-            "DISPLAY" => ReminderAction::Display,
-            "AUDIO" => ReminderAction::Audio,
-            "EMAIL" => ReminderAction::Email,
-            other => ReminderAction::Other(other.to_string()),
+    /// DISPLAY alarms require a DESCRIPTION per RFC 5545; fill in a placeholder
+    /// when the user didn't supply one. Other action types may legitimately
+    /// omit DESCRIPTION.
+    fn effective_description(&self) -> Option<&str> {
+        match (&self.description, &self.action) {
+            (Some(desc), _) => Some(desc.as_str()),
+            (None, ReminderAction::Display) => Some(DEFAULT_REMINDER_DESCRIPTION),
+            (None, _) => None,
         }
     }
 }
@@ -233,8 +102,7 @@ impl From<&str> for ReminderAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
-    use icalendar::Component;
+    use chrono::{Duration, TimeZone, Utc};
     use pretty_assertions::assert_eq;
 
     fn parse_reminder(ics_alarm_block: &str) -> Reminder {
@@ -256,95 +124,20 @@ mod tests {
             .expect("VALARM should produce a Reminder")
     }
 
-    fn try_parse_reminder(ics_alarm_block: &str) -> Option<Reminder> {
-        let ics = format!(
-            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:test@caldir\r\nDTSTART:20260101T120000Z\r\n{ics_alarm_block}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
-        );
-        let cal: icalendar::Calendar = ics.parse().unwrap();
-        let event = cal.components.into_iter().find_map(|c| match c {
-            icalendar::CalendarComponent::Event(e) => Some(e),
-            _ => None,
-        })?;
-        Reminder::from_ical_event(&event).into_iter().next()
-    }
-
     #[test]
-    fn parses_relative_display_alarm() {
+    fn parses_full_valarm() {
         let reminder = parse_reminder(
-            "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT10M\r\nEND:VALARM",
+            "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Wake up\r\nTRIGGER:-PT10M\r\nEND:VALARM",
         );
 
         assert_eq!(reminder.action, ReminderAction::Display);
-        assert_eq!(
-            reminder.description.as_deref(),
-            Some(DEFAULT_REMINDER_DESCRIPTION)
-        );
+        assert_eq!(reminder.description.as_deref(), Some("Wake up"));
         assert_eq!(
             reminder.trigger,
             ReminderTrigger::Relative {
                 offset: Duration::minutes(-10),
                 related: Related::Start,
             }
-        );
-    }
-
-    #[test]
-    fn parses_relative_alarm_defaults_related_to_start() {
-        let reminder = parse_reminder(
-            "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT10M\r\nEND:VALARM",
-        );
-
-        assert!(matches!(
-            reminder.trigger,
-            ReminderTrigger::Relative {
-                related: Related::Start,
-                ..
-            }
-        ));
-    }
-
-    #[test]
-    fn parses_relative_alarm_with_related_end() {
-        let reminder = parse_reminder(
-            "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER;RELATED=END:-PT5M\r\nEND:VALARM",
-        );
-
-        assert_eq!(
-            reminder.trigger,
-            ReminderTrigger::Relative {
-                offset: Duration::minutes(-5),
-                related: Related::End,
-            }
-        );
-    }
-
-    #[test]
-    fn parses_audio_action() {
-        let reminder =
-            parse_reminder("BEGIN:VALARM\r\nACTION:AUDIO\r\nTRIGGER:-PT10M\r\nEND:VALARM");
-
-        assert_eq!(reminder.action, ReminderAction::Audio);
-        assert_eq!(reminder.description, None);
-    }
-
-    #[test]
-    fn parses_email_action() {
-        let reminder = parse_reminder(
-            "BEGIN:VALARM\r\nACTION:EMAIL\r\nDESCRIPTION:Body\r\nSUMMARY:Subj\r\nTRIGGER:-PT1H\r\nEND:VALARM",
-        );
-
-        assert_eq!(reminder.action, ReminderAction::Email);
-        assert_eq!(reminder.description.as_deref(), Some("Body"));
-    }
-
-    #[test]
-    fn parses_unknown_action_as_other() {
-        let reminder =
-            parse_reminder("BEGIN:VALARM\r\nACTION:X-CUSTOM\r\nTRIGGER:-PT5M\r\nEND:VALARM");
-
-        assert_eq!(
-            reminder.action,
-            ReminderAction::Other("X-CUSTOM".to_string())
         );
     }
 
@@ -356,125 +149,42 @@ mod tests {
     }
 
     #[test]
-    fn parses_absolute_utc_trigger() {
-        let reminder = parse_reminder(
-            "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER;VALUE=DATE-TIME:20260101T120000Z\r\nEND:VALARM",
-        );
+    fn skips_alarm_when_trigger_missing() {
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:test@caldir\r\nDTSTART:20260101T120000Z\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:no trigger\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let cal: icalendar::Calendar = ics.parse().unwrap();
+        let event = cal
+            .components
+            .into_iter()
+            .find_map(|c| match c {
+                icalendar::CalendarComponent::Event(e) => Some(e),
+                _ => None,
+            })
+            .unwrap();
+
+        assert!(Reminder::from_ical_event(&event).is_empty());
+    }
+
+    #[test]
+    fn writes_full_valarm() {
+        let reminder = Reminder {
+            trigger: ReminderTrigger::Relative {
+                offset: Duration::minutes(-10),
+                related: Related::Start,
+            },
+            action: ReminderAction::Display,
+            description: Some("Wake up".to_string()),
+        };
+
+        let block = reminder.to_ics_block();
 
         assert_eq!(
-            reminder.trigger,
-            ReminderTrigger::Absolute(Utc.with_ymd_and_hms(2026, 1, 1, 12, 0, 0).unwrap())
+            block,
+            "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Wake up\r\nTRIGGER;RELATED=START:-PT10M\r\nEND:VALARM\r\n"
         );
     }
 
     #[test]
-    fn skips_alarm_when_trigger_missing() {
-        let result = try_parse_reminder(
-            "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nEND:VALARM",
-        );
-
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn writes_relative_trigger_with_explicit_related() {
-        let reminder = Reminder {
-            trigger: ReminderTrigger::Relative {
-                offset: Duration::minutes(-10),
-                related: Related::Start,
-            },
-            action: ReminderAction::Display,
-            description: Some("Wake up".to_string()),
-        };
-
-        let block = reminder.to_ics_block();
-
-        assert!(block.contains("TRIGGER;RELATED=START:-PT10M\r\n"));
-    }
-
-    #[test]
-    fn writes_absolute_trigger() {
-        let reminder = Reminder {
-            trigger: ReminderTrigger::Absolute(Utc.with_ymd_and_hms(2026, 1, 1, 12, 0, 0).unwrap()),
-            action: ReminderAction::Display,
-            description: Some(DEFAULT_REMINDER_DESCRIPTION.to_string()),
-        };
-
-        let block = reminder.to_ics_block();
-
-        assert!(block.contains("TRIGGER;VALUE=DATE-TIME:20260101T120000Z\r\n"));
-    }
-
-    #[test]
-    fn writes_display_action_with_description() {
-        let reminder = Reminder {
-            trigger: ReminderTrigger::Relative {
-                offset: Duration::minutes(-10),
-                related: Related::Start,
-            },
-            action: ReminderAction::Display,
-            description: Some("Wake up".to_string()),
-        };
-
-        let block = reminder.to_ics_block();
-
-        assert!(block.contains("ACTION:DISPLAY\r\n"));
-        assert!(block.contains("DESCRIPTION:Wake up\r\n"));
-    }
-
-    #[test]
-    fn writes_audio_action_without_description() {
-        let reminder = Reminder {
-            trigger: ReminderTrigger::Relative {
-                offset: Duration::minutes(-10),
-                related: Related::Start,
-            },
-            action: ReminderAction::Audio,
-            description: None,
-        };
-
-        let block = reminder.to_ics_block();
-
-        assert!(block.contains("ACTION:AUDIO\r\n"));
-        assert!(!block.contains("DESCRIPTION"));
-    }
-
-    #[test]
-    fn writes_email_action_preserves_description() {
-        let reminder = Reminder {
-            trigger: ReminderTrigger::Relative {
-                offset: Duration::hours(-1),
-                related: Related::Start,
-            },
-            action: ReminderAction::Email,
-            description: Some("Body".to_string()),
-        };
-
-        let block = reminder.to_ics_block();
-
-        assert!(block.contains("ACTION:EMAIL\r\n"));
-        assert!(block.contains("DESCRIPTION:Body\r\n"));
-    }
-
-    #[test]
-    fn writes_other_action() {
-        let reminder = Reminder {
-            trigger: ReminderTrigger::Relative {
-                offset: Duration::minutes(-5),
-                related: Related::Start,
-            },
-            action: ReminderAction::Other("X-CUSTOM".to_string()),
-            description: None,
-        };
-
-        let block = reminder.to_ics_block();
-
-        assert!(block.contains("ACTION:X-CUSTOM\r\n"));
-        assert!(!block.contains("DESCRIPTION"));
-    }
-
-    #[test]
-    fn writes_display_with_placeholder_description_when_missing() {
+    fn fills_in_placeholder_description_for_display_when_missing() {
         let reminder = Reminder {
             trigger: ReminderTrigger::Relative {
                 offset: Duration::minutes(-10),
@@ -487,6 +197,22 @@ mod tests {
         let block = reminder.to_ics_block();
 
         assert!(block.contains(&format!("DESCRIPTION:{DEFAULT_REMINDER_DESCRIPTION}\r\n")));
+    }
+
+    #[test]
+    fn omits_description_for_audio_when_missing() {
+        let reminder = Reminder {
+            trigger: ReminderTrigger::Relative {
+                offset: Duration::minutes(-10),
+                related: Related::Start,
+            },
+            action: ReminderAction::Audio,
+            description: None,
+        };
+
+        let block = reminder.to_ics_block();
+
+        assert!(!block.contains("DESCRIPTION"));
     }
 
     #[test]
@@ -534,24 +260,6 @@ mod tests {
             })
             .collect();
         assert_eq!(offsets, vec![-30, -10, -5]);
-    }
-
-    #[test]
-    fn from_ical_event_skips_unparseable_alarm() {
-        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:test@caldir\r\nDTSTART:20260101T120000Z\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:no trigger\r\nEND:VALARM\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
-        let cal: icalendar::Calendar = ics.parse().unwrap();
-        let event = cal
-            .components
-            .iter()
-            .find_map(|c| match c {
-                icalendar::CalendarComponent::Event(e) => Some(e.clone()),
-                _ => None,
-            })
-            .unwrap();
-
-        let reminders = Reminder::from_ical_event(&event);
-
-        assert_eq!(reminders.len(), 1);
     }
 
     #[test]
