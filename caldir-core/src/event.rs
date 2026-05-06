@@ -20,6 +20,7 @@ pub struct Event {
     pub end: Option<EventTime>,
     pub recurrence_id: Option<EventTime>,
     pub last_modified: Option<DateTime<Utc>>,
+    pub sequence: Option<i32>,
     pub organizer: Option<Organizer>,
 }
 
@@ -34,6 +35,7 @@ impl Event {
             end: None,
             recurrence_id: None,
             last_modified: None,
+            sequence: None,
             organizer: None,
         }
     }

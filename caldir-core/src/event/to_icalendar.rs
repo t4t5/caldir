@@ -31,6 +31,10 @@ impl From<&Event> for icalendar::Event {
             event.last_modified(last_modified);
         }
 
+        if let Some(sequence) = value.sequence {
+            event.append_property(icalendar::Property::new("SEQUENCE", sequence.to_string()));
+        }
+
         if let Some(organizer) = &value.organizer {
             event.append_property(icalendar::Property::from(organizer));
         }
@@ -187,6 +191,36 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.property_value("LAST-MODIFIED"), None);
+    }
+
+    #[test]
+    fn converts_sequence() {
+        let mut event = test_event();
+        event.sequence = Some(3);
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("SEQUENCE"), Some("3"));
+    }
+
+    #[test]
+    fn converts_negative_sequence() {
+        let mut event = test_event();
+        event.sequence = Some(-1);
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("SEQUENCE"), Some("-1"));
+    }
+
+    #[test]
+    fn omits_sequence_when_none() {
+        let mut event = test_event();
+        event.sequence = None;
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("SEQUENCE"), None);
     }
 
     #[test]

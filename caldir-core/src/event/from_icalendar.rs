@@ -30,6 +30,9 @@ impl TryFrom<&icalendar::Event> for Event {
             end,
             recurrence_id,
             last_modified: value.get_last_modified(),
+            sequence: value
+                .property_value("SEQUENCE")
+                .and_then(|s| s.parse().ok()),
             organizer,
         })
     }
@@ -212,6 +215,35 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.last_modified, None);
+    }
+
+    #[test]
+    fn converts_sequence() {
+        let ical_event = test_icalendar_event().sequence(3).done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.sequence, Some(3));
+    }
+
+    #[test]
+    fn converts_negative_sequence() {
+        let ical_event = test_icalendar_event()
+            .append_property(icalendar::Property::new("SEQUENCE", "-1"))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.sequence, Some(-1));
+    }
+
+    #[test]
+    fn sequence_is_none_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.sequence, None);
     }
 
     #[test]
