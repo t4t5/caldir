@@ -1,4 +1,4 @@
-use crate::event::{Event, EventError, EventTime};
+use crate::event::{Event, EventError, EventTime, Organizer};
 use icalendar::{Component, EventLike};
 
 impl TryFrom<&icalendar::Event> for Event {
@@ -14,6 +14,8 @@ impl TryFrom<&icalendar::Event> for Event {
 
         let uid = value.get_uid().ok_or(EventError::MissingUid)?.to_string();
 
+        let organizer = value.properties().get("ORGANIZER").map(Organizer::from);
+
         Ok(Event {
             uid,
             summary: value.get_summary().map(ToString::to_string),
@@ -22,6 +24,7 @@ impl TryFrom<&icalendar::Event> for Event {
             start,
             end,
             last_modified: value.get_last_modified(),
+            organizer,
         })
     }
 }
@@ -176,5 +179,28 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.last_modified, None);
+    }
+
+    #[test]
+    fn converts_organizer() {
+        let ical_event = test_icalendar_event()
+            .append_property(icalendar::Property::new(
+                "ORGANIZER",
+                "mailto:alice@example.com",
+            ))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.organizer, Some(Organizer::new("alice@example.com")));
+    }
+
+    #[test]
+    fn organizer_is_none_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.organizer, None);
     }
 }

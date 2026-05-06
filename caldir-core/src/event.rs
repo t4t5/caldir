@@ -1,11 +1,13 @@
 mod error;
 mod from_icalendar;
+mod organizer;
 mod slugify;
 mod time;
 mod to_icalendar;
 
 use chrono::{DateTime, Utc};
 pub use error::EventError;
+pub use organizer::Organizer;
 pub use time::{EventTime, EventTimeError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,6 +19,7 @@ pub struct Event {
     pub start: EventTime,
     pub end: Option<EventTime>,
     pub last_modified: Option<DateTime<Utc>>,
+    pub organizer: Option<Organizer>,
 }
 
 impl Event {
@@ -29,6 +32,7 @@ impl Event {
             start,
             end: None,
             last_modified: None,
+            organizer: None,
         }
     }
 

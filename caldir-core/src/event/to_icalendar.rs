@@ -27,6 +27,10 @@ impl From<&Event> for icalendar::Event {
             event.last_modified(last_modified);
         }
 
+        if let Some(organizer) = &value.organizer {
+            event.append_property(icalendar::Property::from(organizer));
+        }
+
         event.done()
     }
 }
@@ -152,5 +156,28 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.property_value("LAST-MODIFIED"), None);
+    }
+
+    #[test]
+    fn converts_organizer() {
+        let mut event = test_event();
+        event.organizer = Some(crate::event::Organizer::new("alice@example.com"));
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(
+            ical_event.property_value("ORGANIZER"),
+            Some("mailto:alice@example.com")
+        );
+    }
+
+    #[test]
+    fn omits_organizer_when_none() {
+        let mut event = test_event();
+        event.organizer = None;
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert!(ical_event.properties().get("ORGANIZER").is_none());
     }
 }
