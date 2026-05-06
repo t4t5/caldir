@@ -151,8 +151,8 @@ VERSION:2.0
 PRODID:CALDIR
 BEGIN:VEVENT
 DTSTAMP:20260502T173914Z
-DESCRIPTION:https://docs.example.com/document/d/abc123def456
- ghijklmnopqrstuv/edit?usp=sharing\n
+DESCRIPTION:https://docs.example.com/document/d/abc123def456ghijklmnopqrstu
+ v/edit?usp=sharing\n
 DTEND;TZID=Europe/Oslo:20260515T164500
 DTSTART;TZID=Europe/Oslo:20260515T160000
 LAST-MODIFIED:20260502T173914Z
