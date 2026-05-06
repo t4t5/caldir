@@ -12,6 +12,10 @@ pub use error::EventError;
 pub use organizer::Organizer;
 pub use time::{EventTime, EventTimeError};
 
+const ICS_PRODID: &str = "CALDIR";
+const ICS_VERSION: &str = "2.0";
+const ICS_UID_DOMAIN: &str = "caldir";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event {
     pub uid: String,
@@ -63,8 +67,8 @@ impl Event {
         let ical_event: icalendar::Event = self.into();
 
         let calendar = icalendar::Calendar::empty()
-            .append_property(icalendar::Property::new("VERSION", "2.0"))
-            .append_property(icalendar::Property::new("PRODID", "CALDIR"))
+            .append_property(icalendar::Property::new("VERSION", ICS_VERSION))
+            .append_property(icalendar::Property::new("PRODID", ICS_PRODID))
             .push(ical_event)
             .done();
 
@@ -73,7 +77,7 @@ impl Event {
 }
 
 fn new_uid() -> String {
-    format!("{}@caldir", uuid::Uuid::new_v4())
+    format!("{}@{}", uuid::Uuid::new_v4(), ICS_UID_DOMAIN)
 }
 
 #[cfg(test)]
