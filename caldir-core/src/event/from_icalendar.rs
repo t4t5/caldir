@@ -34,6 +34,7 @@ impl TryFrom<&icalendar::Event> for Event {
                 .property_value("SEQUENCE")
                 .and_then(|s| s.parse().ok()),
             organizer,
+            url: value.property_value("URL").map(ToString::to_string),
         })
     }
 }
@@ -267,5 +268,31 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.organizer, None);
+    }
+
+    #[test]
+    fn converts_url() {
+        let ical_event = test_icalendar_event()
+            .append_property(icalendar::Property::new(
+                "URL",
+                "https://meet.example.com/abc-defg-hij",
+            ))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(
+            event.url.as_deref(),
+            Some("https://meet.example.com/abc-defg-hij")
+        );
+    }
+
+    #[test]
+    fn url_is_none_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.url, None);
     }
 }

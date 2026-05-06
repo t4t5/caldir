@@ -22,6 +22,7 @@ pub struct Event {
     pub last_modified: Option<DateTime<Utc>>,
     pub sequence: Option<i32>,
     pub organizer: Option<Organizer>,
+    pub url: Option<String>,
 }
 
 impl Event {
@@ -37,6 +38,7 @@ impl Event {
             last_modified: None,
             sequence: None,
             organizer: None,
+            url: None,
         }
     }
 

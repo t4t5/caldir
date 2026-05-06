@@ -39,6 +39,10 @@ impl From<&Event> for icalendar::Event {
             event.append_property(icalendar::Property::from(organizer));
         }
 
+        if let Some(url) = &value.url {
+            event.append_property(icalendar::Property::new("URL", url));
+        }
+
         event.done()
     }
 }
@@ -244,5 +248,28 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert!(ical_event.properties().get("ORGANIZER").is_none());
+    }
+
+    #[test]
+    fn converts_url() {
+        let mut event = test_event();
+        event.url = Some("https://meet.example.com/abc-defg-hij".to_string());
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(
+            ical_event.property_value("URL"),
+            Some("https://meet.example.com/abc-defg-hij")
+        );
+    }
+
+    #[test]
+    fn omits_url_when_none() {
+        let mut event = test_event();
+        event.url = None;
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("URL"), None);
     }
 }
