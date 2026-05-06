@@ -11,7 +11,7 @@ impl TryFrom<&icalendar::Event> for Event {
             .try_into()?;
 
         Ok(Event {
-            summary: value.get_summary().unwrap_or("").to_string(),
+            summary: value.get_summary().map(ToString::to_string),
             location: value.get_location().map(ToString::to_string),
             start,
         })

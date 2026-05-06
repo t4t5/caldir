@@ -6,8 +6,8 @@ impl From<&Event> for icalendar::Event {
         let mut event = icalendar::Event::new();
         event.starts(icalendar::DatePerhapsTime::from(&value.start));
 
-        if !value.summary.is_empty() {
-            event.summary(&value.summary);
+        if let Some(summary) = &value.summary {
+            event.summary(summary);
         }
 
         if let Some(location) = &value.location {

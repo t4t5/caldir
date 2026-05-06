@@ -9,7 +9,7 @@ pub use time::{EventTime, EventTimeError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event {
-    pub summary: String,
+    pub summary: Option<String>,
     pub location: Option<String>,
     pub start: EventTime,
 }
@@ -17,7 +17,7 @@ pub struct Event {
 impl Event {
     pub fn new(summary: impl Into<String>, start: EventTime) -> Self {
         Event {
-            summary: summary.into(),
+            summary: Some(summary.into()),
             location: None,
             start,
         }
@@ -89,7 +89,7 @@ mod tests {
 
         let event = Event::from_ics_str(ics).unwrap();
 
-        assert_eq!(event.summary, "Test Event");
+        assert_eq!(event.summary.unwrap(), "Test Event");
         assert_eq!(event.location.as_deref(), Some("Conference Room"));
         assert!(matches!(event.start, EventTime::DateTimeUtc(_)));
     }
