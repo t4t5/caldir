@@ -11,7 +11,7 @@ impl Event {
     pub(crate) fn from_contents(contents: &str) -> Result<Self, EventError> {
         let calendar: icalendar::Calendar = contents
             .parse()
-            .map_err(|err| EventError::IcsParse(contents.to_string(), err))?;
+            .map_err(|err| EventError::InvalidIcs(contents.to_string(), err))?;
 
         Self::from_ical_calendar(&calendar)
     }
@@ -41,6 +41,22 @@ impl Event {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_invalid_ics() {
+        // Missing "END:VCALENDAR"
+        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT";
+
+        let result = Event::from_contents(ics);
+        assert!(matches!(result, Err(EventError::InvalidIcs(_, _))));
+    }
+
+    #[test]
+    fn rejects_ics_without_events() {
+        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR";
+        let result = Event::from_contents(ics);
+        assert!(matches!(result, Err(EventError::NoEventInIcs(_))));
+    }
 
     #[test]
     fn rejects_event_without_start() {
