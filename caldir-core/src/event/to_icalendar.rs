@@ -23,6 +23,10 @@ impl From<&Event> for icalendar::Event {
             event.location(location);
         }
 
+        if let Some(last_modified) = value.last_modified {
+            event.last_modified(last_modified);
+        }
+
         event.done()
     }
 }
@@ -119,5 +123,34 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.get_end(), None);
+    }
+
+    #[test]
+    fn converts_last_modified() {
+        let last_modified = chrono::NaiveDate::from_ymd_opt(2026, 5, 2)
+            .unwrap()
+            .and_hms_opt(17, 39, 14)
+            .unwrap()
+            .and_utc();
+
+        let mut event = test_event();
+        event.last_modified = Some(last_modified);
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(
+            ical_event.property_value("LAST-MODIFIED"),
+            Some("20260502T173914Z")
+        );
+    }
+
+    #[test]
+    fn omits_last_modified_when_none() {
+        let mut event = test_event();
+        event.last_modified = None;
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("LAST-MODIFIED"), None);
     }
 }

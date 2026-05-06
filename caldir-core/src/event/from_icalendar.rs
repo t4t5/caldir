@@ -21,6 +21,7 @@ impl TryFrom<&icalendar::Event> for Event {
             location: value.get_location().map(ToString::to_string),
             start,
             end,
+            last_modified: value.get_last_modified(),
         })
     }
 }
@@ -151,5 +152,29 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.end, None);
+    }
+
+    #[test]
+    fn converts_last_modified() {
+        let last_modified = chrono::NaiveDate::from_ymd_opt(2026, 5, 2)
+            .unwrap()
+            .and_hms_opt(17, 39, 14)
+            .unwrap()
+            .and_utc();
+
+        let ical_event = test_icalendar_event().last_modified(last_modified).done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.last_modified, Some(last_modified));
+    }
+
+    #[test]
+    fn last_modified_is_none_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.last_modified, None);
     }
 }

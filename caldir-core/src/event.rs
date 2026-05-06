@@ -4,6 +4,7 @@ mod slugify;
 mod time;
 mod to_icalendar;
 
+use chrono::{DateTime, Utc};
 pub use error::EventError;
 pub use time::{EventTime, EventTimeError};
 
@@ -15,6 +16,7 @@ pub struct Event {
     pub location: Option<String>,
     pub start: EventTime,
     pub end: Option<EventTime>,
+    pub last_modified: Option<DateTime<Utc>>,
 }
 
 impl Event {
@@ -26,6 +28,7 @@ impl Event {
             location: None,
             start,
             end: None,
+            last_modified: None,
         }
     }
 
