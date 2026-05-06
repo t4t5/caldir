@@ -3,6 +3,7 @@ mod error;
 mod from_icalendar;
 mod organizer;
 mod recurrence;
+mod reminder;
 mod slugify;
 mod time;
 mod to_icalendar;
@@ -13,6 +14,7 @@ use chrono::{DateTime, Utc};
 pub use error::EventError;
 pub use organizer::Organizer;
 pub use recurrence::Recurrence;
+pub use reminder::{Related, Reminder, ReminderAction, ReminderTrigger};
 pub use time::{EventTime, EventTimeError};
 pub use x_property::XProperty;
 
@@ -34,6 +36,7 @@ pub struct Event {
     pub sequence: Option<i32>,
     pub organizer: Option<Organizer>,
     pub attendees: Vec<Attendee>,
+    pub reminders: Vec<Reminder>,
     pub url: Option<String>,
     pub x_properties: Vec<XProperty>,
 }
@@ -53,6 +56,7 @@ impl Event {
             sequence: None,
             organizer: None,
             attendees: Vec::new(),
+            reminders: Vec::new(),
             url: None,
             x_properties: Vec::new(),
         }

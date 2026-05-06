@@ -10,6 +10,7 @@ chrono = "0.4.42"
 chrono-tz = "0.10.4"
 home = "0.5.12"
 icalendar = "0.17.10"
+iso8601 = "0.6"
 serde = { version = "1", features = ["derive"] }
 slug = "0.1.6"
 thiserror = "2.0.18"

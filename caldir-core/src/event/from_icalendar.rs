@@ -1,4 +1,6 @@
-use crate::event::{Attendee, Event, EventError, EventTime, Organizer, Recurrence, XProperty};
+use crate::event::{
+    Attendee, Event, EventError, EventTime, Organizer, Recurrence, Reminder, XProperty,
+};
 use icalendar::{Component, EventLike};
 
 impl TryFrom<&icalendar::Event> for Event {
@@ -29,6 +31,8 @@ impl TryFrom<&icalendar::Event> for Event {
             .map(|props| props.iter().map(Attendee::from).collect())
             .unwrap_or_default();
 
+        let reminders = Reminder::from_ical_event(value);
+
         let x_properties = value
             .properties()
             .iter()
@@ -51,6 +55,7 @@ impl TryFrom<&icalendar::Event> for Event {
                 .and_then(|s| s.parse().ok()),
             organizer,
             attendees,
+            reminders,
             url: value.property_value("URL").map(ToString::to_string),
             x_properties,
         })
@@ -342,6 +347,27 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert!(event.attendees.is_empty());
+    }
+
+    #[test]
+    fn converts_reminders() {
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:test@caldir\r\nDTSTART:20260101T120000Z\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let event = crate::event::Event::from_ics_str(ics).unwrap();
+
+        assert_eq!(event.reminders.len(), 1);
+        assert_eq!(
+            event.reminders[0].action,
+            crate::event::ReminderAction::Display
+        );
+    }
+
+    #[test]
+    fn reminders_is_empty_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert!(event.reminders.is_empty());
     }
 
     #[test]

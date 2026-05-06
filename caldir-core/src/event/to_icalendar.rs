@@ -47,6 +47,10 @@ impl From<&Event> for icalendar::Event {
             event.append_multi_property(icalendar::Property::from(attendee));
         }
 
+        for reminder in &value.reminders {
+            event.alarm(icalendar::Alarm::from(reminder));
+        }
+
         if let Some(url) = &value.url {
             event.append_property(icalendar::Property::new("URL", url));
         }
@@ -313,6 +317,46 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert!(ical_event.multi_properties().get("ATTENDEE").is_none());
+    }
+
+    #[test]
+    fn converts_reminders() {
+        use chrono::Duration;
+        let mut event = test_event();
+        event.reminders = vec![crate::event::Reminder {
+            trigger: crate::event::ReminderTrigger::Relative {
+                offset: Duration::minutes(-10),
+                related: crate::event::Related::Start,
+            },
+            action: crate::event::ReminderAction::Display,
+            description: Some("Reminder".to_string()),
+        }];
+
+        let ical_event: icalendar::Event = event.into();
+
+        let alarms: Vec<_> = ical_event
+            .components()
+            .iter()
+            .filter(|c| c.component_kind() == "VALARM")
+            .collect();
+        assert_eq!(alarms.len(), 1);
+        assert_eq!(alarms[0].property_value("ACTION"), Some("DISPLAY"));
+        assert_eq!(alarms[0].property_value("TRIGGER"), Some("-PT10M"));
+    }
+
+    #[test]
+    fn omits_reminders_when_empty() {
+        let mut event = test_event();
+        event.reminders = vec![];
+
+        let ical_event: icalendar::Event = event.into();
+
+        let alarms: Vec<_> = ical_event
+            .components()
+            .iter()
+            .filter(|c| c.component_kind() == "VALARM")
+            .collect();
+        assert!(alarms.is_empty());
     }
 
     #[test]

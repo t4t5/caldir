@@ -43,6 +43,7 @@ dependencies = [
  "chrono-tz",
  "home",
  "icalendar",
+ "iso8601",
  "pretty_assertions",
  "serde",
  "slug",
