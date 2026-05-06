@@ -1,3 +1,4 @@
+mod attendee;
 mod error;
 mod from_icalendar;
 mod organizer;
@@ -5,6 +6,7 @@ mod slugify;
 mod time;
 mod to_icalendar;
 
+pub use attendee::Attendee;
 use chrono::{DateTime, Utc};
 pub use error::EventError;
 pub use organizer::Organizer;
@@ -22,6 +24,7 @@ pub struct Event {
     pub last_modified: Option<DateTime<Utc>>,
     pub sequence: Option<i32>,
     pub organizer: Option<Organizer>,
+    pub attendees: Vec<Attendee>,
     pub url: Option<String>,
 }
 
@@ -38,6 +41,7 @@ impl Event {
             last_modified: None,
             sequence: None,
             organizer: None,
+            attendees: Vec::new(),
             url: None,
         }
     }

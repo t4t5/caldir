@@ -39,6 +39,10 @@ impl From<&Event> for icalendar::Event {
             event.append_property(icalendar::Property::from(organizer));
         }
 
+        for attendee in &value.attendees {
+            event.append_multi_property(icalendar::Property::from(attendee));
+        }
+
         if let Some(url) = &value.url {
             event.append_property(icalendar::Property::new("URL", url));
         }
@@ -248,6 +252,36 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert!(ical_event.properties().get("ORGANIZER").is_none());
+    }
+
+    #[test]
+    fn converts_attendees() {
+        let mut event = test_event();
+        event.attendees = vec![
+            crate::event::Attendee::new("bob@example.com"),
+            crate::event::Attendee::new("carol@example.com"),
+        ];
+
+        let ical_event: icalendar::Event = event.into();
+
+        let attendees = ical_event
+            .multi_properties()
+            .get("ATTENDEE")
+            .expect("ATTENDEE multi-property should be present");
+        assert_eq!(
+            attendees.iter().map(|p| p.value()).collect::<Vec<_>>(),
+            vec!["mailto:bob@example.com", "mailto:carol@example.com"]
+        );
+    }
+
+    #[test]
+    fn omits_attendees_when_empty() {
+        let mut event = test_event();
+        event.attendees = vec![];
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert!(ical_event.multi_properties().get("ATTENDEE").is_none());
     }
 
     #[test]

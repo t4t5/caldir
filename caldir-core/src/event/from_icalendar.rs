@@ -1,4 +1,4 @@
-use crate::event::{Event, EventError, EventTime, Organizer};
+use crate::event::{Attendee, Event, EventError, EventTime, Organizer};
 use icalendar::{Component, EventLike};
 
 impl TryFrom<&icalendar::Event> for Event {
@@ -21,6 +21,12 @@ impl TryFrom<&icalendar::Event> for Event {
 
         let organizer = value.properties().get("ORGANIZER").map(Organizer::from);
 
+        let attendees = value
+            .multi_properties()
+            .get("ATTENDEE")
+            .map(|props| props.iter().map(Attendee::from).collect())
+            .unwrap_or_default();
+
         Ok(Event {
             uid,
             summary: value.get_summary().map(ToString::to_string),
@@ -34,6 +40,7 @@ impl TryFrom<&icalendar::Event> for Event {
                 .property_value("SEQUENCE")
                 .and_then(|s| s.parse().ok()),
             organizer,
+            attendees,
             url: value.property_value("URL").map(ToString::to_string),
         })
     }
@@ -268,6 +275,39 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.organizer, None);
+    }
+
+    #[test]
+    fn converts_attendees() {
+        let ical_event = test_icalendar_event()
+            .append_multi_property(icalendar::Property::new(
+                "ATTENDEE",
+                "mailto:bob@example.com",
+            ))
+            .append_multi_property(icalendar::Property::new(
+                "ATTENDEE",
+                "mailto:carol@example.com",
+            ))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(
+            event.attendees,
+            vec![
+                crate::event::Attendee::new("bob@example.com"),
+                crate::event::Attendee::new("carol@example.com"),
+            ]
+        );
+    }
+
+    #[test]
+    fn attendees_is_empty_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert!(event.attendees.is_empty());
     }
 
     #[test]
