@@ -10,16 +10,20 @@ pub use time::{EventTime, EventTimeError};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event {
     pub summary: Option<String>,
+    pub description: Option<String>,
     pub location: Option<String>,
     pub start: EventTime,
+    pub end: Option<EventTime>,
 }
 
 impl Event {
     pub fn new(summary: impl Into<String>, start: EventTime) -> Self {
         Event {
             summary: Some(summary.into()),
+            description: None,
             location: None,
             start,
+            end: None,
         }
     }
 

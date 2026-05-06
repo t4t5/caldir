@@ -10,10 +10,14 @@ impl TryFrom<&icalendar::Event> for Event {
             .ok_or(EventError::MissingStart)?
             .try_into()?;
 
+        let end = value.get_end().map(EventTime::try_from).transpose()?;
+
         Ok(Event {
             summary: value.get_summary().map(ToString::to_string),
+            description: value.get_description().map(ToString::to_string),
             location: value.get_location().map(ToString::to_string),
             start,
+            end,
         })
     }
 }
@@ -73,6 +77,17 @@ mod tests {
     }
 
     #[test]
+    fn converts_description() {
+        let ical_event = test_icalendar_event()
+            .description("Multi-line\nnotes")
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.description.as_deref(), Some("Multi-line\nnotes"));
+    }
+
+    #[test]
     fn converts_start_date() {
         let ical_event = test_icalendar_event()
             .starts(icalendar::DatePerhapsTime::Date(
@@ -86,5 +101,32 @@ mod tests {
             event.start,
             EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 2, 10).unwrap())
         );
+    }
+
+    #[test]
+    fn converts_end() {
+        let ical_event = test_icalendar_event()
+            .ends(icalendar::DatePerhapsTime::Date(
+                chrono::NaiveDate::from_ymd_opt(2026, 2, 11).unwrap(),
+            ))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(
+            event.end,
+            Some(EventTime::Date(
+                chrono::NaiveDate::from_ymd_opt(2026, 2, 11).unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn end_is_none_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.end, None);
     }
 }
