@@ -56,6 +56,7 @@ fn new_uid() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
 
     #[test]
     fn new_generates_uid_with_caldir_domain() {
@@ -116,36 +117,36 @@ mod tests {
 
     #[test]
     fn round_trips_advanced_event_without_data_loss() {
-        let ics = "\
-BEGIN:VCALENDAR\r\n\
-VERSION:2.0\r\n\
-PRODID:CALDIR\r\n\
-BEGIN:VEVENT\r\n\
-DESCRIPTION:https://docs.example.com/document/d/abc123def456\r\n\
- ghijklmnopqrstuv/edit?usp=sharing\\n\r\n\
-DTEND;TZID=Europe/Oslo:20260515T164500\r\n\
-DTSTAMP:20260502T173914Z\r\n\
-DTSTART;TZID=Europe/Oslo:20260515T160000\r\n\
-LAST-MODIFIED:20260502T173914Z\r\n\
-LOCATION:Conference Room A\r\n\
-ORGANIZER:mailto:alice@example.com\r\n\
-RECURRENCE-ID;TZID=Europe/Oslo:20260515T160000\r\n\
-SEQUENCE:1\r\n\
-SUMMARY:Friday retro\r\n\
-UID:event-uid-123@example.com\r\n\
-URL:https://meet.example.com/abc-defg-hij\r\n\
-X-GOOGLE-CONFERENCE:https://meet.example.com/abc-defg-hij\r\n\
-X-GOOGLE-EVENT-ID:event-uid-123_20260515T140000Z\r\n\
-ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com\r\n\
-ATTENDEE;PARTSTAT=DECLINED:mailto:alice@example.com\r\n\
-ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:carol@example.com\r\n\
-END:VEVENT\r\n\
-END:VCALENDAR\r\n";
+        let original_ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:CALDIR
+BEGIN:VEVENT
+DESCRIPTION:https://docs.example.com/document/d/abc123def456
+ ghijklmnopqrstuv/edit?usp=sharing\n
+DTEND;TZID=Europe/Oslo:20260515T164500
+DTSTAMP:20260502T173914Z
+DTSTART;TZID=Europe/Oslo:20260515T160000
+LAST-MODIFIED:20260502T173914Z
+LOCATION:Conference Room A
+ORGANIZER:mailto:alice@example.com
+RECURRENCE-ID;TZID=Europe/Oslo:20260515T160000
+SEQUENCE:1
+SUMMARY:Friday retro
+UID:event-uid-123@example.com
+URL:https://meet.example.com/abc-defg-hij
+X-GOOGLE-CONFERENCE:https://meet.example.com/abc-defg-hij
+X-GOOGLE-EVENT-ID:event-uid-123_20260515T140000Z
+ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+ATTENDEE;PARTSTAT=DECLINED:mailto:alice@example.com
+ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:carol@example.com
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
 
-        let event = Event::from_ics_str(ics).unwrap();
-        let serialized = event.to_ics_string();
-        let reparsed = Event::from_ics_str(&serialized).unwrap();
+        let event = Event::from_ics_str(&original_ics).unwrap();
+        let serialized_ics = event.to_ics_string();
 
-        assert_eq!(event, reparsed);
+        assert_eq!(original_ics, serialized_ics);
     }
 }

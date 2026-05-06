@@ -17,4 +17,5 @@ toml = "1.1.2"
 uuid = { version = "1.23.1", features = ["v4"] }
 
 [dev-dependencies]
+pretty_assertions = "1"
 tempfile = "3"
