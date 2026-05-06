@@ -86,27 +86,26 @@ impl Event {
     pub(crate) fn to_ics_string(&self) -> String {
         let ical_event: icalendar::Event = self.into();
 
-        let calendar = icalendar::Calendar::empty()
+        let ics = icalendar::Calendar::empty()
             .append_property(icalendar::Property::new("VERSION", ICS_VERSION))
             .append_property(icalendar::Property::new("PRODID", ICS_PRODID))
             .push(ical_event)
-            .done();
+            .done()
+            .to_string();
 
-        let ics = calendar.to_string();
+        self.splice_valarms_into_vevent(ics)
+    }
 
+    // icalendar library adds UID to every VALARM
+    // we don't want that, so we construct them with `Reminder::ics_block` instead:
+    fn splice_valarms_into_vevent(&self, ics: String) -> String {
         if self.reminders.is_empty() {
             return ics;
         }
 
-        // VALARMs are emitted directly rather than via icalendar's sub-component
-        // path (see `Reminder::ics_block`). Splice them in just before
-        // `END:VEVENT`.
-        let valarm_blocks: String = self.reminders.iter().map(Reminder::ics_block).collect();
-        ics.replacen(
-            "END:VEVENT\r\n",
-            &format!("{valarm_blocks}END:VEVENT\r\n"),
-            1,
-        )
+        let valarms: String = self.reminders.iter().map(Reminder::ics_block).collect();
+
+        ics.replacen("END:VEVENT\r\n", &format!("{valarms}END:VEVENT\r\n"), 1)
     }
 }
 
