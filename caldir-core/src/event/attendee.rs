@@ -24,12 +24,15 @@ impl Attendee {
 impl From<&Attendee> for Property {
     fn from(value: &Attendee) -> Self {
         let mut prop = Property::new("ATTENDEE", format!("mailto:{}", value.email));
+
         if let Some(name) = &value.name {
             prop.add_parameter("CN", name);
         }
+
         if let Some(status) = value.status {
             prop.add_parameter("PARTSTAT", status.as_ics_str());
         }
+
         prop.done()
     }
 }
@@ -41,11 +44,14 @@ impl From<&Property> for Attendee {
             .strip_prefix("mailto:")
             .unwrap_or(value.value())
             .to_string();
+
         let name = value.params().get("CN").map(|p| p.value().to_string());
+
         let status = value
             .params()
             .get("PARTSTAT")
             .and_then(|p| ParticipationStatus::from_ics_str(p.value()));
+
         Attendee {
             email,
             name,
