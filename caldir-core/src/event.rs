@@ -2,6 +2,7 @@ mod attendee;
 mod error;
 mod from_icalendar;
 mod organizer;
+mod recurrence;
 mod slugify;
 mod time;
 mod to_icalendar;
@@ -11,6 +12,7 @@ pub use attendee::Attendee;
 use chrono::{DateTime, Utc};
 pub use error::EventError;
 pub use organizer::Organizer;
+pub use recurrence::Recurrence;
 pub use time::{EventTime, EventTimeError};
 pub use x_property::XProperty;
 
@@ -26,6 +28,7 @@ pub struct Event {
     pub location: Option<String>,
     pub start: EventTime,
     pub end: Option<EventTime>,
+    pub recurrence: Option<Recurrence>,
     pub recurrence_id: Option<EventTime>,
     pub last_modified: Option<DateTime<Utc>>,
     pub sequence: Option<i32>,
@@ -44,6 +47,7 @@ impl Event {
             location: None,
             start,
             end: None,
+            recurrence: None,
             recurrence_id: None,
             last_modified: None,
             sequence: None,
@@ -184,6 +188,7 @@ LAST-MODIFIED:20260502T173914Z
 LOCATION:Conference Room A
 ORGANIZER:mailto:alice@example.com
 RECURRENCE-ID;TZID=Europe/Oslo:20260515T160000
+RRULE:FREQ=WEEKLY;BYDAY=FR
 SEQUENCE:1
 SUMMARY:Friday retro
 UID:event-uid-123@example.com
@@ -193,6 +198,8 @@ X-GOOGLE-EVENT-ID:event-uid-123_20260515T140000Z
 ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
 ATTENDEE;PARTSTAT=DECLINED:mailto:alice@example.com
 ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:carol@example.com
+EXDATE;TZID=Europe/Oslo:20260522T160000
+EXDATE;TZID=Europe/Oslo:20260529T160000
 END:VEVENT
 END:VCALENDAR
 "

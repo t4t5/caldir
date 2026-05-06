@@ -11,6 +11,10 @@ impl From<&Event> for icalendar::Event {
             event.ends(icalendar::DatePerhapsTime::from(end));
         }
 
+        if let Some(recurrence) = &value.recurrence {
+            recurrence.apply_to(&mut event);
+        }
+
         if let Some(recurrence_id) = &value.recurrence_id {
             event.recurrence_id(icalendar::DatePerhapsTime::from(recurrence_id));
         }
@@ -147,6 +151,29 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.get_end(), None);
+    }
+
+    #[test]
+    fn converts_recurrence() {
+        let mut event = test_event();
+        event.recurrence = Some(crate::event::Recurrence::new("FREQ=WEEKLY;BYDAY=MO"));
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(
+            ical_event.property_value("RRULE"),
+            Some("FREQ=WEEKLY;BYDAY=MO")
+        );
+    }
+
+    #[test]
+    fn omits_recurrence_when_none() {
+        let mut event = test_event();
+        event.recurrence = None;
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("RRULE"), None);
     }
 
     #[test]

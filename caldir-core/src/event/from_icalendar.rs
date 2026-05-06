@@ -1,4 +1,4 @@
-use crate::event::{Attendee, Event, EventError, EventTime, Organizer, XProperty};
+use crate::event::{Attendee, Event, EventError, EventTime, Organizer, Recurrence, XProperty};
 use icalendar::{Component, EventLike};
 
 impl TryFrom<&icalendar::Event> for Event {
@@ -11,6 +11,8 @@ impl TryFrom<&icalendar::Event> for Event {
             .try_into()?;
 
         let end = value.get_end().map(EventTime::try_from).transpose()?;
+
+        let recurrence = Recurrence::from_ical_event(value)?;
 
         let recurrence_id = value
             .get_recurrence_id()
@@ -41,6 +43,7 @@ impl TryFrom<&icalendar::Event> for Event {
             location: value.get_location().map(ToString::to_string),
             start,
             end,
+            recurrence,
             recurrence_id,
             last_modified: value.get_last_modified(),
             sequence: value
@@ -180,6 +183,29 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.end, None);
+    }
+
+    #[test]
+    fn converts_recurrence() {
+        let ical_event = test_icalendar_event()
+            .append_property(icalendar::Property::new("RRULE", "FREQ=WEEKLY;BYDAY=MO"))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(
+            event.recurrence,
+            Some(crate::event::Recurrence::new("FREQ=WEEKLY;BYDAY=MO"))
+        );
+    }
+
+    #[test]
+    fn recurrence_is_none_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.recurrence, None);
     }
 
     #[test]
