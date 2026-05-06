@@ -8,6 +8,7 @@ mod slugify;
 mod status;
 mod time;
 mod to_icalendar;
+mod transparency;
 mod x_property;
 
 pub use attendee::Attendee;
@@ -18,6 +19,7 @@ pub use recurrence::Recurrence;
 pub use reminder::Reminder;
 pub use status::Status;
 pub use time::{EventTime, EventTimeError};
+pub use transparency::Transparency;
 pub use x_property::XProperty;
 
 const ICS_PRODID: &str = "CALDIR";
@@ -33,6 +35,7 @@ pub struct Event {
     pub start: EventTime,
     pub end: Option<EventTime>,
     pub status: Option<Status>,
+    pub transparency: Option<Transparency>,
     pub recurrence: Option<Recurrence>,
     pub recurrence_id: Option<EventTime>,
     pub last_modified: Option<DateTime<Utc>>,
@@ -54,6 +57,7 @@ impl Event {
             start,
             end: None,
             status: None,
+            transparency: None,
             recurrence: None,
             recurrence_id: None,
             last_modified: None,
@@ -214,6 +218,7 @@ RRULE:FREQ=WEEKLY;BYDAY=FR
 SEQUENCE:1
 STATUS:CONFIRMED
 SUMMARY:Friday retro
+TRANSP:TRANSPARENT
 UID:event-uid-123@example.com
 URL:https://meet.example.com/abc-defg-hij
 X-GOOGLE-CONFERENCE:https://meet.example.com/abc-defg-hij

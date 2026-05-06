@@ -15,6 +15,13 @@ impl From<&Event> for icalendar::Event {
             event.append_property(icalendar::Property::new("STATUS", status.as_ics_str()));
         }
 
+        if let Some(transparency) = value.transparency {
+            event.append_property(icalendar::Property::new(
+                "TRANSP",
+                transparency.as_ics_str(),
+            ));
+        }
+
         if let Some(recurrence) = &value.recurrence {
             recurrence.apply_to(&mut event);
         }
@@ -180,6 +187,26 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.property_value("STATUS"), None);
+    }
+
+    #[test]
+    fn converts_transparency() {
+        let mut event = test_event();
+        event.transparency = Some(crate::event::Transparency::Transparent);
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("TRANSP"), Some("TRANSPARENT"));
+    }
+
+    #[test]
+    fn omits_transparency_when_none() {
+        let mut event = test_event();
+        event.transparency = None;
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("TRANSP"), None);
     }
 
     #[test]

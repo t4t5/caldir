@@ -1,5 +1,6 @@
 use crate::event::{
-    Attendee, Event, EventError, EventTime, Organizer, Recurrence, Reminder, Status, XProperty,
+    Attendee, Event, EventError, EventTime, Organizer, Recurrence, Reminder, Status, Transparency,
+    XProperty,
 };
 use icalendar::{Component, EventLike};
 
@@ -35,6 +36,10 @@ impl TryFrom<&icalendar::Event> for Event {
             .property_value("STATUS")
             .and_then(Status::from_ics_str);
 
+        let transparency = value
+            .property_value("TRANSP")
+            .and_then(Transparency::from_ics_str);
+
         let reminders = Reminder::from_ical_event(value);
 
         let x_properties = value
@@ -52,6 +57,7 @@ impl TryFrom<&icalendar::Event> for Event {
             start,
             end,
             status,
+            transparency,
             recurrence,
             recurrence_id,
             last_modified: value.get_last_modified(),
@@ -213,6 +219,26 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.status, None);
+    }
+
+    #[test]
+    fn converts_transparency() {
+        let ical_event = test_icalendar_event()
+            .append_property(icalendar::Property::new("TRANSP", "TRANSPARENT"))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.transparency, Some(Transparency::Transparent));
+    }
+
+    #[test]
+    fn transparency_is_none_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.transparency, None);
     }
 
     #[test]
