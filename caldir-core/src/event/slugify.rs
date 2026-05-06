@@ -14,6 +14,25 @@ impl Event {
         self.0.get_summary()
     }
 
+    fn summary_slug(&self) -> String {
+        // Strip non-alphanumeric chars (e.g. emoji) before slugifying.
+        // Otherwise `slug` transliterates symbols via `deunicode` (☕ → "coffee").
+        let cleaned: String = self
+            .summary()
+            .unwrap_or("")
+            .chars()
+            .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+            .collect();
+
+        let slug = slug::slugify(cleaned);
+
+        if slug.is_empty() {
+            "untitled".to_string()
+        } else {
+            slug
+        }
+    }
+
     fn start(&self) -> DatePerhapsTime {
         self.0
             .get_start()
@@ -32,10 +51,6 @@ impl Event {
                     .to_string()
             }
         }
-    }
-
-    fn summary_slug(&self) -> String {
-        slug::slugify(self.summary().unwrap_or("untitled"))
     }
 }
 
@@ -77,6 +92,32 @@ mod tests {
     use super::*;
     use chrono::{NaiveDate, Utc};
     use icalendar::EventLike;
+
+    #[test]
+    fn generates_expected_slug_for_emoji_summary() {
+        let event = Event::from_ical_event(
+            &icalendar::Event::new()
+                .summary("Café ☕️ meeting")
+                .starts(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())
+                .done(),
+        )
+        .unwrap();
+
+        assert_eq!(event.summary_slug(), "cafe-meeting");
+    }
+
+    #[test]
+    fn generates_expected_slug_for_empty_summary() {
+        let event = Event::from_ical_event(
+            &icalendar::Event::new()
+                .summary("")
+                .starts(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap())
+                .done(),
+        )
+        .unwrap();
+
+        assert_eq!(event.summary_slug(), "untitled");
+    }
 
     #[test]
     fn generates_correct_base_slug_for_all_day_event() {
