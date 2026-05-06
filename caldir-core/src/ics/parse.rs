@@ -6,6 +6,7 @@ use crate::{
         Reminders, Transparency,
     },
     event_time::EventTime,
+    ics::windows_tz,
 };
 use icalendar::{
     DatePerhapsTime,
@@ -152,7 +153,7 @@ fn to_event_time(dpt: DatePerhapsTime) -> EventTime {
             icalendar::CalendarDateTime::WithTimezone { date_time, tzid } => {
                 EventTime::DateTimeZoned {
                     datetime: date_time,
-                    tzid,
+                    tzid: windows_tz::normalize(tzid),
                 }
             }
         },
@@ -172,7 +173,8 @@ fn parse_exdate_property(prop: &Property) -> Vec<EventTime> {
         .params
         .iter()
         .find(|p| p.key == "TZID")
-        .and_then(|p| p.val.as_ref().map(|v| v.to_string()));
+        .and_then(|p| p.val.as_ref().map(|v| v.to_string()))
+        .map(windows_tz::normalize);
 
     let is_date = prop
         .params
@@ -512,5 +514,85 @@ END:VCALENDAR"#;
             "Should have second EXDATE date. Got: {:?}",
             dates
         );
+    }
+
+    #[test]
+    fn test_dtstart_windows_tzid_normalized_to_iana() {
+        // Outlook published-calendar feeds emit Microsoft Windows zone names.
+        // We normalize them at parse time so downstream consumers (rrule,
+        // chrono-tz) see only IANA names.
+        let ics = r#"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:TEST
+BEGIN:VEVENT
+UID:outlook-event
+SUMMARY:Outlook Recurring Event
+DTSTART;TZID=E. South America Standard Time:20250320T090000
+DTEND;TZID=E. South America Standard Time:20250320T100000
+RRULE:FREQ=WEEKLY;BYDAY=MO
+END:VEVENT
+END:VCALENDAR"#;
+
+        let event = parse_event(ics).expect("Should parse");
+        match &event.start {
+            EventTime::DateTimeZoned { tzid, .. } => {
+                assert_eq!(tzid, "America/Sao_Paulo");
+            }
+            other => panic!("Expected DateTimeZoned, got {:?}", other),
+        }
+        match &event.end {
+            EventTime::DateTimeZoned { tzid, .. } => {
+                assert_eq!(tzid, "America/Sao_Paulo");
+            }
+            other => panic!("Expected DateTimeZoned, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_exdate_windows_tzid_normalized_to_iana() {
+        let ics = r#"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:TEST
+BEGIN:VEVENT
+UID:outlook-event
+SUMMARY:Outlook Recurring Event
+DTSTART;TZID=W. Europe Standard Time:20250101T100000
+DTEND;TZID=W. Europe Standard Time:20250101T110000
+RRULE:FREQ=WEEKLY;BYDAY=MO
+EXDATE;TZID=W. Europe Standard Time:20250108T100000
+END:VEVENT
+END:VCALENDAR"#;
+
+        let event = parse_event(ics).expect("Should parse");
+        let recurrence = event.recurrence.expect("Should have recurrence");
+        assert_eq!(recurrence.exdates.len(), 1);
+        match &recurrence.exdates[0] {
+            EventTime::DateTimeZoned { tzid, .. } => {
+                assert_eq!(tzid, "Europe/Berlin");
+            }
+            other => panic!("Expected DateTimeZoned, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_iana_tzid_passes_through_unchanged() {
+        let ics = r#"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:TEST
+BEGIN:VEVENT
+UID:test-event
+SUMMARY:Event
+DTSTART;TZID=America/New_York:20250320T090000
+DTEND;TZID=America/New_York:20250320T100000
+END:VEVENT
+END:VCALENDAR"#;
+
+        let event = parse_event(ics).expect("Should parse");
+        match &event.start {
+            EventTime::DateTimeZoned { tzid, .. } => {
+                assert_eq!(tzid, "America/New_York");
+            }
+            other => panic!("Expected DateTimeZoned, got {:?}", other),
+        }
     }
 }
