@@ -48,7 +48,7 @@ impl Calendar {
 
     /// Generate a unique filename that doesn't conflict with existing event files.
     /// If `{base_slug}.ics` exists, tries `{base_slug}-2.ics`, `{base_slug}-3.ics`, etc.
-    pub fn unique_event_filename(&self, event: &Event) -> String {
+    pub(crate) fn unique_event_filename(&self, event: &Event) -> String {
         let calendar_dir = self.path();
         let base_slug = event.base_slug();
 
