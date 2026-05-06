@@ -115,13 +115,37 @@ mod tests {
     }
 
     #[test]
-    fn parses_minimal_event_fields_from_ics() {
-        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:test-uid@caldir\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nLOCATION:Conference Room\nEND:VEVENT\nEND:VCALENDAR";
+    fn round_trips_advanced_event_without_data_loss() {
+        let ics = "\
+BEGIN:VCALENDAR\r\n\
+VERSION:2.0\r\n\
+PRODID:CALDIR\r\n\
+BEGIN:VEVENT\r\n\
+DESCRIPTION:https://docs.example.com/document/d/abc123def456\r\n\
+ ghijklmnopqrstuv/edit?usp=sharing\\n\r\n\
+DTEND;TZID=Europe/Oslo:20260515T164500\r\n\
+DTSTAMP:20260502T173914Z\r\n\
+DTSTART;TZID=Europe/Oslo:20260515T160000\r\n\
+LAST-MODIFIED:20260502T173914Z\r\n\
+LOCATION:Conference Room A\r\n\
+ORGANIZER:mailto:alice@example.com\r\n\
+RECURRENCE-ID;TZID=Europe/Oslo:20260515T160000\r\n\
+SEQUENCE:1\r\n\
+SUMMARY:Friday retro\r\n\
+UID:event-uid-123@example.com\r\n\
+URL:https://meet.example.com/abc-defg-hij\r\n\
+X-GOOGLE-CONFERENCE:https://meet.example.com/abc-defg-hij\r\n\
+X-GOOGLE-EVENT-ID:event-uid-123_20260515T140000Z\r\n\
+ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com\r\n\
+ATTENDEE;PARTSTAT=DECLINED:mailto:alice@example.com\r\n\
+ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:carol@example.com\r\n\
+END:VEVENT\r\n\
+END:VCALENDAR\r\n";
 
         let event = Event::from_ics_str(ics).unwrap();
+        let serialized = event.to_ics_string();
+        let reparsed = Event::from_ics_str(&serialized).unwrap();
 
-        assert_eq!(event.summary.unwrap(), "Test Event");
-        assert_eq!(event.location.as_deref(), Some("Conference Room"));
-        assert!(matches!(event.start, EventTime::DateTimeUtc(_)));
+        assert_eq!(event, reparsed);
     }
 }
