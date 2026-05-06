@@ -17,6 +17,13 @@ pub struct Recurrence {
     /// is needed (e.g. expanding occurrences).
     pub rrule: String,
     pub exdates: Vec<EventTime>,
+    /// RDATE values — explicit dates added to the recurrence set.
+    /// Sometimes emited by CalDAV servers like iCloud
+    ///
+    /// Note: RFC 5545 also allows PERIOD values (`DTSTART/DURATION` pairs)
+    /// in RDATE, but those are not modeled here — only date and date-time
+    /// values are parsed. PERIOD-valued RDATEs will be silently dropped.
+    pub rdates: Vec<EventTime>,
 }
 
 impl Recurrence {
@@ -24,6 +31,7 @@ impl Recurrence {
         Recurrence {
             rrule: rrule.into(),
             exdates: Vec::new(),
+            rdates: Vec::new(),
         }
     }
 
@@ -34,22 +42,13 @@ impl Recurrence {
             return Ok(None);
         };
 
-        let exdates = event
-            .multi_properties()
-            .get("EXDATE")
-            .map(|props| {
-                props
-                    .iter()
-                    .filter_map(DatePerhapsTime::from_property)
-                    .map(EventTime::try_from)
-                    .collect::<Result<Vec<_>, _>>()
-            })
-            .transpose()?
-            .unwrap_or_default();
+        let exdates = parse_event_time_list(event, "EXDATE")?;
+        let rdates = parse_event_time_list(event, "RDATE")?;
 
         Ok(Some(Recurrence {
             rrule: rrule.to_string(),
             exdates,
+            rdates,
         }))
     }
 
@@ -58,7 +57,28 @@ impl Recurrence {
         for exdate in &self.exdates {
             event.append_multi_property(DatePerhapsTime::from(exdate).to_property("EXDATE"));
         }
+        for rdate in &self.rdates {
+            event.append_multi_property(DatePerhapsTime::from(rdate).to_property("RDATE"));
+        }
     }
+}
+
+fn parse_event_time_list(
+    event: &icalendar::Event,
+    name: &str,
+) -> Result<Vec<EventTime>, EventTimeError> {
+    Ok(event
+        .multi_properties()
+        .get(name)
+        .map(|props| {
+            props
+                .iter()
+                .filter_map(DatePerhapsTime::from_property)
+                .map(EventTime::try_from)
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?
+        .unwrap_or_default())
 }
 
 #[cfg(test)]
@@ -87,6 +107,7 @@ mod tests {
 
         assert_eq!(recurrence.rrule, "FREQ=WEEKLY;BYDAY=MO");
         assert!(recurrence.exdates.is_empty());
+        assert!(recurrence.rdates.is_empty());
     }
 
     #[test]
@@ -151,12 +172,101 @@ mod tests {
     }
 
     #[test]
-    fn apply_to_writes_rrule_and_exdates() {
+    fn from_ical_event_parses_multiple_rdates() {
+        let event = test_icalendar_event()
+            .append_property(Property::new("RRULE", "FREQ=DAILY"))
+            .append_multi_property(Property::new("RDATE", "20260201").done())
+            .append_multi_property(Property::new("RDATE", "20260215").done())
+            .done();
+
+        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
+
+        assert_eq!(
+            recurrence.rdates,
+            vec![
+                EventTime::Date(NaiveDate::from_ymd_opt(2026, 2, 1).unwrap()),
+                EventTime::Date(NaiveDate::from_ymd_opt(2026, 2, 15).unwrap()),
+            ]
+        );
+    }
+
+    #[test]
+    fn from_ical_event_parses_zoned_rdate() {
+        let mut rdate = Property::new("RDATE", "20260201T100000");
+        rdate.add_parameter("TZID", "Europe/Stockholm");
+
+        let event = test_icalendar_event()
+            .append_property(Property::new("RRULE", "FREQ=WEEKLY"))
+            .append_multi_property(rdate.done())
+            .done();
+
+        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
+
+        assert_eq!(
+            recurrence.rdates,
+            vec![EventTime::DateTimeZoned {
+                datetime: NaiveDate::from_ymd_opt(2026, 2, 1)
+                    .unwrap()
+                    .and_hms_opt(10, 0, 0)
+                    .unwrap(),
+                tzid: chrono_tz::Europe::Stockholm,
+            }]
+        );
+    }
+
+    #[test]
+    fn from_ical_event_propagates_invalid_rdate_timezone() {
+        let mut rdate = Property::new("RDATE", "20260201T100000");
+        rdate.add_parameter("TZID", "Pacific Standard Time");
+
+        let event = test_icalendar_event()
+            .append_property(Property::new("RRULE", "FREQ=WEEKLY"))
+            .append_multi_property(rdate.done())
+            .done();
+
+        let result = Recurrence::from_ical_event(&event);
+
+        assert!(matches!(
+            result,
+            Err(EventTimeError::InvalidTimezone(tzid)) if tzid == "Pacific Standard Time"
+        ));
+    }
+
+    #[test]
+    fn from_ical_event_parses_exdates_and_rdates_together() {
+        let event = test_icalendar_event()
+            .append_property(Property::new("RRULE", "FREQ=WEEKLY"))
+            .append_multi_property(Property::new("EXDATE", "20260105").done())
+            .append_multi_property(Property::new("RDATE", "20260201").done())
+            .done();
+
+        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
+
+        assert_eq!(
+            recurrence.exdates,
+            vec![EventTime::Date(
+                NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()
+            )]
+        );
+        assert_eq!(
+            recurrence.rdates,
+            vec![EventTime::Date(
+                NaiveDate::from_ymd_opt(2026, 2, 1).unwrap()
+            )]
+        );
+    }
+
+    #[test]
+    fn apply_to_writes_rrule_exdates_and_rdates() {
         let recurrence = Recurrence {
             rrule: "FREQ=WEEKLY;BYDAY=MO".to_string(),
             exdates: vec![
                 EventTime::Date(NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()),
                 EventTime::Date(NaiveDate::from_ymd_opt(2026, 1, 12).unwrap()),
+            ],
+            rdates: vec![
+                EventTime::Date(NaiveDate::from_ymd_opt(2026, 2, 1).unwrap()),
+                EventTime::Date(NaiveDate::from_ymd_opt(2026, 2, 15).unwrap()),
             ],
         };
 
@@ -168,15 +278,20 @@ mod tests {
         assert_eq!(exdates.len(), 2);
         assert_eq!(exdates[0].value(), "20260105");
         assert_eq!(exdates[1].value(), "20260112");
+        let rdates = event.multi_properties().get("RDATE").unwrap();
+        assert_eq!(rdates.len(), 2);
+        assert_eq!(rdates[0].value(), "20260201");
+        assert_eq!(rdates[1].value(), "20260215");
     }
 
     #[test]
-    fn apply_to_omits_exdate_when_empty() {
+    fn apply_to_omits_exdate_and_rdate_when_empty() {
         let recurrence = Recurrence::new("FREQ=DAILY");
 
         let mut event = icalendar::Event::new();
         recurrence.apply_to(&mut event);
 
         assert!(event.multi_properties().get("EXDATE").is_none());
+        assert!(event.multi_properties().get("RDATE").is_none());
     }
 }
