@@ -11,6 +11,10 @@ impl From<&Event> for icalendar::Event {
             event.ends(icalendar::DatePerhapsTime::from(end));
         }
 
+        if let Some(recurrence_id) = &value.recurrence_id {
+            event.recurrence_id(icalendar::DatePerhapsTime::from(recurrence_id));
+        }
+
         if let Some(summary) = &value.summary {
             event.summary(summary);
         }
@@ -127,6 +131,33 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.get_end(), None);
+    }
+
+    #[test]
+    fn converts_recurrence_id() {
+        let mut event = test_event();
+        event.recurrence_id = Some(EventTime::Date(
+            chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap(),
+        ));
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(
+            ical_event.get_recurrence_id(),
+            Some(icalendar::DatePerhapsTime::Date(
+                chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn omits_recurrence_id_when_none() {
+        let mut event = test_event();
+        event.recurrence_id = None;
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.get_recurrence_id(), None);
     }
 
     #[test]

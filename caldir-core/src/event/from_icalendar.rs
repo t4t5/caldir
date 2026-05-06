@@ -12,6 +12,11 @@ impl TryFrom<&icalendar::Event> for Event {
 
         let end = value.get_end().map(EventTime::try_from).transpose()?;
 
+        let recurrence_id = value
+            .get_recurrence_id()
+            .map(EventTime::try_from)
+            .transpose()?;
+
         let uid = value.get_uid().ok_or(EventError::MissingUid)?.to_string();
 
         let organizer = value.properties().get("ORGANIZER").map(Organizer::from);
@@ -23,6 +28,7 @@ impl TryFrom<&icalendar::Event> for Event {
             location: value.get_location().map(ToString::to_string),
             start,
             end,
+            recurrence_id,
             last_modified: value.get_last_modified(),
             organizer,
         })
@@ -155,6 +161,33 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.end, None);
+    }
+
+    #[test]
+    fn converts_recurrence_id() {
+        let ical_event = test_icalendar_event()
+            .recurrence_id(icalendar::DatePerhapsTime::Date(
+                chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap(),
+            ))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(
+            event.recurrence_id,
+            Some(EventTime::Date(
+                chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn recurrence_id_is_none_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.recurrence_id, None);
     }
 
     #[test]

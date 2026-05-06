@@ -18,6 +18,7 @@ pub struct Event {
     pub location: Option<String>,
     pub start: EventTime,
     pub end: Option<EventTime>,
+    pub recurrence_id: Option<EventTime>,
     pub last_modified: Option<DateTime<Utc>>,
     pub organizer: Option<Organizer>,
 }
@@ -31,6 +32,7 @@ impl Event {
             location: None,
             start,
             end: None,
+            recurrence_id: None,
             last_modified: None,
             organizer: None,
         }
