@@ -79,10 +79,11 @@ impl Calendar {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::test_caldir;
 
     #[test]
     fn creates_directory_with_desired_slug() {
-        let (tmp, caldir) = Caldir::new_tmp();
+        let (tmp, caldir) = test_caldir();
 
         let calendar = Calendar::new(&caldir, "work").unwrap();
         calendar.save().unwrap();
@@ -94,7 +95,7 @@ mod tests {
 
     #[test]
     fn appends_suffix_on_slug_collision() {
-        let (_tmp, caldir) = Caldir::new_tmp();
+        let (_tmp, caldir) = test_caldir();
 
         let first = Calendar::new(&caldir, "work").unwrap();
         first.save().unwrap();
@@ -109,7 +110,7 @@ mod tests {
 
     #[test]
     fn load_returns_existing_calendar() {
-        let (_tmp, caldir) = Caldir::new_tmp();
+        let (_tmp, caldir) = test_caldir();
         Calendar::new(&caldir, "personal").unwrap().save().unwrap();
 
         let calendar = Calendar::load(&caldir, "personal").unwrap();
@@ -119,7 +120,7 @@ mod tests {
 
     #[test]
     fn load_errors_when_directory_missing() {
-        let (_tmp, caldir) = Caldir::new_tmp();
+        let (_tmp, caldir) = test_caldir();
 
         let result = Calendar::load(&caldir, "missing");
 

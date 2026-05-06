@@ -41,7 +41,7 @@ mod tests {
     use std::fs;
 
     use super::*;
-    use crate::Caldir;
+    use crate::test_utils::test_calendar;
     use chrono::NaiveDate;
     use icalendar::{Component, EventLike};
 
@@ -58,13 +58,6 @@ mod tests {
                 .done(),
         )
         .unwrap()
-    }
-
-    fn test_calendar() -> (tempfile::TempDir, Caldir, Calendar) {
-        let (tmp, caldir) = Caldir::new_tmp();
-        let calendar = Calendar::new(&caldir, "work").unwrap();
-        calendar.save().unwrap();
-        (tmp, caldir, calendar)
     }
 
     #[test]
@@ -111,5 +104,10 @@ mod tests {
         second.save().unwrap();
 
         assert!(second.path.ends_with("2024-01-01T1200__test-event-2.ics"));
+
+        let third = CalendarEvent::new(&calendar, test_event());
+        second.save().unwrap();
+
+        assert!(third.path.ends_with("2024-01-01T1200__test-event-3.ics"));
     }
 }

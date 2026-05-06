@@ -15,15 +15,6 @@ impl Caldir {
         &self.config
     }
 
-    #[cfg(test)]
-    pub(crate) fn new_tmp() -> (tempfile::TempDir, Self) {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let caldir = Self::new(CaldirConfig {
-            calendar_dir: tmp.path().to_path_buf(),
-        });
-        (tmp, caldir)
-    }
-
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
     /// If the base slug exists, tries slug-2, slug-3, etc.
     pub fn unique_calendar_slug(&self, desired: &str) -> String {
