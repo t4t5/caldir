@@ -148,13 +148,13 @@ mod tests {
                     .unwrap()
                     .and_hms_opt(10, 0, 0)
                     .unwrap(),
-                tzid: chrono_tz::Europe::Stockholm,
+                tzid: "Europe/Stockholm".to_string(),
             }]
         );
     }
 
     #[test]
-    fn from_ical_event_propagates_invalid_exdate_timezone() {
+    fn from_ical_event_preserves_arbitrary_exdate_timezone() {
         let mut exdate = Property::new("EXDATE", "20260105T100000");
         exdate.add_parameter("TZID", "Pacific Standard Time");
 
@@ -163,12 +163,18 @@ mod tests {
             .append_multi_property(exdate.done())
             .done();
 
-        let result = Recurrence::from_ical_event(&event);
+        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
 
-        assert!(matches!(
-            result,
-            Err(EventTimeError::InvalidTimezone(tzid)) if tzid == "Pacific Standard Time"
-        ));
+        assert_eq!(
+            recurrence.exdates,
+            vec![EventTime::DateTimeZoned {
+                datetime: NaiveDate::from_ymd_opt(2026, 1, 5)
+                    .unwrap()
+                    .and_hms_opt(10, 0, 0)
+                    .unwrap(),
+                tzid: "Pacific Standard Time".to_string(),
+            }]
+        );
     }
 
     #[test]
@@ -209,13 +215,13 @@ mod tests {
                     .unwrap()
                     .and_hms_opt(10, 0, 0)
                     .unwrap(),
-                tzid: chrono_tz::Europe::Stockholm,
+                tzid: "Europe/Stockholm".to_string(),
             }]
         );
     }
 
     #[test]
-    fn from_ical_event_propagates_invalid_rdate_timezone() {
+    fn from_ical_event_preserves_arbitrary_rdate_timezone() {
         let mut rdate = Property::new("RDATE", "20260201T100000");
         rdate.add_parameter("TZID", "Pacific Standard Time");
 
@@ -224,12 +230,18 @@ mod tests {
             .append_multi_property(rdate.done())
             .done();
 
-        let result = Recurrence::from_ical_event(&event);
+        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
 
-        assert!(matches!(
-            result,
-            Err(EventTimeError::InvalidTimezone(tzid)) if tzid == "Pacific Standard Time"
-        ));
+        assert_eq!(
+            recurrence.rdates,
+            vec![EventTime::DateTimeZoned {
+                datetime: NaiveDate::from_ymd_opt(2026, 2, 1)
+                    .unwrap()
+                    .and_hms_opt(10, 0, 0)
+                    .unwrap(),
+                tzid: "Pacific Standard Time".to_string(),
+            }]
+        );
     }
 
     #[test]

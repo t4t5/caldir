@@ -11,7 +11,7 @@ pub enum EventTime {
     DateTimeFloating(NaiveDateTime),
     DateTimeZoned {
         datetime: NaiveDateTime,
-        tzid: chrono_tz::Tz,
+        tzid: String,
     },
 }
 
@@ -25,11 +25,16 @@ impl EventTime {
             ),
             EventTime::DateTimeFloating(datetime) => resolve_local(*datetime, tz),
             EventTime::DateTimeUtc(datetime) => datetime.with_timezone(tz),
-            EventTime::DateTimeZoned { datetime, tzid } => {
-                resolve_local(*datetime, tzid).with_timezone(tz)
-            }
+            EventTime::DateTimeZoned { datetime, tzid } => match parse_tzid(tzid) {
+                Some(event_tz) => resolve_local(*datetime, &event_tz).with_timezone(tz),
+                None => resolve_local(*datetime, tz),
+            },
         }
     }
+}
+
+fn parse_tzid(tzid: &str) -> Option<chrono_tz::Tz> {
+    tzid.parse().ok()
 }
 
 /// Convert a naive (non-zoned) datetime into a zoned datetime.
@@ -54,7 +59,7 @@ impl From<&EventTime> for DatePerhapsTime {
             EventTime::DateTimeFloating(datetime) => (*datetime).into(),
             EventTime::DateTimeZoned { datetime, tzid } => CalendarDateTime::WithTimezone {
                 date_time: *datetime,
-                tzid: tzid.name().to_string(),
+                tzid: tzid.to_string(),
             }
             .into(),
         }
@@ -80,13 +85,9 @@ impl TryFrom<DatePerhapsTime> for EventTime {
                 Ok(EventTime::DateTimeUtc(datetime))
             }
             DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone { date_time, tzid }) => {
-                let parsed_tzid = tzid
-                    .parse::<chrono_tz::Tz>()
-                    .map_err(|_| EventTimeError::InvalidTimezone(tzid))?;
-
                 Ok(EventTime::DateTimeZoned {
                     datetime: date_time,
-                    tzid: parsed_tzid,
+                    tzid,
                 })
             }
         }
@@ -121,7 +122,7 @@ mod tests {
         // Even creator is in NYC:
         let event_time = &EventTime::DateTimeZoned {
             datetime: date_time,
-            tzid: chrono_tz::America::New_York,
+            tzid: "America/New_York".to_string(),
         };
 
         // User is in Stockholm:
@@ -130,6 +131,22 @@ mod tests {
         // 12:00 in NY (EST, UTC-5)
         // = 18:00 in Stockholm (CET, UTC+1) in January
         assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-01-01T1800");
+    }
+
+    #[test]
+    fn to_local_treats_unknown_zoned_event_as_floating() {
+        let date_time = NaiveDate::from_ymd_opt(2024, 1, 1)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap();
+        let event_time = EventTime::DateTimeZoned {
+            datetime: date_time,
+            tzid: "Pacific Standard Time".to_string(),
+        };
+
+        let local = event_time.to_local_tz(&chrono_tz::Europe::Stockholm);
+
+        assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-01-01T1200");
     }
 
     #[test]

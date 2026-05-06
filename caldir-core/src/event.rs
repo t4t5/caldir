@@ -163,16 +163,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_event_with_unparseable_tzid() {
+    fn parses_event_with_arbitrary_tzid() {
         let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:test-uid@caldir\nDTSTART;TZID=Pacific Standard Time:20240101T120000\nSUMMARY:Test\nEND:VEVENT\nEND:VCALENDAR";
 
-        let result = Event::from_ics_str(ics);
+        let event = Event::from_ics_str(ics).unwrap();
 
-        assert!(matches!(
-            result,
-            Err(EventError::InvalidTime(EventTimeError::InvalidTimezone(tzid)))
-                if tzid == "Pacific Standard Time"
-        ));
+        assert_eq!(
+            event.start,
+            EventTime::DateTimeZoned {
+                datetime: chrono::NaiveDate::from_ymd_opt(2024, 1, 1)
+                    .unwrap()
+                    .and_hms_opt(12, 0, 0)
+                    .unwrap(),
+                tzid: "Pacific Standard Time".to_string(),
+            }
+        );
+        assert!(
+            event
+                .to_ics_string()
+                .contains("DTSTART;TZID=Pacific Standard Time:20240101T120000")
+        );
     }
 
     #[test]
