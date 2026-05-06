@@ -8,4 +8,9 @@ pub enum EventError {
 
     #[error("event is missing a start time (DTSTART)")]
     MissingStart,
+
+    #[error(
+        "event has unparseable timezone {0:?} (expected an IANA zone like \"Europe/Stockholm\")"
+    )]
+    InvalidTimezone(String),
 }

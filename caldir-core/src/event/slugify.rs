@@ -1,5 +1,5 @@
 use crate::event::Event;
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
 use icalendar::CalendarDateTime;
 use icalendar::{Component, DatePerhapsTime};
 
@@ -44,19 +44,32 @@ fn calendar_datetime_to_local<Tz: TimeZone>(
     tz: &Tz,
 ) -> DateTime<Tz> {
     match cal_datetime {
-        CalendarDateTime::Floating(naive) => tz.from_local_datetime(&naive).unwrap(),
+        CalendarDateTime::Floating(naive) => resolve_local(naive, tz),
         CalendarDateTime::Utc(utc) => utc.with_timezone(tz),
         CalendarDateTime::WithTimezone {
             date_time,
             tzid: event_tzid,
         } => {
-            let event_tz: chrono_tz::Tz = event_tzid.parse().unwrap_or(chrono_tz::UTC);
-            event_tz
-                .from_local_datetime(&date_time)
-                .unwrap()
-                .with_timezone(tz)
+            let event_tz: chrono_tz::Tz = event_tzid
+                .parse()
+                .expect("TZID validity should have been checked by from_ical_event");
+            resolve_local(date_time, &event_tz).with_timezone(tz)
         }
     }
+}
+
+/// Convert a naive (non-zoned) datetime into a zoned datetime.
+/// Picks a deterministic answer when DST makes the wall clock ambiguous
+/// (e.g. Stockholm 02:30 on 2026-10-25, which happens twice because clocks roll back)
+fn resolve_local<Tz: TimeZone>(naive: NaiveDateTime, tz: &Tz) -> DateTime<Tz> {
+    if let Some(dt) = tz.from_local_datetime(&naive).earliest() {
+        return dt;
+    }
+    // DST gap (e.g. Stockholm 02:30 on 2026-03-29): skip forward past the jump.
+    let bumped = naive + chrono::Duration::hours(1);
+    tz.from_local_datetime(&bumped)
+        .earliest()
+        .unwrap_or_else(|| tz.from_utc_datetime(&naive))
 }
 
 #[cfg(test)]
@@ -143,24 +156,37 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_to_utc_for_invalid_timezone() {
-        // 2024-01-01 12:00:00 with invalid timezone
-        let date_time = NaiveDate::from_ymd_opt(2024, 1, 1)
+    fn handles_dst_spring_forward_gap() {
+        // In Stockholm, 2024-03-31 02:30 doesn't exist — clocks jumped from
+        // 02:00 CET to 03:00 CEST. We should still produce a slug.
+        let naive = NaiveDate::from_ymd_opt(2024, 3, 31)
             .unwrap()
-            .and_hms_opt(12, 0, 0)
+            .and_hms_opt(2, 30, 0)
             .unwrap();
 
-        // User is in Stockholm
-        let zoned = calendar_datetime_to_local(
-            CalendarDateTime::WithTimezone {
-                date_time,
-                tzid: "Invalid/Zone".into(),
-            },
+        let local = calendar_datetime_to_local(
+            CalendarDateTime::Floating(naive),
             &chrono_tz::Europe::Stockholm,
         );
 
-        // Invalid zone falls back to UTC
-        // 12:00 UTC becomes 13:00 in Stockholm (CET, UTC+1).
-        assert_eq!(zoned.format("%Y-%m-%dT%H%M").to_string(), "2024-01-01T1300");
+        // Fallback skips forward past the jump, landing at 03:30 CEST.
+        assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-03-31T0330");
+    }
+
+    #[test]
+    fn handles_dst_fall_back_overlap() {
+        // In Stockholm, 2024-10-27 02:30 happens twice — clocks rewound from
+        // 03:00 CEST back to 02:00 CET. We pick the earliest occurrence.
+        let naive = NaiveDate::from_ymd_opt(2024, 10, 27)
+            .unwrap()
+            .and_hms_opt(2, 30, 0)
+            .unwrap();
+
+        let local = calendar_datetime_to_local(
+            CalendarDateTime::Floating(naive),
+            &chrono_tz::Europe::Stockholm,
+        );
+
+        assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-10-27T0230");
     }
 }

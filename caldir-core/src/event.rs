@@ -2,7 +2,7 @@ mod error;
 mod slugify;
 
 pub use error::EventError;
-use icalendar::Component;
+use icalendar::{CalendarDateTime, Component, DatePerhapsTime};
 
 #[derive(Debug, Clone)]
 pub struct Event(icalendar::Event);
@@ -26,8 +26,12 @@ impl Event {
     }
 
     pub(crate) fn from_ical_event(inner: &icalendar::Event) -> Result<Self, EventError> {
-        if inner.get_start().is_none() {
-            return Err(EventError::MissingStart);
+        let start = inner.get_start().ok_or(EventError::MissingStart)?;
+
+        if let DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone { tzid, .. }) = start
+            && tzid.parse::<chrono_tz::Tz>().is_err()
+        {
+            return Err(EventError::InvalidTimezone(tzid));
         }
 
         Ok(Event(inner.clone()))
@@ -63,5 +67,16 @@ mod tests {
         let result = Event::from_ical_event(&icalendar::Event::new().done());
 
         assert!(matches!(result, Err(EventError::MissingStart)));
+    }
+
+    #[test]
+    fn rejects_event_with_unparseable_tzid() {
+        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nDTSTART;TZID=Pacific Standard Time:20240101T120000\nSUMMARY:Test\nEND:VEVENT\nEND:VCALENDAR";
+
+        let result = Event::from_contents(ics);
+
+        assert!(
+            matches!(result, Err(EventError::InvalidTimezone(tzid)) if tzid == "Pacific Standard Time")
+        );
     }
 }
