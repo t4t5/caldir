@@ -174,9 +174,15 @@ mod tests {
 
     #[test]
     fn maps_known_windows_zones() {
-        assert_eq!(to_iana("E. South America Standard Time"), Some("America/Sao_Paulo"));
+        assert_eq!(
+            to_iana("E. South America Standard Time"),
+            Some("America/Sao_Paulo")
+        );
         assert_eq!(to_iana("W. Europe Standard Time"), Some("Europe/Berlin"));
-        assert_eq!(to_iana("Pacific Standard Time"), Some("America/Los_Angeles"));
+        assert_eq!(
+            to_iana("Pacific Standard Time"),
+            Some("America/Los_Angeles")
+        );
     }
 
     #[test]
