@@ -5,6 +5,7 @@ mod organizer;
 mod recurrence;
 mod reminder;
 mod slugify;
+mod status;
 mod time;
 mod to_icalendar;
 mod x_property;
@@ -15,6 +16,7 @@ pub use error::EventError;
 pub use organizer::Organizer;
 pub use recurrence::Recurrence;
 pub use reminder::Reminder;
+pub use status::Status;
 pub use time::{EventTime, EventTimeError};
 pub use x_property::XProperty;
 
@@ -30,6 +32,7 @@ pub struct Event {
     pub location: Option<String>,
     pub start: EventTime,
     pub end: Option<EventTime>,
+    pub status: Option<Status>,
     pub recurrence: Option<Recurrence>,
     pub recurrence_id: Option<EventTime>,
     pub last_modified: Option<DateTime<Utc>>,
@@ -50,6 +53,7 @@ impl Event {
             location: None,
             start,
             end: None,
+            status: None,
             recurrence: None,
             recurrence_id: None,
             last_modified: None,
@@ -208,6 +212,7 @@ ORGANIZER:mailto:alice@example.com
 RECURRENCE-ID;TZID=Europe/Oslo:20260515T160000
 RRULE:FREQ=WEEKLY;BYDAY=FR
 SEQUENCE:1
+STATUS:CONFIRMED
 SUMMARY:Friday retro
 UID:event-uid-123@example.com
 URL:https://meet.example.com/abc-defg-hij

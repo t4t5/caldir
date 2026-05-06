@@ -1,5 +1,5 @@
 use crate::event::{
-    Attendee, Event, EventError, EventTime, Organizer, Recurrence, Reminder, XProperty,
+    Attendee, Event, EventError, EventTime, Organizer, Recurrence, Reminder, Status, XProperty,
 };
 use icalendar::{Component, EventLike};
 
@@ -31,6 +31,10 @@ impl TryFrom<&icalendar::Event> for Event {
             .map(|props| props.iter().map(Attendee::from).collect())
             .unwrap_or_default();
 
+        let status = value
+            .property_value("STATUS")
+            .and_then(Status::from_ics_str);
+
         let reminders = Reminder::from_ical_event(value);
 
         let x_properties = value
@@ -47,6 +51,7 @@ impl TryFrom<&icalendar::Event> for Event {
             location: value.get_location().map(ToString::to_string),
             start,
             end,
+            status,
             recurrence,
             recurrence_id,
             last_modified: value.get_last_modified(),
@@ -188,6 +193,26 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.end, None);
+    }
+
+    #[test]
+    fn converts_status() {
+        let ical_event = test_icalendar_event()
+            .append_property(icalendar::Property::new("STATUS", "TENTATIVE"))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.status, Some(crate::event::Status::Tentative));
+    }
+
+    #[test]
+    fn status_is_none_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.status, None);
     }
 
     #[test]

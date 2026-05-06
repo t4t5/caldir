@@ -11,6 +11,10 @@ impl From<&Event> for icalendar::Event {
             event.ends(icalendar::DatePerhapsTime::from(end));
         }
 
+        if let Some(status) = value.status {
+            event.append_property(icalendar::Property::new("STATUS", status.as_ics_str()));
+        }
+
         if let Some(recurrence) = &value.recurrence {
             recurrence.apply_to(&mut event);
         }
@@ -156,6 +160,26 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.get_end(), None);
+    }
+
+    #[test]
+    fn converts_status() {
+        let mut event = test_event();
+        event.status = Some(crate::event::Status::Cancelled);
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("STATUS"), Some("CANCELLED"));
+    }
+
+    #[test]
+    fn omits_status_when_none() {
+        let mut event = test_event();
+        event.status = None;
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("STATUS"), None);
     }
 
     #[test]
