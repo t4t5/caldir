@@ -46,6 +46,21 @@ impl Calendar {
         event::CalendarEvent::create(self, event)
     }
 
+    pub fn events(&self) -> Result<Vec<CalendarEvent>, CalendarEventError> {
+        let mut events: Vec<CalendarEvent> = Vec::new();
+
+        for entry in std::fs::read_dir(self.path())? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if entry.file_type()?.is_file() && path.extension().is_some_and(|ext| ext == "ics") {
+                events.push(CalendarEvent::load(path)?);
+            }
+        }
+
+        Ok(events)
+    }
+
     fn from_path(path: PathBuf) -> Result<Self, CalendarError> {
         let calendar_path = CalendarPath::new(path)?;
 
@@ -56,7 +71,7 @@ impl Calendar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::test_caldir;
+    use crate::test_utils::{test_caldir, test_calendar, test_event};
 
     #[test]
     fn creates_directory_with_desired_slug() {
@@ -112,5 +127,21 @@ mod tests {
         let result = Calendar::load(&caldir, "not_a_directory");
 
         assert!(matches!(result, Err(CalendarError::NotFound(p)) if p == file_path));
+    }
+
+    #[test]
+    fn events_ignores_non_ics_files() {
+        let (_tmp, calendar) = test_calendar();
+
+        calendar.create_event(test_event()).unwrap();
+
+        // Drop in stray files that other tools (e.g. vdirsyncer) might leave around.
+        std::fs::write(calendar.path().join("color"), "#ff0000").unwrap();
+        std::fs::write(calendar.path().join("displayname"), "Work").unwrap();
+        std::fs::write(calendar.path().join("README.md"), "notes").unwrap();
+
+        let events = calendar.events().unwrap();
+
+        assert_eq!(events.len(), 1);
     }
 }
