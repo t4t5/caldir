@@ -52,5 +52,6 @@ pub fn test_calendar_config() -> CalendarConfig {
         Some("Test Calendar".to_string()),
         Some("#ff0000".to_string()),
         Some(false),
+        None,
     )
 }

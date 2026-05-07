@@ -1,25 +1,32 @@
 mod error;
+mod remote;
 
-use std::path::Path;
-
+use remote::CalendarRemoteConfig;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 pub use error::CalendarConfigError;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalendarConfig {
     name: Option<String>,
     color: Option<String>,
     read_only: Option<bool>,
-    // pub remote: Option<Remote>,
+    remote: Option<CalendarRemoteConfig>,
 }
 
 impl CalendarConfig {
-    pub fn new(name: Option<String>, color: Option<String>, read_only: Option<bool>) -> Self {
+    pub fn new(
+        name: Option<String>,
+        color: Option<String>,
+        read_only: Option<bool>,
+        remote: Option<CalendarRemoteConfig>,
+    ) -> Self {
         Self {
             name,
             color,
             read_only,
+            remote,
         }
     }
 
@@ -98,6 +105,32 @@ mod tests {
     }
 
     #[test]
+    fn parses_full_config_with_remote() {
+        let toml_str = r##"
+name = "Demo"
+color = "#ac725e"
+read_only = false
+
+[remote]
+provider = "google"
+google_calendar_id = "abc@group.calendar.google.com"
+google_account = "user@gmail.com"
+"##;
+
+        let config = CalendarConfig::from_toml(toml_str).unwrap();
+
+        assert_eq!(config.name.as_deref(), Some("Demo"));
+        assert_eq!(config.color.as_deref(), Some("#ac725e"));
+        assert_eq!(config.read_only, Some(false));
+        let remote = config.remote.expect("remote should be present");
+        assert_eq!(remote.provider, "google");
+        assert_eq!(
+            remote.params.get("google_account"),
+            Some(&toml::Value::String("user@gmail.com".to_string()))
+        );
+    }
+
+    #[test]
     fn load_optional_errors_on_invalid_toml() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("config.toml");
@@ -109,5 +142,40 @@ mod tests {
             result,
             Err(CalendarConfigError::InvalidConfigFile(p, _)) if p == path
         ));
+    }
+
+    #[test]
+    fn writes_full_config_with_remote_to_expected_toml() {
+        let mut params = std::collections::BTreeMap::new();
+        params.insert(
+            "google_calendar_id".to_string(),
+            toml::Value::String("abc@group.calendar.google.com".to_string()),
+        );
+        params.insert(
+            "google_account".to_string(),
+            toml::Value::String("user@gmail.com".to_string()),
+        );
+        let config = CalendarConfig::new(
+            Some("Demo".to_string()),
+            Some("#ac725e".to_string()),
+            Some(false),
+            Some(CalendarRemoteConfig {
+                provider: "google".to_string(),
+                params,
+            }),
+        );
+
+        let serialized = config.to_toml().unwrap();
+
+        let expected = r##"name = "Demo"
+color = "#ac725e"
+read_only = false
+
+[remote]
+provider = "google"
+google_account = "user@gmail.com"
+google_calendar_id = "abc@group.calendar.google.com"
+"##;
+        assert_eq!(serialized, expected);
     }
 }
