@@ -3,7 +3,7 @@ mod error;
 mod event;
 
 use crate::{Caldir, Event};
-use config::{CalendarConfig, CalendarConfigFile};
+use config::CalendarConfig;
 use error::CalendarError;
 use event::CalendarEventError;
 use std::path::{Path, PathBuf};
@@ -34,7 +34,7 @@ impl Calendar {
 
         if let Some(ref config) = config {
             let config_path = path.join(CONFIG_FILE_NAME);
-            CalendarConfigFile::create(&config_path, config.clone())?;
+            CalendarConfig::write(config, &config_path)?;
         }
 
         Ok(Self { path, config })
@@ -49,8 +49,7 @@ impl Calendar {
         }
 
         let config_path = path.join(CONFIG_FILE_NAME);
-        let config_file = CalendarConfigFile::load_optional(config_path)?;
-        let config = config_file.map(|f| f.config().clone());
+        let config = CalendarConfig::load_optional(&config_path)?;
 
         Ok(Self { path, config })
     }
