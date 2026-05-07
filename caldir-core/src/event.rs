@@ -26,9 +26,33 @@ const ICS_PRODID: &str = "CALDIR";
 const ICS_VERSION: &str = "2.0";
 const ICS_UID_DOMAIN: &str = "caldir";
 
+// Recurring events share the same UID (stupid design)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventUid(String);
+
+impl EventUid {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+// The instance identifier in a recurring event
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecurrenceId(EventTime);
+
+impl RecurrenceId {
+    pub fn as_event_time(&self) -> &EventTime {
+        &self.0
+    }
+}
+
+// UID + RecurrenceId = the actual unique ID per event
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventInstanceId((EventUid, Option<RecurrenceId>));
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event {
-    pub uid: String,
+    pub uid: EventUid,
     pub summary: Option<String>,
     pub description: Option<String>,
     pub location: Option<String>,
@@ -37,7 +61,7 @@ pub struct Event {
     pub status: Option<Status>,
     pub transparency: Option<Transparency>,
     pub recurrence: Option<Recurrence>,
-    pub recurrence_id: Option<EventTime>,
+    pub recurrence_id: Option<RecurrenceId>,
     pub last_modified: Option<DateTime<Utc>>,
     pub sequence: Option<i32>,
     pub organizer: Option<Organizer>,
@@ -107,10 +131,15 @@ impl Event {
 
         ics.replacen("END:VEVENT\r\n", &format!("{valarms}END:VEVENT\r\n"), 1)
     }
+
+    pub fn event_instance_id(&self) -> EventInstanceId {
+        EventInstanceId((self.uid.clone(), self.recurrence_id.clone()))
+    }
 }
 
-fn new_uid() -> String {
-    format!("{}@{}", uuid::Uuid::new_v4(), ICS_UID_DOMAIN)
+fn new_uid() -> EventUid {
+    let uid = format!("{}@{}", uuid::Uuid::new_v4(), ICS_UID_DOMAIN);
+    EventUid(uid)
 }
 
 #[cfg(test)]
@@ -125,8 +154,8 @@ mod tests {
             time::EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
         );
 
-        assert!(event.uid.ends_with("@caldir"));
-        let prefix = event.uid.trim_end_matches("@caldir");
+        assert!(event.uid.as_str().ends_with("@caldir"));
+        let prefix = event.uid.as_str().trim_end_matches("@caldir");
         assert!(uuid::Uuid::parse_str(prefix).is_ok());
     }
 

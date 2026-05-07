@@ -1,6 +1,6 @@
 use crate::event::{
-    Attendee, Event, EventError, EventTime, Organizer, Recurrence, Reminder, Status, Transparency,
-    XProperty,
+    Attendee, Event, EventError, EventTime, EventUid, Organizer, Recurrence, RecurrenceId,
+    Reminder, Status, Transparency, XProperty,
 };
 use icalendar::{Component, EventLike};
 
@@ -14,7 +14,10 @@ impl TryFrom<&icalendar::Event> for Event {
 
         let recurrence = Recurrence::from_ical_event(value);
 
-        let recurrence_id = value.get_recurrence_id().map(EventTime::from);
+        let recurrence_id = value
+            .get_recurrence_id()
+            .map(EventTime::from)
+            .map(RecurrenceId);
 
         let uid = value.get_uid().ok_or(EventError::MissingUid)?.to_string();
 
@@ -44,7 +47,7 @@ impl TryFrom<&icalendar::Event> for Event {
             .collect();
 
         Ok(Event {
-            uid,
+            uid: EventUid(uid),
             summary: value.get_summary().map(ToString::to_string),
             description: value.get_description().map(ToString::to_string),
             location: value.get_location().map(ToString::to_string),
@@ -138,7 +141,7 @@ mod tests {
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.uid, "abc123@google.com");
+        assert_eq!(event.uid.as_str(), "abc123@google.com");
     }
 
     #[test]
@@ -269,10 +272,8 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(
-            event.recurrence_id,
-            Some(EventTime::Date(
-                chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap()
-            ))
+            event.recurrence_id.unwrap().as_event_time(),
+            &EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap())
         );
     }
 

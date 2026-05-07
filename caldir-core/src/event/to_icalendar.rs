@@ -5,7 +5,7 @@ impl From<&Event> for icalendar::Event {
     fn from(value: &Event) -> Self {
         let mut event = icalendar::Event::new();
         event.starts(icalendar::DatePerhapsTime::from(&value.start));
-        event.uid(&value.uid);
+        event.uid(value.uid.as_str());
 
         if let Some(end) = &value.end {
             event.ends(icalendar::DatePerhapsTime::from(end));
@@ -27,7 +27,9 @@ impl From<&Event> for icalendar::Event {
         }
 
         if let Some(recurrence_id) = &value.recurrence_id {
-            event.recurrence_id(icalendar::DatePerhapsTime::from(recurrence_id));
+            event.recurrence_id(icalendar::DatePerhapsTime::from(
+                recurrence_id.as_event_time(),
+            ));
         }
 
         if let Some(summary) = &value.summary {
@@ -85,6 +87,7 @@ impl From<Event> for icalendar::Event {
 mod tests {
     use super::*;
     use crate::EventTime;
+    use crate::event::{EventUid, RecurrenceId};
     use crate::test_utils::test_event;
 
     #[test]
@@ -110,7 +113,7 @@ mod tests {
     #[test]
     fn converts_uid() {
         let mut event = test_event();
-        event.uid = "abc123@google.com".to_string();
+        event.uid = EventUid("abc123@google.com".to_string());
 
         let ical_event: icalendar::Event = event.into();
 
@@ -235,9 +238,9 @@ mod tests {
     #[test]
     fn converts_recurrence_id() {
         let mut event = test_event();
-        event.recurrence_id = Some(EventTime::Date(
+        event.recurrence_id = Some(RecurrenceId(EventTime::Date(
             chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap(),
-        ));
+        )));
 
         let ical_event: icalendar::Event = event.into();
 
