@@ -34,6 +34,12 @@ impl Calendar {
         Ok(calendar)
     }
 
+    fn from_path(path: PathBuf) -> Result<Self, CalendarError> {
+        let calendar_path = CalendarPath::new(path)?;
+
+        Ok(Calendar { calendar_path })
+    }
+
     pub fn path(&self) -> &Path {
         self.calendar_path.path()
     }
@@ -42,10 +48,7 @@ impl Calendar {
         self.calendar_path.slug()
     }
 
-    pub fn create_event(&self, event: Event) -> Result<CalendarEvent, CalendarEventError> {
-        event::CalendarEvent::create(self, event)
-    }
-
+    /// Load all events in calendar
     pub fn events(&self) -> Result<Vec<CalendarEvent>, CalendarEventError> {
         let mut events: Vec<CalendarEvent> = Vec::new();
 
@@ -61,10 +64,26 @@ impl Calendar {
         Ok(events)
     }
 
-    fn from_path(path: PathBuf) -> Result<Self, CalendarError> {
-        let calendar_path = CalendarPath::new(path)?;
+    /// Load specific event in calendar
+    pub fn event(&self, event_slug: &str) -> Result<CalendarEvent, CalendarEventError> {
+        let event_path = self.path().join(format!("{}.ics", event_slug));
 
-        Ok(Calendar { calendar_path })
+        if !event_path.is_file() {
+            return Err(CalendarEventError::NotFound(event_path));
+        }
+
+        CalendarEvent::load(event_path)
+    }
+
+    /// Create new event in calendar
+    pub fn create_event(&self, event: Event) -> Result<CalendarEvent, CalendarEventError> {
+        event::CalendarEvent::create(self, event)
+    }
+
+    /// Delete event from calendar
+    pub fn delete_event(&self, event_slug: &str) -> Result<(), CalendarEventError> {
+        let event = self.event(event_slug)?;
+        event.delete()
     }
 }
 
@@ -158,5 +177,38 @@ mod tests {
         let events = calendar.events().unwrap();
 
         assert_eq!(events.len(), 1);
+    }
+
+    #[test]
+    fn event_returns_event_by_slug() {
+        let (_tmp, calendar) = test_calendar();
+        let created = calendar.create_event(test_event()).unwrap();
+
+        let found = calendar.event("2026-01-01T1200__test-event").unwrap();
+
+        assert_eq!(found.path(), created.path());
+    }
+
+    #[test]
+    fn event_errors_when_file_missing() {
+        let (_tmp, calendar) = test_calendar();
+
+        let result = calendar.event("does-not-exist");
+
+        assert!(matches!(result, Err(CalendarEventError::NotFound(_))));
+    }
+
+    #[test]
+    fn delete_event_removes_file() {
+        let (_tmp, calendar) = test_calendar();
+        let cal_event = calendar.create_event(test_event()).unwrap();
+        let path = cal_event.path().to_path_buf();
+        assert!(path.is_file());
+
+        calendar
+            .delete_event("2026-01-01T1200__test-event")
+            .unwrap();
+
+        assert!(!path.exists());
     }
 }

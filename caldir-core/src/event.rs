@@ -11,7 +11,7 @@ mod to_icalendar;
 mod transparency;
 mod x_property;
 
-pub use attendee::Attendee;
+use attendee::Attendee;
 use chrono::{DateTime, Utc};
 pub use error::EventError;
 pub use organizer::Organizer;

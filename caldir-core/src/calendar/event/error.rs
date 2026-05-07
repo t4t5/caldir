@@ -9,4 +9,7 @@ pub enum CalendarEventError {
 
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("event file not found: {0}")]
+    NotFound(PathBuf),
 }
