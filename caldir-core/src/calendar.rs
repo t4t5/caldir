@@ -3,41 +3,56 @@ mod error;
 mod event;
 
 use crate::{Caldir, Event};
+use config::{CalendarConfig, CalendarConfigFile};
 use error::CalendarError;
 use event::CalendarEventError;
 use std::path::{Path, PathBuf};
 
 pub use event::CalendarEvent;
 
+// Example: ~/caldir/my_calendar/config.toml
+const CONFIG_FILE_NAME: &str = "config.toml";
+
 #[derive(Debug)]
 pub struct Calendar {
     path: PathBuf,
+    config: Option<CalendarConfig>,
 }
 
 impl Calendar {
     /// Create new calendar
-    pub fn create(caldir: &Caldir, desired_slug: &str) -> Result<Self, CalendarError> {
+    pub fn create(
+        caldir: &Caldir,
+        desired_slug: &str,
+        config: Option<CalendarConfig>,
+    ) -> Result<Self, CalendarError> {
         let unique_slug = caldir.unique_calendar_slug(desired_slug);
         let path = caldir.config().calendar_dir().join(unique_slug);
+
+        // create calendar directory:
         std::fs::create_dir_all(path.clone())?;
-        Self::from_path(path)
+
+        if let Some(ref config) = config {
+            let config_path = path.join(CONFIG_FILE_NAME);
+            CalendarConfigFile::create(&config_path, config.clone())?;
+        }
+
+        Ok(Self { path, config })
     }
 
     /// Load existing calendar
     pub fn load(caldir: &Caldir, slug: &str) -> Result<Self, CalendarError> {
         let path = caldir.config().calendar_dir().join(slug);
 
-        let calendar = Self::from_path(path)?;
-
-        if !calendar.path().is_dir() {
-            return Err(CalendarError::NotFound(calendar.path().to_path_buf()));
+        if !path.is_dir() {
+            return Err(CalendarError::NotFound(path));
         }
 
-        Ok(calendar)
-    }
+        let config_path = path.join(CONFIG_FILE_NAME);
+        let config_file = CalendarConfigFile::load_optional(config_path)?;
+        let config = config_file.map(|f| f.config().clone());
 
-    fn from_path(path: PathBuf) -> Result<Self, CalendarError> {
-        Ok(Calendar { path })
+        Ok(Self { path, config })
     }
 
     pub fn path(&self) -> &Path {
@@ -96,7 +111,7 @@ mod tests {
     fn creates_directory_with_desired_slug() {
         let (tmp, caldir) = test_caldir();
 
-        let calendar = Calendar::create(&caldir, "work").unwrap();
+        let calendar = Calendar::create(&caldir, "work", None).unwrap();
 
         assert_eq!(calendar.path(), tmp.path().join("work"));
         assert_eq!(calendar.slug().unwrap(), "work");
@@ -107,20 +122,20 @@ mod tests {
     fn appends_suffix_on_slug_collision() {
         let (_tmp, caldir) = test_caldir();
 
-        let calendar_1 = Calendar::create(&caldir, "work").unwrap();
+        let calendar_1 = Calendar::create(&caldir, "work", None).unwrap();
         assert_eq!(calendar_1.slug().unwrap(), "work");
 
-        let calendar_2 = Calendar::create(&caldir, "work").unwrap();
+        let calendar_2 = Calendar::create(&caldir, "work", None).unwrap();
         assert_eq!(calendar_2.slug().unwrap(), "work-2");
 
-        let calendar_3 = Calendar::create(&caldir, "work").unwrap();
+        let calendar_3 = Calendar::create(&caldir, "work", None).unwrap();
         assert_eq!(calendar_3.slug().unwrap(), "work-3");
     }
 
     #[test]
     fn load_returns_existing_calendar() {
         let (_tmp, caldir) = test_caldir();
-        Calendar::create(&caldir, "personal").unwrap();
+        Calendar::create(&caldir, "personal", None).unwrap();
 
         let calendar = Calendar::load(&caldir, "personal").unwrap();
 
@@ -152,8 +167,8 @@ mod tests {
     fn events_only_returns_events_from_current_calendar() {
         let (_tmp, caldir) = test_caldir();
 
-        let work = Calendar::create(&caldir, "work").unwrap();
-        let personal = Calendar::create(&caldir, "personal").unwrap();
+        let work = Calendar::create(&caldir, "work", None).unwrap();
+        let personal = Calendar::create(&caldir, "personal", None).unwrap();
 
         work.create_event(test_event()).unwrap();
         work.create_event(test_event()).unwrap();

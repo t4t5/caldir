@@ -13,7 +13,7 @@ pub fn test_caldir() -> (tempfile::TempDir, Caldir) {
 
 pub fn test_calendar() -> (tempfile::TempDir, Calendar) {
     let (tmp, caldir) = test_caldir();
-    let calendar = Calendar::create(&caldir, "test").unwrap();
+    let calendar = Calendar::create(&caldir, "test", None).unwrap();
     (tmp, calendar)
 }
 
