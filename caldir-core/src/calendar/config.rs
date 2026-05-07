@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 pub use error::CalendarConfigError;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CalendarConfig {
     name: Option<String>,
     color: Option<String>,
@@ -15,6 +15,14 @@ pub struct CalendarConfig {
 }
 
 impl CalendarConfig {
+    pub fn new(name: Option<String>, color: Option<String>, read_only: Option<bool>) -> Self {
+        Self {
+            name,
+            color,
+            read_only,
+        }
+    }
+
     pub fn write(&self, path: &Path) -> Result<(), CalendarConfigError> {
         let contents = self.to_toml().map_err(CalendarConfigError::InvalidConfig)?;
 
@@ -32,7 +40,7 @@ impl CalendarConfig {
         }
     }
 
-    fn load(path: &Path) -> Result<Self, CalendarConfigError> {
+    pub(crate) fn load(path: &Path) -> Result<Self, CalendarConfigError> {
         let contents = std::fs::read_to_string(path)?;
 
         let config = Self::from_toml(&contents)
@@ -53,21 +61,18 @@ impl CalendarConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn sample_toml() -> &'static str {
-        "name = \"Work\"\ncolor = \"#0b8043\"\nread_only = false\n"
-    }
+    use crate::test_utils::test_calendar_config;
 
     #[test]
     fn write_saves_config_to_file() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("config.toml");
-        let config = CalendarConfig::from_toml(sample_toml()).unwrap();
+        let config = test_calendar_config();
 
         config.write(&path).unwrap();
 
-        let contents = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(contents, sample_toml());
+        let loaded = CalendarConfig::load(&path).unwrap();
+        assert_eq!(loaded, config);
     }
 
     #[test]
@@ -84,11 +89,12 @@ mod tests {
     fn load_optional_returns_config_when_file_exists() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("config.toml");
-        std::fs::write(&path, sample_toml()).unwrap();
+        let config = test_calendar_config();
+        config.write(&path).unwrap();
 
         let loaded = CalendarConfig::load_optional(&path).unwrap().unwrap();
 
-        assert_eq!(loaded.to_toml().unwrap(), sample_toml());
+        assert_eq!(loaded, config);
     }
 
     #[test]

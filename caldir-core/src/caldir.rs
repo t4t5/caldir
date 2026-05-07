@@ -1,5 +1,7 @@
 mod config;
 
+use std::path::PathBuf;
+
 pub use config::CaldirConfig;
 
 pub struct Caldir {
@@ -11,8 +13,8 @@ impl Caldir {
         Caldir { config }
     }
 
-    pub fn config(&self) -> &CaldirConfig {
-        &self.config
+    pub fn dir(&self) -> PathBuf {
+        self.config.calendar_dir()
     }
 
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
