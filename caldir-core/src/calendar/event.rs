@@ -1,10 +1,11 @@
 mod error;
 
 use crate::{Calendar, Event};
-pub use error::CalendarEventError;
 use std::fs::OpenOptions;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
+
+pub use error::CalendarEventError;
 
 #[derive(Debug)]
 pub struct CalendarEvent {

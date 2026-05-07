@@ -1,6 +1,6 @@
-pub mod config;
+mod config;
 
-use config::CaldirConfig;
+pub use config::CaldirConfig;
 
 pub struct Caldir {
     config: CaldirConfig,

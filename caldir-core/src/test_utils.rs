@@ -1,6 +1,7 @@
-use crate::{Caldir, Calendar, CalendarEvent, Event, EventTime, caldir::config::CaldirConfig};
 use chrono::NaiveDate;
 use icalendar::{Component, EventLike};
+
+use crate::{Caldir, CaldirConfig, Calendar, CalendarEvent, Event, EventTime};
 
 pub fn test_caldir() -> (tempfile::TempDir, Caldir) {
     let tmp = tempfile::TempDir::new().unwrap();

@@ -1,11 +1,15 @@
+mod config;
 mod error;
-pub(crate) mod event;
+mod event;
 mod path;
 
-use crate::calendar::error::CalendarError;
-use crate::calendar::path::CalendarPath;
-use crate::{Caldir, CalendarEvent, CalendarEventError, Event};
+use crate::{Caldir, Event};
+use error::CalendarError;
+use event::CalendarEventError;
+use path::CalendarPath;
 use std::path::{Path, PathBuf};
+
+pub use event::CalendarEvent;
 
 #[derive(Debug)]
 pub struct Calendar {
