@@ -120,27 +120,6 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn load_errors_on_invalid_ics() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let path = tmp.path().join("test.ics");
-        fs::write(&path, "BEGIN:VCALENDAR").unwrap(); // Missing END
-
-        let err = CalendarEvent::load(path).unwrap_err();
-
-        assert!(matches!(err, CalendarEventError::InvalidEvent(p, _) if p.ends_with("test.ics")));
-    }
-
-    #[test]
-    fn load_parses_valid_ics() {
-        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:test-uid@caldir\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT\nEND:VCALENDAR";
-        let tmp = tempfile::TempDir::new().unwrap();
-        let path = tmp.path().join("test.ics");
-        fs::write(&path, ics).unwrap();
-
-        assert!(CalendarEvent::load(path).is_ok());
-    }
-
-    #[test]
     fn create_saves_event_to_file() {
         let (_tmp, calendar) = test_calendar();
         let cal_event = CalendarEvent::create(&calendar, test_event()).unwrap();
@@ -190,6 +169,27 @@ mod tests {
             cal_event_1.filename().unwrap(),
             cal_event_2.filename().unwrap()
         );
+    }
+
+    #[test]
+    fn load_errors_on_invalid_ics() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("test.ics");
+        fs::write(&path, "BEGIN:VCALENDAR").unwrap(); // Missing END
+
+        let err = CalendarEvent::load(path).unwrap_err();
+
+        assert!(matches!(err, CalendarEventError::InvalidEvent(p, _) if p.ends_with("test.ics")));
+    }
+
+    #[test]
+    fn load_parses_valid_ics() {
+        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:test-uid@caldir\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT\nEND:VCALENDAR";
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("test.ics");
+        fs::write(&path, ics).unwrap();
+
+        assert!(CalendarEvent::load(path).is_ok());
     }
 
     #[test]

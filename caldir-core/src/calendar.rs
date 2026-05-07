@@ -130,6 +130,21 @@ mod tests {
     }
 
     #[test]
+    fn events_only_returns_events_from_current_calendar() {
+        let (_tmp, caldir) = test_caldir();
+
+        let work = Calendar::create(&caldir, "work").unwrap();
+        let personal = Calendar::create(&caldir, "personal").unwrap();
+
+        work.create_event(test_event()).unwrap();
+        work.create_event(test_event()).unwrap();
+        personal.create_event(test_event()).unwrap();
+
+        assert_eq!(work.events().unwrap().len(), 2);
+        assert_eq!(personal.events().unwrap().len(), 1);
+    }
+
+    #[test]
     fn events_ignores_non_ics_files() {
         let (_tmp, calendar) = test_calendar();
 
