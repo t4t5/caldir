@@ -68,7 +68,7 @@ impl CalendarConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::test_calendar_config;
+    use crate::{ProviderSlug, test_utils::test_calendar_config};
 
     #[test]
     fn write_saves_config_to_file() {
@@ -123,7 +123,7 @@ google_account = "user@gmail.com"
         assert_eq!(config.color.as_deref(), Some("#ac725e"));
         assert_eq!(config.read_only, Some(false));
         let remote = config.remote.expect("remote should be present");
-        assert_eq!(remote.provider, "google");
+        assert_eq!(remote.provider.to_string(), "google");
         assert_eq!(
             remote.params.get("google_account"),
             Some(&toml::Value::String("user@gmail.com".to_string()))
@@ -160,7 +160,7 @@ google_account = "user@gmail.com"
             Some("#ac725e".to_string()),
             Some(false),
             Some(CalendarRemoteConfig {
-                provider: "google".to_string(),
+                provider: ProviderSlug::from("google"),
                 params,
             }),
         );

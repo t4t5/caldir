@@ -2,9 +2,11 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::ProviderSlug;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalendarRemoteConfig {
-    pub provider: String,
+    pub provider: ProviderSlug,
     #[serde(flatten)]
     pub params: BTreeMap<String, toml::Value>,
 }
@@ -23,7 +25,7 @@ google_account = "user@gmail.com"
 
         let remote: CalendarRemoteConfig = toml::from_str(toml_str).unwrap();
 
-        assert_eq!(remote.provider, "google");
+        assert_eq!(remote.provider.to_string(), "google");
         assert_eq!(
             remote.params.get("google_account"),
             Some(&toml::Value::String("user@gmail.com".to_string()))
@@ -40,7 +42,7 @@ google_account = "user@gmail.com"
     fn parses_provider_with_no_params() {
         let remote: CalendarRemoteConfig = toml::from_str(r#"provider = "caldav""#).unwrap();
 
-        assert_eq!(remote.provider, "caldav");
+        assert_eq!(remote.provider.to_string(), "caldav");
         assert!(remote.params.is_empty());
     }
 
@@ -56,7 +58,7 @@ google_account = "user@gmail.com"
             toml::Value::String("abc@group.calendar.google.com".to_string()),
         );
         let remote = CalendarRemoteConfig {
-            provider: "google".to_string(),
+            provider: ProviderSlug::from("google"),
             params,
         };
 
