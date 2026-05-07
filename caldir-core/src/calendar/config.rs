@@ -49,3 +49,59 @@ impl CalendarConfig {
         toml::to_string(self)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_toml() -> &'static str {
+        "name = \"Work\"\ncolor = \"#0b8043\"\nread_only = false\n"
+    }
+
+    #[test]
+    fn write_saves_config_to_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        let config = CalendarConfig::from_toml(sample_toml()).unwrap();
+
+        config.write(&path).unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(contents, sample_toml());
+    }
+
+    #[test]
+    fn load_optional_returns_none_when_file_missing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("does-not-exist.toml");
+
+        let result = CalendarConfig::load_optional(&path).unwrap();
+
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn load_optional_returns_config_when_file_exists() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(&path, sample_toml()).unwrap();
+
+        let loaded = CalendarConfig::load_optional(&path).unwrap().unwrap();
+
+        assert_eq!(loaded.to_toml().unwrap(), sample_toml());
+    }
+
+    #[test]
+    fn load_optional_errors_on_invalid_toml() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(&path, "this is not = valid = toml").unwrap();
+
+        let result = CalendarConfig::load_optional(&path);
+
+        assert!(matches!(
+            result,
+            Err(CalendarConfigError::InvalidConfigFile(p, _)) if p == path
+        ));
+    }
+}
