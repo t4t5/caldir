@@ -1,5 +1,3 @@
-use crate::event::EventTimeError;
-
 #[derive(Debug, thiserror::Error)]
 pub enum EventError {
     #[error("failed to parse ICS {0}: {1}")]
@@ -13,7 +11,4 @@ pub enum EventError {
 
     #[error("event is missing a UID")]
     MissingUid,
-
-    #[error(transparent)]
-    InvalidTime(#[from] EventTimeError),
 }

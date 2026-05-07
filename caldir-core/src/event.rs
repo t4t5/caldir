@@ -18,7 +18,7 @@ pub use organizer::Organizer;
 pub use recurrence::Recurrence;
 pub use reminder::Reminder;
 pub use status::Status;
-pub use time::{EventTime, EventTimeError};
+pub use time::EventTime;
 pub use transparency::Transparency;
 pub use x_property::XProperty;
 

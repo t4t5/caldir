@@ -1,4 +1,4 @@
-use crate::event::{EventTime, EventTimeError};
+use crate::event::EventTime;
 use icalendar::{Component, DatePerhapsTime, Property};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,21 +35,17 @@ impl Recurrence {
         }
     }
 
-    pub(crate) fn from_ical_event(
-        event: &icalendar::Event,
-    ) -> Result<Option<Self>, EventTimeError> {
-        let Some(rrule) = event.property_value("RRULE") else {
-            return Ok(None);
-        };
+    pub(crate) fn from_ical_event(event: &icalendar::Event) -> Option<Self> {
+        let rrule = event.property_value("RRULE")?;
 
-        let exdates = parse_event_time_list(event, "EXDATE")?;
-        let rdates = parse_event_time_list(event, "RDATE")?;
+        let exdates = parse_event_time_list(event, "EXDATE");
+        let rdates = parse_event_time_list(event, "RDATE");
 
-        Ok(Some(Recurrence {
+        Some(Recurrence {
             rrule: rrule.to_string(),
             exdates,
             rdates,
-        }))
+        })
     }
 
     pub(crate) fn apply_to(&self, event: &mut icalendar::Event) {
@@ -63,22 +59,18 @@ impl Recurrence {
     }
 }
 
-fn parse_event_time_list(
-    event: &icalendar::Event,
-    name: &str,
-) -> Result<Vec<EventTime>, EventTimeError> {
-    Ok(event
+fn parse_event_time_list(event: &icalendar::Event, name: &str) -> Vec<EventTime> {
+    event
         .multi_properties()
         .get(name)
         .map(|props| {
             props
                 .iter()
                 .filter_map(DatePerhapsTime::from_property)
-                .map(EventTime::try_from)
-                .collect::<Result<Vec<_>, _>>()
+                .map(EventTime::from)
+                .collect()
         })
-        .transpose()?
-        .unwrap_or_default())
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -92,7 +84,7 @@ mod tests {
     fn from_ical_event_returns_none_when_no_rrule() {
         let event = test_icalendar_event().done();
 
-        let recurrence = Recurrence::from_ical_event(&event).unwrap();
+        let recurrence = Recurrence::from_ical_event(&event);
 
         assert_eq!(recurrence, None);
     }
@@ -103,7 +95,7 @@ mod tests {
             .append_property(Property::new("RRULE", "FREQ=WEEKLY;BYDAY=MO"))
             .done();
 
-        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
+        let recurrence = Recurrence::from_ical_event(&event).unwrap();
 
         assert_eq!(recurrence.rrule, "FREQ=WEEKLY;BYDAY=MO");
         assert!(recurrence.exdates.is_empty());
@@ -118,7 +110,7 @@ mod tests {
             .append_multi_property(Property::new("EXDATE", "20260108").done())
             .done();
 
-        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
+        let recurrence = Recurrence::from_ical_event(&event).unwrap();
 
         assert_eq!(
             recurrence.exdates,
@@ -139,7 +131,7 @@ mod tests {
             .append_multi_property(exdate.done())
             .done();
 
-        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
+        let recurrence = Recurrence::from_ical_event(&event).unwrap();
 
         assert_eq!(
             recurrence.exdates,
@@ -163,7 +155,7 @@ mod tests {
             .append_multi_property(exdate.done())
             .done();
 
-        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
+        let recurrence = Recurrence::from_ical_event(&event).unwrap();
 
         assert_eq!(
             recurrence.exdates,
@@ -185,7 +177,7 @@ mod tests {
             .append_multi_property(Property::new("RDATE", "20260215").done())
             .done();
 
-        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
+        let recurrence = Recurrence::from_ical_event(&event).unwrap();
 
         assert_eq!(
             recurrence.rdates,
@@ -206,7 +198,7 @@ mod tests {
             .append_multi_property(rdate.done())
             .done();
 
-        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
+        let recurrence = Recurrence::from_ical_event(&event).unwrap();
 
         assert_eq!(
             recurrence.rdates,
@@ -230,7 +222,7 @@ mod tests {
             .append_multi_property(rdate.done())
             .done();
 
-        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
+        let recurrence = Recurrence::from_ical_event(&event).unwrap();
 
         assert_eq!(
             recurrence.rdates,
@@ -252,7 +244,7 @@ mod tests {
             .append_multi_property(Property::new("RDATE", "20260201").done())
             .done();
 
-        let recurrence = Recurrence::from_ical_event(&event).unwrap().unwrap();
+        let recurrence = Recurrence::from_ical_event(&event).unwrap();
 
         assert_eq!(
             recurrence.exdates,

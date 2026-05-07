@@ -12,4 +12,4 @@ pub use caldir::config::CaldirConfig;
 pub use calendar::Calendar;
 pub use calendar::event::CalendarEvent;
 pub use calendar::event::CalendarEventError;
-pub use event::{Event, EventError, EventTime, EventTimeError, Reminder};
+pub use event::{Event, EventError, EventTime, Reminder};

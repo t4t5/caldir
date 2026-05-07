@@ -8,19 +8,13 @@ impl TryFrom<&icalendar::Event> for Event {
     type Error = EventError;
 
     fn try_from(value: &icalendar::Event) -> Result<Self, Self::Error> {
-        let start: EventTime = value
-            .get_start()
-            .ok_or(EventError::MissingStart)?
-            .try_into()?;
+        let start: EventTime = value.get_start().ok_or(EventError::MissingStart)?.into();
 
-        let end = value.get_end().map(EventTime::try_from).transpose()?;
+        let end = value.get_end().map(EventTime::from);
 
-        let recurrence = Recurrence::from_ical_event(value)?;
+        let recurrence = Recurrence::from_ical_event(value);
 
-        let recurrence_id = value
-            .get_recurrence_id()
-            .map(EventTime::try_from)
-            .transpose()?;
+        let recurrence_id = value.get_recurrence_id().map(EventTime::from);
 
         let uid = value.get_uid().ok_or(EventError::MissingUid)?.to_string();
 

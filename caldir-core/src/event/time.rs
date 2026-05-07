@@ -1,7 +1,4 @@
-mod error;
-
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
-pub use error::EventTimeError;
 use icalendar::{CalendarDateTime, DatePerhapsTime};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,23 +69,21 @@ impl From<EventTime> for DatePerhapsTime {
     }
 }
 
-impl TryFrom<DatePerhapsTime> for EventTime {
-    type Error = EventTimeError;
-
-    fn try_from(value: DatePerhapsTime) -> Result<Self, Self::Error> {
+impl From<DatePerhapsTime> for EventTime {
+    fn from(value: DatePerhapsTime) -> Self {
         match value {
-            DatePerhapsTime::Date(date) => Ok(EventTime::Date(date)),
+            DatePerhapsTime::Date(date) => EventTime::Date(date),
             DatePerhapsTime::DateTime(CalendarDateTime::Floating(datetime)) => {
-                Ok(EventTime::DateTimeFloating(datetime))
+                EventTime::DateTimeFloating(datetime)
             }
             DatePerhapsTime::DateTime(CalendarDateTime::Utc(datetime)) => {
-                Ok(EventTime::DateTimeUtc(datetime))
+                EventTime::DateTimeUtc(datetime)
             }
             DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone { date_time, tzid }) => {
-                Ok(EventTime::DateTimeZoned {
+                EventTime::DateTimeZoned {
                     datetime: date_time,
                     tzid,
-                })
+                }
             }
         }
     }
