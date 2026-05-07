@@ -1,19 +1,17 @@
 mod config;
 mod error;
 mod event;
-mod path;
 
 use crate::{Caldir, Event};
 use error::CalendarError;
 use event::CalendarEventError;
-use path::CalendarPath;
 use std::path::{Path, PathBuf};
 
 pub use event::CalendarEvent;
 
 #[derive(Debug)]
 pub struct Calendar {
-    calendar_path: CalendarPath,
+    path: PathBuf,
 }
 
 impl Calendar {
@@ -39,17 +37,15 @@ impl Calendar {
     }
 
     fn from_path(path: PathBuf) -> Result<Self, CalendarError> {
-        let calendar_path = CalendarPath::new(path)?;
-
-        Ok(Calendar { calendar_path })
+        Ok(Calendar { path })
     }
 
     pub fn path(&self) -> &Path {
-        self.calendar_path.path()
+        &self.path
     }
 
-    pub fn slug(&self) -> &str {
-        self.calendar_path.slug()
+    pub fn slug(&self) -> Option<&str> {
+        self.path().file_name().and_then(|s| s.to_str())
     }
 
     /// Load all events in calendar
@@ -103,7 +99,7 @@ mod tests {
         let calendar = Calendar::create(&caldir, "work").unwrap();
 
         assert_eq!(calendar.path(), tmp.path().join("work"));
-        assert_eq!(calendar.slug(), "work");
+        assert_eq!(calendar.slug().unwrap(), "work");
         assert!(calendar.path().is_dir());
     }
 
@@ -112,13 +108,13 @@ mod tests {
         let (_tmp, caldir) = test_caldir();
 
         let calendar_1 = Calendar::create(&caldir, "work").unwrap();
-        assert_eq!(calendar_1.slug(), "work");
+        assert_eq!(calendar_1.slug().unwrap(), "work");
 
         let calendar_2 = Calendar::create(&caldir, "work").unwrap();
-        assert_eq!(calendar_2.slug(), "work-2");
+        assert_eq!(calendar_2.slug().unwrap(), "work-2");
 
         let calendar_3 = Calendar::create(&caldir, "work").unwrap();
-        assert_eq!(calendar_3.slug(), "work-3");
+        assert_eq!(calendar_3.slug().unwrap(), "work-3");
     }
 
     #[test]
@@ -128,7 +124,7 @@ mod tests {
 
         let calendar = Calendar::load(&caldir, "personal").unwrap();
 
-        assert_eq!(calendar.slug(), "personal");
+        assert_eq!(calendar.slug().unwrap(), "personal");
     }
 
     #[test]
