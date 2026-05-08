@@ -1,7 +1,7 @@
 mod config;
 mod error;
 
-use crate::{Calendar, CalendarConfig, ProviderRegistry};
+use crate::{Calendar, CalendarConfig, Provider, ProviderRegistry, ProviderSlug};
 use std::path::PathBuf;
 
 pub use config::CaldirConfig;
@@ -30,6 +30,12 @@ impl Caldir {
         let calendar_path = self.data_dir().join(unique_slug);
 
         Ok(Calendar::create(&calendar_path, config)?)
+    }
+
+    pub fn provider(&self, provider_slug: ProviderSlug) -> Result<&Provider, CaldirError> {
+        self.providers
+            .get(&provider_slug)
+            .map_err(CaldirError::Provider)
     }
 
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
@@ -64,7 +70,9 @@ impl Default for Caldir {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utils::test_caldir;
+    use super::*;
+    use crate::provider::ProviderError;
+    use crate::test_utils::{test_binary, test_caldir, test_caldir_config};
 
     #[test]
     fn create_calendar_creates_directory_with_desired_slug() {
@@ -89,5 +97,29 @@ mod tests {
 
         let calendar_3 = caldir.create_calendar("work", None).unwrap();
         assert_eq!(calendar_3.slug().unwrap(), "work-3");
+    }
+
+    #[test]
+    fn provider_returns_provider_when_present_in_registry() {
+        let (_tmp_bin, bin_path) = test_binary("caldir-provider-hooli");
+        let mut registry = ProviderRegistry::new();
+        registry.add(Provider::from_binary_path(bin_path).unwrap());
+
+        let (_tmp, config) = test_caldir_config();
+        let caldir = Caldir::new(config, registry);
+
+        assert!(caldir.provider(ProviderSlug::from("hooli")).is_ok());
+    }
+
+    #[test]
+    fn provider_errors_when_not_present_in_registry() {
+        let (_tmp, caldir) = test_caldir();
+
+        let result = caldir.provider(ProviderSlug::from("hooli"));
+
+        assert!(matches!(
+            result,
+            Err(CaldirError::Provider(ProviderError::ProviderNotFound(_)))
+        ));
     }
 }

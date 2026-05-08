@@ -2,9 +2,9 @@ mod error;
 mod registry;
 mod slug;
 
-use error::ProviderError;
 use std::path::{Path, PathBuf};
 
+pub(crate) use error::ProviderError;
 pub use registry::ProviderRegistry;
 pub use slug::ProviderSlug;
 

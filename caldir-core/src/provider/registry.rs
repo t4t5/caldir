@@ -1,3 +1,4 @@
+use super::error::ProviderError;
 use crate::{Provider, ProviderSlug};
 use std::collections::HashMap;
 use std::path::Path;
@@ -17,8 +18,10 @@ impl ProviderRegistry {
         Self::from_dirs(std::env::split_paths(&path_var))
     }
 
-    pub fn get(&self, slug: &ProviderSlug) -> Option<&Provider> {
-        self.0.get(slug)
+    pub(crate) fn get(&self, slug: &ProviderSlug) -> Result<&Provider, ProviderError> {
+        self.0
+            .get(slug)
+            .ok_or_else(|| ProviderError::ProviderNotFound(slug.to_string()))
     }
 
     pub fn add(&mut self, provider: Provider) {
@@ -80,8 +83,8 @@ mod tests {
 
         let registry = ProviderRegistry::from_dirs([dir1.path(), dir2.path()]);
 
-        assert!(registry.get(&ProviderSlug::from("hooli")).is_some());
-        assert!(registry.get(&ProviderSlug::from("aviato")).is_some());
+        assert!(registry.get(&ProviderSlug::from("hooli")).is_ok());
+        assert!(registry.get(&ProviderSlug::from("aviato")).is_ok());
     }
 
     #[test]
@@ -102,7 +105,7 @@ mod tests {
 
         let registry = ProviderRegistry::from_dirs([tmp.path().to_path_buf()]);
 
-        assert!(registry.get(&ProviderSlug::from("hooli")).is_none());
+        assert!(registry.get(&ProviderSlug::from("hooli")).is_err());
     }
 
     #[test]
@@ -123,7 +126,7 @@ mod tests {
             dir.path().to_path_buf(),
         ]);
 
-        assert!(registry.get(&ProviderSlug::from("hooli")).is_some());
+        assert!(registry.get(&ProviderSlug::from("hooli")).is_ok());
     }
 
     #[test]

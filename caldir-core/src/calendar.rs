@@ -123,7 +123,6 @@ mod tests {
     use crate::test_utils::{
         test_caldir, test_calendar, test_calendar_config, test_calendar_path, test_event,
     };
-    use tempfile::TempDir;
 
     #[test]
     fn create_creates_caldir_subdirectory() {
