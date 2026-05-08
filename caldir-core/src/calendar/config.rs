@@ -1,11 +1,10 @@
 mod error;
-mod remote;
 
+use crate::remote::RemoteConfig;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 pub(crate) use error::CalendarConfigError;
-pub use remote::CalendarRemoteConfig;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalendarConfig {
@@ -13,7 +12,7 @@ pub struct CalendarConfig {
     color: Option<String>,
     read_only: Option<bool>,
     #[serde(rename = "remote")]
-    remote_config: Option<CalendarRemoteConfig>,
+    remote_config: Option<RemoteConfig>,
 }
 
 impl CalendarConfig {
@@ -21,7 +20,7 @@ impl CalendarConfig {
         name: Option<String>,
         color: Option<String>,
         read_only: Option<bool>,
-        remote_config: Option<CalendarRemoteConfig>,
+        remote_config: Option<RemoteConfig>,
     ) -> Self {
         Self {
             name,
@@ -65,7 +64,7 @@ impl CalendarConfig {
         toml::to_string(self)
     }
 
-    pub(crate) fn remote_config(&self) -> Option<&CalendarRemoteConfig> {
+    pub(crate) fn remote_config(&self) -> Option<&RemoteConfig> {
         self.remote_config.as_ref()
     }
 }
@@ -74,7 +73,7 @@ impl CalendarConfig {
 mod tests {
     use super::*;
     use crate::test_utils::test_calendar_config;
-    use crate::{ProviderSlug, RemoteConfig};
+    use crate::{ProviderSlug, RemoteConfig, RemoteConfigParams};
 
     #[test]
     fn write_saves_config_to_file() {
@@ -153,13 +152,13 @@ hooli_account = "user@hmail.com"
 
     #[test]
     fn writes_full_config_with_remote_to_expected_toml() {
-        let mut remote_config = RemoteConfig::new();
+        let mut params = RemoteConfigParams::new();
 
-        remote_config.insert(
+        params.insert(
             "hooli_calendar_id".to_string(),
             toml::Value::String("abc@group.calendar.hooli.com".to_string()),
         );
-        remote_config.insert(
+        params.insert(
             "hooli_account".to_string(),
             toml::Value::String("user@hmail.com".to_string()),
         );
@@ -167,10 +166,7 @@ hooli_account = "user@hmail.com"
             Some("Demo".to_string()),
             Some("#ac725e".to_string()),
             Some(false),
-            Some(CalendarRemoteConfig::new(
-                ProviderSlug::from("hooli"),
-                remote_config,
-            )),
+            Some(RemoteConfig::new(ProviderSlug::from("hooli"), params)),
         );
 
         let serialized = config.to_toml().unwrap();

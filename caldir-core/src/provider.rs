@@ -8,6 +8,7 @@ pub(crate) use error::ProviderError;
 pub use registry::ProviderRegistry;
 pub use slug::ProviderSlug;
 
+#[derive(Debug, Clone)]
 pub struct Provider {
     slug: ProviderSlug,
     bin_path: PathBuf,

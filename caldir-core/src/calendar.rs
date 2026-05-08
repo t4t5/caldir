@@ -2,11 +2,11 @@ mod config;
 mod error;
 mod event;
 
-use crate::Event;
+use crate::{Event, RemoteConfig};
 use event::CalendarEventError;
 use std::path::{Path, PathBuf};
 
-pub use config::{CalendarConfig, CalendarRemoteConfig};
+pub use config::CalendarConfig;
 pub use error::CalendarError;
 pub use event::CalendarEvent;
 
@@ -104,8 +104,12 @@ impl Calendar {
         event.delete()
     }
 
-    fn remote_config(&self) -> Option<&CalendarRemoteConfig> {
+    pub fn remote_config(&self) -> Option<&RemoteConfig> {
         self.config.as_ref().and_then(|c| c.remote_config())
+    }
+
+    pub fn has_remote(&self) -> bool {
+        self.remote_config().is_some()
     }
 }
 

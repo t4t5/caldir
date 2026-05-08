@@ -1,7 +1,10 @@
 mod config;
 mod error;
 
-use crate::{Calendar, CalendarConfig, Provider, ProviderRegistry, ProviderSlug};
+use crate::{
+    Calendar, CalendarConfig, Provider, ProviderRegistry, ProviderSlug, Remote,
+    connected_calendar::ConnectedCalendar,
+};
 use std::path::PathBuf;
 
 pub use config::CaldirConfig;
@@ -69,9 +72,26 @@ impl Caldir {
         calendars
     }
 
-    fn provider(&self, provider_slug: ProviderSlug) -> Result<&Provider, CaldirError> {
+    fn connected_calendars(&self) -> Result<Vec<ConnectedCalendar>, CaldirError> {
+        let mut connected = Vec::new();
+
+        for cal in self.calendars() {
+            let Some(remote_config) = cal.remote_config().cloned() else {
+                continue;
+            };
+
+            let provider = self.provider(remote_config.provider_slug())?;
+            let remote = Remote::new(provider.clone(), remote_config);
+
+            connected.push(ConnectedCalendar::new(cal, remote));
+        }
+
+        Ok(connected)
+    }
+
+    fn provider(&self, provider_slug: &ProviderSlug) -> Result<&Provider, CaldirError> {
         self.providers
-            .get(&provider_slug)
+            .get(provider_slug)
             .map_err(CaldirError::Provider)
     }
 }
@@ -169,14 +189,14 @@ mod tests {
         let (_tmp, config) = test_caldir_config();
         let caldir = Caldir::new(config, registry);
 
-        assert!(caldir.provider(ProviderSlug::from("hooli")).is_ok());
+        assert!(caldir.provider(&ProviderSlug::from("hooli")).is_ok());
     }
 
     #[test]
     fn provider_errors_when_not_present_in_registry() {
         let (_tmp, caldir) = test_caldir();
 
-        let result = caldir.provider(ProviderSlug::from("hooli"));
+        let result = caldir.provider(&ProviderSlug::from("hooli"));
 
         assert!(matches!(
             result,
