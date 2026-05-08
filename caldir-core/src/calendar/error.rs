@@ -4,8 +4,8 @@ use super::config::CalendarConfigError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CalendarError {
-    #[error("invalid calendar path: {0}")]
-    InvalidCalendarPath(PathBuf),
+    #[error("calendar already exists at: {0}")]
+    AlreadyExists(PathBuf),
 
     #[error("calendar not found at: {0}")]
     NotFound(PathBuf),

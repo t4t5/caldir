@@ -2,12 +2,12 @@ mod config;
 mod error;
 mod event;
 
-use crate::{Caldir, Event};
-use error::CalendarError;
+use crate::Event;
 use event::CalendarEventError;
 use std::path::{Path, PathBuf};
 
 pub use config::CalendarConfig;
+pub use error::CalendarError;
 pub use event::CalendarEvent;
 
 #[derive(Debug)]
@@ -18,23 +18,25 @@ pub struct Calendar {
 
 impl Calendar {
     /// Create new calendar
-    pub fn create(
-        caldir: &Caldir,
-        desired_slug: &str,
-        config: Option<CalendarConfig>,
-    ) -> Result<Self, CalendarError> {
-        let unique_slug = caldir.unique_calendar_slug(desired_slug);
-        let path = caldir.data_dir().join(unique_slug);
+    pub fn create(path: &Path, config: Option<CalendarConfig>) -> Result<Self, CalendarError> {
+        // Error if path already exists:
+        if path.exists() {
+            return Err(CalendarError::AlreadyExists(path.to_path_buf()));
+        }
 
         // create calendar directory and its .caldir/ subdirectory:
-        std::fs::create_dir_all(calendar_dotdir(&path))?;
+        std::fs::create_dir_all(calendar_dotdir(path))?;
 
+        // Create calendar config file (if config is provided):
         if let Some(ref config) = config {
-            let config_path = calendar_config_path(&path);
+            let config_path = calendar_config_path(path);
             CalendarConfig::write(config, &config_path)?;
         }
 
-        Ok(Self { path, config })
+        Ok(Self {
+            path: path.to_path_buf(),
+            config,
+        })
     }
 
     /// Load existing calendar
@@ -118,78 +120,54 @@ fn calendar_config_path(calendar_path: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{test_caldir, test_calendar, test_calendar_config, test_event};
-
-    #[test]
-    fn create_creates_directory_with_desired_slug() {
-        let (_tmp, caldir) = test_caldir();
-
-        let calendar = Calendar::create(&caldir, "work", None).unwrap();
-
-        assert_eq!(calendar.path(), caldir.data_dir().join("work"));
-        assert_eq!(calendar.slug().unwrap(), "work");
-        assert!(calendar.path().is_dir());
-    }
-
-    #[test]
-    fn create_appends_suffix_on_slug_collision() {
-        let (_tmp, caldir) = test_caldir();
-
-        let calendar_1 = Calendar::create(&caldir, "work", None).unwrap();
-        assert_eq!(calendar_1.slug().unwrap(), "work");
-
-        let calendar_2 = Calendar::create(&caldir, "work", None).unwrap();
-        assert_eq!(calendar_2.slug().unwrap(), "work-2");
-
-        let calendar_3 = Calendar::create(&caldir, "work", None).unwrap();
-        assert_eq!(calendar_3.slug().unwrap(), "work-3");
-    }
+    use crate::test_utils::{
+        test_caldir, test_calendar, test_calendar_config, test_calendar_path, test_event,
+    };
+    use tempfile::TempDir;
 
     #[test]
     fn create_creates_caldir_subdirectory() {
-        let (_tmp, caldir) = test_caldir();
+        let (_, path) = test_calendar_path();
 
-        let calendar = Calendar::create(&caldir, "work", None).unwrap();
+        let calendar = Calendar::create(&path, None).unwrap();
 
         assert!(calendar.path().join(".caldir").is_dir());
     }
 
     #[test]
     fn create_without_config_does_not_create_config_file() {
-        let (_tmp, caldir) = test_caldir();
+        let (_, path) = test_calendar_path();
 
-        let calendar = Calendar::create(&caldir, "work", None).unwrap();
+        let calendar = Calendar::create(&path, None).unwrap();
 
         assert!(!calendar.config_path().is_file());
     }
 
     #[test]
     fn create_with_config_writes_config_file() {
-        let (_tmp, caldir) = test_caldir();
+        let (_, path) = test_calendar_path();
         let config = test_calendar_config();
-        let calendar = Calendar::create(&caldir, "personal", Some(config.clone())).unwrap();
 
+        let calendar = Calendar::create(&path, Some(config.clone())).unwrap();
+
+        let expected_config_path = &path.join(".caldir").join("config.toml");
+
+        // Config file is located in the right place:
         assert!(calendar.config_path().is_file());
-        assert_eq!(
-            calendar.config_path().to_str().unwrap(),
-            format!(
-                "{}/personal/.caldir/config.toml",
-                caldir.data_dir().to_str().unwrap()
-            )
-        );
+        assert_eq!(&calendar.config_path(), expected_config_path);
 
+        // with the right content:
         let loaded_config = CalendarConfig::load(&calendar.config_path()).unwrap();
         assert_eq!(loaded_config, config);
     }
 
     #[test]
     fn load_returns_existing_calendar() {
-        let (_tmp, caldir) = test_caldir();
-        let created = Calendar::create(&caldir, "personal", None).unwrap();
+        let (_, path) = test_calendar_path();
+        let result = Calendar::create(&path, None);
 
-        let calendar = Calendar::load(created.path()).unwrap();
-
-        assert_eq!(calendar.slug().unwrap(), "personal");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().path(), path);
     }
 
     #[test]
@@ -218,8 +196,8 @@ mod tests {
         let (_tmp, caldir) = test_caldir();
 
         // 2 calendars in the same caldir data directory:
-        let work = Calendar::create(&caldir, "work", None).unwrap();
-        let personal = Calendar::create(&caldir, "personal", None).unwrap();
+        let work = caldir.create_calendar("work", None).unwrap();
+        let personal = caldir.create_calendar("personal", None).unwrap();
 
         work.create_event(test_event()).unwrap();
         work.create_event(test_event()).unwrap();

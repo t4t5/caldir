@@ -19,16 +19,22 @@ pub fn test_caldir() -> (TempDir, Caldir) {
 
 pub fn test_caldir_config() -> (TempDir, CaldirConfig) {
     let tmp = TempDir::new().unwrap();
-    let data_dir = tmp.path().join("calendars");
+    let data_dir = tmp.path().join("test-caldir");
 
     let config = CaldirConfig::new(data_dir);
 
     (tmp, config)
 }
 
+pub fn test_calendar_path() -> (TempDir, PathBuf) {
+    let tmp = TempDir::new().unwrap();
+    let calendar_path = tmp.path().to_path_buf().join("test-calendar");
+    (tmp, calendar_path)
+}
+
 pub fn test_calendar() -> (TempDir, Calendar) {
     let (tmp, caldir) = test_caldir();
-    let calendar = Calendar::create(&caldir, "test", None).unwrap();
+    let calendar = caldir.create_calendar("test-calendar", None).unwrap();
     (tmp, calendar)
 }
 
