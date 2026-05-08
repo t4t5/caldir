@@ -1,4 +1,5 @@
 mod error;
+mod registry;
 mod slug;
 
 use error::ProviderError;
@@ -31,6 +32,14 @@ impl Provider {
             slug,
             bin_path: binary_path.into(),
         }
+    }
+
+    fn slug(&self) -> &ProviderSlug {
+        &self.slug
+    }
+
+    fn bin_path(&self) -> &Path {
+        &self.bin_path
     }
 }
 
@@ -75,29 +84,13 @@ fn is_executable(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_utils::test_binary;
+
     use super::*;
-
-    fn create_provider_binary(dir: &Path, name: &str) -> PathBuf {
-        let path = dir.join(format!("{}{}", name, std::env::consts::EXE_SUFFIX));
-
-        std::fs::write(&path, b"").unwrap();
-
-        // Set executable permissions to executable:
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&path).unwrap().permissions();
-            perms.set_mode(0o755);
-            std::fs::set_permissions(&path, perms).unwrap();
-        }
-
-        path
-    }
 
     #[test]
     fn from_binary_path_succeeds_for_valid_provider_binary() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let bin = create_provider_binary(tmp.path(), "caldir-provider-hooli");
+        let (_tmp, bin) = test_binary("caldir-provider-hooli");
 
         let provider = Provider::from_binary_path(bin.clone()).unwrap();
 
@@ -108,11 +101,7 @@ mod tests {
     #[test]
     fn from_binary_path_errors_when_file_does_not_exist() {
         let tmp = tempfile::TempDir::new().unwrap();
-
-        let bin = tmp.path().join(format!(
-            "caldir-provider-hooli{}",
-            std::env::consts::EXE_SUFFIX
-        ));
+        let bin = tmp.path().join("caldir-provider-nonexistant");
 
         let result = Provider::from_binary_path(bin.clone());
 
@@ -133,8 +122,7 @@ mod tests {
 
     #[test]
     fn from_binary_path_errors_when_filename_lacks_prefix() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let bin = create_provider_binary(tmp.path(), "hooli");
+        let (_tmp, bin) = test_binary("hooli");
 
         let result = Provider::from_binary_path(bin.clone());
 
@@ -143,8 +131,7 @@ mod tests {
 
     #[test]
     fn from_binary_path_errors_when_slug_is_empty() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let bin = create_provider_binary(tmp.path(), "caldir-provider-");
+        let (_tmp, bin) = test_binary("caldir-provider");
 
         let result = Provider::from_binary_path(bin.clone());
 

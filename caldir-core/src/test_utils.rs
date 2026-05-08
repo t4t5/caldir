@@ -1,23 +1,26 @@
+use std::path::{Path, PathBuf};
+
 use chrono::NaiveDate;
 use icalendar::{Component, EventLike};
 
 use crate::{Caldir, CaldirConfig, Calendar, CalendarConfig, CalendarEvent, Event, EventTime};
+use tempfile::TempDir;
 
-pub fn test_caldir() -> (tempfile::TempDir, Caldir) {
-    let tmp = tempfile::TempDir::new().unwrap();
+pub fn test_caldir() -> (TempDir, Caldir) {
+    let tmp = TempDir::new().unwrap();
     let caldir = Caldir::new(CaldirConfig {
         calendar_dir: tmp.path().to_path_buf(),
     });
     (tmp, caldir)
 }
 
-pub fn test_calendar() -> (tempfile::TempDir, Calendar) {
+pub fn test_calendar() -> (TempDir, Calendar) {
     let (tmp, caldir) = test_caldir();
     let calendar = Calendar::create(&caldir, "test", None).unwrap();
     (tmp, calendar)
 }
 
-pub fn test_calendar_event() -> (tempfile::TempDir, CalendarEvent) {
+pub fn test_calendar_event() -> (TempDir, CalendarEvent) {
     let (tmp, calendar) = test_calendar();
     let event = test_event();
 
@@ -54,4 +57,25 @@ pub fn test_calendar_config() -> CalendarConfig {
         Some(false),
         None,
     )
+}
+
+pub fn test_binary(filename: &str) -> (TempDir, PathBuf) {
+    let tmp = TempDir::new().unwrap();
+
+    let path = tmp
+        .path()
+        .join(format!("{}{}", filename, std::env::consts::EXE_SUFFIX));
+
+    std::fs::write(&path, b"").unwrap();
+
+    // Set executable permissions to executable:
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&path, perms).unwrap();
+    }
+
+    (tmp, path)
 }
