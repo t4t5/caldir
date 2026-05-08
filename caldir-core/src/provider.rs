@@ -1,6 +1,10 @@
+mod error;
+
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::{fmt, path::PathBuf};
+
+use error::ProviderError;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProviderSlug(String);
@@ -35,32 +39,21 @@ pub struct Provider {
 }
 
 impl Provider {
-    pub fn from_binary_path(binary_path: PathBuf) -> Option<Self> {
+    pub fn from_binary_path(binary_path: PathBuf) -> Result<Self, ProviderError> {
         if !is_executable(&binary_path) {
-            return None;
+            return Err(ProviderError::NotExecutable(binary_path));
         }
 
-        let filename = &binary_path.file_name()?.to_str()?;
-        let slug = provider_slug_from_filename(filename)?;
+        let filename = binary_path
+            .file_name()
+            .ok_or_else(|| ProviderError::MissingFilename(binary_path.clone()))?
+            .to_str()
+            .ok_or_else(|| ProviderError::NonUtf8Filename(binary_path.clone()))?;
 
-        Some(Provider::new(slug, &binary_path))
-    }
+        let slug = provider_slug_from_filename(filename)
+            .ok_or_else(|| ProviderError::InvalidProviderFilename(binary_path.clone()))?;
 
-    pub fn from_slug(slug: ProviderSlug) -> Option<Self> {
-        let binary_name = format!(
-            "{}{}{}",
-            PROVIDER_BINARY_PREFIX,
-            slug,
-            std::env::consts::EXE_SUFFIX
-        );
-
-        let binary_path = std::env::current_exe().ok()?.parent()?.join(binary_name);
-
-        if !is_executable(&binary_path) {
-            return None;
-        }
-
-        Some(Provider::new(slug, &binary_path))
+        Ok(Provider::new(slug, &binary_path))
     }
 
     fn new(slug: ProviderSlug, binary_path: &Path) -> Self {
