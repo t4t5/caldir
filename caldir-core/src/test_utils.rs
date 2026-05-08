@@ -1,16 +1,22 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use chrono::NaiveDate;
 use icalendar::{Component, EventLike};
 
-use crate::{Caldir, CaldirConfig, Calendar, CalendarConfig, CalendarEvent, Event, EventTime};
+use crate::{
+    Caldir, CaldirConfig, Calendar, CalendarConfig, CalendarEvent, Event, EventTime,
+    ProviderRegistry,
+};
 use tempfile::TempDir;
 
 pub fn test_caldir() -> (TempDir, Caldir) {
     let tmp = TempDir::new().unwrap();
-    let caldir = Caldir::new(CaldirConfig {
-        calendar_dir: tmp.path().to_path_buf(),
-    });
+    let caldir = Caldir::new(
+        CaldirConfig {
+            calendar_dir: tmp.path().to_path_buf(),
+        },
+        ProviderRegistry::new(),
+    );
     (tmp, caldir)
 }
 

@@ -5,6 +5,7 @@ mod slug;
 use error::ProviderError;
 use std::path::{Path, PathBuf};
 
+pub use registry::ProviderRegistry;
 pub use slug::ProviderSlug;
 
 pub struct Provider {

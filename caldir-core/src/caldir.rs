@@ -1,16 +1,17 @@
 mod config;
 
-use std::path::PathBuf;
-
+use crate::ProviderRegistry;
 pub use config::CaldirConfig;
+use std::path::PathBuf;
 
 pub struct Caldir {
     config: CaldirConfig,
+    providers: ProviderRegistry,
 }
 
 impl Caldir {
-    pub fn new(config: CaldirConfig) -> Self {
-        Caldir { config }
+    pub fn new(config: CaldirConfig, providers: ProviderRegistry) -> Self {
+        Caldir { config, providers }
     }
 
     pub fn dir(&self) -> PathBuf {
@@ -40,6 +41,9 @@ impl Caldir {
 
 impl Default for Caldir {
     fn default() -> Self {
-        Self::new(CaldirConfig::default())
+        Self::new(
+            CaldirConfig::default(),
+            ProviderRegistry::from_system_path(),
+        )
     }
 }
