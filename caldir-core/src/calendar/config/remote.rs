@@ -6,7 +6,8 @@ use crate::ProviderSlug;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalendarRemoteConfig {
-    pub provider: ProviderSlug,
+    #[serde(rename = "provider")]
+    pub provider_slug: ProviderSlug,
     #[serde(flatten)]
     pub params: BTreeMap<String, toml::Value>,
 }
@@ -25,7 +26,7 @@ hooli_account = "user@hmail.com"
 
         let remote: CalendarRemoteConfig = toml::from_str(toml_str).unwrap();
 
-        assert_eq!(remote.provider.to_string(), "hooli");
+        assert_eq!(remote.provider_slug.to_string(), "hooli");
         assert_eq!(
             remote.params.get("hooli_account"),
             Some(&toml::Value::String("user@hmail.com".to_string()))
@@ -42,7 +43,7 @@ hooli_account = "user@hmail.com"
     fn parses_provider_with_no_params() {
         let remote: CalendarRemoteConfig = toml::from_str(r#"provider = "caldav""#).unwrap();
 
-        assert_eq!(remote.provider.to_string(), "caldav");
+        assert_eq!(remote.provider_slug.to_string(), "caldav");
         assert!(remote.params.is_empty());
     }
 
@@ -58,7 +59,7 @@ hooli_account = "user@hmail.com"
             toml::Value::String("abc@group.calendar.hooli.com".to_string()),
         );
         let remote = CalendarRemoteConfig {
-            provider: ProviderSlug::from("hooli"),
+            provider_slug: ProviderSlug::from("hooli"),
             params,
         };
 

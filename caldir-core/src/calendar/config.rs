@@ -123,7 +123,7 @@ hooli_account = "user@hmail.com"
         assert_eq!(config.color.as_deref(), Some("#ac725e"));
         assert_eq!(config.read_only, Some(false));
         let remote = config.remote.expect("remote should be present");
-        assert_eq!(remote.provider.to_string(), "hooli");
+        assert_eq!(remote.provider_slug.to_string(), "hooli");
         assert_eq!(
             remote.params.get("hooli_account"),
             Some(&toml::Value::String("user@hmail.com".to_string()))
@@ -160,7 +160,7 @@ hooli_account = "user@hmail.com"
             Some("#ac725e".to_string()),
             Some(false),
             Some(CalendarRemoteConfig {
-                provider: ProviderSlug::from("hooli"),
+                provider_slug: ProviderSlug::from("hooli"),
                 params,
             }),
         );
