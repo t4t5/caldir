@@ -72,3 +72,82 @@ fn is_executable(path: &Path) -> bool {
 fn is_executable(path: &Path) -> bool {
     path.is_file()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_provider_binary(dir: &Path, name: &str) -> PathBuf {
+        let path = dir.join(format!("{}{}", name, std::env::consts::EXE_SUFFIX));
+
+        std::fs::write(&path, b"").unwrap();
+
+        // Set executable permissions to executable:
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&path, perms).unwrap();
+        }
+
+        path
+    }
+
+    #[test]
+    fn from_binary_path_succeeds_for_valid_provider_binary() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let bin = create_provider_binary(tmp.path(), "caldir-provider-hooli");
+
+        let provider = Provider::from_binary_path(bin.clone()).unwrap();
+
+        assert_eq!(provider.slug.as_str(), "hooli");
+        assert_eq!(provider.bin_path, bin);
+    }
+
+    #[test]
+    fn from_binary_path_errors_when_file_does_not_exist() {
+        let tmp = tempfile::TempDir::new().unwrap();
+
+        let bin = tmp.path().join(format!(
+            "caldir-provider-hooli{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+
+        let result = Provider::from_binary_path(bin.clone());
+
+        assert!(matches!(result, Err(ProviderError::NotExecutable(p)) if p == bin));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn from_binary_path_errors_when_file_not_executable() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let bin = tmp.path().join("caldir-provider-hooli");
+        std::fs::write(&bin, b"").unwrap();
+
+        let result = Provider::from_binary_path(bin.clone());
+
+        assert!(matches!(result, Err(ProviderError::NotExecutable(p)) if p == bin));
+    }
+
+    #[test]
+    fn from_binary_path_errors_when_filename_lacks_prefix() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let bin = create_provider_binary(tmp.path(), "hooli");
+
+        let result = Provider::from_binary_path(bin.clone());
+
+        assert!(matches!(result, Err(ProviderError::InvalidProviderFilename(p)) if p == bin));
+    }
+
+    #[test]
+    fn from_binary_path_errors_when_slug_is_empty() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let bin = create_provider_binary(tmp.path(), "caldir-provider-");
+
+        let result = Provider::from_binary_path(bin.clone());
+
+        assert!(matches!(result, Err(ProviderError::InvalidProviderFilename(p)) if p == bin));
+    }
+}
