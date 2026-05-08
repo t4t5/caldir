@@ -1,18 +1,19 @@
 mod error;
 mod remote;
 
-use remote::CalendarRemoteConfig;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-pub use error::CalendarConfigError;
+pub(crate) use error::CalendarConfigError;
+pub use remote::CalendarRemoteConfig;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CalendarConfig {
     name: Option<String>,
     color: Option<String>,
     read_only: Option<bool>,
-    remote: Option<CalendarRemoteConfig>,
+    #[serde(rename = "remote")]
+    remote_config: Option<CalendarRemoteConfig>,
 }
 
 impl CalendarConfig {
@@ -20,13 +21,13 @@ impl CalendarConfig {
         name: Option<String>,
         color: Option<String>,
         read_only: Option<bool>,
-        remote: Option<CalendarRemoteConfig>,
+        remote_config: Option<CalendarRemoteConfig>,
     ) -> Self {
         Self {
             name,
             color,
             read_only,
-            remote,
+            remote_config,
         }
     }
 
@@ -62,6 +63,10 @@ impl CalendarConfig {
 
     fn to_toml(&self) -> Result<String, toml::ser::Error> {
         toml::to_string(self)
+    }
+
+    pub(crate) fn remote_config(&self) -> Option<&CalendarRemoteConfig> {
+        self.remote_config.as_ref()
     }
 }
 
@@ -122,7 +127,7 @@ hooli_account = "user@hmail.com"
         assert_eq!(config.name.as_deref(), Some("Demo"));
         assert_eq!(config.color.as_deref(), Some("#ac725e"));
         assert_eq!(config.read_only, Some(false));
-        let remote = config.remote.expect("remote should be present");
+        let remote = config.remote_config.expect("remote should be present");
         assert_eq!(remote.provider_slug.to_string(), "hooli");
         assert_eq!(
             remote.params.get("hooli_account"),

@@ -6,7 +6,7 @@ use crate::Event;
 use event::CalendarEventError;
 use std::path::{Path, PathBuf};
 
-pub use config::CalendarConfig;
+pub use config::{CalendarConfig, CalendarRemoteConfig};
 pub use error::CalendarError;
 pub use event::CalendarEvent;
 
@@ -102,6 +102,10 @@ impl Calendar {
     pub fn delete_event(&self, event_slug: &str) -> Result<(), CalendarEventError> {
         let event = self.event(event_slug)?;
         event.delete()
+    }
+
+    fn remote_config(&self) -> Option<&CalendarRemoteConfig> {
+        self.config.as_ref().and_then(|c| c.remote_config())
     }
 }
 
