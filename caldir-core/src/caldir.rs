@@ -71,21 +71,24 @@ impl Caldir {
         calendars
     }
 
-    fn connections(&self) -> Result<Vec<Connection>, CaldirError> {
-        let mut connected = Vec::new();
+    fn connections(&self) -> Vec<Result<Connection, CaldirError>> {
+        let mut connections = Vec::new();
 
-        for cal in self.calendars() {
-            let Some(remote_config) = cal.remote_config().cloned() else {
+        for calendar in self.calendars() {
+            let Some(remote_config) = calendar.remote_config().cloned() else {
                 continue;
             };
 
-            let provider = self.provider(remote_config.provider_slug())?;
-            let remote = Remote::new(provider.clone(), remote_config);
+            let connection = self
+                .provider(remote_config.provider_slug())
+                .map(|provider| {
+                    Connection::new(calendar, Remote::new(provider.clone(), remote_config))
+                });
 
-            connected.push(Connection::new(cal, remote));
+            connections.push(connection);
         }
 
-        Ok(connected)
+        connections
     }
 
     fn provider(&self, provider_slug: &ProviderSlug) -> Result<&Provider, CaldirError> {
@@ -185,7 +188,7 @@ mod tests {
     fn connections_is_empty_when_no_calendars_exist() {
         let (_tmp, caldir) = test_caldir();
 
-        assert!(caldir.connections().unwrap().is_empty());
+        assert!(caldir.connections().is_empty());
     }
 
     #[test]
@@ -194,7 +197,7 @@ mod tests {
 
         caldir.create_calendar("local-only", None).unwrap();
 
-        assert!(caldir.connections().unwrap().is_empty());
+        assert!(caldir.connections().is_empty());
     }
 
     #[test]
@@ -213,14 +216,15 @@ mod tests {
         caldir.create_calendar("work", Some(config)).unwrap();
         caldir.create_calendar("local-only", None).unwrap();
 
-        let connected = caldir.connections().unwrap();
+        let connections = caldir.connections();
 
-        assert_eq!(connected.len(), 1);
-        assert_eq!(connected[0].calendar().slug().unwrap(), "work");
+        assert_eq!(connections.len(), 1);
+        let connection = connections[0].as_ref().unwrap();
+        assert_eq!(connection.calendar().slug().unwrap(), "work");
     }
 
     #[test]
-    fn connections_errors_when_remote_provider_missing_from_registry() {
+    fn connections_returns_err_for_calendar_with_missing_provider() {
         let (_tmp, caldir) = test_caldir();
 
         let remote_config = test_remote_config("hooli");
@@ -229,12 +233,37 @@ mod tests {
 
         caldir.create_calendar("work", Some(config)).unwrap();
 
-        let result = caldir.connections();
+        let connections = caldir.connections();
 
+        assert_eq!(connections.len(), 1);
         assert!(matches!(
-            result,
+            connections[0],
             Err(CaldirError::Provider(ProviderError::ProviderNotFound(_)))
         ));
+    }
+
+    #[test]
+    fn connections_returns_ok_and_err_independently_per_calendar() {
+        let (_tmp_bin, provider) = test_provider("hooli");
+        let mut registry = ProviderRegistry::new();
+        registry.add(provider);
+
+        let (_tmp, config) = test_caldir_config();
+        let caldir = Caldir::new(config, registry);
+
+        let mut work_config = test_calendar_config();
+        work_config.update_remote(test_remote_config("hooli"));
+        caldir.create_calendar("work", Some(work_config)).unwrap();
+
+        let mut other_config = test_calendar_config();
+        other_config.update_remote(test_remote_config("aviato"));
+        caldir.create_calendar("other", Some(other_config)).unwrap();
+
+        let connected = caldir.connections();
+
+        assert_eq!(connected.len(), 2);
+        assert_eq!(connected.iter().filter(|r| r.is_ok()).count(), 1);
+        assert_eq!(connected.iter().filter(|r| r.is_err()).count(), 1);
     }
 
     #[test]
