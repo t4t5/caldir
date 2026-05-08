@@ -32,12 +32,6 @@ impl Caldir {
         Ok(Calendar::create(&calendar_path, config)?)
     }
 
-    pub fn provider(&self, provider_slug: ProviderSlug) -> Result<&Provider, CaldirError> {
-        self.providers
-            .get(&provider_slug)
-            .map_err(CaldirError::Provider)
-    }
-
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
     /// If the base slug exists, tries slug-2, slug-3, etc.
     fn find_best_available_calendar_slug(&self, desired: &str) -> String {
@@ -56,6 +50,29 @@ impl Caldir {
             }
             suffix += 1;
         }
+    }
+
+    fn calendars(&self) -> Vec<Calendar> {
+        let mut calendars = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(self.data_dir()) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir()
+                    && !entry.file_name().to_string_lossy().starts_with('.')
+                    && let Ok(calendar) = Calendar::load(&entry.path())
+                {
+                    calendars.push(calendar);
+                }
+            }
+        }
+
+        calendars
+    }
+
+    fn provider(&self, provider_slug: ProviderSlug) -> Result<&Provider, CaldirError> {
+        self.providers
+            .get(&provider_slug)
+            .map_err(CaldirError::Provider)
     }
 }
 
@@ -97,6 +114,50 @@ mod tests {
 
         let calendar_3 = caldir.create_calendar("work", None).unwrap();
         assert_eq!(calendar_3.slug().unwrap(), "work-3");
+    }
+
+    #[test]
+    fn calendars_returns_empty_if_no_calendars() {
+        let (_tmp, caldir) = test_caldir();
+
+        assert!(caldir.calendars().is_empty());
+    }
+
+    #[test]
+    fn calendars_returns_each_calendar_subdirectory() {
+        let (_tmp, caldir) = test_caldir();
+
+        caldir.create_calendar("personal", None).unwrap();
+        caldir.create_calendar("work", None).unwrap();
+
+        let calendars = caldir.calendars();
+
+        let mut slugs: Vec<String> = calendars
+            .iter()
+            .map(|c| c.slug().unwrap().to_string())
+            .collect();
+
+        slugs.sort();
+
+        assert_eq!(slugs, vec!["personal", "work"]);
+    }
+
+    #[test]
+    fn calendars_ignores_hidden_directories() {
+        let (_tmp, caldir) = test_caldir();
+
+        caldir.create_calendar("work", None).unwrap();
+        std::fs::create_dir_all(caldir.data_dir().join(".hidden")).unwrap();
+        std::fs::create_dir_all(caldir.data_dir().join(".git")).unwrap();
+
+        let calendars = caldir.calendars();
+
+        let mut slugs: Vec<String> = calendars
+            .iter()
+            .map(|c| c.slug().unwrap().to_string())
+            .collect();
+
+        assert_eq!(slugs, vec!["work"]);
     }
 
     #[test]
