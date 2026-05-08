@@ -10,14 +10,20 @@ use crate::{
 use tempfile::TempDir;
 
 pub fn test_caldir() -> (TempDir, Caldir) {
+    let (tmp_data_dir, test_caldir_config) = test_caldir_config();
+
+    let caldir = Caldir::new(test_caldir_config, ProviderRegistry::new());
+
+    (tmp_data_dir, caldir)
+}
+
+pub fn test_caldir_config() -> (TempDir, CaldirConfig) {
     let tmp = TempDir::new().unwrap();
-    let caldir = Caldir::new(
-        CaldirConfig {
-            calendar_dir: tmp.path().to_path_buf(),
-        },
-        ProviderRegistry::new(),
-    );
-    (tmp, caldir)
+    let data_dir = tmp.path().join("calendars");
+
+    let config = CaldirConfig::new(data_dir);
+
+    (tmp, config)
 }
 
 pub fn test_calendar() -> (TempDir, Calendar) {

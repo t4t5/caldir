@@ -105,16 +105,16 @@ mod tests {
     }
 
     #[test]
-    fn parses_full_config_with_remote() {
+    fn from_toml_parses_full_config_with_remote() {
         let toml_str = r##"
 name = "Demo"
 color = "#ac725e"
 read_only = false
 
 [remote]
-provider = "google"
-google_calendar_id = "abc@group.calendar.google.com"
-google_account = "user@gmail.com"
+provider = "hooli"
+hooli_calendar_id = "abc@group.calendar.hooli.com"
+hooli_account = "user@hmail.com"
 "##;
 
         let config = CalendarConfig::from_toml(toml_str).unwrap();
@@ -123,10 +123,10 @@ google_account = "user@gmail.com"
         assert_eq!(config.color.as_deref(), Some("#ac725e"));
         assert_eq!(config.read_only, Some(false));
         let remote = config.remote.expect("remote should be present");
-        assert_eq!(remote.provider.to_string(), "google");
+        assert_eq!(remote.provider.to_string(), "hooli");
         assert_eq!(
-            remote.params.get("google_account"),
-            Some(&toml::Value::String("user@gmail.com".to_string()))
+            remote.params.get("hooli_account"),
+            Some(&toml::Value::String("user@hmail.com".to_string()))
         );
     }
 
@@ -148,19 +148,19 @@ google_account = "user@gmail.com"
     fn writes_full_config_with_remote_to_expected_toml() {
         let mut params = std::collections::BTreeMap::new();
         params.insert(
-            "google_calendar_id".to_string(),
-            toml::Value::String("abc@group.calendar.google.com".to_string()),
+            "hooli_calendar_id".to_string(),
+            toml::Value::String("abc@group.calendar.hooli.com".to_string()),
         );
         params.insert(
-            "google_account".to_string(),
-            toml::Value::String("user@gmail.com".to_string()),
+            "hooli_account".to_string(),
+            toml::Value::String("user@hmail.com".to_string()),
         );
         let config = CalendarConfig::new(
             Some("Demo".to_string()),
             Some("#ac725e".to_string()),
             Some(false),
             Some(CalendarRemoteConfig {
-                provider: ProviderSlug::from("google"),
+                provider: ProviderSlug::from("hooli"),
                 params,
             }),
         );
@@ -172,9 +172,9 @@ color = "#ac725e"
 read_only = false
 
 [remote]
-provider = "google"
-google_account = "user@gmail.com"
-google_calendar_id = "abc@group.calendar.google.com"
+provider = "hooli"
+hooli_account = "user@hmail.com"
+hooli_calendar_id = "abc@group.calendar.hooli.com"
 "##;
         assert_eq!(serialized, expected);
     }

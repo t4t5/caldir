@@ -14,14 +14,14 @@ impl Caldir {
         Caldir { config, providers }
     }
 
-    pub fn dir(&self) -> PathBuf {
-        self.config.calendar_dir()
+    pub fn data_dir(&self) -> PathBuf {
+        self.config.data_dir()
     }
 
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
     /// If the base slug exists, tries slug-2, slug-3, etc.
     pub(crate) fn unique_calendar_slug(&self, desired: &str) -> String {
-        let calendar_dir = self.config.calendar_dir();
+        let calendar_dir = self.config.data_dir();
 
         if !calendar_dir.join(desired).exists() {
             return desired.to_string();

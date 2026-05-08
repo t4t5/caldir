@@ -24,7 +24,7 @@ impl Calendar {
         config: Option<CalendarConfig>,
     ) -> Result<Self, CalendarError> {
         let unique_slug = caldir.unique_calendar_slug(desired_slug);
-        let path = caldir.dir().join(unique_slug);
+        let path = caldir.data_dir().join(unique_slug);
 
         // create calendar directory and its .caldir/ subdirectory:
         std::fs::create_dir_all(calendar_dotdir(&path))?;
@@ -38,17 +38,18 @@ impl Calendar {
     }
 
     /// Load existing calendar
-    pub fn load(caldir: &Caldir, slug: &str) -> Result<Self, CalendarError> {
-        let path = caldir.dir().join(slug);
-
+    pub fn load(path: &Path) -> Result<Self, CalendarError> {
         if !path.is_dir() {
-            return Err(CalendarError::NotFound(path));
+            return Err(CalendarError::NotFound(path.to_path_buf()));
         }
 
-        let config_path = calendar_config_path(&path);
+        let config_path = calendar_config_path(path);
         let config = CalendarConfig::load_optional(&config_path)?;
 
-        Ok(Self { path, config })
+        Ok(Self {
+            path: path.to_path_buf(),
+            config,
+        })
     }
 
     pub fn path(&self) -> &Path {
@@ -121,11 +122,11 @@ mod tests {
 
     #[test]
     fn create_creates_directory_with_desired_slug() {
-        let (tmp, caldir) = test_caldir();
+        let (_tmp, caldir) = test_caldir();
 
         let calendar = Calendar::create(&caldir, "work", None).unwrap();
 
-        assert_eq!(calendar.path(), tmp.path().join("work"));
+        assert_eq!(calendar.path(), caldir.data_dir().join("work"));
         assert_eq!(calendar.slug().unwrap(), "work");
         assert!(calendar.path().is_dir());
     }
@@ -173,7 +174,7 @@ mod tests {
             calendar.config_path().to_str().unwrap(),
             format!(
                 "{}/personal/.caldir/config.toml",
-                caldir.dir().to_str().unwrap()
+                caldir.data_dir().to_str().unwrap()
             )
         );
 
@@ -184,30 +185,30 @@ mod tests {
     #[test]
     fn load_returns_existing_calendar() {
         let (_tmp, caldir) = test_caldir();
-        Calendar::create(&caldir, "personal", None).unwrap();
+        let created = Calendar::create(&caldir, "personal", None).unwrap();
 
-        let calendar = Calendar::load(&caldir, "personal").unwrap();
+        let calendar = Calendar::load(created.path()).unwrap();
 
         assert_eq!(calendar.slug().unwrap(), "personal");
     }
 
     #[test]
     fn load_errors_when_directory_missing() {
-        let (_tmp, caldir) = test_caldir();
+        let (tmp, _caldir) = test_caldir();
 
-        let result = Calendar::load(&caldir, "missing");
+        let result = Calendar::load(&tmp.path().join("missing"));
 
         assert!(matches!(result, Err(CalendarError::NotFound(_))));
     }
 
     #[test]
     fn load_errors_when_not_directory() {
-        let (tmp, caldir) = test_caldir();
+        let (tmp, _caldir) = test_caldir();
 
         let file_path = tmp.path().join("not_a_directory");
         std::fs::write(&file_path, "I am a file, not a directory").unwrap();
 
-        let result = Calendar::load(&caldir, "not_a_directory");
+        let result = Calendar::load(&file_path);
 
         assert!(matches!(result, Err(CalendarError::NotFound(p)) if p == file_path));
     }
@@ -216,6 +217,7 @@ mod tests {
     fn events_only_returns_events_from_current_calendar() {
         let (_tmp, caldir) = test_caldir();
 
+        // 2 calendars in the same caldir data directory:
         let work = Calendar::create(&caldir, "work", None).unwrap();
         let personal = Calendar::create(&caldir, "personal", None).unwrap();
 
