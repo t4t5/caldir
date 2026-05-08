@@ -27,3 +27,16 @@ impl fmt::Display for ProviderSlug {
         f.write_str(&self.0)
     }
 }
+
+pub const PROVIDER_BINARY_PREFIX: &str = "caldir-provider-";
+
+pub fn provider_slug_from_filename(filename: &str) -> Option<ProviderSlug> {
+    let slug = filename.strip_prefix(PROVIDER_BINARY_PREFIX)?;
+    let slug = slug.strip_suffix(std::env::consts::EXE_SUFFIX)?;
+
+    if slug.is_empty() {
+        return None;
+    }
+
+    Some(ProviderSlug::from(slug))
+}

@@ -3,7 +3,7 @@ use crate::{Provider, ProviderSlug};
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::PROVIDER_BINARY_PREFIX;
+use super::slug::PROVIDER_BINARY_PREFIX;
 
 pub struct ProviderRegistry(HashMap<ProviderSlug, Provider>);
 

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 pub(crate) use error::ProviderError;
 pub use registry::ProviderRegistry;
-pub use slug::ProviderSlug;
+pub use slug::{ProviderSlug, provider_slug_from_filename};
 
 #[derive(Debug, Clone)]
 pub struct Provider {
@@ -43,19 +43,6 @@ impl Provider {
     fn bin_path(&self) -> &Path {
         &self.bin_path
     }
-}
-
-const PROVIDER_BINARY_PREFIX: &str = "caldir-provider-";
-
-fn provider_slug_from_filename(filename: &str) -> Option<ProviderSlug> {
-    let slug = filename.strip_prefix(PROVIDER_BINARY_PREFIX)?;
-    let slug = slug.strip_suffix(std::env::consts::EXE_SUFFIX)?;
-
-    if slug.is_empty() {
-        return None;
-    }
-
-    Some(ProviderSlug::from(slug))
 }
 
 #[cfg(unix)]
