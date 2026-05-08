@@ -113,11 +113,11 @@ mod tests {
     #[test]
     fn converts_uid() {
         let mut event = test_event();
-        event.uid = EventUid("abc123@google.com".to_string());
+        event.uid = EventUid("abc123@hooli.com".to_string());
 
         let ical_event: icalendar::Event = event.into();
 
-        assert_eq!(ical_event.get_uid(), Some("abc123@google.com"));
+        assert_eq!(ical_event.get_uid(), Some("abc123@hooli.com"));
     }
 
     #[test]
@@ -405,15 +405,15 @@ mod tests {
     fn converts_x_properties() {
         let mut event = test_event();
         event.x_properties = vec![crate::event::XProperty::new(
-            "X-GOOGLE-EVENT-ID",
-            "abc123@google.com",
+            "X-HOOLI-EVENT-ID",
+            "abc123@hooli.com",
         )];
 
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(
-            ical_event.property_value("X-GOOGLE-EVENT-ID"),
-            Some("abc123@google.com")
+            ical_event.property_value("X-HOOLI-EVENT-ID"),
+            Some("abc123@hooli.com")
         );
     }
 

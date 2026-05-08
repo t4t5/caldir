@@ -48,11 +48,11 @@ mod tests {
 
     #[test]
     fn parses_name_and_value() {
-        let prop = Property::new("X-GOOGLE-EVENT-ID", "abc123").done();
+        let prop = Property::new("X-HOOLI-EVENT-ID", "abc123").done();
 
         let x = XProperty::from(&prop);
 
-        assert_eq!(x.name, "X-GOOGLE-EVENT-ID");
+        assert_eq!(x.name, "X-HOOLI-EVENT-ID");
         assert_eq!(x.value, "abc123");
         assert!(x.params.is_empty());
     }
@@ -72,11 +72,11 @@ mod tests {
 
     #[test]
     fn writes_name_and_value() {
-        let x = XProperty::new("X-GOOGLE-EVENT-ID", "abc123");
+        let x = XProperty::new("X-HOOLI-EVENT-ID", "abc123");
 
         let prop = Property::from(&x);
 
-        assert_eq!(prop.key(), "X-GOOGLE-EVENT-ID");
+        assert_eq!(prop.key(), "X-HOOLI-EVENT-ID");
         assert_eq!(prop.value(), "abc123");
         assert!(prop.params().is_empty());
     }

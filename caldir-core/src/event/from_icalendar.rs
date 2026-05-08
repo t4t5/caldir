@@ -137,11 +137,11 @@ mod tests {
 
     #[test]
     fn converts_uid() {
-        let ical_event = test_icalendar_event().uid("abc123@google.com").done();
+        let ical_event = test_icalendar_event().uid("abc123@hooli.com").done();
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.uid.as_str(), "abc123@google.com");
+        assert_eq!(event.uid.as_str(), "abc123@hooli.com");
     }
 
     #[test]
@@ -446,8 +446,8 @@ mod tests {
     fn converts_x_properties() {
         let ical_event = test_icalendar_event()
             .append_property(icalendar::Property::new(
-                "X-GOOGLE-EVENT-ID",
-                "abc123@google.com",
+                "X-HOOLI-EVENT-ID",
+                "abc123@hooli.com",
             ))
             .done();
 
@@ -455,7 +455,7 @@ mod tests {
 
         assert_eq!(
             event.x_properties,
-            vec![XProperty::new("X-GOOGLE-EVENT-ID", "abc123@google.com")]
+            vec![XProperty::new("X-HOOLI-EVENT-ID", "abc123@hooli.com")]
         );
     }
 

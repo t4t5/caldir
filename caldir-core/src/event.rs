@@ -259,8 +259,8 @@ SUMMARY:Friday retro
 TRANSP:TRANSPARENT
 UID:event-uid-123@example.com
 URL:https://meet.example.com/abc-defg-hij
-X-GOOGLE-CONFERENCE:https://meet.example.com/abc-defg-hij
-X-GOOGLE-EVENT-ID:event-uid-123_20260515T140000Z
+X-HOOLI-CONFERENCE:https://meet.example.com/abc-defg-hij
+X-HOOLI-EVENT-ID:event-uid-123_20260515T140000Z
 ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
 ATTENDEE;PARTSTAT=DECLINED:mailto:alice@example.com
 ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:carol@example.com
