@@ -72,6 +72,7 @@ impl Caldir {
         calendars
     }
 
+    /// Calendars with a remote:
     fn connected_calendars(&self) -> Result<Vec<ConnectedCalendar>, CaldirError> {
         let mut connected = Vec::new();
 
@@ -109,7 +110,9 @@ impl Default for Caldir {
 mod tests {
     use super::*;
     use crate::provider::ProviderError;
-    use crate::test_utils::{test_binary, test_caldir, test_caldir_config};
+    use crate::test_utils::{
+        test_caldir, test_caldir_config, test_calendar_config, test_provider, test_remote_config,
+    };
 
     #[test]
     fn create_calendar_creates_directory_with_desired_slug() {
@@ -181,10 +184,66 @@ mod tests {
     }
 
     #[test]
-    fn provider_returns_provider_when_present_in_registry() {
-        let (_tmp_bin, bin_path) = test_binary("caldir-provider-hooli");
+    fn connected_calendars_is_empty_when_no_calendars_exist() {
+        let (_tmp, caldir) = test_caldir();
+
+        assert!(caldir.connected_calendars().unwrap().is_empty());
+    }
+
+    #[test]
+    fn connected_calendars_skips_calendars_without_remote() {
+        let (_tmp, caldir) = test_caldir();
+
+        caldir.create_calendar("local-only", None).unwrap();
+
+        assert!(caldir.connected_calendars().unwrap().is_empty());
+    }
+
+    #[test]
+    fn connected_calendars_returns_calendar_with_remote() {
+        let (_tmp_bin, provider) = test_provider("hooli");
         let mut registry = ProviderRegistry::new();
-        registry.add(Provider::from_binary_path(bin_path).unwrap());
+        registry.add(provider);
+
+        let (_tmp, config) = test_caldir_config();
+        let caldir = Caldir::new(config, registry);
+
+        let remote_config = test_remote_config("hooli");
+        let mut config = test_calendar_config();
+        config.update_remote(remote_config);
+
+        caldir.create_calendar("work", Some(config)).unwrap();
+        caldir.create_calendar("local-only", None).unwrap();
+
+        let connected = caldir.connected_calendars().unwrap();
+
+        assert_eq!(connected.len(), 1);
+        assert_eq!(connected[0].calendar().slug().unwrap(), "work");
+    }
+
+    #[test]
+    fn connected_calendars_errors_when_remote_provider_missing_from_registry() {
+        let (_tmp, caldir) = test_caldir();
+
+        let remote_config = test_remote_config("hooli");
+        let mut config = test_calendar_config();
+        config.update_remote(remote_config);
+
+        caldir.create_calendar("work", Some(config)).unwrap();
+
+        let result = caldir.connected_calendars();
+
+        assert!(matches!(
+            result,
+            Err(CaldirError::Provider(ProviderError::ProviderNotFound(_)))
+        ));
+    }
+
+    #[test]
+    fn provider_returns_provider_when_present_in_registry() {
+        let (_tmp_bin, provider) = test_provider("hooli");
+        let mut registry = ProviderRegistry::new();
+        registry.add(provider);
 
         let (_tmp, config) = test_caldir_config();
         let caldir = Caldir::new(config, registry);

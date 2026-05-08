@@ -67,6 +67,10 @@ impl CalendarConfig {
     pub(crate) fn remote_config(&self) -> Option<&RemoteConfig> {
         self.remote_config.as_ref()
     }
+
+    pub(crate) fn update_remote(&mut self, remote_config: RemoteConfig) {
+        self.remote_config = Some(remote_config);
+    }
 }
 
 #[cfg(test)]
@@ -181,5 +185,30 @@ hooli_account = "user@hmail.com"
 hooli_calendar_id = "abc@group.calendar.hooli.com"
 "##;
         assert_eq!(serialized, expected);
+    }
+
+    #[test]
+    fn update_remote_sets_remote_config() {
+        let mut config = test_calendar_config();
+        assert!(config.remote_config().is_none());
+
+        let remote = RemoteConfig::new(ProviderSlug::from("hooli"), RemoteConfigParams::new());
+        config.update_remote(remote.clone());
+
+        assert_eq!(config.remote_config(), Some(&remote));
+    }
+
+    #[test]
+    fn update_remote_overwrites_existing_remote_config() {
+        let mut config = test_calendar_config();
+        config.update_remote(RemoteConfig::new(
+            ProviderSlug::from("hooli"),
+            RemoteConfigParams::new(),
+        ));
+
+        let new_remote = RemoteConfig::new(ProviderSlug::from("aviato"), RemoteConfigParams::new());
+        config.update_remote(new_remote.clone());
+
+        assert_eq!(config.remote_config(), Some(&new_remote));
     }
 }

@@ -4,8 +4,8 @@ use chrono::NaiveDate;
 use icalendar::{Component, EventLike};
 
 use crate::{
-    Caldir, CaldirConfig, Calendar, CalendarConfig, CalendarEvent, Event, EventTime,
-    ProviderRegistry,
+    Caldir, CaldirConfig, Calendar, CalendarConfig, CalendarEvent, Event, EventTime, Provider,
+    ProviderRegistry, ProviderSlug, RemoteConfig, RemoteConfigParams,
 };
 use tempfile::TempDir;
 
@@ -75,6 +75,17 @@ pub fn test_calendar_config() -> CalendarConfig {
         Some(false),
         None,
     )
+}
+
+pub fn test_remote_config(provider_slug: &str) -> RemoteConfig {
+    let params = RemoteConfigParams::new();
+    RemoteConfig::new(ProviderSlug::from(provider_slug), params)
+}
+
+pub fn test_provider(slug: &str) -> (TempDir, Provider) {
+    let (tmp, bin_path) = test_binary(&format!("caldir-provider-{slug}"));
+    let provider = Provider::from_binary_path(bin_path).unwrap();
+    (tmp, provider)
 }
 
 pub fn test_binary(filename: &str) -> (TempDir, PathBuf) {
