@@ -1,37 +1,10 @@
 mod error;
-
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::{fmt, path::PathBuf};
+mod slug;
 
 use error::ProviderError;
+use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ProviderSlug(String);
-
-impl ProviderSlug {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<String> for ProviderSlug {
-    fn from(value: String) -> Self {
-        Self(value)
-    }
-}
-
-impl From<&str> for ProviderSlug {
-    fn from(value: &str) -> Self {
-        Self(value.to_string())
-    }
-}
-
-impl fmt::Display for ProviderSlug {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
+pub use slug::ProviderSlug;
 
 pub struct Provider {
     slug: ProviderSlug,
@@ -44,13 +17,10 @@ impl Provider {
             return Err(ProviderError::NotExecutable(binary_path));
         }
 
-        let filename = binary_path
+        let slug = binary_path
             .file_name()
-            .ok_or_else(|| ProviderError::MissingFilename(binary_path.clone()))?
-            .to_str()
-            .ok_or_else(|| ProviderError::NonUtf8Filename(binary_path.clone()))?;
-
-        let slug = provider_slug_from_filename(filename)
+            .and_then(|filename| filename.to_str())
+            .and_then(provider_slug_from_filename)
             .ok_or_else(|| ProviderError::InvalidProviderFilename(binary_path.clone()))?;
 
         Ok(Provider::new(slug, &binary_path))
