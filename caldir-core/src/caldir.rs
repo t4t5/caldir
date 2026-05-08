@@ -152,7 +152,7 @@ mod tests {
 
         let calendars = caldir.calendars();
 
-        let mut slugs: Vec<String> = calendars
+        let slugs: Vec<String> = calendars
             .iter()
             .map(|c| c.slug().unwrap().to_string())
             .collect();

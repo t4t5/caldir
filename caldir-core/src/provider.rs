@@ -14,7 +14,7 @@ pub struct Provider {
 }
 
 impl Provider {
-    pub fn from_binary_path(binary_path: PathBuf) -> Result<Self, ProviderError> {
+    pub(crate) fn from_binary_path(binary_path: PathBuf) -> Result<Self, ProviderError> {
         if !is_executable(&binary_path) {
             return Err(ProviderError::NotExecutable(binary_path));
         }

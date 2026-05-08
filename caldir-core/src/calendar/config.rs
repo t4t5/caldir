@@ -73,7 +73,8 @@ impl CalendarConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ProviderSlug, test_utils::test_calendar_config};
+    use crate::test_utils::test_calendar_config;
+    use crate::{ProviderSlug, RemoteConfig};
 
     #[test]
     fn write_saves_config_to_file() {
@@ -127,10 +128,11 @@ hooli_account = "user@hmail.com"
         assert_eq!(config.name.as_deref(), Some("Demo"));
         assert_eq!(config.color.as_deref(), Some("#ac725e"));
         assert_eq!(config.read_only, Some(false));
-        let remote = config.remote_config.expect("remote should be present");
-        assert_eq!(remote.provider_slug.to_string(), "hooli");
+
+        let remote_config = config.remote_config.expect("remote should be present");
+        assert_eq!(remote_config.provider_slug().to_string(), "hooli");
         assert_eq!(
-            remote.params.get("hooli_account"),
+            remote_config.get("hooli_account"),
             Some(&toml::Value::String("user@hmail.com".to_string()))
         );
     }
@@ -151,12 +153,13 @@ hooli_account = "user@hmail.com"
 
     #[test]
     fn writes_full_config_with_remote_to_expected_toml() {
-        let mut params = std::collections::BTreeMap::new();
-        params.insert(
+        let mut remote_config = RemoteConfig::new();
+
+        remote_config.insert(
             "hooli_calendar_id".to_string(),
             toml::Value::String("abc@group.calendar.hooli.com".to_string()),
         );
-        params.insert(
+        remote_config.insert(
             "hooli_account".to_string(),
             toml::Value::String("user@hmail.com".to_string()),
         );
@@ -164,10 +167,10 @@ hooli_account = "user@hmail.com"
             Some("Demo".to_string()),
             Some("#ac725e".to_string()),
             Some(false),
-            Some(CalendarRemoteConfig {
-                provider_slug: ProviderSlug::from("hooli"),
-                params,
-            }),
+            Some(CalendarRemoteConfig::new(
+                ProviderSlug::from("hooli"),
+                remote_config,
+            )),
         );
 
         let serialized = config.to_toml().unwrap();
