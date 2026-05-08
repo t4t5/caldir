@@ -1,11 +1,12 @@
 use crate::{Calendar, Remote};
 
-pub struct ConnectedCalendar {
+/// A connection is a [local calendar] + [remote calendar] pair
+pub struct Connection {
     calendar: Calendar,
     remote: Remote,
 }
 
-impl ConnectedCalendar {
+impl Connection {
     pub fn new(calendar: Calendar, remote: Remote) -> Self {
         Self { calendar, remote }
     }

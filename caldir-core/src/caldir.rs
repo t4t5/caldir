@@ -2,8 +2,7 @@ mod config;
 mod error;
 
 use crate::{
-    Calendar, CalendarConfig, Provider, ProviderRegistry, ProviderSlug, Remote,
-    connected_calendar::ConnectedCalendar,
+    Calendar, CalendarConfig, Connection, Provider, ProviderRegistry, ProviderSlug, Remote,
 };
 use std::path::PathBuf;
 
@@ -72,8 +71,7 @@ impl Caldir {
         calendars
     }
 
-    /// Calendars with a remote:
-    fn connected_calendars(&self) -> Result<Vec<ConnectedCalendar>, CaldirError> {
+    fn connections(&self) -> Result<Vec<Connection>, CaldirError> {
         let mut connected = Vec::new();
 
         for cal in self.calendars() {
@@ -84,7 +82,7 @@ impl Caldir {
             let provider = self.provider(remote_config.provider_slug())?;
             let remote = Remote::new(provider.clone(), remote_config);
 
-            connected.push(ConnectedCalendar::new(cal, remote));
+            connected.push(Connection::new(cal, remote));
         }
 
         Ok(connected)
@@ -184,23 +182,23 @@ mod tests {
     }
 
     #[test]
-    fn connected_calendars_is_empty_when_no_calendars_exist() {
+    fn connections_is_empty_when_no_calendars_exist() {
         let (_tmp, caldir) = test_caldir();
 
-        assert!(caldir.connected_calendars().unwrap().is_empty());
+        assert!(caldir.connections().unwrap().is_empty());
     }
 
     #[test]
-    fn connected_calendars_skips_calendars_without_remote() {
+    fn connections_skips_calendars_without_remote() {
         let (_tmp, caldir) = test_caldir();
 
         caldir.create_calendar("local-only", None).unwrap();
 
-        assert!(caldir.connected_calendars().unwrap().is_empty());
+        assert!(caldir.connections().unwrap().is_empty());
     }
 
     #[test]
-    fn connected_calendars_returns_calendar_with_remote() {
+    fn connections_returns_calendar_with_remote() {
         let (_tmp_bin, provider) = test_provider("hooli");
         let mut registry = ProviderRegistry::new();
         registry.add(provider);
@@ -215,14 +213,14 @@ mod tests {
         caldir.create_calendar("work", Some(config)).unwrap();
         caldir.create_calendar("local-only", None).unwrap();
 
-        let connected = caldir.connected_calendars().unwrap();
+        let connected = caldir.connections().unwrap();
 
         assert_eq!(connected.len(), 1);
         assert_eq!(connected[0].calendar().slug().unwrap(), "work");
     }
 
     #[test]
-    fn connected_calendars_errors_when_remote_provider_missing_from_registry() {
+    fn connections_errors_when_remote_provider_missing_from_registry() {
         let (_tmp, caldir) = test_caldir();
 
         let remote_config = test_remote_config("hooli");
@@ -231,7 +229,7 @@ mod tests {
 
         caldir.create_calendar("work", Some(config)).unwrap();
 
-        let result = caldir.connected_calendars();
+        let result = caldir.connections();
 
         assert!(matches!(
             result,
