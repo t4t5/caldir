@@ -10,7 +10,7 @@ pub(crate) use create_event::CreateEvent;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(crate) trait Rpc: Serialize {
-    type Response: DeserializeOwned;
+    type Response: Serialize + DeserializeOwned;
     const METHOD: Method;
     const TIMEOUT: Duration = DEFAULT_TIMEOUT;
 }

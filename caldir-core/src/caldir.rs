@@ -82,7 +82,10 @@ impl Caldir {
             let connection = self
                 .provider(remote_config.provider_slug())
                 .map(|provider| {
-                    Connection::new(calendar, Remote::new(provider.clone(), remote_config))
+                    Connection::new(
+                        calendar,
+                        Remote::new(provider.clone(), remote_config.params().clone()),
+                    )
                 });
 
             connections.push(connection);

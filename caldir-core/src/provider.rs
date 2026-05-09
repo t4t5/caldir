@@ -1,7 +1,10 @@
 mod error;
 mod registry;
 mod slug;
-mod transport;
+pub(crate) mod transport;
+
+#[cfg(test)]
+pub(crate) mod mock_provider;
 
 use crate::rpc;
 use std::path::Path;
@@ -120,7 +123,7 @@ mod tests {
         value: String,
     }
 
-    #[derive(Deserialize, Debug, PartialEq)]
+    #[derive(Serialize, Deserialize, Debug, PartialEq)]
     struct EchoResponse {
         value: String,
     }

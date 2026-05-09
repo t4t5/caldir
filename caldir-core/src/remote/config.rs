@@ -1,8 +1,12 @@
+mod error;
 mod params;
+
+use std::path::Path;
 
 use crate::ProviderSlug;
 use serde::{Deserialize, Serialize};
 
+use error::RemoteConfigError;
 pub use params::RemoteConfigParams;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -29,7 +33,24 @@ impl RemoteConfig {
         self.params().get(key)
     }
 
-    fn params(&self) -> &RemoteConfigParams {
+    pub fn write(&self, path: &Path) -> Result<(), RemoteConfigError> {
+        let contents = self.to_toml().map_err(RemoteConfigError::InvalidConfig)?;
+
+        std::fs::write(path, contents)?;
+
+        Ok(())
+    }
+
+    fn load(path: &Path) -> Result<Self, RemoteConfigError> {
+        let contents = std::fs::read_to_string(path)?;
+
+        let config = Self::from_toml(&contents)
+            .map_err(|e| RemoteConfigError::InvalidConfigFile(path.into(), e))?;
+
+        Ok(config)
+    }
+
+    pub(crate) fn params(&self) -> &RemoteConfigParams {
         &self.params
     }
 
