@@ -223,7 +223,7 @@ mod tests {
 
         assert_eq!(connections.len(), 1);
         let connection = connections[0].as_ref().unwrap();
-        assert_eq!(connection.calendar().slug().unwrap(), "work");
+        assert_eq!(connection.local().slug().unwrap(), "work");
     }
 
     #[test]

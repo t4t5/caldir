@@ -2,17 +2,17 @@ use crate::{Calendar, Remote};
 
 /// A connection is a [local calendar] + [remote calendar] pair
 pub struct Connection {
-    calendar: Calendar,
+    local: Calendar,
     remote: Remote,
 }
 
 impl Connection {
-    pub fn new(calendar: Calendar, remote: Remote) -> Self {
-        Self { calendar, remote }
+    pub fn new(local: Calendar, remote: Remote) -> Self {
+        Self { local, remote }
     }
 
-    pub fn calendar(&self) -> &Calendar {
-        &self.calendar
+    pub fn local(&self) -> &Calendar {
+        &self.local
     }
 
     pub fn remote(&self) -> &Remote {
