@@ -1,5 +1,5 @@
+mod command;
 mod error;
-mod protocol;
 mod registry;
 mod slug;
 mod transport;
@@ -9,11 +9,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use transport::{ProviderTransport, SubprocessTransport};
 
-pub(crate) use error::ProviderError;
 pub use registry::ProviderRegistry;
 pub use slug::{ProviderSlug, provider_slug_from_filename};
 
-use protocol::{ProviderCommand, Request, Response};
+use command::{CreateEvent, ProviderCommand, ProviderRequest, ProviderResponse};
+pub(crate) use error::ProviderError;
+
+use crate::Event;
+use crate::RemoteConfig;
 
 #[derive(Debug, Clone)]
 pub struct Provider {
@@ -45,14 +48,26 @@ impl Provider {
         &self.slug
     }
 
-    pub(crate) async fn call<Command: ProviderCommand>(
+    pub async fn create_event(
+        &self,
+        event: Event,
+        remote_config: RemoteConfig,
+    ) -> Result<Event, ProviderError> {
+        self.call(CreateEvent {
+            remote_config,
+            event,
+        })
+        .await
+    }
+
+    async fn call<Command: ProviderCommand>(
         &self,
         cmd: Command,
     ) -> Result<Command::Response, ProviderError> {
         let params = serde_json::to_value(&cmd).map_err(ProviderError::Serialize)?;
 
-        let request = Request {
-            command: Command::NAME,
+        let request = ProviderRequest {
+            op: Command::OP,
             params,
         };
 
@@ -63,12 +78,12 @@ impl Provider {
             .exchange(&request_json, Command::TIMEOUT)
             .await?;
 
-        let response: Response<Command::Response> =
+        let response: ProviderResponse<Command::Response> =
             serde_json::from_str(&response_json).map_err(ProviderError::Deserialize)?;
 
         match response {
-            Response::Success { data } => Ok(data),
-            Response::Error { error } => Err(ProviderError::Provider(error)),
+            ProviderResponse::Success { data } => Ok(data),
+            ProviderResponse::Error { error } => Err(ProviderError::Provider(error)),
         }
     }
 
@@ -118,10 +133,11 @@ mod tests {
 
     use serde::{Deserialize, Serialize};
 
+    use crate::provider::command::Op;
     use crate::test_utils::test_binary;
 
-    use super::protocol::Command;
     use super::*;
+    use command::ProviderCommand;
     use transport::ProviderTransportError;
     use transport::mock_transport::MockTransport;
 
@@ -137,7 +153,7 @@ mod tests {
 
     impl ProviderCommand for EchoCommand {
         type Response = EchoResponse;
-        const NAME: Command = Command::ListEvents;
+        const OP: Op = Op::ListEvents;
         const TIMEOUT: Duration = Duration::from_secs(7);
     }
 

@@ -10,6 +10,7 @@ pub(crate) use subprocess_transport::SubprocessTransport;
 use async_trait::async_trait;
 use std::time::Duration;
 
+/// Provider transports take JSON strings in and return JSON strings out
 #[async_trait]
 pub(crate) trait ProviderTransport: std::fmt::Debug + Send + Sync {
     async fn exchange(

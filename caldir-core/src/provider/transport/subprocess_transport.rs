@@ -20,6 +20,8 @@ impl SubprocessTransport {
     }
 }
 
+/// The subprocess transport runs a provider binary as a subprocess.
+/// It then sends JSON strings to it via stdin, and reads JSON strings from its stdout
 #[async_trait]
 impl ProviderTransport for SubprocessTransport {
     async fn exchange(

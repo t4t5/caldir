@@ -1,6 +1,7 @@
 mod config;
 
-use crate::Provider;
+use crate::provider::ProviderError;
+use crate::{Event, Provider};
 pub use config::{RemoteConfig, RemoteConfigParams};
 
 /// remote = a resolved provider with a config
@@ -14,5 +15,9 @@ impl Remote {
         Self { provider, config }
     }
 
-    // can list, create, delete events through RPC calls to the provider
+    pub async fn create_event(&self, event: &Event) -> Result<Event, ProviderError> {
+        self.provider
+            .create_event(event.clone(), self.config.clone())
+            .await
+    }
 }

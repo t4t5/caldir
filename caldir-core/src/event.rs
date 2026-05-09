@@ -17,6 +17,7 @@ pub use error::EventError;
 pub use organizer::Organizer;
 pub use recurrence::Recurrence;
 pub use reminder::Reminder;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use status::Status;
 pub use time::EventTime;
 pub use transparency::Transparency;
@@ -134,6 +135,22 @@ impl Event {
 
     pub fn event_instance_id(&self) -> EventInstanceId {
         EventInstanceId((self.uid.clone(), self.recurrence_id.clone()))
+    }
+}
+
+// Wire format for events is ICS, not JSON. We already test the ICS round-trip
+// thoroughly in `from_icalendar` / `to_icalendar`, so reusing it here means
+// there's only one serialization surface to keep correct.
+impl Serialize for Event {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_ics_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Event {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let ics = String::deserialize(deserializer)?;
+        Event::from_ics_str(&ics).map_err(serde::de::Error::custom)
     }
 }
 
