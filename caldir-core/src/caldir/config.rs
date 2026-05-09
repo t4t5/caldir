@@ -5,9 +5,6 @@ use error::CaldirConfigError;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-// Default config values:
-const DEFAULT_DATA_DIR: &str = "~/caldir";
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CaldirConfig {
@@ -15,26 +12,28 @@ pub struct CaldirConfig {
     data_dir: PathBuf,
 }
 
+// Default config values (if empty file):
 impl Default for CaldirConfig {
     fn default() -> Self {
         Self {
-            data_dir: PathBuf::from(DEFAULT_DATA_DIR),
+            data_dir: PathBuf::from("~/caldir"),
         }
     }
 }
 
 impl CaldirConfig {
+    #[cfg(test)]
     pub(crate) fn new(data_dir: PathBuf) -> Self {
         Self { data_dir }
     }
 
-    pub(crate) fn load(path: &PathBuf) -> Result<Self, CaldirConfigError> {
-        let contents = std::fs::read_to_string(path)?;
-
-        let config = Self::from_toml(&contents)
-            .map_err(|e| CaldirConfigError::InvalidConfigFile(path.into(), e))?;
-
-        Ok(config)
+    pub fn load_or_default(path: &Path) -> Result<Self, CaldirConfigError> {
+        if path.is_file() {
+            let config = Self::load(path)?;
+            Ok(config)
+        } else {
+            Ok(Self::default())
+        }
     }
 
     pub fn data_dir(&self) -> PathBuf {
@@ -47,6 +46,15 @@ impl CaldirConfig {
         std::fs::write(path, contents)?;
 
         Ok(())
+    }
+
+    fn load(path: &Path) -> Result<Self, CaldirConfigError> {
+        let contents = std::fs::read_to_string(path)?;
+
+        let config = Self::from_toml(&contents)
+            .map_err(|e| CaldirConfigError::InvalidConfigFile(path.into(), e))?;
+
+        Ok(config)
     }
 
     fn from_toml(s: &str) -> Result<Self, toml::de::Error> {
@@ -63,28 +71,57 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_file_uses_default_values() {
-        let config = CaldirConfig::from_toml("").unwrap();
+    fn default_has_expected_default_data_dir() {
+        let home = home::home_dir().unwrap();
+        let config = CaldirConfig::default();
+
+        assert_eq!(config.data_dir(), home.join("caldir"));
+    }
+
+    #[test]
+    fn load_or_default_uses_default_values_for_empty_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(&path, "").unwrap();
+
+        let config = CaldirConfig::load_or_default(&path).unwrap();
 
         assert_eq!(config, CaldirConfig::default());
     }
 
     #[test]
-    fn from_toml_parses_user_config() {
-        let data_dir = "/tmp/calendar";
+    fn load_or_default_parses_user_file() {
+        let data_dir = "/tmp/my-calendar";
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(&path, format!(r#"calendar_dir = "{data_dir}""#)).unwrap();
 
-        let toml = format!(r#"calendar_dir = "{data_dir}""#);
-
-        let config = CaldirConfig::from_toml(&toml).unwrap();
+        let config = CaldirConfig::load_or_default(&path).unwrap();
 
         assert_eq!(config.data_dir, PathBuf::from(data_dir));
     }
 
     #[test]
-    fn default_has_default_data_dir() {
-        let home = home::home_dir().unwrap();
-        let config = CaldirConfig::default();
+    fn load_or_default_returns_default_on_missing_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("nonexistent.toml");
 
-        assert_eq!(config.data_dir(), home.join("caldir"));
+        let config = CaldirConfig::load_or_default(&path).unwrap();
+
+        assert_eq!(config, CaldirConfig::default());
+    }
+
+    #[test]
+    fn load_or_default_errors_on_invalid_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("invalid.toml");
+        std::fs::write(&path, "not a valid toml").unwrap();
+
+        let result = CaldirConfig::load_or_default(&path);
+
+        assert!(matches!(
+            result.unwrap_err(),
+            CaldirConfigError::InvalidConfigFile(_, _)
+        ));
     }
 }

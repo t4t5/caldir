@@ -1,4 +1,5 @@
 use crate::calendar::CalendarError;
+use crate::provider::ProviderError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CaldirError {
@@ -6,5 +7,5 @@ pub enum CaldirError {
     Calendar(#[from] CalendarError),
 
     #[error("provider error: {0}")]
-    Provider(#[from] crate::provider::ProviderError),
+    Provider(#[from] ProviderError),
 }

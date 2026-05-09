@@ -54,7 +54,7 @@ impl Caldir {
         }
     }
 
-    fn calendars(&self) -> Vec<Calendar> {
+    pub fn calendars(&self) -> Vec<Calendar> {
         let mut calendars = Vec::new();
 
         if let Ok(entries) = std::fs::read_dir(self.data_dir()) {
@@ -71,7 +71,7 @@ impl Caldir {
         calendars
     }
 
-    fn connections(&self) -> Vec<Result<Connection, CaldirError>> {
+    pub fn connections(&self) -> Vec<Result<Connection, CaldirError>> {
         let mut connections = Vec::new();
 
         for calendar in self.calendars() {
@@ -98,15 +98,15 @@ impl Caldir {
     }
 }
 
-impl Default for Caldir {
-    fn default() -> Self {
-        Self::new(
-            CaldirConfig::default(),
-            ProviderRegistry::from_system_path(),
-        )
-    }
-}
-
+// impl Default for Caldir {
+//     fn default() -> Self {
+//         Self::new(
+//             CaldirConfig::default(),
+//             ProviderRegistry::from_system_path(),
+//         )
+//     }
+// }
+//
 #[cfg(test)]
 mod tests {
     use super::*;

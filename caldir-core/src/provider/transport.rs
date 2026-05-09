@@ -4,11 +4,9 @@ mod subprocess;
 #[cfg(test)]
 pub(crate) mod mock;
 
-use std::time::Duration;
-
 use async_trait::async_trait;
-
 pub(crate) use error::TransportError;
+use std::time::Duration;
 pub(crate) use subprocess::SubprocessTransport;
 
 #[async_trait]

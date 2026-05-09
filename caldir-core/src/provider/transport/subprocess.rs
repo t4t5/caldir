@@ -18,11 +18,6 @@ impl SubprocessTransport {
     pub(crate) fn new(bin_path: PathBuf) -> Self {
         Self { bin_path }
     }
-
-    #[cfg(test)]
-    pub(crate) fn bin_path(&self) -> &std::path::Path {
-        &self.bin_path
-    }
 }
 
 #[async_trait]
