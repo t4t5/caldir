@@ -96,7 +96,11 @@ mod tests {
     #[tokio::test]
     async fn subprocess_exchange_returns_stdout_of_provider_binary() {
         let tmp = tempfile::TempDir::new().unwrap();
-        let bin = echo_script(&tmp, r#"echo '{"status":"success","data":42}'"#);
+        // Drain stdin first so we don't race the parent's write to a closed pipe.
+        let bin = echo_script(
+            &tmp,
+            r#"cat > /dev/null; echo '{"status":"success","data":42}'"#,
+        );
         let transport = SubprocessTransport::new(bin);
 
         let response = transport
