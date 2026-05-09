@@ -36,6 +36,10 @@ impl MockTransport {
         }
     }
 
+    pub(crate) fn set_response(&self, response: impl Into<String>) {
+        *self.response.lock().unwrap() = Some(Ok(response.into()));
+    }
+
     pub(crate) fn captured_request(&self) -> Option<String> {
         self.captured_request.lock().unwrap().clone()
     }

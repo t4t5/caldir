@@ -3,9 +3,10 @@ use std::path::PathBuf;
 use chrono::NaiveDate;
 use icalendar::{Component, EventLike};
 
+use crate::provider::mock_provider::MockProvider;
 use crate::{
     Caldir, CaldirConfig, Calendar, CalendarConfig, CalendarEvent, Event, EventTime, Provider,
-    ProviderRegistry, ProviderSlug, RemoteConfig, RemoteConfigParams,
+    ProviderRegistry, ProviderSlug, Remote, RemoteConfig, RemoteConfigParams,
 };
 use tempfile::TempDir;
 
@@ -80,6 +81,25 @@ pub fn test_calendar_config() -> CalendarConfig {
 pub fn test_remote_config(provider_slug: &str) -> RemoteConfig {
     let params = RemoteConfigParams::new();
     RemoteConfig::new(ProviderSlug::from(provider_slug), params)
+}
+
+pub fn test_mock_provider() -> MockProvider {
+    MockProvider::new("test-provider")
+}
+
+pub fn test_remote_params() -> RemoteConfigParams {
+    let mut params = RemoteConfigParams::new();
+    params.insert(
+        "test_account".to_string(),
+        toml::Value::String("user@example.com".to_string()),
+    );
+    params
+}
+
+pub fn test_remote() -> (MockProvider, Remote) {
+    let mock = test_mock_provider();
+    let remote = Remote::new(mock.provider(), test_remote_params());
+    (mock, remote)
 }
 
 pub fn test_provider(slug: &str) -> (TempDir, Provider) {

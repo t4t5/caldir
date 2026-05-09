@@ -3,7 +3,6 @@ use super::transport::mock_transport::MockTransport;
 use super::{Provider, ProviderSlug};
 use crate::rpc::{Request, Rpc};
 use serde::de::DeserializeOwned;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// Test helper for stubbing a `Provider`'s transport with typed RPC expectations.
@@ -16,16 +15,17 @@ impl MockProvider {
     pub(crate) fn new(slug: impl Into<ProviderSlug>) -> Self {
         Self {
             slug: slug.into(),
-            // Replaced once `.expect::<C>().reply(...)` runs.
             transport: Arc::new(MockTransport::with_response("")),
         }
     }
 
-    pub(crate) fn expect<C: Rpc>(self) -> Expect<C> {
-        Expect {
-            mock: self,
-            _phantom: PhantomData,
-        }
+    /// Stub the next RPC call to return `response` (typed by `C::Response`).
+    pub(crate) fn reply<C: Rpc>(&self, response: C::Response) {
+        let envelope = serde_json::json!({
+            "status": "success",
+            "data": response,
+        });
+        self.transport.set_response(envelope.to_string());
     }
 
     pub(crate) fn provider(&self) -> Provider {
@@ -52,23 +52,5 @@ impl MockProvider {
         );
         serde_json::from_value(request.params)
             .expect("captured params did not deserialize as the expected RPC type")
-    }
-}
-
-pub(crate) struct Expect<C> {
-    mock: MockProvider,
-    _phantom: PhantomData<C>,
-}
-
-impl<C: Rpc> Expect<C> {
-    pub(crate) fn reply(self, response: C::Response) -> MockProvider {
-        let envelope = serde_json::json!({
-            "status": "success",
-            "data": response,
-        });
-        MockProvider {
-            slug: self.mock.slug,
-            transport: Arc::new(MockTransport::with_response(envelope.to_string())),
-        }
     }
 }

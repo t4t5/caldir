@@ -2,7 +2,7 @@ use super::{Method, Rpc};
 use crate::{Event, RemoteConfigParams};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct CreateEvent {
     #[serde(flatten)]
     pub remote: RemoteConfigParams,
@@ -20,7 +20,7 @@ mod tests {
     use crate::{RemoteConfigParams, event::EventTime};
 
     #[test]
-    fn create_event_serializes_event_as_ics_string() {
+    fn create_event_serializes_json() {
         let mut params = RemoteConfigParams::new();
         params.insert(
             "hooli_account".to_string(),
