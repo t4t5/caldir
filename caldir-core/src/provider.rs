@@ -43,25 +43,20 @@ impl Provider {
         &self.slug
     }
 
-    pub(crate) async fn call<Command: rpc::Rpc>(
-        &self,
-        cmd: Command,
-    ) -> Result<Command::Response, ProviderError> {
-        let params = serde_json::to_value(&cmd).map_err(ProviderError::Serialize)?;
+    pub(crate) async fn call<C: rpc::Rpc>(&self, call: C) -> Result<C::Response, ProviderError> {
+        let params = serde_json::to_value(&call).map_err(ProviderError::Serialize)?;
 
         let request = rpc::Request {
-            op: Command::OP,
+            method: C::METHOD,
             params,
         };
 
         let request_json = serde_json::to_string(&request).map_err(ProviderError::Serialize)?;
 
-        let response_json = self
-            .transport
-            .exchange(&request_json, Command::TIMEOUT)
-            .await?;
+        // Make call:
+        let response_json = self.transport.exchange(&request_json, C::TIMEOUT).await?;
 
-        let response: rpc::Response<Command::Response> =
+        let response: rpc::Response<C::Response> =
             serde_json::from_str(&response_json).map_err(ProviderError::Deserialize)?;
 
         match response {
@@ -132,7 +127,7 @@ mod tests {
 
     impl Rpc for EchoCommand {
         type Response = EchoResponse;
-        const OP: rpc::Op = rpc::Op::ListEvents;
+        const METHOD: rpc::Method = rpc::Method::ListEvents;
         const TIMEOUT: Duration = Duration::from_secs(7);
     }
 

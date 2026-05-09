@@ -1,4 +1,4 @@
-use super::{Op, Rpc};
+use super::{Method, Rpc};
 use crate::{Event, RemoteConfig};
 use serde::Serialize;
 
@@ -10,7 +10,7 @@ pub(crate) struct CreateEvent {
 }
 
 impl Rpc for CreateEvent {
-    const OP: Op = Op::CreateEvent;
+    const METHOD: Method = Method::CreateEvent;
     type Response = Event;
 }
 

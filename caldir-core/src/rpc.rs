@@ -11,13 +11,13 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(crate) trait Rpc: Serialize {
     type Response: DeserializeOwned;
-    const OP: Op;
+    const METHOD: Method;
     const TIMEOUT: Duration = DEFAULT_TIMEOUT;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Op {
+pub(crate) enum Method {
     Connect,
     ListCalendars,
     ListEvents,
@@ -28,7 +28,8 @@ pub(crate) enum Op {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Request {
-    pub(crate) op: Op,
+    #[serde(rename = "command")] // TODO: update providers so we can remove this
+    pub(crate) method: Method,
     #[serde(default)]
     pub(crate) params: serde_json::Value,
 }
