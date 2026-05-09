@@ -96,6 +96,7 @@ mod tests {
         path
     }
 
+    #[serial_test::serial]
     #[tokio::test]
     async fn subprocess_exchange_returns_stdout_of_provider_binary() {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -114,6 +115,7 @@ mod tests {
         assert_eq!(response.trim(), r#"{"status":"success","data":42}"#);
     }
 
+    #[serial_test::serial]
     #[tokio::test]
     async fn subprocess_exchange_errors_on_non_zero_exit() {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -131,6 +133,7 @@ mod tests {
         ));
     }
 
+    #[serial_test::serial]
     #[tokio::test]
     async fn subprocess_exchange_errors_on_empty_stdout() {
         let tmp = tempfile::TempDir::new().unwrap();
@@ -147,6 +150,7 @@ mod tests {
         assert!(matches!(err, ProviderTransportError::EmptyResponse));
     }
 
+    #[serial_test::serial]
     #[tokio::test]
     async fn subprocess_exchange_errors_on_timeout() {
         let tmp = tempfile::TempDir::new().unwrap();
