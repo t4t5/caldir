@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::transport::TransportError;
+use crate::TransportError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {

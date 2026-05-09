@@ -2,8 +2,8 @@ mod error;
 mod protocol;
 mod registry;
 mod slug;
-mod transport;
 
+use crate::{SubprocessTransport, Transport};
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -11,7 +11,6 @@ use std::sync::Arc;
 pub(crate) use error::ProviderError;
 pub use registry::ProviderRegistry;
 pub use slug::{ProviderSlug, provider_slug_from_filename};
-pub(crate) use transport::{SubprocessTransport, Transport};
 
 use protocol::{ProviderCommand, Request, Response};
 
@@ -33,9 +32,11 @@ impl Provider {
             .and_then(provider_slug_from_filename)
             .ok_or_else(|| ProviderError::InvalidProviderFilename(binary_path.clone()))?;
 
+        let transport = SubprocessTransport::new(binary_path);
+
         Ok(Provider {
             slug,
-            transport: Arc::new(SubprocessTransport::new(binary_path)),
+            transport: Arc::new(transport),
         })
     }
 
@@ -116,9 +117,9 @@ mod tests {
     use crate::test_utils::test_binary;
 
     use super::protocol::Command;
-    use super::transport::TransportError;
-    use super::transport::mock::MockTransport;
     use super::*;
+    use crate::TransportError;
+    use crate::mock::MockTransport;
 
     #[derive(Serialize)]
     struct EchoCommand {
