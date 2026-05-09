@@ -36,10 +36,12 @@ impl Transport for SubprocessTransport {
                 .map_err(TransportError::Spawn)?;
 
             let mut stdin = child.stdin.take().expect("stdin was piped above");
+
             stdin
                 .write_all(format!("{request}\n").as_bytes())
                 .await
                 .map_err(TransportError::Io)?;
+
             drop(stdin);
 
             let output = child.wait_with_output().await.map_err(TransportError::Io)?;

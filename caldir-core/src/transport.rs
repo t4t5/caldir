@@ -1,13 +1,13 @@
 mod error;
-mod subprocess;
+mod subprocess_transport;
 
 #[cfg(test)]
-pub(crate) mod mock;
+pub(crate) mod mock_transport;
 
 use async_trait::async_trait;
 pub(crate) use error::TransportError;
 use std::time::Duration;
-pub(crate) use subprocess::SubprocessTransport;
+pub(crate) use subprocess_transport::SubprocessTransport;
 
 #[async_trait]
 pub(crate) trait Transport: std::fmt::Debug + Send + Sync {

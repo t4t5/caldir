@@ -118,8 +118,8 @@ mod tests {
 
     use super::protocol::Command;
     use super::*;
+    use crate::MockTransport;
     use crate::TransportError;
-    use crate::mock::MockTransport;
 
     #[derive(Serialize)]
     struct EchoCommand {
