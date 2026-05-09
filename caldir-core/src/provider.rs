@@ -39,40 +39,45 @@ impl Provider {
         })
     }
 
-    #[cfg(test)]
-    pub(crate) fn with_transport(slug: ProviderSlug, transport: Arc<dyn Transport>) -> Self {
-        Provider { slug, transport }
-    }
-
     fn slug(&self) -> &ProviderSlug {
         &self.slug
     }
 
-    #[cfg(test)]
-    pub(crate) fn transport(&self) -> &dyn Transport {
-        &*self.transport
-    }
-
-    pub(crate) async fn call<C: ProviderCommand>(
+    pub(crate) async fn call<Command: ProviderCommand>(
         &self,
-        cmd: C,
-    ) -> Result<C::Response, ProviderError> {
+        cmd: Command,
+    ) -> Result<Command::Response, ProviderError> {
         let params = serde_json::to_value(&cmd).map_err(ProviderError::Serialize)?;
+
         let request = Request {
-            command: C::NAME,
+            command: Command::NAME,
             params,
         };
+
         let request_json = serde_json::to_string(&request).map_err(ProviderError::Serialize)?;
 
-        let response_json = self.transport.exchange(&request_json, C::TIMEOUT).await?;
+        let response_json = self
+            .transport
+            .exchange(&request_json, Command::TIMEOUT)
+            .await?;
 
-        let response: Response<C::Response> =
+        let response: Response<Command::Response> =
             serde_json::from_str(&response_json).map_err(ProviderError::Deserialize)?;
 
         match response {
             Response::Success { data } => Ok(data),
             Response::Error { error } => Err(ProviderError::Provider(error)),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_transport(slug: ProviderSlug, transport: Arc<dyn Transport>) -> Self {
+        Provider { slug, transport }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn transport(&self) -> &dyn Transport {
+        &*self.transport
     }
 }
 
@@ -114,6 +119,26 @@ mod tests {
     use super::transport::TransportError;
     use super::transport::mock::MockTransport;
     use super::*;
+
+    #[derive(Serialize)]
+    struct EchoCommand {
+        value: String,
+    }
+
+    #[derive(Deserialize, Debug, PartialEq)]
+    struct EchoResponse {
+        value: String,
+    }
+
+    impl ProviderCommand for EchoCommand {
+        type Response = EchoResponse;
+        const NAME: Command = Command::ListEvents;
+        const TIMEOUT: Duration = Duration::from_secs(7);
+    }
+
+    fn provider_with_transport(transport: Arc<dyn Transport>) -> Provider {
+        Provider::with_transport(ProviderSlug::from("test"), transport)
+    }
 
     #[test]
     fn from_binary_path_succeeds_for_valid_provider_binary() {
@@ -162,26 +187,6 @@ mod tests {
         let result = Provider::from_binary_path(bin.clone());
 
         assert!(matches!(result, Err(ProviderError::InvalidProviderFilename(p)) if p == bin));
-    }
-
-    #[derive(Serialize)]
-    struct EchoCommand {
-        value: String,
-    }
-
-    #[derive(Deserialize, Debug, PartialEq)]
-    struct EchoResponse {
-        value: String,
-    }
-
-    impl ProviderCommand for EchoCommand {
-        type Response = EchoResponse;
-        const NAME: Command = Command::ListEvents;
-        const TIMEOUT: Duration = Duration::from_secs(7);
-    }
-
-    fn provider_with_transport(transport: Arc<dyn Transport>) -> Provider {
-        Provider::with_transport(ProviderSlug::from("test"), transport)
     }
 
     #[tokio::test]
