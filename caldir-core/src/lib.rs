@@ -4,6 +4,7 @@ mod connection;
 mod event;
 mod provider;
 mod remote;
+mod rpc;
 mod utils;
 
 #[cfg(test)]

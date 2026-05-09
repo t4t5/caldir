@@ -1,10 +1,10 @@
 mod config;
 
 use crate::provider::ProviderError;
-use crate::{Event, Provider};
+use crate::{Event, Provider, rpc};
 pub use config::{RemoteConfig, RemoteConfigParams};
 
-/// remote = a resolved provider with a config
+/// provider with config should resolve to a unique remote
 pub struct Remote {
     provider: Provider,
     config: RemoteConfig,
@@ -15,9 +15,16 @@ impl Remote {
         Self { provider, config }
     }
 
-    pub async fn create_event(&self, event: &Event) -> Result<Event, ProviderError> {
+    pub async fn create_event(
+        &self,
+        event: Event,
+        remote_config: RemoteConfig,
+    ) -> Result<Event, ProviderError> {
         self.provider
-            .create_event(event.clone(), self.config.clone())
+            .call(rpc::CreateEvent {
+                remote_config,
+                event,
+            })
             .await
     }
 }

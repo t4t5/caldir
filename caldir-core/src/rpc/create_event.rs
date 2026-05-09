@@ -1,8 +1,6 @@
-use serde::Serialize;
-
+use super::{Op, Rpc};
 use crate::{Event, RemoteConfig};
-
-use super::protocol::{Op, ProviderCommand};
+use serde::Serialize;
 
 #[derive(Serialize)]
 pub(crate) struct CreateEvent {
@@ -11,7 +9,7 @@ pub(crate) struct CreateEvent {
     pub event: Event,
 }
 
-impl ProviderCommand for CreateEvent {
+impl Rpc for CreateEvent {
     const OP: Op = Op::CreateEvent;
     type Response = Event;
 }
