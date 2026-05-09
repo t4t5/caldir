@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::TransportError;
+use super::transport::ProviderTransportError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProviderError {
@@ -13,8 +13,8 @@ pub enum ProviderError {
     #[error("Provider {0} not found")]
     ProviderNotFound(String),
 
-    #[error("{0}")]
-    Transport(#[from] TransportError),
+    #[error("Provider transport error: {0}")]
+    Transport(#[from] ProviderTransportError),
 
     #[error("Failed to serialize provider request: {0}")]
     Serialize(serde_json::Error),

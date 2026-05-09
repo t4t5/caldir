@@ -3,17 +3,18 @@ mod subprocess_transport;
 
 #[cfg(test)]
 pub(crate) mod mock_transport;
+pub(crate) use error::ProviderTransportError;
 
-use async_trait::async_trait;
-pub(crate) use error::TransportError;
-use std::time::Duration;
 pub(crate) use subprocess_transport::SubprocessTransport;
 
+use async_trait::async_trait;
+use std::time::Duration;
+
 #[async_trait]
-pub(crate) trait Transport: std::fmt::Debug + Send + Sync {
+pub(crate) trait ProviderTransport: std::fmt::Debug + Send + Sync {
     async fn exchange(
         &self,
         request: &str,
         timeout_dur: Duration,
-    ) -> Result<String, TransportError>;
+    ) -> Result<String, ProviderTransportError>;
 }

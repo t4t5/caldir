@@ -4,15 +4,10 @@ mod connection;
 mod event;
 mod provider;
 mod remote;
-mod transport;
 mod utils;
 
 #[cfg(test)]
 mod test_utils;
-#[cfg(test)]
-pub(crate) use transport::mock_transport::MockTransport;
-
-pub(crate) use transport::{SubprocessTransport, Transport, TransportError};
 
 // Public API:
 pub use caldir::{Caldir, CaldirConfig};

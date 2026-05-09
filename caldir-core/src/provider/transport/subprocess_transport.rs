@@ -7,7 +7,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use tokio::time::timeout;
 
-use super::{Transport, TransportError};
+use super::{ProviderTransport, ProviderTransportError};
 
 #[derive(Debug)]
 pub(crate) struct SubprocessTransport {
@@ -21,41 +21,45 @@ impl SubprocessTransport {
 }
 
 #[async_trait]
-impl Transport for SubprocessTransport {
+impl ProviderTransport for SubprocessTransport {
     async fn exchange(
         &self,
         request: &str,
         timeout_dur: Duration,
-    ) -> Result<String, TransportError> {
+    ) -> Result<String, ProviderTransportError> {
         let exchange = async {
             let mut child = Command::new(&self.bin_path)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::inherit())
                 .spawn()
-                .map_err(TransportError::Spawn)?;
+                .map_err(ProviderTransportError::Spawn)?;
 
             let mut stdin = child.stdin.take().expect("stdin was piped above");
 
             stdin
                 .write_all(format!("{request}\n").as_bytes())
                 .await
-                .map_err(TransportError::Io)?;
+                .map_err(ProviderTransportError::Io)?;
 
             drop(stdin);
 
-            let output = child.wait_with_output().await.map_err(TransportError::Io)?;
+            let output = child
+                .wait_with_output()
+                .await
+                .map_err(ProviderTransportError::Io)?;
 
             if !output.status.success() {
-                return Err(TransportError::NonZeroExit {
+                return Err(ProviderTransportError::NonZeroExit {
                     code: output.status.code(),
                 });
             }
 
-            let response = String::from_utf8(output.stdout).map_err(|_| TransportError::BadUtf8)?;
+            let response =
+                String::from_utf8(output.stdout).map_err(|_| ProviderTransportError::BadUtf8)?;
 
             if response.is_empty() {
-                return Err(TransportError::EmptyResponse);
+                return Err(ProviderTransportError::EmptyResponse);
             }
 
             Ok(response)
@@ -63,7 +67,7 @@ impl Transport for SubprocessTransport {
 
         timeout(timeout_dur, exchange)
             .await
-            .map_err(|_| TransportError::Timeout(timeout_dur))?
+            .map_err(|_| ProviderTransportError::Timeout(timeout_dur))?
     }
 }
 
@@ -112,7 +116,10 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(err, TransportError::NonZeroExit { code: Some(7) }));
+        assert!(matches!(
+            err,
+            ProviderTransportError::NonZeroExit { code: Some(7) }
+        ));
     }
 
     #[tokio::test]
@@ -128,7 +135,7 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(err, TransportError::EmptyResponse));
+        assert!(matches!(err, ProviderTransportError::EmptyResponse));
     }
 
     #[tokio::test]
@@ -142,6 +149,6 @@ mod tests {
             .await
             .unwrap_err();
 
-        assert!(matches!(err, TransportError::Timeout(_)));
+        assert!(matches!(err, ProviderTransportError::Timeout(_)));
     }
 }

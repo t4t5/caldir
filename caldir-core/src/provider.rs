@@ -2,11 +2,12 @@ mod error;
 mod protocol;
 mod registry;
 mod slug;
+mod transport;
 
-use crate::{SubprocessTransport, Transport};
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+use transport::{ProviderTransport, SubprocessTransport};
 
 pub(crate) use error::ProviderError;
 pub use registry::ProviderRegistry;
@@ -17,7 +18,7 @@ use protocol::{ProviderCommand, Request, Response};
 #[derive(Debug, Clone)]
 pub struct Provider {
     slug: ProviderSlug,
-    transport: Arc<dyn Transport>,
+    transport: Arc<dyn ProviderTransport>,
 }
 
 impl Provider {
@@ -72,12 +73,15 @@ impl Provider {
     }
 
     #[cfg(test)]
-    pub(crate) fn with_transport(slug: ProviderSlug, transport: Arc<dyn Transport>) -> Self {
+    pub(crate) fn with_transport(
+        slug: ProviderSlug,
+        transport: Arc<dyn ProviderTransport>,
+    ) -> Self {
         Provider { slug, transport }
     }
 
     #[cfg(test)]
-    pub(crate) fn transport(&self) -> &dyn Transport {
+    pub(crate) fn transport(&self) -> &dyn ProviderTransport {
         &*self.transport
     }
 }
@@ -118,8 +122,8 @@ mod tests {
 
     use super::protocol::Command;
     use super::*;
-    use crate::MockTransport;
-    use crate::TransportError;
+    use transport::ProviderTransportError;
+    use transport::mock_transport::MockTransport;
 
     #[derive(Serialize)]
     struct EchoCommand {
@@ -137,7 +141,7 @@ mod tests {
         const TIMEOUT: Duration = Duration::from_secs(7);
     }
 
-    fn provider_with_transport(transport: Arc<dyn Transport>) -> Provider {
+    fn provider_with_transport(transport: Arc<dyn ProviderTransport>) -> Provider {
         Provider::with_transport(ProviderSlug::from("test"), transport)
     }
 
@@ -262,7 +266,7 @@ mod tests {
 
     #[tokio::test]
     async fn call_propagates_transport_error() {
-        let mock = Arc::new(MockTransport::with_error(TransportError::Timeout(
+        let mock = Arc::new(MockTransport::with_error(ProviderTransportError::Timeout(
             Duration::from_secs(1),
         )));
         let provider = provider_with_transport(mock);
@@ -274,7 +278,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            ProviderError::Transport(TransportError::Timeout(_))
+            ProviderError::Transport(ProviderTransportError::Timeout(_))
         ));
     }
 }

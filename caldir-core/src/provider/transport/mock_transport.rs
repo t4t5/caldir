@@ -3,11 +3,12 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use super::{Transport, TransportError};
+use super::{ProviderTransport, ProviderTransportError};
 
-/// Records the request and timeout, then returns a canned response.
+/// Records the request and timeout, then returns a canned response. One-shot:
+/// a second call to `exchange` will panic.
 pub(crate) struct MockTransport {
-    response: Result<String, TransportError>,
+    response: Mutex<Option<Result<String, ProviderTransportError>>>,
     captured_request: Mutex<Option<String>>,
     captured_timeout: Mutex<Option<Duration>>,
 }
@@ -21,15 +22,15 @@ impl std::fmt::Debug for MockTransport {
 impl MockTransport {
     pub(crate) fn with_response(response: impl Into<String>) -> Self {
         Self {
-            response: Ok(response.into()),
+            response: Mutex::new(Some(Ok(response.into()))),
             captured_request: Mutex::new(None),
             captured_timeout: Mutex::new(None),
         }
     }
 
-    pub(crate) fn with_error(error: TransportError) -> Self {
+    pub(crate) fn with_error(error: ProviderTransportError) -> Self {
         Self {
-            response: Err(error),
+            response: Mutex::new(Some(Err(error))),
             captured_request: Mutex::new(None),
             captured_timeout: Mutex::new(None),
         }
@@ -45,32 +46,19 @@ impl MockTransport {
 }
 
 #[async_trait]
-impl Transport for MockTransport {
+impl ProviderTransport for MockTransport {
     async fn exchange(
         &self,
         request: &str,
         timeout_dur: Duration,
-    ) -> Result<String, TransportError> {
+    ) -> Result<String, ProviderTransportError> {
         *self.captured_request.lock().unwrap() = Some(request.to_string());
         *self.captured_timeout.lock().unwrap() = Some(timeout_dur);
-        match &self.response {
-            Ok(resp) => Ok(resp.clone()),
-            Err(e) => Err(clone_transport_error(e)),
-        }
-    }
-}
 
-fn clone_transport_error(e: &TransportError) -> TransportError {
-    match e {
-        TransportError::Spawn(io) => {
-            TransportError::Spawn(std::io::Error::new(io.kind(), io.to_string()))
-        }
-        TransportError::Io(io) => {
-            TransportError::Io(std::io::Error::new(io.kind(), io.to_string()))
-        }
-        TransportError::BadUtf8 => TransportError::BadUtf8,
-        TransportError::EmptyResponse => TransportError::EmptyResponse,
-        TransportError::NonZeroExit { code } => TransportError::NonZeroExit { code: *code },
-        TransportError::Timeout(d) => TransportError::Timeout(*d),
+        self.response
+            .lock()
+            .unwrap()
+            .take()
+            .expect("MockTransport::exchange called more than once")
     }
 }
