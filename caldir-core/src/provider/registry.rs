@@ -139,26 +139,29 @@ mod tests {
 
         let provider = registry.get(&ProviderSlug::from("hooli")).unwrap();
 
-        assert_eq!(provider.bin_path(), bin_path_1);
+        let transport_debug = format!("{:?}", provider.transport());
+        assert!(transport_debug.contains(bin_path_1.to_str().unwrap()));
     }
 
     #[test]
     fn add_overwrites_existing_provider_with_same_slug() {
         let (dir, bin_path) = test_binary("caldir-provider-hooli");
         let mut registry = ProviderRegistry::from_dirs([dir.path()]);
-        let retrieved_provider = registry.get(&ProviderSlug::from("hooli")).unwrap();
+        {
+            let retrieved = registry.get(&ProviderSlug::from("hooli")).unwrap();
+            let debug = format!("{:?}", retrieved.transport());
+            assert!(debug.contains(bin_path.to_str().unwrap()));
+        }
 
-        assert_eq!(retrieved_provider.bin_path(), bin_path);
-
-        // Create new version of provider
-        let (_, bin_path_new) = test_binary("caldir-provider-hooli-new");
-        let provider_new = Provider::new(ProviderSlug::from("hooli"), &bin_path_new);
-
-        // Add it to the registry
+        // Build a new provider pointing at a different binary, and add it
+        // under the same slug. Use a binary whose filename still parses as
+        // the "hooli" slug — `caldir-provider-hooli` in a fresh tempdir.
+        let (_tmp_new, bin_path_new) = test_binary("caldir-provider-hooli");
+        let provider_new = Provider::from_binary_path(bin_path_new.clone()).unwrap();
         registry.add(provider_new);
 
-        let retrieved_provider = registry.get(&ProviderSlug::from("hooli")).unwrap();
-
-        assert_eq!(retrieved_provider.bin_path(), bin_path_new);
+        let retrieved = registry.get(&ProviderSlug::from("hooli")).unwrap();
+        let debug = format!("{:?}", retrieved.transport());
+        assert!(debug.contains(bin_path_new.to_str().unwrap()));
     }
 }
