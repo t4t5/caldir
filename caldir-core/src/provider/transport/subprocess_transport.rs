@@ -39,10 +39,13 @@ impl ProviderTransport for SubprocessTransport {
 
             let mut stdin = child.stdin.take().expect("stdin was piped above");
 
-            stdin
-                .write_all(format!("{request}\n").as_bytes())
-                .await
-                .map_err(ProviderTransportError::Io)?;
+            // BrokenPipe means the child exited before reading the request — let
+            // wait_with_output below report its exit code instead of masking it.
+            if let Err(e) = stdin.write_all(format!("{request}\n").as_bytes()).await
+                && e.kind() != std::io::ErrorKind::BrokenPipe
+            {
+                return Err(ProviderTransportError::Io(e));
+            }
 
             drop(stdin);
 

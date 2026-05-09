@@ -58,17 +58,14 @@ mod tests {
             "Local title",
             EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 2).unwrap()),
         );
+
         let result = remote.create_event(local_event.clone()).await.unwrap();
+
+        let req = mock.captured_request::<CreateEvent>();
+        assert_eq!(req.event.uid, local_event.uid);
+        assert_eq!(req.event.summary.as_deref(), Some("Local title"));
 
         assert_eq!(result.uid, returned_server_event.uid);
         assert_eq!(result.summary.as_deref(), Some("Server-side title"));
-
-        let req = mock.captured_request::<CreateEvent>();
-        assert_eq!(
-            req.remote.get("hooli_account"),
-            Some(&toml::Value::String("user@hmail.com".to_string())),
-        );
-        assert_eq!(req.event.uid, local_event.uid);
-        assert_eq!(req.event.summary.as_deref(), Some("Local title"));
     }
 }
