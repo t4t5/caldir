@@ -7,6 +7,12 @@ use super::slug::PROVIDER_BINARY_PREFIX;
 
 pub struct ProviderRegistry(HashMap<ProviderSlug, Provider>);
 
+impl Default for ProviderRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProviderRegistry {
     pub fn new() -> Self {
         Self(HashMap::new())
