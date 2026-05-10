@@ -14,6 +14,6 @@ mod test_utils;
 pub use caldir::{Caldir, CaldirConfig};
 pub use calendar::{Calendar, CalendarConfig, CalendarEvent};
 pub use connection::Connection;
-pub use event::{Event, EventError, EventTime, Reminder};
+pub use event::{Event, EventTime, Reminder};
 pub use provider::{Provider, ProviderRegistry, ProviderSlug};
 pub use remote::{Remote, RemoteConfig, RemoteConfigParams};

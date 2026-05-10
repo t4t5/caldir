@@ -1,4 +1,7 @@
+mod error;
+
 use crate::{Calendar, Remote};
+use error::ConnectionError;
 
 /// A connection is a [local calendar] + [remote calendar] pair
 pub struct Connection {
@@ -17,5 +20,12 @@ impl Connection {
 
     pub fn remote(&self) -> &Remote {
         &self.remote
+    }
+
+    async fn diff(&self) -> Result<(), ConnectionError> {
+        let local_events = self.local().events();
+        let remote_events = self.remote().list_events().await?;
+
+        Ok(())
     }
 }
