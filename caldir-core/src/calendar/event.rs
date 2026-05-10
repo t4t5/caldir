@@ -1,10 +1,11 @@
 mod error;
 
-use crate::{Calendar, Event};
+use crate::{Calendar, Event, VersionedEvent};
 use std::fs::OpenOptions;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Utc};
 pub use error::CalendarEventError;
 
 #[derive(Debug)]
@@ -71,6 +72,23 @@ impl CalendarEvent {
 
     pub fn filename(&self) -> Option<&str> {
         self.path.file_name().and_then(|name| name.to_str())
+    }
+
+    // Used for sync direction detection
+    fn file_modified_time(&self) -> Option<DateTime<Utc>> {
+        std::fs::metadata(self.path())
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .map(DateTime::<Utc>::from)
+    }
+
+    pub(crate) fn into_versioned(self) -> VersionedEvent {
+        let modified_at = self.file_modified_time();
+
+        VersionedEvent {
+            event: self.event,
+            modified_at,
+        }
     }
 }
 

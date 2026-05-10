@@ -3,7 +3,7 @@ mod error;
 mod event;
 
 use crate::{Event, RemoteConfig};
-use event::CalendarEventError;
+pub(crate) use event::CalendarEventError;
 use std::path::{Path, PathBuf};
 
 pub use config::CalendarConfig;
