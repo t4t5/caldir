@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use icalendar::{CalendarDateTime, DatePerhapsTime};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EventTime {
     Date(NaiveDate),
     DateTimeUtc(DateTime<Utc>),

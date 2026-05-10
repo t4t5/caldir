@@ -1,6 +1,7 @@
 mod config;
 mod error;
 mod event;
+mod state;
 
 use crate::{Event, RemoteConfig};
 pub(crate) use event::CalendarEventError;

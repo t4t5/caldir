@@ -1,6 +1,7 @@
 mod attendee;
 mod error;
 mod from_icalendar;
+mod instance_id;
 mod organizer;
 mod recurrence;
 mod reminder;
@@ -14,6 +15,7 @@ mod x_property;
 use attendee::Attendee;
 use chrono::{DateTime, Utc};
 pub use error::EventError;
+pub use instance_id::{EventInstanceId, EventInstanceIdError, EventUid, RecurrenceId};
 pub use organizer::Organizer;
 pub use recurrence::Recurrence;
 pub use reminder::Reminder;
@@ -26,30 +28,6 @@ pub use x_property::XProperty;
 const ICS_PRODID: &str = "CALDIR";
 const ICS_VERSION: &str = "2.0";
 const ICS_UID_DOMAIN: &str = "caldir";
-
-// Recurring events share the same UID (stupid design)
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EventUid(String);
-
-impl EventUid {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-// The instance identifier in a recurring event
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RecurrenceId(EventTime);
-
-impl RecurrenceId {
-    pub fn as_event_time(&self) -> &EventTime {
-        &self.0
-    }
-}
-
-// UID + RecurrenceId = the actual unique ID per event
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EventInstanceId((EventUid, Option<RecurrenceId>));
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Event {
@@ -134,7 +112,7 @@ impl Event {
     }
 
     pub fn event_instance_id(&self) -> EventInstanceId {
-        EventInstanceId((self.uid.clone(), self.recurrence_id.clone()))
+        EventInstanceId::new(self.uid.clone(), self.recurrence_id.clone())
     }
 }
 
@@ -156,7 +134,7 @@ impl<'de> Deserialize<'de> for Event {
 
 fn new_uid() -> EventUid {
     let uid = format!("{}@{}", uuid::Uuid::new_v4(), ICS_UID_DOMAIN);
-    EventUid(uid)
+    EventUid::from_str(uid)
 }
 
 #[cfg(test)]

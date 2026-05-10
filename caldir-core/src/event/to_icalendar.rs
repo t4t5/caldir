@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn converts_uid() {
         let mut event = test_event();
-        event.uid = EventUid("abc123@hooli.com".to_string());
+        event.uid = EventUid::from_str("abc123@hooli.com".to_string());
 
         let ical_event: icalendar::Event = event.into();
 
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn converts_recurrence_id() {
         let mut event = test_event();
-        event.recurrence_id = Some(RecurrenceId(EventTime::Date(
+        event.recurrence_id = Some(RecurrenceId::from_event_time(EventTime::Date(
             chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap(),
         )));
 

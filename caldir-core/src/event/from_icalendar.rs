@@ -17,7 +17,7 @@ impl TryFrom<&icalendar::Event> for Event {
         let recurrence_id = value
             .get_recurrence_id()
             .map(EventTime::from)
-            .map(RecurrenceId);
+            .map(RecurrenceId::from_event_time);
 
         let uid = value.get_uid().ok_or(EventError::MissingUid)?.to_string();
 
@@ -47,7 +47,7 @@ impl TryFrom<&icalendar::Event> for Event {
             .collect();
 
         Ok(Event {
-            uid: EventUid(uid),
+            uid: EventUid::from_str(uid),
             summary: value.get_summary().map(ToString::to_string),
             description: value.get_description().map(ToString::to_string),
             location: value.get_location().map(ToString::to_string),

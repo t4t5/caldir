@@ -1,6 +1,6 @@
-use crate::{CalendarEvent, RemoteEvent, VersionedEvent};
-
 use super::event_change::EventChange;
+use crate::{CalendarEvent, RemoteEvent, VersionedEvent, event::EventInstanceId};
+use std::collections::HashSet;
 
 pub struct CalendarDiff {
     outgoing: Vec<EventChange>,
@@ -8,7 +8,11 @@ pub struct CalendarDiff {
 }
 
 impl CalendarDiff {
-    pub fn compute(local_events: Vec<CalendarEvent>, remote_events: Vec<RemoteEvent>) -> Self {
+    pub fn compute(
+        local_events: Vec<CalendarEvent>,
+        remote_events: Vec<RemoteEvent>,
+        // known_ids: &HashSet<EventInstanceId>,
+    ) -> Self {
         let local_events = local_events
             .into_iter()
             .map(CalendarEvent::into_versioned)
