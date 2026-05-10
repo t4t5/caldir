@@ -10,6 +10,27 @@ use std::path::{Path, PathBuf};
 pub use config::CalendarConfig;
 pub use error::CalendarError;
 pub use event::CalendarEvent;
+pub use state::CalendarState;
+
+const DOTDIR_NAME: &str = ".caldir";
+
+// ~/caldir/my_calendar/.caldir/config.toml
+const CONFIG_FILE_NAME: &str = "config.toml";
+
+// ~/caldir/my_calendar/.caldir/state/known_event_ids
+const STATE_DIR_NAME: &str = "state";
+
+fn calendar_dotdir(calendar_path: &Path) -> PathBuf {
+    calendar_path.join(DOTDIR_NAME)
+}
+
+fn calendar_config_path(calendar_path: &Path) -> PathBuf {
+    calendar_dotdir(calendar_path).join(CONFIG_FILE_NAME)
+}
+
+fn calendar_state_dir(calendar_path: &Path) -> PathBuf {
+    calendar_dotdir(calendar_path).join(STATE_DIR_NAME)
+}
 
 #[derive(Debug)]
 pub struct Calendar {
@@ -63,6 +84,12 @@ impl Calendar {
         calendar_config_path(self.path())
     }
 
+    pub fn state(&self) -> Result<CalendarState, CalendarStateError> {
+        let state_dir = calendar_state_dir(self.path());
+        let state = CalendarState::load(&state_dir)?;
+        Ok(state)
+    }
+
     pub fn slug(&self) -> Option<&str> {
         self.path().file_name().and_then(|s| s.to_str())
     }
@@ -112,18 +139,6 @@ impl Calendar {
     pub fn has_remote(&self) -> bool {
         self.remote_config().is_some()
     }
-}
-
-// Example: ~/caldir/my_calendar/.caldir/config.toml
-const DOTDIR_NAME: &str = ".caldir";
-const CONFIG_FILE_NAME: &str = "config.toml";
-
-fn calendar_dotdir(calendar_path: &Path) -> PathBuf {
-    calendar_path.join(DOTDIR_NAME)
-}
-
-fn calendar_config_path(calendar_path: &Path) -> PathBuf {
-    calendar_dotdir(calendar_path).join(CONFIG_FILE_NAME)
 }
 
 #[cfg(test)]
