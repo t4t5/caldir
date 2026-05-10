@@ -32,11 +32,12 @@ mod tests {
             EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
         );
 
-        let json: serde_json::Value = serde_json::to_value(CreateEvent {
+        let cmd = CreateEvent {
             remote: params,
             event: event.clone(),
-        })
-        .unwrap();
+        };
+
+        let json: serde_json::Value = serde_json::to_value(cmd).unwrap();
 
         assert_eq!(json["hooli_account"], "user@hmail.com");
 

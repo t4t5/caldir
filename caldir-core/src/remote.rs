@@ -23,4 +23,12 @@ impl Remote {
             })
             .await
     }
+
+    pub async fn list_events(&self) -> Result<Vec<Event>, ProviderError> {
+        self.provider
+            .call(rpc::ListEvents {
+                remote: self.params.clone(),
+            })
+            .await
+    }
 }

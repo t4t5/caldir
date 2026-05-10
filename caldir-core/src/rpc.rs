@@ -1,4 +1,5 @@
 mod create_event;
+mod list_events;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -6,6 +7,7 @@ use std::time::Duration;
 
 // actions:
 pub(crate) use create_event::CreateEvent;
+pub(crate) use list_events::ListEvents;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 
