@@ -1,12 +1,8 @@
-mod error;
 mod params;
-
-use std::path::Path;
 
 use crate::ProviderSlug;
 use serde::{Deserialize, Serialize};
 
-use error::RemoteConfigError;
 pub use params::RemoteConfigParams;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -17,6 +13,8 @@ pub struct RemoteConfig {
     params: RemoteConfigParams,
 }
 
+/// A remote config is always part of a calendar config
+/// so it doesn't need its own ::load and ::write methods
 impl RemoteConfig {
     pub fn new(provider_slug: ProviderSlug, params: RemoteConfigParams) -> Self {
         Self {
@@ -33,31 +31,16 @@ impl RemoteConfig {
         self.params().get(key)
     }
 
-    pub fn write(&self, path: &Path) -> Result<(), RemoteConfigError> {
-        let contents = self.to_toml().map_err(RemoteConfigError::InvalidConfig)?;
-
-        std::fs::write(path, contents)?;
-
-        Ok(())
-    }
-
-    fn load(path: &Path) -> Result<Self, RemoteConfigError> {
-        let contents = std::fs::read_to_string(path)?;
-
-        let config = Self::from_toml(&contents)
-            .map_err(|e| RemoteConfigError::InvalidConfigFile(path.into(), e))?;
-
-        Ok(config)
-    }
-
     pub(crate) fn params(&self) -> &RemoteConfigParams {
         &self.params
     }
 
+    #[cfg(test)]
     fn from_toml(s: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(s)
     }
 
+    #[cfg(test)]
     fn to_toml(&self) -> Result<String, toml::ser::Error> {
         toml::to_string(self)
     }

@@ -68,6 +68,7 @@ impl CalendarConfig {
         self.remote_config.as_ref()
     }
 
+    #[cfg(test)]
     pub(crate) fn update_remote(&mut self, remote_config: RemoteConfig) {
         self.remote_config = Some(remote_config);
     }
