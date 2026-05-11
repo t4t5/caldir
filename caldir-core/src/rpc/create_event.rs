@@ -17,6 +17,7 @@ impl Rpc for CreateEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rpc::Request;
     use crate::{RemoteConfigParams, event::EventTime};
 
     #[test]
@@ -37,12 +38,14 @@ mod tests {
             event: event.clone(),
         };
 
-        let json: serde_json::Value = serde_json::to_value(cmd).unwrap();
+        let json = serde_json::to_value(Request::from_rpc(&cmd).unwrap()).unwrap();
 
-        // assert_eq!(json["command"], "create_event");
-        assert_eq!(json["hooli_account"], "user@hmail.com");
+        assert_eq!(json["command"], "create_event");
+        assert_eq!(json["params"]["hooli_account"], "user@hmail.com");
 
-        let ics = json["event"].as_str().expect("event should be a string");
+        let ics = json["params"]["event"]
+            .as_str()
+            .expect("event should be a string");
         assert!(ics.starts_with("BEGIN:VCALENDAR"));
         assert!(ics.contains(&format!("UID:{}", event.uid.as_str())));
     }

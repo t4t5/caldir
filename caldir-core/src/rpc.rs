@@ -40,6 +40,15 @@ pub(crate) struct Request {
     pub(crate) params: serde_json::Value,
 }
 
+impl Request {
+    pub(crate) fn from_rpc<C: Rpc>(cmd: &C) -> Result<Self, serde_json::Error> {
+        Ok(Self {
+            method: C::METHOD,
+            params: serde_json::to_value(cmd)?,
+        })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub(crate) enum Response<T> {

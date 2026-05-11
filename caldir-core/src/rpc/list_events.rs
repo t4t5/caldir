@@ -16,6 +16,7 @@ impl Rpc for ListEvents {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rpc::Request;
 
     #[test]
     fn list_events_serializes_json() {
@@ -27,8 +28,9 @@ mod tests {
 
         let cmd = ListEvents { remote: params };
 
-        let json: serde_json::Value = serde_json::to_value(cmd).unwrap();
+        let json = serde_json::to_value(Request::from_rpc(&cmd).unwrap()).unwrap();
 
-        assert_eq!(json["hooli_account"], "user@hmail.com");
+        assert_eq!(json["command"], "list_events");
+        assert_eq!(json["params"]["hooli_account"], "user@hmail.com");
     }
 }
