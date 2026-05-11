@@ -99,6 +99,17 @@ impl Event {
         self.splice_valarms_into_vevent(ics)
     }
 
+    pub(crate) fn add_x_property(
+        mut self,
+        name: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
+        self.x_properties
+            .push(XProperty::new(name.into(), value.into()));
+
+        self
+    }
+
     // icalendar library adds UID to every VALARM
     // we don't want that, so we construct them with `Reminder::ics_block` instead:
     fn splice_valarms_into_vevent(&self, ics: String) -> String {

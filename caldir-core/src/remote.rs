@@ -20,18 +20,6 @@ impl Remote {
         Self { provider, params }
     }
 
-    pub async fn create_event(&self, event: Event) -> Result<RemoteEvent, RemoteError> {
-        let event = self
-            .provider
-            .call(rpc::CreateEvent {
-                remote: self.params.clone(),
-                event,
-            })
-            .await?;
-
-        Ok(RemoteEvent::new(event))
-    }
-
     pub async fn list_events(&self) -> Result<Vec<RemoteEvent>, RemoteError> {
         let events = self
             .provider
@@ -44,5 +32,28 @@ impl Remote {
             .collect();
 
         Ok(events)
+    }
+
+    pub async fn create_event(&self, event: Event) -> Result<RemoteEvent, RemoteError> {
+        let event = self
+            .provider
+            .call(rpc::CreateEvent {
+                remote: self.params.clone(),
+                event,
+            })
+            .await?;
+
+        Ok(RemoteEvent::new(event))
+    }
+
+    pub async fn delete_event(&self, event: Event) -> Result<(), RemoteError> {
+        self.provider
+            .call(rpc::DeleteEvent {
+                remote: self.params.clone(),
+                event,
+            })
+            .await?;
+
+        Ok(())
     }
 }
