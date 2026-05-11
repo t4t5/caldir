@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use chrono::NaiveDate;
 use icalendar::{Component, EventLike};
 
+use crate::diff::{CalendarDiff, EventChange};
 use crate::provider::mock_provider::MockProvider;
 use crate::{
     Caldir, CaldirConfig, Calendar, CalendarConfig, CalendarEvent, Event, EventTime, Provider,
@@ -100,6 +101,18 @@ pub fn test_remote() -> (MockProvider, Remote) {
     let mock = test_mock_provider();
     let remote = Remote::new(mock.provider(), test_remote_params());
     (mock, remote)
+}
+
+pub fn outgoing_create_diff(event: Event) -> CalendarDiff {
+    CalendarDiff::from_changes(vec![EventChange::Create(event)], vec![])
+}
+
+pub fn outgoing_update_diff(from: Event, to: Event) -> CalendarDiff {
+    CalendarDiff::from_changes(vec![EventChange::Update { from, to }], vec![])
+}
+
+pub fn outgoing_delete_diff(event: Event) -> CalendarDiff {
+    CalendarDiff::from_changes(vec![EventChange::Delete(event)], vec![])
 }
 
 pub fn test_provider(slug: &str) -> (TempDir, Provider) {

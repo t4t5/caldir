@@ -2,6 +2,7 @@ mod config;
 mod error;
 mod event;
 
+use crate::diff::{CalendarDiff, EventChange};
 use crate::provider::ProviderError;
 use crate::{Event, Provider, rpc};
 
@@ -67,5 +68,75 @@ impl Remote {
             .await?;
 
         Ok(RemoteEvent::new(event))
+    }
+
+    pub async fn apply_diff(&self, diff: &CalendarDiff) -> Result<(), RemoteError> {
+        for change in diff.outgoing() {
+            match change {
+                EventChange::Create(event) => {
+                    self.create_event(event.clone()).await?;
+                }
+                EventChange::Update { to, .. } => {
+                    self.update_event(to.clone()).await?;
+                }
+                EventChange::Delete(event) => {
+                    self.delete_event(event.clone()).await?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::{
+        outgoing_create_diff, outgoing_delete_diff, outgoing_update_diff, test_event, test_remote,
+    };
+    use pretty_assertions::assert_eq;
+
+    #[tokio::test]
+    async fn apply_diff_sends_create_event_for_outgoing_create() {
+        let (mock, remote) = test_remote();
+        let event = test_event();
+        mock.reply::<rpc::CreateEvent>(event.clone());
+
+        remote
+            .apply_diff(&outgoing_create_diff(event.clone()))
+            .await
+            .unwrap();
+
+        assert_eq!(mock.captured_request::<rpc::CreateEvent>().event, event);
+    }
+
+    #[tokio::test]
+    async fn apply_diff_sends_update_event_for_outgoing_update() {
+        let (mock, remote) = test_remote();
+        let from = test_event();
+        let mut to = from.clone();
+        to.summary = Some("Updated".into());
+        mock.reply::<rpc::UpdateEvent>(to.clone());
+
+        remote
+            .apply_diff(&outgoing_update_diff(from, to.clone()))
+            .await
+            .unwrap();
+
+        assert_eq!(mock.captured_request::<rpc::UpdateEvent>().event, to);
+    }
+
+    #[tokio::test]
+    async fn apply_diff_sends_delete_event_for_outgoing_delete() {
+        let (mock, remote) = test_remote();
+        let event = test_event();
+        mock.reply::<rpc::DeleteEvent>(event.clone());
+
+        remote
+            .apply_diff(&outgoing_delete_diff(event.clone()))
+            .await
+            .unwrap();
+
+        assert_eq!(mock.captured_request::<rpc::DeleteEvent>().event, event);
     }
 }

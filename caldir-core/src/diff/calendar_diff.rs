@@ -82,6 +82,17 @@ impl CalendarDiff {
     pub(crate) fn incoming(&self) -> &[EventChange] {
         &self.incoming
     }
+
+    pub(crate) fn outgoing(&self) -> &[EventChange] {
+        &self.outgoing
+    }
+}
+
+#[cfg(test)]
+impl CalendarDiff {
+    pub(crate) fn from_changes(outgoing: Vec<EventChange>, incoming: Vec<EventChange>) -> Self {
+        Self { outgoing, incoming }
+    }
 }
 
 fn local_is_newer(local: &CalendarEvent, remote: &RemoteEvent) -> bool {
