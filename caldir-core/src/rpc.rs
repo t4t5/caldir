@@ -21,7 +21,7 @@ pub(crate) trait Rpc: Serialize {
     const METHOD: Method;
     const TIMEOUT: Duration = DEFAULT_TIMEOUT;
 
-    fn to_wire_value(&self) -> Result<serde_json::Value, serde_json::Error>
+    fn to_json(&self) -> Result<serde_json::Value, serde_json::Error>
     where
         Self: Sized,
     {

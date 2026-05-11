@@ -40,7 +40,7 @@ mod tests {
             event,
         };
 
-        let json = cmd.to_wire_value().unwrap();
+        let json = cmd.to_json().unwrap();
 
         assert_eq!(json["command"], "delete_event");
         assert_eq!(json["params"]["hooli_account"], "user@hmail.com");
@@ -48,6 +48,7 @@ mod tests {
         let ics = json["params"]["event"]
             .as_str()
             .expect("event should be a string");
+
         assert!(ics.starts_with("BEGIN:VCALENDAR"));
         assert!(ics.contains(&format!("UID:{}", uid)));
         assert!(ics.contains("X-HOOLI-EVENT-ID:abc123@hooli.com"));

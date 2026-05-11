@@ -27,7 +27,7 @@ mod tests {
 
         let cmd = ListEvents { remote: params };
 
-        let json = cmd.to_wire_value().unwrap();
+        let json = cmd.to_json().unwrap();
 
         assert_eq!(json["command"], "list_events");
         assert_eq!(json["params"]["hooli_account"], "user@hmail.com");

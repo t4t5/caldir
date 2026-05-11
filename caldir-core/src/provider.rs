@@ -47,7 +47,7 @@ impl Provider {
     }
 
     pub(crate) async fn call<C: rpc::Rpc>(&self, call: C) -> Result<C::Response, ProviderError> {
-        let request_value = call.to_wire_value().map_err(ProviderError::Serialize)?;
+        let request_value = call.to_json().map_err(ProviderError::Serialize)?;
         let request_json =
             serde_json::to_string(&request_value).map_err(ProviderError::Serialize)?;
 
