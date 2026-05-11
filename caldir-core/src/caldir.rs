@@ -317,6 +317,7 @@ mod tests {
             config.data_dir(),
             TimeFormat::default(),
             Some("personal".to_string()),
+            None,
         );
         let caldir = Caldir::new(config, ProviderRegistry::new());
 
@@ -347,6 +348,7 @@ mod tests {
             config.data_dir(),
             TimeFormat::default(),
             Some("missing".to_string()),
+            None,
         );
         let caldir = Caldir::new(config, ProviderRegistry::new());
 

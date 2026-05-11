@@ -1,4 +1,5 @@
 use icalendar::{Component, Property};
+use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 
 const DEFAULT_REMINDER_DESCRIPTION: &str = "Reminder";
@@ -6,17 +7,26 @@ const MINUTES_PER_HOUR: u64 = 60;
 const MINUTES_PER_DAY: u64 = 24 * MINUTES_PER_HOUR;
 const MINUTES_PER_WEEK: u64 = 7 * MINUTES_PER_DAY;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
 pub struct Reminder {
     /// Minutes before the event start.
-    pub minutes_before_start: u32,
+    pub minutes_before_start: i64,
 }
 
 impl Reminder {
-    pub fn minutes_before_start(minutes: u32) -> Self {
+    pub fn minutes_before_start(minutes: i64) -> Self {
         Reminder {
             minutes_before_start: minutes,
         }
+    }
+
+    pub fn from_human(input: &str) -> Result<Self, humantime::DurationError> {
+        let dur = humantime::parse_duration(input)?;
+        let minutes = (dur.as_secs() / 60) as i64;
+
+        Ok(Reminder {
+            minutes_before_start: minutes,
+        })
     }
 
     /// Parse display VALARMs that represent "N minutes before event start".
@@ -87,7 +97,7 @@ impl Reminder {
     }
 }
 
-fn parse_trigger_minutes_before_start(prop: &Property) -> Result<u32, ()> {
+fn parse_trigger_minutes_before_start(prop: &Property) -> Result<i64, ()> {
     match prop.params().get("VALUE").map(|p| p.value()) {
         None => {}
         Some(value) if value.eq_ignore_ascii_case("DURATION") => {}
@@ -102,7 +112,7 @@ fn parse_trigger_minutes_before_start(prop: &Property) -> Result<u32, ()> {
 
     let raw = prop.value().strip_prefix('-').ok_or(())?;
     let minutes = parse_duration_minutes(raw)?;
-    u32::try_from(minutes).map_err(|_| ())
+    i64::try_from(minutes).map_err(|_| ())
 }
 
 fn parse_duration_minutes(raw: &str) -> Result<u64, ()> {
@@ -165,8 +175,8 @@ fn parse_u64(raw: &str) -> Result<u64, ()> {
     raw.parse().map_err(|_| ())
 }
 
-fn format_trigger_minutes_before_start(minutes: u32) -> String {
-    let minutes = u64::from(minutes);
+fn format_trigger_minutes_before_start(minutes: i64) -> String {
+    let minutes = minutes.unsigned_abs();
     if minutes == 0 {
         return "PT0S".to_string();
     }

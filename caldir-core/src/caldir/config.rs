@@ -1,7 +1,7 @@
 mod error;
 mod time_format;
 
-use crate::utils::tilde_expansion::expand_tilde;
+use crate::{Reminder, utils::tilde_expansion::expand_tilde};
 use error::CaldirConfigError;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -18,6 +18,9 @@ pub struct CaldirConfig {
 
     #[serde(rename = "default_calendar", skip_serializing_if = "Option::is_none")]
     default_calendar_slug: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    default_reminders: Option<Vec<Reminder>>,
 }
 
 // Default config values (if empty file):
@@ -27,6 +30,7 @@ impl Default for CaldirConfig {
             data_dir: PathBuf::from("~/caldir"),
             time_format: TimeFormat::default(),
             default_calendar_slug: None,
+            default_reminders: None,
         }
     }
 }
@@ -37,11 +41,13 @@ impl CaldirConfig {
         data_dir: PathBuf,
         time_format: TimeFormat,
         default_calendar_slug: Option<String>,
+        default_reminders: Option<Vec<Reminder>>,
     ) -> Self {
         Self {
             data_dir,
             time_format,
             default_calendar_slug,
+            default_reminders,
         }
     }
 
