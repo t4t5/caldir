@@ -18,6 +18,14 @@ impl KnownEventIds {
         Self(HashSet::new())
     }
 
+    pub fn insert(&mut self, id: EventInstanceId) {
+        self.0.insert(id);
+    }
+
+    pub fn contains(&self, id: &EventInstanceId) -> bool {
+        self.0.contains(id)
+    }
+
     pub fn load(path: &Path) -> Result<Self, CalendarStateError> {
         if path.is_file() {
             let contents = std::fs::read_to_string(path)?;
