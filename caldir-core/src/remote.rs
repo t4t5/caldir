@@ -56,4 +56,16 @@ impl Remote {
 
         Ok(())
     }
+
+    pub async fn update_event(&self, event: Event) -> Result<RemoteEvent, RemoteError> {
+        let event = self
+            .provider
+            .call(rpc::UpdateEvent {
+                remote: self.params.clone(),
+                event,
+            })
+            .await?;
+
+        Ok(RemoteEvent::new(event))
+    }
 }

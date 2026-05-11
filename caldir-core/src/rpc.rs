@@ -1,6 +1,7 @@
 mod create_event;
 mod delete_event;
 mod list_events;
+mod update_event;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,7 @@ use std::time::Duration;
 pub(crate) use create_event::CreateEvent;
 pub(crate) use delete_event::DeleteEvent;
 pub(crate) use list_events::ListEvents;
+pub(crate) use update_event::UpdateEvent;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 
