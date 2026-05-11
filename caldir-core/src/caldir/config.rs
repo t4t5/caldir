@@ -15,6 +15,9 @@ pub struct CaldirConfig {
 
     #[serde(default)]
     time_format: TimeFormat,
+
+    #[serde(rename = "default_calendar", skip_serializing_if = "Option::is_none")]
+    default_calendar_slug: Option<String>,
 }
 
 // Default config values (if empty file):
@@ -23,16 +26,22 @@ impl Default for CaldirConfig {
         Self {
             data_dir: PathBuf::from("~/caldir"),
             time_format: TimeFormat::default(),
+            default_calendar_slug: None,
         }
     }
 }
 
 impl CaldirConfig {
     #[cfg(test)]
-    pub(crate) fn new(data_dir: PathBuf, time_format: TimeFormat) -> Self {
+    pub(crate) fn new(
+        data_dir: PathBuf,
+        time_format: TimeFormat,
+        default_calendar_slug: Option<String>,
+    ) -> Self {
         Self {
             data_dir,
             time_format,
+            default_calendar_slug,
         }
     }
 
@@ -47,6 +56,10 @@ impl CaldirConfig {
 
     pub fn data_dir(&self) -> PathBuf {
         expand_tilde(&self.data_dir)
+    }
+
+    pub fn default_calendar_slug(&self) -> Option<&str> {
+        self.default_calendar_slug.as_deref()
     }
 
     pub fn write(&self, path: &Path) -> Result<(), CaldirConfigError> {
@@ -109,6 +122,7 @@ mod tests {
                 r#"
                 calendar_dir = "{data_dir}"
                 time_format = "12h"
+                default_calendar = "personal"
                 "#
             ),
         )
@@ -118,6 +132,7 @@ mod tests {
 
         assert_eq!(config.data_dir, PathBuf::from(data_dir));
         assert_eq!(config.time_format, TimeFormat::H12);
+        assert_eq!(config.default_calendar_slug.as_deref(), Some("personal"));
     }
 
     #[test]

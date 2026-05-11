@@ -26,6 +26,15 @@ impl Caldir {
         self.config.data_dir()
     }
 
+    pub fn default_calendar(&self) -> Result<Calendar, CaldirError> {
+        let slug = self
+            .config
+            .default_calendar_slug()
+            .ok_or(CaldirError::NoDefaultCalendar)?;
+
+        Ok(Calendar::load(&self.data_dir().join(slug))?)
+    }
+
     pub fn create_calendar(
         &self,
         desired_slug: &str,
@@ -298,6 +307,52 @@ mod tests {
         assert!(matches!(
             result,
             Err(CaldirError::Provider(ProviderError::ProviderNotFound(_)))
+        ));
+    }
+
+    #[test]
+    fn default_calendar_returns_calendar_matching_configured_slug() {
+        let (_tmp, mut config) = test_caldir_config();
+        config = CaldirConfig::new(
+            config.data_dir(),
+            TimeFormat::default(),
+            Some("personal".to_string()),
+        );
+        let caldir = Caldir::new(config, ProviderRegistry::new());
+
+        caldir.create_calendar("personal", None).unwrap();
+        caldir.create_calendar("work", None).unwrap();
+
+        let calendar = caldir.default_calendar().unwrap();
+
+        assert_eq!(calendar.slug().unwrap(), "personal");
+    }
+
+    #[test]
+    fn default_calendar_errors_when_no_default_slug_configured() {
+        let (_tmp, caldir) = test_caldir();
+
+        caldir.create_calendar("personal", None).unwrap();
+
+        assert!(matches!(
+            caldir.default_calendar(),
+            Err(CaldirError::NoDefaultCalendar)
+        ));
+    }
+
+    #[test]
+    fn default_calendar_errors_when_calendar_does_not_exist() {
+        let (_tmp, mut config) = test_caldir_config();
+        config = CaldirConfig::new(
+            config.data_dir(),
+            TimeFormat::default(),
+            Some("missing".to_string()),
+        );
+        let caldir = Caldir::new(config, ProviderRegistry::new());
+
+        assert!(matches!(
+            caldir.default_calendar(),
+            Err(CaldirError::Calendar(_))
         ));
     }
 }

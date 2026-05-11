@@ -24,7 +24,7 @@ pub fn test_caldir_config() -> (TempDir, CaldirConfig) {
     let tmp = TempDir::new().unwrap();
     let data_dir = tmp.path().join("test-caldir");
 
-    let config = CaldirConfig::new(data_dir, TimeFormat::default());
+    let config = CaldirConfig::new(data_dir, TimeFormat::default(), None);
 
     (tmp, config)
 }
