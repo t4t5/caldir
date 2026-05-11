@@ -151,7 +151,7 @@ impl Calendar {
         self.remote_config().is_some()
     }
 
-    pub fn apply_diff(&self, diff: &CalendarDiff) -> Result<(), CalendarError> {
+    pub fn apply_diff(&mut self, diff: &CalendarDiff) -> Result<(), CalendarError> {
         // Create faster lookup for updates:
         let mut events_by_instance_id: HashMap<EventInstanceId, CalendarEvent> = self
             .events()?
@@ -181,6 +181,11 @@ impl Calendar {
                 }
             }
         }
+
+        self.state
+            .add_new_synced_ids(diff.new_synced_ids())
+            .write(&calendar_state_dir(&self.path))?;
+
         Ok(())
     }
 }
@@ -329,7 +334,7 @@ mod tests {
 
     #[test]
     fn apply_diff_creates_file_for_incoming_create() {
-        let (_tmp, calendar) = test_calendar();
+        let (_tmp, mut calendar) = test_calendar();
         let event = test_event();
 
         let diff = incoming_create_diff(event);
@@ -341,7 +346,7 @@ mod tests {
 
     #[test]
     fn apply_diff_updates_file_for_incoming_update() {
-        let (_tmp, calendar) = test_calendar();
+        let (_tmp, mut calendar) = test_calendar();
         let from = test_event();
         let cal_event = calendar.create_event(from.clone()).unwrap();
         let old_path = cal_event.path().to_path_buf();
@@ -361,7 +366,7 @@ mod tests {
 
     #[test]
     fn apply_diff_deletes_file_for_incoming_delete() {
-        let (_tmp, calendar) = test_calendar();
+        let (_tmp, mut calendar) = test_calendar();
         let event = test_event();
         let cal_event = calendar.create_event(event.clone()).unwrap();
         let path = cal_event.path().to_path_buf();
@@ -370,5 +375,57 @@ mod tests {
         calendar.apply_diff(&diff).unwrap();
 
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn apply_diff_records_incoming_create_in_state() {
+        let (_tmp, mut calendar) = test_calendar();
+        let event = test_event();
+        let id = event.event_instance_id();
+
+        calendar.apply_diff(&incoming_create_diff(event)).unwrap();
+
+        assert!(calendar.state().synced_event_ids().contains(&id));
+    }
+
+    #[test]
+    fn apply_diff_records_outgoing_create_in_state() {
+        let (_tmp, mut calendar) = test_calendar();
+        let event = test_event();
+        let id = event.event_instance_id();
+
+        // Outgoing create: the remote applied it, now record it locally.
+        calendar
+            .apply_diff(&crate::test_utils::outgoing_create_diff(event))
+            .unwrap();
+
+        assert!(calendar.state().synced_event_ids().contains(&id));
+    }
+
+    #[test]
+    fn apply_diff_persists_state_to_disk() {
+        let (_tmp, mut calendar) = test_calendar();
+        let event = test_event();
+        let id = event.event_instance_id();
+
+        calendar.apply_diff(&incoming_create_diff(event)).unwrap();
+
+        // Reload from disk to confirm state was actually persisted.
+        let reloaded = Calendar::load(calendar.path()).unwrap();
+        assert!(reloaded.state().synced_event_ids().contains(&id));
+    }
+
+    #[test]
+    fn apply_diff_does_not_record_deletes_in_state() {
+        let (_tmp, mut calendar) = test_calendar();
+        let event = test_event();
+        let id = event.event_instance_id();
+        calendar.create_event(event.clone()).unwrap();
+
+        calendar.apply_diff(&incoming_delete_diff(event)).unwrap();
+
+        // Synced IDs are append-only: the delete doesn't add anything new,
+        // and we don't remove existing entries.
+        assert!(!calendar.state().synced_event_ids().contains(&id));
     }
 }

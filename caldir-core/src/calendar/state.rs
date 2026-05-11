@@ -1,6 +1,7 @@
 mod error;
 mod synced_event_ids;
 
+use crate::event::EventInstanceId;
 pub use error::CalendarStateError;
 use std::path::Path;
 use synced_event_ids::SYNCED_IDS_FILE_NAME;
@@ -33,8 +34,18 @@ impl CalendarState {
         Ok(())
     }
 
-    pub fn synced_event_ids(&self) -> &SyncedEventIds {
+    pub(crate) fn synced_event_ids(&self) -> &SyncedEventIds {
         &self.synced_event_ids
+    }
+
+    pub(crate) fn add_new_synced_ids(
+        &mut self,
+        ids: impl IntoIterator<Item = EventInstanceId>,
+    ) -> &mut Self {
+        for id in ids {
+            self.synced_event_ids.insert(id);
+        }
+        self
     }
 }
 

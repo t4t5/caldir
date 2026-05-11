@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::event_change::EventChange;
+use crate::event::EventInstanceId;
 use crate::{CalendarEvent, RemoteEvent, calendar::SyncedEventIds};
 
 pub struct CalendarDiff {
@@ -85,6 +86,24 @@ impl CalendarDiff {
 
     pub(crate) fn outgoing(&self) -> &[EventChange] {
         &self.outgoing
+    }
+
+    /// IDs of events whose presence in the calendar needs to be recorded in
+    /// sync state after applying this diff. `Delete`s are intentionally not
+    /// removed — synced IDs are an append-only log of "ever seen" events, and
+    /// the diff logic only consults them for events still present in either
+    /// side, so stale entries are harmless.
+    pub(crate) fn new_synced_ids(&self) -> Vec<EventInstanceId> {
+        self.incoming
+            .iter()
+            .chain(self.outgoing.iter())
+            .filter_map(|change| match change {
+                EventChange::Create(event) | EventChange::Update { to: event, .. } => {
+                    Some(event.event_instance_id())
+                }
+                EventChange::Delete(_) => None,
+            })
+            .collect()
     }
 }
 
