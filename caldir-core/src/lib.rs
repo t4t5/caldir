@@ -15,7 +15,7 @@ mod test_utils;
 pub use caldir::{Caldir, CaldirConfig};
 pub use calendar::{Calendar, CalendarConfig, CalendarEvent};
 pub use connection::Connection;
-pub use diff::{CalendarDiff, VersionedEvent};
+pub use diff::CalendarDiff;
 pub use event::{Event, EventTime, Reminder};
 pub use provider::{Provider, ProviderRegistry, ProviderSlug};
 pub use remote::{Remote, RemoteConfig, RemoteConfigParams, RemoteEvent};

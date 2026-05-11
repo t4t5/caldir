@@ -1,4 +1,6 @@
-use crate::{Event, VersionedEvent};
+use chrono::{DateTime, Utc};
+
+use crate::Event;
 
 pub struct RemoteEvent(Event);
 
@@ -7,12 +9,11 @@ impl RemoteEvent {
         Self(event)
     }
 
-    pub fn into_versioned(self) -> VersionedEvent {
-        let modified_at = self.0.last_modified;
+    pub fn modified_at(&self) -> Option<DateTime<Utc>> {
+        self.0.last_modified
+    }
 
-        VersionedEvent {
-            event: self.0,
-            modified_at,
-        }
+    pub fn event(&self) -> &Event {
+        &self.0
     }
 }

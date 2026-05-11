@@ -28,7 +28,9 @@ impl Connection {
         let local_events = self.local().events()?;
         let remote_events = self.remote().list_events().await?;
 
-        let diff = CalendarDiff::compute(local_events, remote_events);
+        let known_ids = self.known_event_ids();
+
+        let diff = CalendarDiff::compute(local_events, remote_events, known_ids);
 
         Ok(diff)
     }
