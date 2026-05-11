@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use chrono::NaiveDate;
 use icalendar::{Component, EventLike};
 
+use crate::caldir::TimeFormat;
 use crate::diff::{CalendarDiff, EventChange};
 use crate::provider::mock_provider::MockProvider;
 use crate::{
@@ -23,7 +24,7 @@ pub fn test_caldir_config() -> (TempDir, CaldirConfig) {
     let tmp = TempDir::new().unwrap();
     let data_dir = tmp.path().join("test-caldir");
 
-    let config = CaldirConfig::new(data_dir);
+    let config = CaldirConfig::new(data_dir, TimeFormat::default());
 
     (tmp, config)
 }

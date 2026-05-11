@@ -99,6 +99,7 @@ impl Event {
         self.splice_valarms_into_vevent(ics)
     }
 
+    #[cfg(test)]
     pub(crate) fn add_x_property(
         mut self,
         name: impl Into<String>,

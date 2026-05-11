@@ -10,7 +10,7 @@ pub struct CalendarDiff {
 }
 
 impl CalendarDiff {
-    pub fn compute(
+    pub(crate) fn compute(
         local_events: Vec<CalendarEvent>,
         remote_events: Vec<RemoteEvent>,
         synced_ids: &SyncedEventIds,

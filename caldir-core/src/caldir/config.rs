@@ -1,15 +1,20 @@
 mod error;
+mod time_format;
 
 use crate::utils::tilde_expansion::expand_tilde;
 use error::CaldirConfigError;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+pub(crate) use time_format::TimeFormat;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CaldirConfig {
     #[serde(rename = "calendar_dir")] // preserved for backwards-compatibility
     data_dir: PathBuf,
+
+    #[serde(default)]
+    pub time_format: TimeFormat,
 }
 
 // Default config values (if empty file):
@@ -17,14 +22,18 @@ impl Default for CaldirConfig {
     fn default() -> Self {
         Self {
             data_dir: PathBuf::from("~/caldir"),
+            time_format: TimeFormat::default(),
         }
     }
 }
 
 impl CaldirConfig {
     #[cfg(test)]
-    pub(crate) fn new(data_dir: PathBuf) -> Self {
-        Self { data_dir }
+    pub(crate) fn new(data_dir: PathBuf, time_format: TimeFormat) -> Self {
+        Self {
+            data_dir,
+            time_format,
+        }
     }
 
     pub fn load_or_default(path: &Path) -> Result<Self, CaldirConfigError> {
