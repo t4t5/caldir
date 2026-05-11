@@ -1,16 +1,30 @@
 use icalendar::{Component, Property};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Reverse;
+use std::time::Duration;
 
 const DEFAULT_REMINDER_DESCRIPTION: &str = "Reminder";
 const MINUTES_PER_HOUR: u64 = 60;
 const MINUTES_PER_DAY: u64 = 24 * MINUTES_PER_HOUR;
 const MINUTES_PER_WEEK: u64 = 7 * MINUTES_PER_DAY;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Reminder {
     /// Minutes before the event start.
     pub minutes_before_start: i64,
+}
+
+impl Serialize for Reminder {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_human())
+    }
+}
+
+impl<'de> Deserialize<'de> for Reminder {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Reminder::from_human(&s).map_err(serde::de::Error::custom)
+    }
 }
 
 impl Reminder {
@@ -27,6 +41,11 @@ impl Reminder {
         Ok(Reminder {
             minutes_before_start: minutes,
         })
+    }
+
+    pub fn to_human(&self) -> String {
+        let seconds = self.minutes_before_start.unsigned_abs() * 60;
+        humantime::format_duration(Duration::from_secs(seconds)).to_string()
     }
 
     /// Parse display VALARMs that represent "N minutes before event start".

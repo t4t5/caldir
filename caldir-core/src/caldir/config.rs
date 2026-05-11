@@ -142,6 +142,32 @@ mod tests {
     }
 
     #[test]
+    fn load_or_default_parses_default_reminders_as_human_durations() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+            default_reminders = [
+                "30m",
+                "1h",
+            ]
+            "#,
+        )
+        .unwrap();
+
+        let config = CaldirConfig::load_or_default(&path).unwrap();
+
+        assert_eq!(
+            config.default_reminders,
+            Some(vec![
+                Reminder::minutes_before_start(30),
+                Reminder::minutes_before_start(60),
+            ])
+        );
+    }
+
+    #[test]
     fn load_or_default_returns_default_on_missing_file() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("nonexistent.toml");
