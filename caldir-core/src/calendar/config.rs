@@ -11,6 +11,7 @@ pub struct CalendarConfig {
     name: Option<String>,
     color: Option<String>,
     read_only: Option<bool>,
+
     #[serde(rename = "remote")]
     remote_config: Option<RemoteConfig>,
 }

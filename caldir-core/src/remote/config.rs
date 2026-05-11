@@ -9,6 +9,7 @@ pub use params::RemoteConfigParams;
 pub struct RemoteConfig {
     #[serde(rename = "provider")]
     provider_slug: ProviderSlug,
+
     #[serde(flatten)]
     params: RemoteConfigParams,
 }

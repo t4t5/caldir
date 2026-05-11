@@ -14,7 +14,7 @@ pub struct CaldirConfig {
     data_dir: PathBuf,
 
     #[serde(default)]
-    pub time_format: TimeFormat,
+    time_format: TimeFormat,
 }
 
 // Default config values (if empty file):
@@ -103,11 +103,21 @@ mod tests {
         let data_dir = "/tmp/my-calendar";
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("config.toml");
-        std::fs::write(&path, format!(r#"calendar_dir = "{data_dir}""#)).unwrap();
+        std::fs::write(
+            &path,
+            format!(
+                r#"
+                calendar_dir = "{data_dir}"
+                time_format = "12h"
+                "#
+            ),
+        )
+        .unwrap();
 
         let config = CaldirConfig::load_or_default(&path).unwrap();
 
         assert_eq!(config.data_dir, PathBuf::from(data_dir));
+        assert_eq!(config.time_format, TimeFormat::H12);
     }
 
     #[test]
