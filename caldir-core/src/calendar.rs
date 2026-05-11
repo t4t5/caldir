@@ -4,13 +4,14 @@ mod event;
 mod state;
 
 use crate::{Event, RemoteConfig};
-pub(crate) use event::CalendarEventError;
 use std::path::{Path, PathBuf};
 
 pub use config::CalendarConfig;
 pub use error::CalendarError;
 pub use event::CalendarEvent;
+pub(crate) use event::CalendarEventError;
 pub use state::CalendarState;
+pub(crate) use state::KnownEventIds;
 
 const DOTDIR_NAME: &str = ".caldir";
 
@@ -36,6 +37,7 @@ fn calendar_state_dir(calendar_path: &Path) -> PathBuf {
 pub struct Calendar {
     path: PathBuf,
     config: Option<CalendarConfig>,
+    state: CalendarState,
 }
 
 impl Calendar {
@@ -55,9 +57,15 @@ impl Calendar {
             CalendarConfig::write(config, &config_path)?;
         }
 
+        // Create empty state file:
+        let state_dir = calendar_state_dir(path);
+        let state = CalendarState::new();
+        state.write(&state_dir)?;
+
         Ok(Self {
             path: path.to_path_buf(),
             config,
+            state,
         })
     }
 
@@ -70,9 +78,13 @@ impl Calendar {
         let config_path = calendar_config_path(path);
         let config = CalendarConfig::load_optional(&config_path)?;
 
+        let state_dir = calendar_state_dir(path);
+        let state = CalendarState::load(&state_dir)?;
+
         Ok(Self {
             path: path.to_path_buf(),
             config,
+            state,
         })
     }
 
@@ -84,10 +96,8 @@ impl Calendar {
         calendar_config_path(self.path())
     }
 
-    pub fn state(&self) -> Result<CalendarState, CalendarStateError> {
-        let state_dir = calendar_state_dir(self.path());
-        let state = CalendarState::load(&state_dir)?;
-        Ok(state)
+    pub fn state(&self) -> &CalendarState {
+        &self.state
     }
 
     pub fn slug(&self) -> Option<&str> {
@@ -95,7 +105,7 @@ impl Calendar {
     }
 
     /// Load all events in calendar
-    pub fn events(&self) -> Result<Vec<CalendarEvent>, CalendarEventError> {
+    pub fn events(&self) -> Result<Vec<CalendarEvent>, CalendarError> {
         let mut events: Vec<CalendarEvent> = Vec::new();
 
         for entry in std::fs::read_dir(self.path())? {
@@ -111,14 +121,10 @@ impl Calendar {
     }
 
     /// Load specific event in calendar
-    pub fn event(&self, event_slug: &str) -> Result<CalendarEvent, CalendarEventError> {
+    pub fn event(&self, event_slug: &str) -> Result<CalendarEvent, CalendarError> {
         let event_path = self.path().join(format!("{}.ics", event_slug));
-
-        if !event_path.is_file() {
-            return Err(CalendarEventError::NotFound(event_path));
-        }
-
-        CalendarEvent::load(event_path)
+        let calendar_event = CalendarEvent::load(event_path)?;
+        Ok(calendar_event)
     }
 
     /// Create new event in calendar
@@ -127,9 +133,10 @@ impl Calendar {
     }
 
     /// Delete event from calendar
-    pub fn delete_event(&self, event_slug: &str) -> Result<(), CalendarEventError> {
+    pub fn delete_event(&self, event_slug: &str) -> Result<(), CalendarError> {
         let event = self.event(event_slug)?;
-        event.delete()
+        event.delete()?;
+        Ok(())
     }
 
     pub fn remote_config(&self) -> Option<&RemoteConfig> {
@@ -262,7 +269,10 @@ mod tests {
 
         let result = calendar.event("does-not-exist");
 
-        assert!(matches!(result, Err(CalendarEventError::NotFound(_))));
+        assert!(matches!(
+            result,
+            Err(CalendarError::Event(CalendarEventError::NotFound(_)))
+        ));
     }
 
     #[test]

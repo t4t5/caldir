@@ -3,6 +3,8 @@ mod error;
 use crate::{Calendar, CalendarDiff, Remote};
 use error::ConnectionError;
 
+use crate::calendar::KnownEventIds;
+
 /// A connection is a [local calendar] + [remote calendar] pair
 pub struct Connection {
     local: Calendar,
@@ -29,5 +31,9 @@ impl Connection {
         let diff = CalendarDiff::compute(local_events, remote_events);
 
         Ok(diff)
+    }
+
+    fn known_event_ids(&self) -> &KnownEventIds {
+        self.local().state().known_event_ids()
     }
 }

@@ -26,6 +26,11 @@ impl CalendarEvent {
 
     pub fn load(path: impl Into<PathBuf>) -> Result<Self, CalendarEventError> {
         let path = path.into();
+
+        if !path.is_file() {
+            return Err(CalendarEventError::NotFound(path));
+        }
+
         let contents = std::fs::read_to_string(&path)?;
 
         let event = Event::from_ics_str(&contents)
@@ -188,6 +193,16 @@ mod tests {
             cal_event_1.filename().unwrap(),
             cal_event_2.filename().unwrap()
         );
+    }
+
+    #[test]
+    fn load_errors_on_missing_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("missing.ics");
+
+        let err = CalendarEvent::load(path).unwrap_err();
+
+        assert!(matches!(err, CalendarEventError::NotFound(p) if p.ends_with("missing.ics")));
     }
 
     #[test]

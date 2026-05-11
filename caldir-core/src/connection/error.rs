@@ -1,4 +1,4 @@
-use crate::calendar::CalendarEventError;
+use crate::calendar::CalendarError;
 use crate::remote::RemoteError;
 
 #[derive(Debug, thiserror::Error)]
@@ -7,5 +7,5 @@ pub enum ConnectionError {
     Remote(#[from] RemoteError),
 
     #[error("Local calendar error: {0}")]
-    CalendarEvent(#[from] CalendarEventError),
+    Calendar(#[from] CalendarError),
 }

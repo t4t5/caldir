@@ -2,16 +2,23 @@ mod error;
 mod known_event_ids;
 
 pub use error::CalendarStateError;
-use known_event_ids::KnownEventIds;
+use known_event_ids::KNOWN_IDS_FILE_NAME;
 use std::path::Path;
 
+pub(crate) use known_event_ids::KnownEventIds;
+
+#[derive(Debug)]
 pub struct CalendarState {
     known_event_ids: KnownEventIds,
 }
 
-const KNOWN_IDS_FILE_NAME: &str = "known_event_ids";
-
 impl CalendarState {
+    pub fn new() -> Self {
+        Self {
+            known_event_ids: KnownEventIds::new(),
+        }
+    }
+
     pub fn load(state_dir: &Path) -> Result<Self, CalendarStateError> {
         let known_ids_path = state_dir.join(KNOWN_IDS_FILE_NAME);
         let known_event_ids = KnownEventIds::load(&known_ids_path)?;
@@ -24,6 +31,10 @@ impl CalendarState {
         let known_ids_path = state_dir.join(KNOWN_IDS_FILE_NAME);
         self.known_event_ids.write(&known_ids_path)?;
         Ok(())
+    }
+
+    pub fn known_event_ids(&self) -> &KnownEventIds {
+        &self.known_event_ids
     }
 }
 

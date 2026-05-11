@@ -2,9 +2,22 @@ use super::CalendarStateError;
 use crate::event::EventInstanceId;
 use std::{collections::HashSet, path::Path};
 
+// ~/caldir/my_calendar/.caldir/state/known_event_ids
+pub(crate) const KNOWN_IDS_FILE_NAME: &str = "known_event_ids";
+
+#[derive(Debug)]
 pub(crate) struct KnownEventIds(HashSet<EventInstanceId>);
 
+/// Event instance IDs are stored in plaintext, one per line:
+/// e.g.
+///   t5slp0vorqgoasogqkvadjt9jj@hooli.com__20240625T170000Z
+///   t5slp0vorqgoasogqkvadjt9jj@hooli.com__20240625T180000
+///   t81pd0rkq8ujaughbrjhh87svo@hooli.com
 impl KnownEventIds {
+    pub fn new() -> Self {
+        Self(HashSet::new())
+    }
+
     pub fn load(path: &Path) -> Result<Self, CalendarStateError> {
         if path.is_file() {
             let contents = std::fs::read_to_string(path)?;
@@ -18,7 +31,7 @@ impl KnownEventIds {
 
             Ok(Self(ids))
         } else {
-            Ok(Self(HashSet::new()))
+            Ok(Self::new())
         }
     }
 
