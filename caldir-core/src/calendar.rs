@@ -6,6 +6,7 @@ mod state;
 use crate::diff::{CalendarDiff, EventChange};
 use crate::event::EventInstanceId;
 use crate::{Event, RemoteConfig};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub use config::CalendarConfig;
@@ -151,21 +152,29 @@ impl Calendar {
     }
 
     pub fn apply_diff(&self, diff: &CalendarDiff) -> Result<(), CalendarError> {
+        // Create faster lookup for updates:
+        let mut events_by_instance_id: HashMap<EventInstanceId, CalendarEvent> = self
+            .events()?
+            .into_iter()
+            .map(|e| (e.event().event_instance_id(), e))
+            .collect();
+
         for change in diff.incoming() {
             match change {
                 EventChange::Create(event) => {
-                    self.create_event(event.clone())?;
+                    let cal_event = self.create_event(event.clone())?;
+                    events_by_instance_id.insert(cal_event.event().event_instance_id(), cal_event);
                 }
                 EventChange::Update { to, .. } => {
-                    if let Some(mut cal_event) =
-                        self.event_from_instance_id(&to.event_instance_id())?
-                    {
+                    let found = events_by_instance_id.get_mut(&to.event_instance_id());
+
+                    if let Some(cal_event) = found {
                         cal_event.update(to.clone())?;
                     }
                 }
                 EventChange::Delete(event) => {
                     if let Some(cal_event) =
-                        self.event_from_instance_id(&event.event_instance_id())?
+                        events_by_instance_id.remove(&event.event_instance_id())
                     {
                         cal_event.delete()?;
                     }
@@ -173,17 +182,6 @@ impl Calendar {
             }
         }
         Ok(())
-    }
-
-    /// Find a local event by its RFC 5545 instance ID
-    fn event_from_instance_id(
-        &self,
-        id: &EventInstanceId,
-    ) -> Result<Option<CalendarEvent>, CalendarError> {
-        Ok(self
-            .events()?
-            .into_iter()
-            .find(|e| &e.event().event_instance_id() == id))
     }
 }
 
