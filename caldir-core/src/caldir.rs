@@ -28,22 +28,19 @@ impl Caldir {
         desired_slug: &str,
         config: Option<CalendarConfig>,
     ) -> Result<Calendar, CaldirError> {
-        let unique_slug = self.find_best_available_calendar_slug(desired_slug);
+        let unique_slug = self.unique_slug_for(desired_slug);
         let calendar_path = self.data_dir().join(unique_slug);
 
         Ok(Calendar::create(&calendar_path, config)?)
     }
 
-    pub fn calendars(&self) -> Vec<Calendar> {
+    pub fn calendars(&self) -> Vec<Result<Calendar, CaldirError>> {
         let mut calendars = Vec::new();
 
         if let Ok(entries) = std::fs::read_dir(self.data_dir()) {
             for entry in entries.flatten() {
-                if entry.path().is_dir()
-                    && !entry.file_name().to_string_lossy().starts_with('.')
-                    && let Ok(calendar) = Calendar::load(&entry.path())
-                {
-                    calendars.push(calendar);
+                if entry.path().is_dir() && !entry.file_name().to_string_lossy().starts_with('.') {
+                    calendars.push(Calendar::load(&entry.path()).map_err(CaldirError::from));
                 }
             }
         }
@@ -55,6 +52,14 @@ impl Caldir {
         let mut connections = Vec::new();
 
         for calendar in self.calendars() {
+            let calendar = match calendar {
+                Ok(calendar) => calendar,
+                Err(err) => {
+                    connections.push(Err(err));
+                    continue;
+                }
+            };
+
             let Some(remote_config) = calendar.remote_config().cloned() else {
                 continue;
             };
@@ -82,17 +87,17 @@ impl Caldir {
 
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
     /// If the base slug exists, tries slug-2, slug-3, etc.
-    fn find_best_available_calendar_slug(&self, desired: &str) -> String {
+    fn unique_slug_for(&self, desired_slug: &str) -> String {
         let calendar_dir = self.config.data_dir();
 
-        if !calendar_dir.join(desired).exists() {
-            return desired.to_string();
+        if !calendar_dir.join(desired_slug).exists() {
+            return desired_slug.to_string();
         }
 
         let mut suffix = 2;
 
         loop {
-            let candidate = format!("{desired}-{suffix}");
+            let candidate = format!("{desired_slug}-{suffix}");
             if !calendar_dir.join(&candidate).exists() {
                 return candidate;
             }
@@ -161,7 +166,7 @@ mod tests {
 
         let mut slugs: Vec<String> = calendars
             .iter()
-            .map(|c| c.slug().unwrap().to_string())
+            .map(|c| c.as_ref().unwrap().slug().unwrap().to_string())
             .collect();
 
         slugs.sort();
@@ -181,7 +186,7 @@ mod tests {
 
         let slugs: Vec<String> = calendars
             .iter()
-            .map(|c| c.slug().unwrap().to_string())
+            .map(|c| c.as_ref().unwrap().slug().unwrap().to_string())
             .collect();
 
         assert_eq!(slugs, vec!["work"]);
