@@ -34,26 +34,6 @@ impl Caldir {
         Ok(Calendar::create(&calendar_path, config)?)
     }
 
-    /// Generate a unique slug that doesn't conflict with existing calendar directories.
-    /// If the base slug exists, tries slug-2, slug-3, etc.
-    fn find_best_available_calendar_slug(&self, desired: &str) -> String {
-        let calendar_dir = self.config.data_dir();
-
-        if !calendar_dir.join(desired).exists() {
-            return desired.to_string();
-        }
-
-        let mut suffix = 2;
-
-        loop {
-            let candidate = format!("{desired}-{suffix}");
-            if !calendar_dir.join(&candidate).exists() {
-                return candidate;
-            }
-            suffix += 1;
-        }
-    }
-
     pub fn calendars(&self) -> Vec<Calendar> {
         let mut calendars = Vec::new();
 
@@ -98,6 +78,26 @@ impl Caldir {
         self.providers
             .get(provider_slug)
             .map_err(CaldirError::Provider)
+    }
+
+    /// Generate a unique slug that doesn't conflict with existing calendar directories.
+    /// If the base slug exists, tries slug-2, slug-3, etc.
+    fn find_best_available_calendar_slug(&self, desired: &str) -> String {
+        let calendar_dir = self.config.data_dir();
+
+        if !calendar_dir.join(desired).exists() {
+            return desired.to_string();
+        }
+
+        let mut suffix = 2;
+
+        loop {
+            let candidate = format!("{desired}-{suffix}");
+            if !calendar_dir.join(&candidate).exists() {
+                return candidate;
+            }
+            suffix += 1;
+        }
     }
 }
 
