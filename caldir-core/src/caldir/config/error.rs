@@ -8,6 +8,9 @@ pub enum CaldirConfigError {
     #[error("invalid calendar config: {0}")]
     InvalidConfig(toml::ser::Error),
 
+    #[error("could not determine config directory")]
+    UnknownConfigDirectory,
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }

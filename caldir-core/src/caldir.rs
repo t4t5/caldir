@@ -22,6 +22,13 @@ impl Caldir {
         Caldir { config, providers }
     }
 
+    pub fn load() -> Result<Self, CaldirError> {
+        let config = CaldirConfig::from_system_config()?;
+        let providers = ProviderRegistry::from_system_path();
+
+        Ok(Self::new(config, providers))
+    }
+
     pub fn data_dir(&self) -> PathBuf {
         self.config.data_dir()
     }
@@ -118,15 +125,6 @@ impl Caldir {
     }
 }
 
-// impl Default for Caldir {
-//     fn default() -> Self {
-//         Self::new(
-//             CaldirConfig::default(),
-//             ProviderRegistry::from_system_path(),
-//         )
-//     }
-// }
-//
 #[cfg(test)]
 mod tests {
     use super::*;

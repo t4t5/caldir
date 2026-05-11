@@ -2,7 +2,7 @@ mod error;
 mod time_format;
 
 use crate::{Reminder, utils::tilde_expansion::expand_tilde};
-use error::CaldirConfigError;
+pub(crate) use error::CaldirConfigError;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 pub(crate) use time_format::TimeFormat;
@@ -51,6 +51,11 @@ impl CaldirConfig {
         }
     }
 
+    pub fn from_system_config() -> Result<Self, CaldirConfigError> {
+        let config_path = Self::default_system_config_dir()?.join("config.toml");
+        Self::load_or_default(&config_path)
+    }
+
     pub fn load_or_default(path: &Path) -> Result<Self, CaldirConfigError> {
         if path.is_file() {
             let config = Self::load(path)?;
@@ -91,6 +96,30 @@ impl CaldirConfig {
 
     fn to_toml(&self) -> Result<String, toml::ser::Error> {
         toml::to_string(self)
+    }
+
+    /// Caldir config directory:
+    /// - Linux/BSD: `$XDG_CONFIG_HOME/caldir` or `~/.config/caldir`
+    /// - macOS: `~/.config/caldir`
+    /// - Windows: `%APPDATA%\caldir`
+    fn default_system_config_dir() -> Result<PathBuf, CaldirConfigError> {
+        let config_dir_path = Self::platform_config_dir()?.join("caldir");
+
+        Ok(config_dir_path)
+    }
+
+    /// Make the macOS path ~/.config/caldir (like Linux)
+    /// instead of the dirs::config_dir default of ~/Library/Application Support
+    #[cfg(target_os = "macos")]
+    fn platform_config_dir() -> Result<PathBuf, CaldirConfigError> {
+        let home = dirs::home_dir().ok_or(CaldirConfigError::UnknownConfigDirectory)?;
+        Ok(home.join(".config"))
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    fn platform_config_dir() -> Result<PathBuf, CaldirConfigError> {
+        let path = dirs::config_dir().ok_or(CaldirConfigError::UnknownConfigDirectory)?;
+        Ok(path)
     }
 }
 
@@ -189,5 +218,33 @@ mod tests {
             result.unwrap_err(),
             CaldirConfigError::InvalidConfigFile(_, _)
         ));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn default_system_dir_uses_home_dot_config_on_macos() {
+        let home = PathBuf::from(std::env::var("HOME").unwrap());
+        let dir = CaldirConfig::default_system_config_dir().unwrap();
+        assert_eq!(dir, home.join(".config").join("caldir"));
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn default_system_dir_uses_xdg_config_dir_on_linux() {
+        let expected_parent = std::env::var("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap()).join(".config"));
+
+        let dir = CaldirConfig::default_system_config_dir().unwrap();
+
+        assert_eq!(dir, expected_parent.join("caldir"));
+    }
+
+    #[test]
+    #[cfg(target_os = "windows")]
+    fn default_system_dir_uses_appdata_on_windows() {
+        let appdata = PathBuf::from(std::env::var("APPDATA").unwrap());
+        let dir = CaldirConfig::default_system_config_dir().unwrap();
+        assert_eq!(dir, appdata.join("caldir"));
     }
 }

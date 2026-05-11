@@ -1,3 +1,4 @@
+use super::config::CaldirConfigError;
 use crate::calendar::CalendarError;
 use crate::provider::ProviderError;
 
@@ -8,6 +9,9 @@ pub enum CaldirError {
 
     #[error("provider error: {0}")]
     Provider(#[from] ProviderError),
+
+    #[error("config error: {0}")]
+    Config(#[from] CaldirConfigError),
 
     #[error("no default calendar configured")]
     NoDefaultCalendar,
