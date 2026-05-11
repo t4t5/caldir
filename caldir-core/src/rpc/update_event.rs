@@ -17,7 +17,6 @@ impl Rpc for UpdateEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rpc::Request;
     use crate::{RemoteConfigParams, event::EventTime};
 
     #[test]
@@ -38,7 +37,7 @@ mod tests {
             event: event.clone(),
         };
 
-        let json = serde_json::to_value(Request::from_rpc(&cmd).unwrap()).unwrap();
+        let json = cmd.to_wire_value().unwrap();
 
         assert_eq!(json["command"], "update_event");
         assert_eq!(json["params"]["hooli_account"], "user@hmail.com");
