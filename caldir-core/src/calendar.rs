@@ -130,8 +130,9 @@ impl Calendar {
     }
 
     /// Create new event in calendar
-    pub fn create_event(&self, event: Event) -> Result<CalendarEvent, CalendarEventError> {
-        event::CalendarEvent::create(self, event)
+    pub fn create_event(&self, event: Event) -> Result<CalendarEvent, CalendarError> {
+        let calendar_event = CalendarEvent::create(self, event)?;
+        Ok(calendar_event)
     }
 
     /// Delete event from calendar
