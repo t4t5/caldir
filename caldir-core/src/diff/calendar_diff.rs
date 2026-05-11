@@ -4,8 +4,8 @@ use super::event_change::EventChange;
 use crate::{CalendarEvent, RemoteEvent, calendar::KnownEventIds};
 
 pub struct CalendarDiff {
-    outgoing: Vec<EventChange>,
     incoming: Vec<EventChange>,
+    outgoing: Vec<EventChange>,
 }
 
 impl CalendarDiff {
@@ -19,7 +19,13 @@ impl CalendarDiff {
             .map(|e| e.event().event_instance_id())
             .collect();
 
+        let remote_event_ids: HashSet<_> = remote_events
+            .iter()
+            .map(|e| e.event().event_instance_id())
+            .collect();
+
         let mut incoming = Vec::new();
+        let mut outgoing = Vec::new();
 
         for remote_event in remote_events {
             if !local_event_ids.contains(&remote_event.event().event_instance_id()) {
@@ -27,29 +33,48 @@ impl CalendarDiff {
             }
         }
 
-        CalendarDiff {
-            outgoing: vec![],
-            incoming,
+        for local_event in local_events {
+            if !remote_event_ids.contains(&local_event.event().event_instance_id()) {
+                outgoing.push(EventChange::Create(local_event.event().clone()));
+            }
         }
+
+        CalendarDiff { incoming, outgoing }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::test_event;
+    use crate::test_utils::{test_calendar_event, test_event};
     use pretty_assertions::assert_eq;
 
     #[test]
-    fn remote_only_event_becomes_incoming_create() {
+    fn new_remote_event_becomes_incoming_create() {
+        let new_event = test_event();
+
         let local_events = vec![];
-        let remote_events = vec![RemoteEvent::new(test_event())];
+        let remote_events = vec![RemoteEvent::new(new_event.clone())];
         let known_ids = KnownEventIds::new();
 
         let diff = CalendarDiff::compute(local_events, remote_events, &known_ids);
 
-        assert_eq!(diff.outgoing.len(), 0);
-        assert_eq!(diff.incoming.len(), 1);
-        assert!(matches!(diff.incoming[0], EventChange::Create(_)));
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(diff.incoming, vec![EventChange::Create(new_event)]);
+    }
+
+    #[test]
+    fn new_local_event_becomes_outgoing_create() {
+        let (_tmp, calendar_event) = test_calendar_event();
+        let new_event = calendar_event.event().clone();
+
+        let local_events = vec![calendar_event];
+        let remote_events = vec![];
+        let known_ids = KnownEventIds::new();
+
+        let diff = CalendarDiff::compute(local_events, remote_events, &known_ids);
+
+        assert_eq!(diff.outgoing, vec![EventChange::Create(new_event)]);
+        assert_eq!(diff.incoming, vec![]);
     }
 }
