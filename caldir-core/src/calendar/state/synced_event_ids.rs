@@ -2,18 +2,19 @@ use super::CalendarStateError;
 use crate::event::EventInstanceId;
 use std::{collections::HashSet, path::Path};
 
-// ~/caldir/my_calendar/.caldir/state/known_event_ids
-pub(crate) const KNOWN_IDS_FILE_NAME: &str = "known_event_ids";
+// Filename kept as `known_event_ids` for backwards compatibility with existing
+// on-disk state, even though the in-code name is `SyncedEventIds`.
+pub(crate) const SYNCED_IDS_FILE_NAME: &str = "known_event_ids";
 
 #[derive(Debug)]
-pub(crate) struct KnownEventIds(HashSet<EventInstanceId>);
+pub(crate) struct SyncedEventIds(HashSet<EventInstanceId>);
 
 /// Event instance IDs are stored in plaintext, one per line:
 /// e.g.
 ///   t5slp0vorqgoasogqkvadjt9jj@hooli.com__20240625T170000Z
 ///   t5slp0vorqgoasogqkvadjt9jj@hooli.com__20240625T180000
 ///   t81pd0rkq8ujaughbrjhh87svo@hooli.com
-impl KnownEventIds {
+impl SyncedEventIds {
     pub fn new() -> Self {
         Self(HashSet::new())
     }
@@ -103,7 +104,7 @@ mod tests {
         let path = tmp.path().join("known_event_ids");
         std::fs::write(&path, sample_lines().join("\n")).unwrap();
 
-        let loaded = KnownEventIds::load(&path).unwrap();
+        let loaded = SyncedEventIds::load(&path).unwrap();
 
         assert_eq!(loaded.0, sample_ids());
     }
@@ -112,7 +113,7 @@ mod tests {
     fn writes_ids_to_plaintext_file() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("known_event_ids");
-        let ids = KnownEventIds(sample_ids());
+        let ids = SyncedEventIds(sample_ids());
 
         ids.write(&path).unwrap();
 
