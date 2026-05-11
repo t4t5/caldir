@@ -28,7 +28,18 @@ impl CalendarDiff {
         let mut outgoing = Vec::new();
 
         for remote_event in remote_events {
-            if !local_event_ids.contains(&remote_event.event().event_instance_id()) {
+            let id = remote_event.event().event_instance_id();
+
+            // Already in local and remote, skip
+            if local_event_ids.contains(&id) {
+                continue;
+            }
+
+            if synced_ids.contains(&id) {
+                // Remote event was in local, gone now. Delete remotely.
+                outgoing.push(EventChange::Delete(remote_event.event().clone()));
+            } else {
+                // Not in local, create it!
                 incoming.push(EventChange::Create(remote_event.event().clone()));
             }
         }
@@ -36,16 +47,16 @@ impl CalendarDiff {
         for local_event in local_events {
             let id = local_event.event().event_instance_id();
 
-            // Already in sync, skip
+            // Already in local and remote, skip
             if remote_event_ids.contains(&id) {
                 continue;
             }
 
             if synced_ids.contains(&id) {
-                // Used to be in remote, not anymore. Delete locally.
+                // Local event was in remote, gone now. Delete locally.
                 incoming.push(EventChange::Delete(local_event.event().clone()));
             } else {
-                // Not synced to remote, create it!
+                // Not in remote, create it!
                 outgoing.push(EventChange::Create(local_event.event().clone()));
             }
         }
@@ -104,5 +115,21 @@ mod tests {
 
         assert_eq!(diff.outgoing, vec![]);
         assert_eq!(diff.incoming, vec![EventChange::Delete(local_event)]);
+    }
+
+    #[test]
+    fn deleted_local_event_becomes_outgoing_delete() {
+        let remote_event = test_event();
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(remote_event.event_instance_id());
+
+        let local_events = vec![];
+        let remote_events = vec![RemoteEvent::new(remote_event.clone())];
+
+        let diff = CalendarDiff::compute(local_events, remote_events, &synced_ids);
+
+        assert_eq!(diff.outgoing, vec![EventChange::Delete(remote_event)]);
+        assert_eq!(diff.incoming, vec![]);
     }
 }
