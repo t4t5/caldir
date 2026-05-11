@@ -78,6 +78,10 @@ impl CalendarDiff {
 
         CalendarDiff { outgoing, incoming }
     }
+
+    pub(crate) fn incoming(&self) -> &[EventChange] {
+        &self.incoming
+    }
 }
 
 fn local_is_newer(local: &CalendarEvent, remote: &RemoteEvent) -> bool {

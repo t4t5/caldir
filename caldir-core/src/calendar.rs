@@ -3,6 +3,8 @@ mod error;
 mod event;
 mod state;
 
+use crate::diff::{CalendarDiff, EventChange};
+use crate::event::EventInstanceId;
 use crate::{Event, RemoteConfig};
 use std::path::{Path, PathBuf};
 
@@ -146,11 +148,48 @@ impl Calendar {
     pub fn has_remote(&self) -> bool {
         self.remote_config().is_some()
     }
+
+    pub fn apply_diff(&self, diff: &CalendarDiff) -> Result<(), CalendarError> {
+        for change in diff.incoming() {
+            match change {
+                EventChange::Create(event) => {
+                    self.create_event(event.clone())?;
+                }
+                EventChange::Update { to, .. } => {
+                    if let Some(mut cal_event) =
+                        self.event_from_instance_id(&to.event_instance_id())?
+                    {
+                        cal_event.update(to.clone())?;
+                    }
+                }
+                EventChange::Delete(event) => {
+                    if let Some(cal_event) =
+                        self.event_from_instance_id(&event.event_instance_id())?
+                    {
+                        cal_event.delete()?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Find a local event by its RFC 5545 instance ID
+    fn event_from_instance_id(
+        &self,
+        id: &EventInstanceId,
+    ) -> Result<Option<CalendarEvent>, CalendarError> {
+        Ok(self
+            .events()?
+            .into_iter()
+            .find(|e| &e.event().event_instance_id() == id))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::RemoteEvent;
     use crate::test_utils::{
         test_caldir, test_calendar, test_calendar_config, test_calendar_path, test_event,
     };
@@ -285,6 +324,69 @@ mod tests {
         calendar
             .delete_event("2026-01-01T1200__test-event")
             .unwrap();
+
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn apply_diff_creates_file_for_incoming_create() {
+        let (_tmp, calendar) = test_calendar();
+        let event = test_event();
+
+        let diff = CalendarDiff::compute(
+            vec![],
+            vec![RemoteEvent::new(event.clone())],
+            &SyncedEventIds::new(),
+        );
+
+        calendar.apply_diff(&diff).unwrap();
+
+        let expected_path = calendar.path().join("2026-01-01T1200__test-event.ics");
+        assert!(expected_path.is_file());
+    }
+
+    #[test]
+    fn apply_diff_updates_file_for_incoming_update() {
+        let (_tmp, calendar) = test_calendar();
+        let local_event = test_event();
+        let cal_event = calendar.create_event(local_event.clone()).unwrap();
+        let old_path = cal_event.path().to_path_buf();
+
+        let mut remote_event = local_event.clone();
+        remote_event.summary = Some("Updated Test Event".to_string());
+        remote_event.last_modified = Some(chrono::Utc::now() + chrono::Duration::days(1));
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(local_event.event_instance_id());
+
+        let diff = CalendarDiff::compute(
+            vec![cal_event],
+            vec![RemoteEvent::new(remote_event.clone())],
+            &synced_ids,
+        );
+
+        calendar.apply_diff(&diff).unwrap();
+
+        let new_path = calendar
+            .path()
+            .join("2026-01-01T1200__updated-test-event.ics");
+        assert!(new_path.is_file());
+        assert!(!old_path.exists());
+    }
+
+    #[test]
+    fn apply_diff_deletes_file_for_incoming_delete() {
+        let (_tmp, calendar) = test_calendar();
+        let cal_event = calendar.create_event(test_event()).unwrap();
+        let path = cal_event.path().to_path_buf();
+        assert!(path.is_file());
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(cal_event.event().event_instance_id());
+
+        let diff = CalendarDiff::compute(vec![cal_event], vec![], &synced_ids);
+
+        calendar.apply_diff(&diff).unwrap();
 
         assert!(!path.exists());
     }
