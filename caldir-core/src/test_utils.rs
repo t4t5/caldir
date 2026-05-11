@@ -115,6 +115,18 @@ pub fn outgoing_delete_diff(event: Event) -> CalendarDiff {
     CalendarDiff::from_changes(vec![EventChange::Delete(event)], vec![])
 }
 
+pub fn incoming_create_diff(event: Event) -> CalendarDiff {
+    CalendarDiff::from_changes(vec![], vec![EventChange::Create(event)])
+}
+
+pub fn incoming_update_diff(from: Event, to: Event) -> CalendarDiff {
+    CalendarDiff::from_changes(vec![], vec![EventChange::Update { from, to }])
+}
+
+pub fn incoming_delete_diff(event: Event) -> CalendarDiff {
+    CalendarDiff::from_changes(vec![], vec![EventChange::Delete(event)])
+}
+
 pub fn test_provider(slug: &str) -> (TempDir, Provider) {
     let (tmp, bin_path) = test_binary(&format!("caldir-provider-{slug}"));
     let provider = Provider::from_binary_path(bin_path).unwrap();

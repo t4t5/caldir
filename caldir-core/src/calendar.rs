@@ -189,9 +189,9 @@ impl Calendar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::RemoteEvent;
     use crate::test_utils::{
-        test_caldir, test_calendar, test_calendar_config, test_calendar_path, test_event,
+        incoming_create_diff, incoming_delete_diff, incoming_update_diff, test_caldir,
+        test_calendar, test_calendar_config, test_calendar_path, test_event,
     };
 
     #[test]
@@ -333,12 +333,7 @@ mod tests {
         let (_tmp, calendar) = test_calendar();
         let event = test_event();
 
-        let diff = CalendarDiff::compute(
-            vec![],
-            vec![RemoteEvent::new(event.clone())],
-            &SyncedEventIds::new(),
-        );
-
+        let diff = incoming_create_diff(event);
         calendar.apply_diff(&diff).unwrap();
 
         let expected_path = calendar.path().join("2026-01-01T1200__test-event.ics");
@@ -348,23 +343,14 @@ mod tests {
     #[test]
     fn apply_diff_updates_file_for_incoming_update() {
         let (_tmp, calendar) = test_calendar();
-        let local_event = test_event();
-        let cal_event = calendar.create_event(local_event.clone()).unwrap();
+        let from = test_event();
+        let cal_event = calendar.create_event(from.clone()).unwrap();
         let old_path = cal_event.path().to_path_buf();
 
-        let mut remote_event = local_event.clone();
-        remote_event.summary = Some("Updated Test Event".to_string());
-        remote_event.last_modified = Some(chrono::Utc::now() + chrono::Duration::days(1));
+        let mut to = from.clone();
+        to.summary = Some("Updated Test Event".to_string());
 
-        let mut synced_ids = SyncedEventIds::new();
-        synced_ids.insert(local_event.event_instance_id());
-
-        let diff = CalendarDiff::compute(
-            vec![cal_event],
-            vec![RemoteEvent::new(remote_event.clone())],
-            &synced_ids,
-        );
-
+        let diff = incoming_update_diff(from, to);
         calendar.apply_diff(&diff).unwrap();
 
         let new_path = calendar
@@ -377,15 +363,11 @@ mod tests {
     #[test]
     fn apply_diff_deletes_file_for_incoming_delete() {
         let (_tmp, calendar) = test_calendar();
-        let cal_event = calendar.create_event(test_event()).unwrap();
+        let event = test_event();
+        let cal_event = calendar.create_event(event.clone()).unwrap();
         let path = cal_event.path().to_path_buf();
-        assert!(path.is_file());
 
-        let mut synced_ids = SyncedEventIds::new();
-        synced_ids.insert(cal_event.event().event_instance_id());
-
-        let diff = CalendarDiff::compute(vec![cal_event], vec![], &synced_ids);
-
+        let diff = incoming_delete_diff(event);
         calendar.apply_diff(&diff).unwrap();
 
         assert!(!path.exists());
