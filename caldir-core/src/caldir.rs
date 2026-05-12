@@ -18,7 +18,7 @@ pub struct Caldir {
 }
 
 impl Caldir {
-    pub fn new(config: CaldirConfig, providers: ProviderRegistry) -> Self {
+    pub(crate) fn new(config: CaldirConfig, providers: ProviderRegistry) -> Self {
         Caldir { config, providers }
     }
 
@@ -67,6 +67,10 @@ impl Caldir {
         calendars
     }
 
+    pub fn calendar(&self, slug: &str) -> Result<Calendar, CaldirError> {
+        Calendar::load(&self.data_dir().join(slug)).map_err(CaldirError::from)
+    }
+
     pub fn connections(&self) -> Vec<Result<Connection, CaldirError>> {
         let mut connections = Vec::new();
 
@@ -98,7 +102,7 @@ impl Caldir {
         connections
     }
 
-    fn provider(&self, provider_slug: &ProviderSlug) -> Result<&Provider, CaldirError> {
+    pub fn provider(&self, provider_slug: &ProviderSlug) -> Result<&Provider, CaldirError> {
         self.providers
             .get(provider_slug)
             .map_err(CaldirError::Provider)

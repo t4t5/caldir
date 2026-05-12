@@ -3,10 +3,7 @@ mod render;
 mod utils;
 
 use anyhow::Result;
-use caldir_core::caldir::Caldir;
-use caldir_core::calendar::Calendar;
-use caldir_core::date_range::DateRange;
-use caldir_core::remote::provider::Provider;
+use caldir_core::{Caldir, DateRange, ProviderSlug};
 use chrono::{Datelike, Local, Utc};
 use clap::{Parser, Subcommand};
 use utils::date::start_of_today;
@@ -213,7 +210,8 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Connect { provider, hosted } => {
-            let provider = resolve_provider(&caldir, provider)?;
+            let provider_slug = ProviderSlug::from(provider);
+            let provider = caldir.provider(&provider_slug);
             commands::connect::run(&mut caldir, provider, hosted).await
         }
         Commands::Status {
@@ -223,9 +221,15 @@ async fn main() -> Result<()> {
             verbose,
         } => {
             require_calendars(&caldir)?;
-            let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
+
+            let calendars = match calendar {
+                Some(cal) => vec![caldir.calendar(&cal)],
+                None => caldir.calendars(),
+            }?;
+
             let range = DateRange::from_args(from.as_deref(), to.as_deref())
                 .map_err(|e| anyhow::anyhow!(e))?;
+
             commands::status::run(&caldir, calendars, range, verbose).await
         }
         Commands::Pull {
@@ -367,60 +371,60 @@ async fn main() -> Result<()> {
     }
 }
 
-fn resolve_provider(caldir: &Caldir, provider: Option<String>) -> Result<Provider> {
-    let name = match provider {
-        Some(name) => name,
-        None => {
-            let installed = caldir.provider_names();
-            if installed.is_empty() {
-                anyhow::bail!(
-                    "Missing provider argument.\n\n\
-                    Usage: caldir connect <provider>\n\n\
-                    No providers detected. Install one with:\n  \
-                    cargo install caldir-provider-google"
-                );
-            } else {
-                anyhow::bail!(
-                    "Missing provider argument.\n\n\
-                    Usage: caldir connect <provider>\n\n\
-                    Detected providers: {}",
-                    installed
-                        .iter()
-                        .map(|p| format!("\"{}\"", p))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-        }
-    };
-
-    match caldir.provider(&name) {
-        Ok(provider) => Ok(provider),
-        Err(_) => {
-            let installed = caldir.provider_names();
-            if installed.is_empty() {
-                anyhow::bail!(
-                    "Unknown provider \"{name}\".\n\n\
-                    No providers detected. Install one with:\n  \
-                    cargo install caldir-provider-{name}"
-                );
-            } else {
-                anyhow::bail!(
-                    "Unknown provider \"{name}\".\n\n\
-                    Detected providers: {}",
-                    installed
-                        .iter()
-                        .map(|p| format!("\"{}\"", p))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-        }
-    }
-}
-
+// fn resolve_provider(caldir: &Caldir, provider: Option<String>) -> Result<Provider> {
+//     let name = match provider {
+//         Some(name) => name,
+//         None => {
+//             let installed = caldir.provider_names();
+//             if installed.is_empty() {
+//                 anyhow::bail!(
+//                     "Missing provider argument.\n\n\
+//                     Usage: caldir connect <provider>\n\n\
+//                     No providers detected. Install one with:\n  \
+//                     cargo install caldir-provider-google"
+//                 );
+//             } else {
+//                 anyhow::bail!(
+//                     "Missing provider argument.\n\n\
+//                     Usage: caldir connect <provider>\n\n\
+//                     Detected providers: {}",
+//                     installed
+//                         .iter()
+//                         .map(|p| format!("\"{}\"", p))
+//                         .collect::<Vec<_>>()
+//                         .join(", ")
+//                 );
+//             }
+//         }
+//     };
+//
+//     match caldir.provider(&name) {
+//         Ok(provider) => Ok(provider),
+//         Err(_) => {
+//             let installed = caldir.provider_names();
+//             if installed.is_empty() {
+//                 anyhow::bail!(
+//                     "Unknown provider \"{name}\".\n\n\
+//                     No providers detected. Install one with:\n  \
+//                     cargo install caldir-provider-{name}"
+//                 );
+//             } else {
+//                 anyhow::bail!(
+//                     "Unknown provider \"{name}\".\n\n\
+//                     Detected providers: {}",
+//                     installed
+//                         .iter()
+//                         .map(|p| format!("\"{}\"", p))
+//                         .collect::<Vec<_>>()
+//                         .join(", ")
+//                 );
+//             }
+//         }
+//     }
+// }
+//
 fn require_calendars(caldir: &Caldir) -> Result<()> {
-    if caldir.calendars()?.is_empty() {
+    if caldir.calendars().is_empty() {
         anyhow::bail!(
             "No calendars found.\n\n\
             Connect your first calendar with:\n  \
@@ -431,24 +435,4 @@ fn require_calendars(caldir: &Caldir) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn resolve_calendars(caldir: &Caldir, calendar_filter: Option<&str>) -> Result<Vec<Calendar>> {
-    let all_calendars = caldir.calendars()?;
-
-    match calendar_filter {
-        Some(slug) => match all_calendars.into_iter().find(|c| c.slug == slug) {
-            Some(cal) => Ok(vec![cal]),
-            None => {
-                let available: Vec<_> =
-                    caldir.calendars()?.iter().map(|c| c.slug.clone()).collect();
-                anyhow::bail!(
-                    "Calendar '{}' not found. Available: {}",
-                    slug,
-                    available.join(", ")
-                );
-            }
-        },
-        None => Ok(all_calendars),
-    }
 }

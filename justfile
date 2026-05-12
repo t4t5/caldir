@@ -3,27 +3,27 @@ default:
   @just --list
 
 # TODO: Remove me after refactor:
-[working-directory: 'caldir-core']
-check:
-  cargo check
-  cargo clippy
+# [working-directory: 'caldir-core']
+# check:
+#   cargo check
+#   cargo clippy
 
 # TODO: Remove me after refactor:
-[working-directory: 'caldir-core']
-test:
-  cargo test
+# [working-directory: 'caldir-core']
+# test:
+#   cargo test
 
 # TODO: Remove me after refactor:
-[working-directory: 'caldir-core']
+# [working-directory: 'caldir-core']
 format:
   cargo fmt
 
-# check:
-#   cargo check --workspace
-#   cargo clippy --workspace -- -D warnings
+check:
+  cargo check --workspace
+  cargo clippy --workspace -- -D warnings
 
-# test:
-#   cargo test
+test:
+  cargo test
 
 # Install provider binary to PATH
 install-provider:

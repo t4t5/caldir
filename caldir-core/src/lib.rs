@@ -19,3 +19,4 @@ pub use diff::CalendarDiff;
 pub use event::{Event, EventTime, Reminder};
 pub use provider::{Provider, ProviderRegistry, ProviderSlug};
 pub use remote::{Remote, RemoteConfig, RemoteConfigParams, RemoteEvent};
+pub use utils::date_range::DateRange;
