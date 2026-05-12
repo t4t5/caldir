@@ -1,13 +1,19 @@
 use anyhow::Result;
-use caldir_core::caldir::Caldir;
-use caldir_core::calendar::Calendar;
+use caldir_core::Caldir;
+use caldir_core::Calendar;
 use chrono::Duration;
 use owo_colors::OwoColorize;
 
 use crate::render::{format_event_line, render_participation_status};
 use crate::utils::date::{format_date_only, start_of_today};
 
-pub fn run(caldir: &Caldir, calendars: Vec<Calendar>, all: bool) -> Result<()> {
+pub fn run(caldir: &Caldir, calendar: Option<String>, all: bool) -> Result<()> {
+    require_calendars(&caldir)?;
+    let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
+    run_parsed(&caldir, calendars, all)
+}
+
+fn run_parsed(caldir: &Caldir, calendars: Vec<Calendar>, all: bool) -> Result<()> {
     let today = start_of_today();
     let from = today;
     let to = today + Duration::days(30);

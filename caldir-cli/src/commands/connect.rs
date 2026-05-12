@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use caldir_core::caldir::Caldir;
-use caldir_core::calendar::Calendar;
-use caldir_core::calendar::config::CalendarConfig;
-use caldir_core::date_range::DateRange;
+use caldir_core::Caldir;
+use caldir_core::Calendar;
+use caldir_core::CalendarConfig;
+use caldir_core::DateRange;
 use caldir_core::remote::protocol::{
     ConnectResponse, ConnectStepKind, CredentialsData, FieldType, HostedOAuthData, OAuthData,
     SetupData,
 };
-use caldir_core::remote::provider::Provider;
+use caldir_core::{Provider, ProviderSlug};
 use dialoguer::MultiSelect;
 use std::io::{self, Write};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -24,7 +24,14 @@ fn build_options(hosted: bool, redirect_uri: &str) -> serde_json::Map<String, se
     options
 }
 
-pub async fn run(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Result<()> {
+pub async fn run(caldir: &mut Caldir, provider: Option<String>, hosted: bool) -> Result<()> {
+    let provider_slug = ProviderSlug::from(provider);
+    let provider = caldir.provider(&provider_slug);
+
+    run_parsed(caldir, provider, hosted)
+}
+
+async fn run_parsed(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Result<()> {
     // Bind to port 0 so the OS picks a free port
     let listener = TcpListener::bind("127.0.0.1:0")
         .await

@@ -1,6 +1,5 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use anyhow::{Context, Result};
 use caldir_core::caldir::Caldir;
@@ -15,6 +14,8 @@ use chrono::Duration;
 use owo_colors::OwoColorize;
 
 pub fn run(caldir: &Caldir, path: Option<String>, response: Option<String>) -> Result<()> {
+    require_calendars(&caldir)?;
+
     match (path, response) {
         (Some(path), Some(response)) => run_direct(caldir, &path, &response),
         (Some(path), None) => {

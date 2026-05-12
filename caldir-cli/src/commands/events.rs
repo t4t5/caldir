@@ -1,13 +1,84 @@
 use anyhow::Result;
-use caldir_core::caldir::Caldir;
-use caldir_core::calendar::Calendar;
+use caldir_core::Caldir;
+use caldir_core::Calendar;
+use caldir_core::date_range::{parse_date_end, parse_date_start};
 use chrono::{DateTime, Duration, Utc};
 use owo_colors::OwoColorize;
 
 use crate::render::{format_event_line, render_participation_status};
 use crate::utils::date::{format_date_only, start_of_today};
 
-pub fn run(
+pub fn run_week(caldir: &Caldir, calendar: Option<String>) -> Result<()> {
+    require_calendars(&caldir)?;
+
+    let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
+
+    let today = Local::now().date_naive();
+
+    // num_days_from_monday(): Mon=0, Tue=1, ..., Sun=6
+    let days_until_sunday = (6 - today.weekday().num_days_from_monday()) % 7;
+
+    // If today is Sunday, show through next Sunday
+    let days_until_sunday = if days_until_sunday == 0 {
+        7
+    } else {
+        days_until_sunday
+    };
+
+    let end_of_sunday = (today + chrono::Duration::days(days_until_sunday as i64))
+        .and_hms_opt(23, 59, 59)
+        .unwrap()
+        .and_local_timezone(Local)
+        .unwrap()
+        .with_timezone(&Utc);
+
+    run_parsed(&caldir, calendars, from_dt, to_dt)
+}
+
+pub fn run_today(caldir: &Caldir, calendar: Option<String>) -> Result<()> {
+    require_calendars(&caldir)?;
+
+    let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
+
+    let today = Local::now().date_naive();
+
+    let end_of_today = today
+        .and_hms_opt(23, 59, 59)
+        .unwrap()
+        .and_local_timezone(Local)
+        .unwrap()
+        .with_timezone(&Utc);
+
+    run_parsed(&caldir, calendars, from_dt, to_dt)
+}
+
+pub fn run_events(
+    caldir: &Caldir,
+    calendar: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+) -> Result<()> {
+    require_calendars(&caldir)?;
+
+    let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
+
+    // Only parse dates if explicitly provided; events command has its own defaults
+    let from_dt = from
+        .as_deref()
+        .map(parse_date_start)
+        .transpose()
+        .map_err(|e| anyhow::anyhow!(e))?;
+
+    let to_dt = to
+        .as_deref()
+        .map(parse_date_end)
+        .transpose()
+        .map_err(|e| anyhow::anyhow!(e))?;
+
+    run_parsed(&caldir, calendars, from_dt, to_dt)
+}
+
+fn run_parsed(
     caldir: &Caldir,
     calendars: Vec<Calendar>,
     from: Option<DateTime<Utc>>,

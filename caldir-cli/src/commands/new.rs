@@ -20,6 +20,8 @@ pub fn run(
     reminder_args: Vec<String>,
     no_reminders: bool,
 ) -> Result<()> {
+    require_calendars(&caldir)?;
+
     let interactive = title.is_none() || start.is_none();
 
     // --- Title ---

@@ -1,8 +1,8 @@
 use anyhow::Result;
-use caldir_core::caldir::Caldir;
-use caldir_core::calendar::Calendar;
-use caldir_core::date_range::DateRange;
-use caldir_core::diff::{BatchDiff, CalendarDiff};
+use caldir_core::Caldir;
+use caldir_core::Calendar;
+use caldir_core::DateRange;
+use caldir_core::{BatchDiff, CalendarDiff};
 use dialoguer::Confirm;
 use owo_colors::OwoColorize;
 
@@ -10,6 +10,17 @@ use crate::render::{CalendarDiffRender, Render};
 use crate::utils::tui;
 
 pub async fn run(
+    caldir: &Caldir,
+    calendar: Option<String>,
+    verbose: bool,
+    force: bool,
+) -> Result<()> {
+    require_calendars(&caldir)?;
+    let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
+    run_parsed(&caldir, calendars, verbose, force).await
+}
+
+async fn run_parsed(
     caldir: &Caldir,
     calendars: Vec<Calendar>,
     verbose: bool,
