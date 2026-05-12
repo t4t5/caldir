@@ -110,6 +110,10 @@ impl Caldir {
         &self.config
     }
 
+    pub fn update_config(&mut self, new_config: CaldirConfig) {
+        self.config = new_config;
+    }
+
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
     /// If the base slug exists, tries slug-2, slug-3, etc.
     fn unique_slug_for(&self, desired_slug: &str) -> String {

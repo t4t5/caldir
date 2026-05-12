@@ -57,6 +57,14 @@ impl CalendarConfig {
         Ok(config)
     }
 
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_deref()
+    }
+
+    pub fn read_only(&self) -> Option<bool> {
+        self.read_only
+    }
+
     fn from_toml(s: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(s)
     }
@@ -65,7 +73,7 @@ impl CalendarConfig {
         toml::to_string(self)
     }
 
-    pub(crate) fn remote_config(&self) -> Option<&RemoteConfig> {
+    pub fn remote_config(&self) -> Option<&RemoteConfig> {
         self.remote_config.as_ref()
     }
 

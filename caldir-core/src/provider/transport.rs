@@ -4,7 +4,6 @@ mod subprocess_transport;
 #[cfg(test)]
 pub(crate) mod mock_transport;
 pub(crate) use error::ProviderTransportError;
-
 pub(crate) use subprocess_transport::SubprocessTransport;
 
 use async_trait::async_trait;

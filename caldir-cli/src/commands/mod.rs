@@ -1,5 +1,5 @@
 pub mod config;
-// pub mod connect;
+pub mod connect;
 // pub mod discard;
 // pub mod events;
 // pub mod guards;

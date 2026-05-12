@@ -3,7 +3,7 @@ use crate::{Event, RemoteConfigParams};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub(crate) struct ListEvents {
+pub struct ListEvents {
     #[serde(flatten)]
     pub remote: RemoteConfigParams,
 }

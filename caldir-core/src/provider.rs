@@ -1,3 +1,4 @@
+mod account;
 mod error;
 mod registry;
 mod slug;
@@ -7,8 +8,8 @@ pub(crate) mod transport;
 pub(crate) mod mock_provider;
 
 use crate::rpc;
-use std::path::Path;
-use std::path::PathBuf;
+use account::ProviderAccount;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use transport::{ProviderTransport, SubprocessTransport};
 
@@ -42,8 +43,22 @@ impl Provider {
         })
     }
 
-    fn slug(&self) -> &ProviderSlug {
+    pub fn slug(&self) -> &ProviderSlug {
         &self.slug
+    }
+
+    pub fn provider_account(&self, identifier: String) -> ProviderAccount {
+        ProviderAccount::new(self.clone(), identifier)
+    }
+
+    pub async fn connect(
+        &self,
+        options: serde_json::Map<String, serde_json::Value>,
+        data: serde_json::Map<String, serde_json::Value>,
+    ) -> Result<rpc::ConnectResponse, ProviderError> {
+        let result = self.call(rpc::Connect { options, data }).await?;
+
+        Ok(result)
     }
 
     pub(crate) async fn call<C: rpc::Rpc>(&self, call: C) -> Result<C::Response, ProviderError> {

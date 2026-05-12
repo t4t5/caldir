@@ -5,6 +5,7 @@ mod state;
 
 use crate::diff::{CalendarDiff, EventChange};
 use crate::event::EventInstanceId;
+use crate::utils::slugify;
 use crate::{Event, RemoteConfig};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -187,6 +188,10 @@ impl Calendar {
             .write(&calendar_state_dir(&self.path))?;
 
         Ok(())
+    }
+
+    pub fn base_slug_for(name: Option<&str>) -> String {
+        name.map(slugify).unwrap_or_else(|| "calendar".to_string())
     }
 }
 

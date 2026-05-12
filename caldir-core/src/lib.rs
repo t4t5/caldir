@@ -5,7 +5,7 @@ mod diff;
 mod event;
 mod provider;
 mod remote;
-mod rpc;
+pub mod rpc;
 mod utils;
 
 #[cfg(test)]

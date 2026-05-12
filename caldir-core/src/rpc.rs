@@ -1,5 +1,7 @@
+mod connect;
 mod create_event;
 mod delete_event;
+mod list_calendars;
 mod list_events;
 mod update_event;
 
@@ -8,10 +10,15 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 // actions:
-pub(crate) use create_event::CreateEvent;
-pub(crate) use delete_event::DeleteEvent;
-pub(crate) use list_events::ListEvents;
-pub(crate) use update_event::UpdateEvent;
+pub use connect::{
+    Connect, ConnectResponse, ConnectStepKind, CredentialField, CredentialsData, FieldType,
+    HostedOAuthData, OAuthData, SetupData,
+};
+pub use create_event::CreateEvent;
+pub use delete_event::DeleteEvent;
+pub use list_calendars::ListCalendars;
+pub use list_events::ListEvents;
+pub use update_event::UpdateEvent;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 

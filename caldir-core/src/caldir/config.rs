@@ -82,6 +82,10 @@ impl CaldirConfig {
         self.default_calendar_slug.as_deref()
     }
 
+    pub fn set_default_calendar_slug(&mut self, slug: Option<String>) {
+        self.default_calendar_slug = slug;
+    }
+
     pub fn write(&self, path: &Path) -> Result<(), CaldirConfigError> {
         let contents = self.to_toml().map_err(CaldirConfigError::InvalidConfig)?;
 

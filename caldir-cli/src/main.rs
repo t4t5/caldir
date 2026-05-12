@@ -20,7 +20,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /* #[command(about = "Connect to a remote calendar provider (e.g., Google Calendar)")]
+    #[command(about = "Connect to a remote calendar provider (e.g., Google Calendar)")]
     Connect {
         /// Provider name (e.g. "google", "caldav", "icloud", "outlook")
         provider: Option<String>,
@@ -29,6 +29,7 @@ enum Commands {
         #[arg(long, default_value_t = true)]
         hosted: bool,
     },
+    /*
     #[command(about = "Check if any events have changed (local and remote)")]
     Status {
         /// Only operate on this calendar (by slug)
@@ -207,12 +208,12 @@ async fn main() -> Result<()> {
     //     return commands::update::run().await;
     // }
 
-    let caldir = Caldir::load()?;
+    let mut caldir = Caldir::load()?;
 
     match cli.command {
-        // Commands::Connect { provider, hosted } => {
-        //     commands::connect::run(&mut caldir, provider, hosted).await
-        // }
+        Commands::Connect { provider, hosted } => {
+            commands::connect::run(&mut caldir, provider, hosted).await
+        }
         // Commands::Status {
         //     calendar,
         //     from,

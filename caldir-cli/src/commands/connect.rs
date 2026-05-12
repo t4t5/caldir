@@ -1,21 +1,14 @@
-use std::collections::HashMap;
-
 use anyhow::{Context, Result};
-use caldir_core::Caldir;
-use caldir_core::Calendar;
-use caldir_core::CalendarConfig;
-use caldir_core::DateRange;
-use caldir_core::remote::protocol::{
+use caldir_core::rpc::{
     ConnectResponse, ConnectStepKind, CredentialsData, FieldType, HostedOAuthData, OAuthData,
     SetupData,
 };
-use caldir_core::{Provider, ProviderSlug};
+use caldir_core::{Caldir, Calendar, CalendarConfig, Connection, ProviderSlug};
 use dialoguer::MultiSelect;
+use std::collections::HashMap;
 use std::io::{self, Write};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
-
-use crate::utils::path::PathExt;
 
 fn build_options(hosted: bool, redirect_uri: &str) -> serde_json::Map<String, serde_json::Value> {
     let mut options = serde_json::Map::new();
@@ -25,22 +18,30 @@ fn build_options(hosted: bool, redirect_uri: &str) -> serde_json::Map<String, se
 }
 
 pub async fn run(caldir: &mut Caldir, provider: Option<String>, hosted: bool) -> Result<()> {
-    let provider_slug = ProviderSlug::from(provider);
-    let provider = caldir.provider(&provider_slug);
+    let provider_slug = provider.context(
+        "Missing provider argument.\n\nUsage:
+  caldir connect <provider>",
+    )?;
 
-    run_parsed(caldir, provider, hosted)
+    let provider_slug = ProviderSlug::from(provider_slug);
+
+    run_parsed(caldir, provider_slug, hosted).await
 }
 
-async fn run_parsed(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Result<()> {
+async fn run_parsed(caldir: &mut Caldir, provider_slug: ProviderSlug, hosted: bool) -> Result<()> {
+    let provider = caldir.provider(&provider_slug)?;
+
     // Bind to port 0 so the OS picks a free port
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .context("Failed to bind OAuth callback listener")?;
     let port = listener.local_addr()?.port();
+
+    // Build options:
     let redirect_uri = format!("http://localhost:{}/callback", port);
     let options = build_options(hosted, &redirect_uri);
 
-    println!("Connecting to {}...\n", provider.name());
+    println!("Connecting to {}...\n", provider.slug());
 
     // Connect loop: keep calling `connect` until the provider says Done.
     let mut data = serde_json::Map::new();
@@ -185,17 +186,26 @@ async fn run_parsed(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Re
 
     // Skip calendars whose remote already matches a local one — keeps re-running
     // `connect` idempotent instead of spawning `personal-2/` next to `personal/`.
-    let existing = caldir.calendars()?;
+    let existing_connections: Vec<Connection> = caldir
+        .connections()
+        .into_iter()
+        .filter_map(Result::ok)
+        .collect();
 
     let mut new_configs: Vec<CalendarConfig> = Vec::new();
     let mut skipped: Vec<(CalendarConfig, String)> = Vec::new();
+
     for cfg in calendar_configs {
-        let existing_cal = cfg
-            .remote
-            .as_ref()
-            .and_then(|remote| existing.iter().find(|cal| cal.remote() == Some(remote)));
+        let existing_cal = cfg.remote_config().and_then(|remote_cfg| {
+            existing_connections
+                .iter()
+                .find(|conn| conn.local().remote_config() == Some(remote_cfg))
+        });
         match existing_cal {
-            Some(cal) => skipped.push((cfg, cal.slug.clone())),
+            Some(conn) => {
+                let slug = conn.local().slug().unwrap_or_default().to_string();
+                skipped.push((cfg, slug));
+            }
             None => new_configs.push(cfg),
         }
     }
@@ -203,7 +213,7 @@ async fn run_parsed(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Re
     if !skipped.is_empty() {
         println!("Skipping {} already-connected calendar(s):", skipped.len());
         for (cfg, slug) in &skipped {
-            let name = cfg.name.as_deref().unwrap_or("Unnamed");
+            let name = cfg.name().unwrap_or("Unnamed");
             println!("  - {name} ({slug}/)");
         }
         println!();
@@ -218,7 +228,11 @@ async fn run_parsed(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Re
     // Build selection items with calendar names
     let items: Vec<String> = calendar_configs
         .iter()
-        .map(|c| c.name.clone().unwrap_or_else(|| "Unnamed".to_string()))
+        .map(|c| {
+            c.name()
+                .map(String::from)
+                .unwrap_or_else(|| "Unnamed".to_string())
+        })
         .collect();
 
     // Show multi-select (all selected by default)
@@ -237,33 +251,39 @@ async fn run_parsed(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Re
     println!();
 
     // Create only selected calendars
-    let mut created_slugs = Vec::new();
+    let mut created_slugs: Vec<String> = Vec::new();
+
     for &idx in &selections {
         let config = &calendar_configs[idx];
-        let calendar = caldir.new_calendar(config)?;
+        let desired_slug = Calendar::base_slug_for(config.name());
+        let calendar = caldir.create_calendar(&desired_slug, Some(config.clone()))?;
 
-        calendar.save_config()?;
-        let slug = calendar.slug.clone();
-        println!("  {slug}/ (created)");
-        created_slugs.push(slug);
+        if let Some(slug) = calendar.slug() {
+            println!("  {slug}/ (created)");
+            created_slugs.push(slug.to_string());
+        }
     }
 
     // Set the first writable calendar as default if none is configured yet
     let first_writable = selections.iter().enumerate().find_map(|(i, &idx)| {
         let config = &calendar_configs[idx];
-        if config.read_only != Some(true) {
+
+        if config.read_only() != Some(true) {
             Some(created_slugs[i].clone())
         } else {
             None
         }
     });
+
     if let Some(slug) = first_writable
-        && caldir.set_default_calendar_if_unset(&slug)
+        && caldir.config().default_calendar_slug().is_none()
     {
-        caldir.save_config()?;
+        let mut config = caldir.config().clone();
+        config.set_default_calendar_slug(Some(slug.to_string()));
+        caldir.update_config(config);
     }
 
-    println!("\nCalendars saved to {}\n", caldir.dir().tilde());
+    println!("\nCalendars saved to {}\n", caldir.data_dir().display());
 
     // Load the newly created calendars and do an initial pull
     let calendars: Vec<Calendar> = created_slugs
@@ -273,7 +293,8 @@ async fn run_parsed(caldir: &mut Caldir, provider: Provider, hosted: bool) -> Re
 
     if !calendars.is_empty() {
         println!("Pulling events...\n");
-        super::pull::run(caldir, calendars, DateRange::default(), false).await?;
+        // TODO: PULL EVENTS BY DEFAULT:
+        // super::pull::run(caldir, calendars, DateRange::default(), false).await?;
     }
 
     Ok(())
