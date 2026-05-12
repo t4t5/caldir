@@ -4,7 +4,10 @@ mod time_format;
 use crate::{Reminder, utils::tilde_expansion::expand_tilde};
 pub(crate) use error::CaldirConfigError;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+};
 pub(crate) use time_format::TimeFormat;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -21,6 +24,13 @@ pub struct CaldirConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     default_reminders: Option<Vec<Reminder>>,
+}
+
+impl Display for CaldirConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let toml = self.to_toml().map_err(|_| std::fmt::Error)?;
+        write!(f, "{toml}")
+    }
 }
 
 // Default config values (if empty file):
@@ -52,7 +62,7 @@ impl CaldirConfig {
     }
 
     pub fn from_system_config() -> Result<Self, CaldirConfigError> {
-        let config_path = Self::default_system_config_dir()?.join("config.toml");
+        let config_path = Self::default_system_config_path()?;
         Self::load_or_default(&config_path)
     }
 
@@ -79,6 +89,12 @@ impl CaldirConfig {
         std::fs::write(path, contents)?;
 
         Ok(())
+    }
+
+    pub fn default_system_config_path() -> Result<PathBuf, CaldirConfigError> {
+        let dir = Self::default_system_config_dir()?;
+
+        Ok(dir.join("config.toml"))
     }
 
     fn load(path: &Path) -> Result<Self, CaldirConfigError> {
@@ -246,5 +262,13 @@ mod tests {
         let appdata = PathBuf::from(std::env::var("APPDATA").unwrap());
         let dir = CaldirConfig::default_system_config_dir().unwrap();
         assert_eq!(dir, appdata.join("caldir"));
+    }
+
+    #[test]
+    fn default_system_config_path_is_dot_config_caldir_config_toml() {
+        let path = CaldirConfig::default_system_config_path().unwrap();
+        let expected_path = expand_tilde(&PathBuf::from("~/.config/caldir/config.toml"));
+
+        assert_eq!(path, expected_path);
     }
 }

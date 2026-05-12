@@ -1,11 +1,13 @@
 use anyhow::Result;
-use caldir_core::caldir::Caldir;
+use caldir_core::{Caldir, CaldirConfig};
 use owo_colors::OwoColorize;
 
-use crate::utils::path::PathExt;
-
 pub fn run(caldir: &Caldir) -> Result<()> {
-    println!("{} {}", "Path:".bold(), caldir.config_path().tilde());
+    println!(
+        "{} {}",
+        "Path:".bold(),
+        CaldirConfig::default_system_config_path()?.display()
+    );
     println!();
     println!("{}", caldir.config());
 
