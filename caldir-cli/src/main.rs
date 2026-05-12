@@ -2,6 +2,9 @@ mod commands;
 // mod render;
 // mod utils;
 
+#[cfg(test)]
+mod test_utils;
+
 use anyhow::Result;
 use caldir_core::Caldir;
 use clap::{Parser, Subcommand};

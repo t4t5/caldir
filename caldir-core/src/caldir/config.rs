@@ -8,7 +8,7 @@ use std::{
     fmt::Display,
     path::{Path, PathBuf},
 };
-pub(crate) use time_format::TimeFormat;
+pub use time_format::TimeFormat;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -46,8 +46,7 @@ impl Default for CaldirConfig {
 }
 
 impl CaldirConfig {
-    #[cfg(test)]
-    pub(crate) fn new(
+    pub fn new(
         data_dir: PathBuf,
         time_format: TimeFormat,
         default_calendar_slug: Option<String>,
@@ -205,10 +204,7 @@ mod tests {
 
         assert_eq!(
             config.default_reminders,
-            Some(vec![
-                Reminder::minutes_before_start(30),
-                Reminder::minutes_before_start(60),
-            ])
+            Some(vec![Reminder::from_minutes(30), Reminder::from_minutes(60),])
         );
     }
 

@@ -2,6 +2,10 @@
 default:
   @just --list
 
+# Run CLI commands
+cli +args:
+  cargo run -p caldir-cli -- {{ args }}
+
 # TODO: Remove me after refactor:
 # [working-directory: 'caldir-core']
 # check:

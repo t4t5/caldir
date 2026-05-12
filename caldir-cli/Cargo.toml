@@ -60,3 +60,7 @@ flate2 = "1"
 tar = "0.4"
 tempfile = "3"
 serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+indoc = "2"
+pretty_assertions = "1"

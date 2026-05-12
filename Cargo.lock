@@ -135,8 +135,10 @@ dependencies = [
  "humantime",
  "iana-time-zone",
  "indicatif",
+ "indoc",
  "open",
  "owo-colors",
+ "pretty_assertions",
  "reqwest",
  "rpassword",
  "serde",
@@ -817,6 +819,15 @@ dependencies = [
  "unicode-width",
  "unit-prefix",
  "web-time",
+]
+
+[[package]]
+name = "indoc"
+version = "2.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
+dependencies = [
+ "rustversion",
 ]
 
 [[package]]

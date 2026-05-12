@@ -401,10 +401,7 @@ mod tests {
         let event = crate::event::Event::from_ics_str(ics).unwrap();
 
         assert_eq!(event.reminders.len(), 1);
-        assert_eq!(
-            event.reminders[0],
-            crate::event::Reminder::minutes_before_start(10)
-        );
+        assert_eq!(event.reminders[0], crate::event::Reminder::from_minutes(10));
     }
 
     #[test]

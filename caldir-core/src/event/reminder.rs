@@ -28,7 +28,7 @@ impl<'de> Deserialize<'de> for Reminder {
 }
 
 impl Reminder {
-    pub fn minutes_before_start(minutes: i64) -> Self {
+    pub fn from_minutes(minutes: i64) -> Self {
         Reminder {
             minutes_before_start: minutes,
         }
@@ -76,7 +76,7 @@ impl Reminder {
         }
 
         let trigger_prop = value.properties().get("TRIGGER").ok_or(())?;
-        parse_trigger_minutes_before_start(trigger_prop).map(Reminder::minutes_before_start)
+        parse_trigger_minutes_before_start(trigger_prop).map(Reminder::from_minutes)
     }
 
     /// Format this reminder as a minimal DISPLAY `VALARM` block (RFC 5545).
@@ -260,14 +260,14 @@ mod tests {
             "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Wake up\r\nTRIGGER:-PT10M\r\nEND:VALARM",
         );
 
-        assert_eq!(reminder, Reminder::minutes_before_start(10));
+        assert_eq!(reminder, Reminder::from_minutes(10));
     }
 
     #[test]
     fn defaults_action_to_display_when_missing() {
         let reminder = parse_reminder("BEGIN:VALARM\r\nTRIGGER:-PT10M\r\nEND:VALARM");
 
-        assert_eq!(reminder, Reminder::minutes_before_start(10));
+        assert_eq!(reminder, Reminder::from_minutes(10));
     }
 
     #[test]
@@ -283,14 +283,14 @@ mod tests {
             "BEGIN:VALARM\r\nACTION:DISPLAY\r\nTRIGGER;VALUE=DURATION:-P1DT2H30M\r\nEND:VALARM",
         );
 
-        assert_eq!(reminder, Reminder::minutes_before_start(1_590));
+        assert_eq!(reminder, Reminder::from_minutes(1_590));
     }
 
     #[test]
     fn parses_zero_duration() {
         let reminder = parse_reminder("BEGIN:VALARM\r\nTRIGGER:-PT0S\r\nEND:VALARM");
 
-        assert_eq!(reminder, Reminder::minutes_before_start(0));
+        assert_eq!(reminder, Reminder::from_minutes(0));
     }
 
     #[test]
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn writes_full_valarm() {
-        let reminder = Reminder::minutes_before_start(10);
+        let reminder = Reminder::from_minutes(10);
 
         let block = reminder.ics_block();
 
@@ -367,7 +367,7 @@ mod tests {
         // icalendar's `Component::fmt_write` auto-injects a random UID into
         // every sub-component. We sidestep that by formatting VALARM ourselves;
         // this test guards against accidentally regressing back through it.
-        let block = Reminder::minutes_before_start(10).ics_block();
+        let block = Reminder::from_minutes(10).ics_block();
 
         assert!(
             !block.contains("UID"),

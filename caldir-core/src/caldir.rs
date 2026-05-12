@@ -7,10 +7,8 @@ use crate::{
 use std::path::PathBuf;
 
 pub use config::CaldirConfig;
+pub use config::TimeFormat;
 pub use error::CaldirError;
-
-#[cfg(test)]
-pub(crate) use config::TimeFormat;
 
 pub struct Caldir {
     config: CaldirConfig,
