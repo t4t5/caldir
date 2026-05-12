@@ -73,6 +73,26 @@ impl Event {
         }
     }
 
+    pub fn set_end(&mut self, end: EventTime) {
+        self.end = Some(end);
+    }
+
+    pub fn set_location(&mut self, location: impl Into<String>) {
+        self.location = Some(location.into());
+    }
+
+    pub fn set_description(&mut self, description: impl Into<String>) {
+        self.description = Some(description.into());
+    }
+
+    pub fn set_recurrence(&mut self, recurrence: Recurrence) {
+        self.recurrence = Some(recurrence);
+    }
+
+    pub fn set_reminders(&mut self, reminders: Vec<Reminder>) {
+        self.reminders = reminders;
+    }
+
     pub(crate) fn from_ics_str(contents: &str) -> Result<Self, EventError> {
         let icalendar: icalendar::Calendar = contents
             .parse()

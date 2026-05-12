@@ -86,6 +86,10 @@ impl CaldirConfig {
         self.default_calendar_slug = slug;
     }
 
+    pub fn default_reminders(&self) -> Option<Vec<Reminder>> {
+        self.default_reminders.clone()
+    }
+
     pub fn write(&self, path: &Path) -> Result<(), CaldirConfigError> {
         let contents = self.to_toml().map_err(CaldirConfigError::InvalidConfig)?;
 

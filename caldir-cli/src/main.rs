@@ -1,6 +1,6 @@
 mod commands;
 // mod render;
-// mod utils;
+mod utils;
 
 #[cfg(test)]
 mod test_utils;
@@ -29,105 +29,104 @@ enum Commands {
         #[arg(long, default_value_t = true)]
         hosted: bool,
     },
-    /*
-    #[command(about = "Check if any events have changed (local and remote)")]
-    Status {
-        /// Only operate on this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
-
-        /// Show events from this date (YYYY-MM-DD, or "start" for all past events)
-        #[arg(long)]
-        from: Option<String>,
-
-        /// Show events until this date (YYYY-MM-DD)
-        #[arg(long)]
-        to: Option<String>,
-
-        /// Show all events (instead of compact view when >5 events)
-        #[arg(short, long)]
-        verbose: bool,
-    },
-    #[command(about = "Pull changes from remote calendars into local caldir")]
-    Pull {
-        /// Only operate on this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
-
-        /// Pull events from this date (YYYY-MM-DD, or "start" for all past events)
-        #[arg(long)]
-        from: Option<String>,
-
-        /// Pull events until this date (YYYY-MM-DD)
-        #[arg(long)]
-        to: Option<String>,
-
-        /// Show all events (instead of compact view when >5 events)
-        #[arg(short, long)]
-        verbose: bool,
-    },
-    #[command(about = "Push changes from local caldir to remote calendars")]
-    Push {
-        /// Only operate on this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
-
-        /// Show all events (instead of compact view when >5 events)
-        #[arg(short, long)]
-        verbose: bool,
-
-        /// Bypass safety checks (e.g. allow deleting all remote events when local is empty)
-        #[arg(long)]
-        force: bool,
-    },
-    #[command(about = "Sync changes between caldir and remote calendars (push + pull)")]
-    Sync {
-        /// Only operate on this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
-
-        /// Sync events from this date (YYYY-MM-DD, or "start" for all past events)
-        #[arg(long)]
-        from: Option<String>,
-
-        /// Sync events until this date (YYYY-MM-DD)
-        #[arg(long)]
-        to: Option<String>,
-
-        /// Show all events (instead of compact view when >5 events)
-        #[arg(short, long)]
-        verbose: bool,
-
-        /// Bypass safety checks (e.g. allow deleting many remote events at once)
-        #[arg(long)]
-        force: bool,
-    },
-    #[command(about = "List upcoming events across all calendars")]
-    Events {
-        /// Only show events from this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
-
-        /// Show events from this date (YYYY-MM-DD)
-        #[arg(long)]
-        from: Option<String>,
-
-        /// Show events until this date (YYYY-MM-DD)
-        #[arg(long)]
-        to: Option<String>,
-    },
-    #[command(about = "Show today's events")]
-    Today {
-        /// Only show events from this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
-    },
-    #[command(about = "Show this week's events (through Sunday)")]
-    Week {
-        /// Only show events from this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
-    },
+    // #[command(about = "Check if any events have changed (local and remote)")]
+    // Status {
+    //     /// Only operate on this calendar (by slug)
+    //     #[arg(short, long)]
+    //     calendar: Option<String>,
+    //
+    //     /// Show events from this date (YYYY-MM-DD, or "start" for all past events)
+    //     #[arg(long)]
+    //     from: Option<String>,
+    //
+    //     /// Show events until this date (YYYY-MM-DD)
+    //     #[arg(long)]
+    //     to: Option<String>,
+    //
+    //     /// Show all events (instead of compact view when >5 events)
+    //     #[arg(short, long)]
+    //     verbose: bool,
+    // },
+    // #[command(about = "Pull changes from remote calendars into local caldir")]
+    // Pull {
+    //     /// Only operate on this calendar (by slug)
+    //     #[arg(short, long)]
+    //     calendar: Option<String>,
+    //
+    //     /// Pull events from this date (YYYY-MM-DD, or "start" for all past events)
+    //     #[arg(long)]
+    //     from: Option<String>,
+    //
+    //     /// Pull events until this date (YYYY-MM-DD)
+    //     #[arg(long)]
+    //     to: Option<String>,
+    //
+    //     /// Show all events (instead of compact view when >5 events)
+    //     #[arg(short, long)]
+    //     verbose: bool,
+    // },
+    // #[command(about = "Push changes from local caldir to remote calendars")]
+    // Push {
+    //     /// Only operate on this calendar (by slug)
+    //     #[arg(short, long)]
+    //     calendar: Option<String>,
+    //
+    //     /// Show all events (instead of compact view when >5 events)
+    //     #[arg(short, long)]
+    //     verbose: bool,
+    //
+    //     /// Bypass safety checks (e.g. allow deleting all remote events when local is empty)
+    //     #[arg(long)]
+    //     force: bool,
+    // },
+    // #[command(about = "Sync changes between caldir and remote calendars (push + pull)")]
+    // Sync {
+    //     /// Only operate on this calendar (by slug)
+    //     #[arg(short, long)]
+    //     calendar: Option<String>,
+    //
+    //     /// Sync events from this date (YYYY-MM-DD, or "start" for all past events)
+    //     #[arg(long)]
+    //     from: Option<String>,
+    //
+    //     /// Sync events until this date (YYYY-MM-DD)
+    //     #[arg(long)]
+    //     to: Option<String>,
+    //
+    //     /// Show all events (instead of compact view when >5 events)
+    //     #[arg(short, long)]
+    //     verbose: bool,
+    //
+    //     /// Bypass safety checks (e.g. allow deleting many remote events at once)
+    //     #[arg(long)]
+    //     force: bool,
+    // },
+    // #[command(about = "List upcoming events across all calendars")]
+    // Events {
+    //     /// Only show events from this calendar (by slug)
+    //     #[arg(short, long)]
+    //     calendar: Option<String>,
+    //
+    //     /// Show events from this date (YYYY-MM-DD)
+    //     #[arg(long)]
+    //     from: Option<String>,
+    //
+    //     /// Show events until this date (YYYY-MM-DD)
+    //     #[arg(long)]
+    //     to: Option<String>,
+    // },
+    // #[command(about = "Show today's events")]
+    // Today {
+    //     /// Only show events from this calendar (by slug)
+    //     #[arg(short, long)]
+    //     calendar: Option<String>,
+    // },
+    // #[command(about = "Show this week's events (through Sunday)")]
+    // Week {
+    //     /// Only show events from this calendar (by slug)
+    //     #[arg(short, long)]
+    //     calendar: Option<String>,
+    // },
     #[command(about = "Create a new event in caldir")]
     New {
         /// Event title
@@ -161,38 +160,38 @@ enum Commands {
         #[arg(long)]
         no_reminders: bool,
     },
-    #[command(about = "Discard unpushed local changes (restore to remote state)")]
-    Discard {
-        /// Only operate on this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
-
-        /// Show all events (instead of compact view when >5 events)
-        #[arg(short, long)]
-        verbose: bool,
-
-        /// Skip confirmation prompt
-        #[arg(long)]
-        force: bool,
-    },
-    #[command(about = "List pending invites across calendars")]
-    Invites {
-        /// Only show invites from this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
-
-        /// Include already-responded invites (not just pending)
-        #[arg(short, long)]
-        all: bool,
-    },
-    #[command(about = "Respond to a calendar invites")]
-    Rsvp {
-        /// Path to the .ics file (omit for interactive mode)
-        path: Option<String>,
-
-        /// Response: accept, decline, maybe
-        response: Option<String>,
-    }, */
+    // #[command(about = "Discard unpushed local changes (restore to remote state)")]
+    // Discard {
+    //     /// Only operate on this calendar (by slug)
+    //     #[arg(short, long)]
+    //     calendar: Option<String>,
+    //
+    //     /// Show all events (instead of compact view when >5 events)
+    //     #[arg(short, long)]
+    //     verbose: bool,
+    //
+    //     /// Skip confirmation prompt
+    //     #[arg(long)]
+    //     force: bool,
+    // },
+    // #[command(about = "List pending invites across calendars")]
+    // Invites {
+    //     /// Only show invites from this calendar (by slug)
+    //     #[arg(short, long)]
+    //     calendar: Option<String>,
+    //
+    //     /// Include already-responded invites (not just pending)
+    //     #[arg(short, long)]
+    //     all: bool,
+    // },
+    // #[command(about = "Respond to a calendar invites")]
+    // Rsvp {
+    //     /// Path to the .ics file (omit for interactive mode)
+    //     path: Option<String>,
+    //
+    //     /// Response: accept, decline, maybe
+    //     response: Option<String>,
+    // },
     #[command(about = "Show configuration paths and calendar info")]
     Config,
     // #[command(about = "Update caldir and installed providers to the latest version")]
@@ -243,26 +242,26 @@ async fn main() -> Result<()> {
         // }
         // Commands::Today { calendar } => commands::events::run_today(&caldir, calendar),
         // Commands::Week { calendar } => commands::events::run_week(&caldir, calendar),
-        // Commands::New {
-        //     title,
-        //     start,
-        //     end,
-        //     duration,
-        //     location,
-        //     calendar,
-        //     reminder,
-        //     no_reminders,
-        // } => commands::new::run(
-        //     &caldir,
-        //     title,
-        //     start,
-        //     end,
-        //     duration,
-        //     location,
-        //     calendar,
-        //     reminder,
-        //     no_reminders,
-        // ),
+        Commands::New {
+            title,
+            start,
+            end,
+            duration,
+            location,
+            calendar,
+            reminder,
+            no_reminders,
+        } => commands::new::run(
+            &caldir,
+            title,
+            start,
+            end,
+            duration,
+            location,
+            calendar,
+            reminder,
+            no_reminders,
+        ),
         // Commands::Discard {
         //     calendar,
         //     verbose,

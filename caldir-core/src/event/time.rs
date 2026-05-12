@@ -28,6 +28,11 @@ impl EventTime {
             },
         }
     }
+
+    /// Check if this is an all-day date (not a datetime)
+    pub fn is_date(&self) -> bool {
+        matches!(self, EventTime::Date(_))
+    }
 }
 
 fn parse_tzid(tzid: &str) -> Option<chrono_tz::Tz> {

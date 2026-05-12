@@ -4,7 +4,7 @@ pub mod connect;
 // pub mod events;
 // pub mod guards;
 // pub mod invites;
-// pub mod new;
+pub mod new;
 // pub mod pull;
 // pub mod push;
 // pub mod rsvp;
