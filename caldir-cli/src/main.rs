@@ -1,6 +1,6 @@
 mod commands;
-mod render;
-mod utils;
+// mod render;
+// mod utils;
 
 use anyhow::Result;
 use caldir_core::Caldir;
@@ -17,7 +17,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    #[command(about = "Connect to a remote calendar provider (e.g., Google Calendar)")]
+    /* #[command(about = "Connect to a remote calendar provider (e.g., Google Calendar)")]
     Connect {
         /// Provider name (e.g. "google", "caldav", "icloud", "outlook")
         provider: Option<String>,
@@ -188,11 +188,11 @@ enum Commands {
 
         /// Response: accept, decline, maybe
         response: Option<String>,
-    },
+    }, */
     #[command(about = "Show configuration paths and calendar info")]
     Config,
-    #[command(about = "Update caldir and installed providers to the latest version")]
-    Update,
+    // #[command(about = "Update caldir and installed providers to the latest version")]
+    // Update,
 }
 
 #[tokio::main]
@@ -200,74 +200,74 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // `update` doesn't touch the caldir, so dispatch it before loading anything.
-    if let Commands::Update = cli.command {
-        return commands::update::run().await;
-    }
+    // if let Commands::Update = cli.command {
+    //     return commands::update::run().await;
+    // }
 
-    let mut caldir = Caldir::load()?;
+    let caldir = Caldir::load()?;
 
     match cli.command {
-        Commands::Connect { provider, hosted } => {
-            commands::connect::run(&mut caldir, provider, hosted).await
-        }
-        Commands::Status {
-            calendar,
-            from,
-            to,
-            verbose,
-        } => commands::status::run(&caldir, calendar, from, to, verbose).await,
-        Commands::Pull {
-            calendar,
-            from,
-            to,
-            verbose,
-        } => commands::pull::run(&caldir, calendar, from, to, verbose).await,
-        Commands::Push {
-            calendar,
-            verbose,
-            force,
-        } => commands::push::run(&caldir, calendar, verbose, force).await,
-        Commands::Sync {
-            calendar,
-            from,
-            to,
-            verbose,
-            force,
-        } => commands::sync::run(&caldir, calendar, from, to, verbose, force).await,
-        Commands::Events { calendar, from, to } => {
-            commands::events::run_events(&caldir, calendar, from, to)
-        }
-        Commands::Today { calendar } => commands::events::run_today(&caldir, calendar),
-        Commands::Week { calendar } => commands::events::run_week(&caldir, calendar),
-        Commands::New {
-            title,
-            start,
-            end,
-            duration,
-            location,
-            calendar,
-            reminder,
-            no_reminders,
-        } => commands::new::run(
-            &caldir,
-            title,
-            start,
-            end,
-            duration,
-            location,
-            calendar,
-            reminder,
-            no_reminders,
-        ),
-        Commands::Discard {
-            calendar,
-            verbose,
-            force,
-        } => commands::discard::run(&caldir, calendar, verbose, force).await,
-        Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
-        Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
+        // Commands::Connect { provider, hosted } => {
+        //     commands::connect::run(&mut caldir, provider, hosted).await
+        // }
+        // Commands::Status {
+        //     calendar,
+        //     from,
+        //     to,
+        //     verbose,
+        // } => commands::status::run(&caldir, calendar, from, to, verbose).await,
+        // Commands::Pull {
+        //     calendar,
+        //     from,
+        //     to,
+        //     verbose,
+        // } => commands::pull::run(&caldir, calendar, from, to, verbose).await,
+        // Commands::Push {
+        //     calendar,
+        //     verbose,
+        //     force,
+        // } => commands::push::run(&caldir, calendar, verbose, force).await,
+        // Commands::Sync {
+        //     calendar,
+        //     from,
+        //     to,
+        //     verbose,
+        //     force,
+        // } => commands::sync::run(&caldir, calendar, from, to, verbose, force).await,
+        // Commands::Events { calendar, from, to } => {
+        //     commands::events::run_events(&caldir, calendar, from, to)
+        // }
+        // Commands::Today { calendar } => commands::events::run_today(&caldir, calendar),
+        // Commands::Week { calendar } => commands::events::run_week(&caldir, calendar),
+        // Commands::New {
+        //     title,
+        //     start,
+        //     end,
+        //     duration,
+        //     location,
+        //     calendar,
+        //     reminder,
+        //     no_reminders,
+        // } => commands::new::run(
+        //     &caldir,
+        //     title,
+        //     start,
+        //     end,
+        //     duration,
+        //     location,
+        //     calendar,
+        //     reminder,
+        //     no_reminders,
+        // ),
+        // Commands::Discard {
+        //     calendar,
+        //     verbose,
+        //     force,
+        // } => commands::discard::run(&caldir, calendar, verbose, force).await,
+        // Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
+        // Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
         Commands::Config => commands::config::run(&caldir),
-        Commands::Update => unreachable!("handled above"),
+        // Commands::Update => unreachable!("handled above"),
     }
 }
 
@@ -323,16 +323,16 @@ async fn main() -> Result<()> {
 //     }
 // }
 //
-fn require_calendars(caldir: &Caldir) -> Result<()> {
-    if caldir.calendars().is_empty() {
-        anyhow::bail!(
-            "No calendars found.\n\n\
-            Connect your first calendar with:\n  \
-            caldir connect <provider>\n\n\
-            Example:\n  \
-            caldir connect google"
-        );
-    }
-
-    Ok(())
-}
+// fn require_calendars(caldir: &Caldir) -> Result<()> {
+//     if caldir.calendars().is_empty() {
+//         anyhow::bail!(
+//             "No calendars found.\n\n\
+//             Connect your first calendar with:\n  \
+//             caldir connect <provider>\n\n\
+//             Example:\n  \
+//             caldir connect google"
+//         );
+//     }
+//
+//     Ok(())
+// }
