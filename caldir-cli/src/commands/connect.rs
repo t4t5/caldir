@@ -45,12 +45,15 @@ async fn run_parsed(caldir: &mut Caldir, provider_slug: ProviderSlug, hosted: bo
 
     // Connect loop: keep calling `connect` until the provider says Done.
     let mut data = serde_json::Map::new();
-    let account_identifier = loop {
+    let (account_identifier, prefetched_calendars) = loop {
         let response = provider.connect(options.clone(), data.clone()).await?;
 
         match response {
-            ConnectResponse::Done { account_identifier } => {
-                break account_identifier;
+            ConnectResponse::Done {
+                account_identifier,
+                calendars,
+            } => {
+                break (account_identifier, calendars);
             }
             ConnectResponse::NeedsInput {
                 step,
@@ -169,13 +172,22 @@ async fn run_parsed(caldir: &mut Caldir, provider_slug: ProviderSlug, hosted: bo
         }
     };
 
-    let provider_account = provider.provider_account(account_identifier.clone());
+    if let Some(id) = &account_identifier {
+        println!("Authenticated as: {}\n", id);
+    }
 
-    println!("Authenticated as: {}\n", account_identifier);
-    println!("Fetching calendars...");
-
-    // List all calendars for this account
-    let calendar_configs = provider_account.list_calendars().await?;
+    // Single-calendar providers (webcal) return the calendar in `Done` and skip
+    // list_calendars entirely. Multi-calendar account providers return an
+    // account_identifier and we enumerate via list_calendars.
+    let calendar_configs = if let Some(calendars) = prefetched_calendars {
+        calendars
+    } else {
+        let id = account_identifier
+            .clone()
+            .context("Provider finished connecting without an account identifier or calendars")?;
+        println!("Fetching calendars...");
+        provider.provider_account(id).list_calendars().await?
+    };
 
     if calendar_configs.is_empty() {
         println!("No calendars found.");

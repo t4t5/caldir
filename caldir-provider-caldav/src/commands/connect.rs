@@ -46,7 +46,10 @@ pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<Con
         );
         session.save(&context)?;
 
-        return Ok(ConnectResponse::Done { account_identifier });
+        return Ok(ConnectResponse::Done {
+            account_identifier: Some(account_identifier),
+            calendars: None,
+        });
     }
 
     // Init step: return credential field requirements

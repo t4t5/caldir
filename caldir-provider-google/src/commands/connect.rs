@@ -74,7 +74,8 @@ pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<Con
         // Auth submit: exchange credentials for tokens
         let account_email = complete_auth(&context, &cmd, &redirect_uri).await?;
         return Ok(ConnectResponse::Done {
-            account_identifier: account_email,
+            account_identifier: Some(account_email),
+            calendars: None,
         });
     }
 

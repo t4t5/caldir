@@ -41,7 +41,8 @@ pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<Con
         session.save(&context)?;
 
         return Ok(ConnectResponse::Done {
-            account_identifier: apple_id.to_string(),
+            account_identifier: Some(apple_id.to_string()),
+            calendars: None,
         });
     }
 
