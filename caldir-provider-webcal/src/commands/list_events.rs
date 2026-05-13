@@ -58,7 +58,7 @@ mod tests {
     use caldir_core::RemoteConfigParams;
 
     fn ics_with(events: &str) -> String {
-        format!("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n{events}END:VCALENDAR\r\n")
+        format!("BEGIN:VCALENDAR\nVERSION:2.0\n{events}END:VCALENDAR\n").replace('\n', "\r\n")
     }
 
     fn empty_remote() -> RemoteConfigParams {
@@ -93,7 +93,13 @@ mod tests {
     #[test]
     fn includes_event_inside_range() {
         let body = ics_with(
-            "BEGIN:VEVENT\r\nUID:in@caldir\r\nDTSTART:20260615T100000Z\r\nDTEND:20260615T110000Z\r\nSUMMARY:Inside\r\nEND:VEVENT\r\n",
+            r"BEGIN:VEVENT
+UID:in@caldir
+DTSTART:20260615T100000Z
+DTEND:20260615T110000Z
+SUMMARY:Inside
+END:VEVENT
+",
         );
 
         let events = filter_events(
@@ -109,7 +115,13 @@ mod tests {
     #[test]
     fn excludes_event_before_range() {
         let body = ics_with(
-            "BEGIN:VEVENT\r\nUID:before@caldir\r\nDTSTART:20260101T100000Z\r\nDTEND:20260101T110000Z\r\nSUMMARY:Past\r\nEND:VEVENT\r\n",
+            r"BEGIN:VEVENT
+UID:before@caldir
+DTSTART:20260101T100000Z
+DTEND:20260101T110000Z
+SUMMARY:Past
+END:VEVENT
+",
         );
 
         let events = filter_events(
@@ -124,7 +136,13 @@ mod tests {
     #[test]
     fn excludes_event_after_range() {
         let body = ics_with(
-            "BEGIN:VEVENT\r\nUID:after@caldir\r\nDTSTART:20260801T100000Z\r\nDTEND:20260801T110000Z\r\nSUMMARY:Future\r\nEND:VEVENT\r\n",
+            r"BEGIN:VEVENT
+UID:after@caldir
+DTSTART:20260801T100000Z
+DTEND:20260801T110000Z
+SUMMARY:Future
+END:VEVENT
+",
         );
 
         let events = filter_events(
@@ -142,7 +160,14 @@ mod tests {
         // means occurrences happen during it. We must return the master so
         // core's recurrence expansion can produce the in-range occurrences.
         let body = ics_with(
-            "BEGIN:VEVENT\r\nUID:weekly@caldir\r\nDTSTART:20240101T100000Z\r\nDTEND:20240101T110000Z\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Weekly retro\r\nEND:VEVENT\r\n",
+            r"BEGIN:VEVENT
+UID:weekly@caldir
+DTSTART:20240101T100000Z
+DTEND:20240101T110000Z
+RRULE:FREQ=WEEKLY
+SUMMARY:Weekly retro
+END:VEVENT
+",
         );
 
         let events = filter_events(

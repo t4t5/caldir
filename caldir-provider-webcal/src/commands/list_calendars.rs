@@ -84,36 +84,54 @@ mod tests {
 
     #[test]
     fn extract_property_returns_value_when_present() {
-        let ics =
-            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nX-WR-CALNAME:Bank Holidays\r\nEND:VCALENDAR\r\n";
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+X-WR-CALNAME:Bank Holidays
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
         assert_eq!(
-            extract_property(ics, "X-WR-CALNAME"),
+            extract_property(&ics, "X-WR-CALNAME"),
             Some("Bank Holidays".to_string())
         );
     }
 
     #[test]
     fn extract_property_returns_none_when_missing() {
-        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n";
-        assert_eq!(extract_property(ics, "X-WR-CALNAME"), None);
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
+        assert_eq!(extract_property(&ics, "X-WR-CALNAME"), None);
     }
 
     #[test]
     fn extract_property_unfolds_continuation_lines() {
         // RFC 5545 line folding: long lines split with a leading space/tab
         // on the continuation. Common in real feeds when X-WR-CALNAME is long.
-        let ics = "BEGIN:VCALENDAR\r\nX-WR-CALNAME:UK Government Bank Holidays\r\n England and Wales\r\nEND:VCALENDAR\r\n";
+        let ics = r"BEGIN:VCALENDAR
+X-WR-CALNAME:UK Government Bank Holidays
+ England and Wales
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
         assert_eq!(
-            extract_property(ics, "X-WR-CALNAME"),
+            extract_property(&ics, "X-WR-CALNAME"),
             Some("UK Government Bank HolidaysEngland and Wales".to_string())
         );
     }
 
     #[test]
     fn extract_property_handles_tab_continuation() {
-        let ics = "BEGIN:VCALENDAR\r\nX-WR-CALNAME:Hello\r\n\tWorld\r\nEND:VCALENDAR\r\n";
+        let ics = r"BEGIN:VCALENDAR
+X-WR-CALNAME:Hello
+	World
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
         assert_eq!(
-            extract_property(ics, "X-WR-CALNAME"),
+            extract_property(&ics, "X-WR-CALNAME"),
             Some("HelloWorld".to_string())
         );
     }
