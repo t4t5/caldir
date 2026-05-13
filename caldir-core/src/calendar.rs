@@ -211,6 +211,19 @@ impl Calendar {
         Ok(())
     }
 
+    /// Append event IDs to the synced state file. Used after a successful
+    /// remote push so the diff logic can tell future deletes from never-seen
+    /// events.
+    pub(crate) fn record_synced_ids(
+        &mut self,
+        ids: impl IntoIterator<Item = EventInstanceId>,
+    ) -> Result<(), CalendarError> {
+        self.state
+            .add_new_synced_ids(ids)
+            .write(&calendar_state_dir(&self.path))?;
+        Ok(())
+    }
+
     /// Revert outgoing local changes so the calendar matches the remote side
     /// of `diff`. Create → delete the local file, Update → rewrite with the
     /// remote version, Delete → recreate from the remote event.

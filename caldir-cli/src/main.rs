@@ -65,20 +65,20 @@ enum Commands {
     //     #[arg(short, long)]
     //     verbose: bool,
     // },
-    // #[command(about = "Push changes from local caldir to remote calendars")]
-    // Push {
-    //     /// Only operate on this calendar (by slug)
-    //     #[arg(short, long)]
-    //     calendar: Option<String>,
-    //
-    //     /// Show all events (instead of compact view when >5 events)
-    //     #[arg(short, long)]
-    //     verbose: bool,
-    //
-    //     /// Bypass safety checks (e.g. allow deleting all remote events when local is empty)
-    //     #[arg(long)]
-    //     force: bool,
-    // },
+    #[command(about = "Push changes from local caldir to remote calendars")]
+    Push {
+        /// Only operate on this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+
+        /// Show all events (instead of compact view when >5 events)
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Bypass safety checks (e.g. allow deleting all remote events when local is empty)
+        #[arg(long)]
+        force: bool,
+    },
     // #[command(about = "Sync changes between caldir and remote calendars (push + pull)")]
     // Sync {
     //     /// Only operate on this calendar (by slug)
@@ -225,11 +225,11 @@ async fn main() -> Result<()> {
         //     to,
         //     verbose,
         // } => commands::pull::run(&caldir, calendar, from, to, verbose).await,
-        // Commands::Push {
-        //     calendar,
-        //     verbose,
-        //     force,
-        // } => commands::push::run(&caldir, calendar, verbose, force).await,
+        Commands::Push {
+            calendar,
+            verbose,
+            force,
+        } => commands::push::run(&caldir, calendar, verbose, force).await,
         // Commands::Sync {
         //     calendar,
         //     from,

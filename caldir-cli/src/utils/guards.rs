@@ -1,4 +1,4 @@
-use caldir_core::diff::{CalendarDiff, DiffKind};
+use caldir_core::{CalendarDiff, EventChange};
 use owo_colors::OwoColorize;
 
 /// Number of pending deletions that triggers the safeguard.
@@ -12,9 +12,9 @@ pub fn allow_mass_delete(diff: &CalendarDiff, force: bool) -> bool {
         return true;
     }
     let delete_count = diff
-        .to_push
+        .outgoing()
         .iter()
-        .filter(|d| d.kind == DiffKind::Delete)
+        .filter(|d| matches!(d, EventChange::Delete(_)))
         .count();
     if delete_count < MASS_DELETE_THRESHOLD {
         return true;
