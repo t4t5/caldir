@@ -59,115 +59,7 @@ async fn run_parsed(caldir: &mut Caldir, provider_slug: ProviderSlug, hosted: bo
                 step,
                 data: step_data,
             } => {
-                data = match step {
-                    ConnectStepKind::NeedsSetup => {
-                        let setup_data: SetupData = serde_json::from_value(step_data)
-                            .context("Failed to parse setup data from provider")?;
-
-                        println!("{}\n", setup_data.instructions);
-
-                        let mut fields = serde_json::Map::new();
-                        for field in &setup_data.fields {
-                            if let Some(ref help) = field.help {
-                                println!("{}", help);
-                            }
-                            let value = match field.field_type {
-                                FieldType::Password => prompt_password(&field.label)?,
-                                _ => prompt_text(&field.label)?,
-                            };
-                            fields.insert(field.id.clone(), value.into());
-                        }
-
-                        println!("\nSetup complete. Continuing with connection...\n");
-                        fields
-                    }
-                    ConnectStepKind::OAuthRedirect => {
-                        let oauth: OAuthData = serde_json::from_value(step_data)
-                            .context("Failed to parse OAuth data from provider")?;
-
-                        println!("Open this URL in your browser to authenticate:\n");
-                        println!("{}\n", oauth.authorization_url);
-
-                        if open::that(&oauth.authorization_url).is_err() {
-                            println!(
-                                "(Could not open browser automatically, please copy the URL above)"
-                            );
-                        }
-
-                        let params = wait_for_callback(&listener).await?;
-
-                        let code = params
-                            .get("code")
-                            .ok_or_else(|| anyhow::anyhow!("No code in callback"))?;
-                        let state = params
-                            .get("state")
-                            .ok_or_else(|| anyhow::anyhow!("No state in callback"))?;
-
-                        if state != &oauth.state {
-                            anyhow::bail!("OAuth state mismatch - possible CSRF attack");
-                        }
-
-                        println!("\nReceived authorization code, exchanging for tokens...");
-
-                        let mut credentials = serde_json::Map::new();
-                        credentials.insert("code".into(), code.clone().into());
-                        credentials.insert("state".into(), state.clone().into());
-                        credentials.insert("redirect_uri".into(), redirect_uri.clone().into());
-                        credentials
-                    }
-                    ConnectStepKind::HostedOAuth => {
-                        let hosted_data: HostedOAuthData = serde_json::from_value(step_data)
-                            .context("Failed to parse hosted OAuth data from provider")?;
-
-                        println!("Open this URL in your browser to authenticate:\n");
-                        println!("{}\n", hosted_data.url);
-
-                        if open::that(&hosted_data.url).is_err() {
-                            println!(
-                                "(Could not open browser automatically, please copy the URL above)"
-                            );
-                        }
-
-                        let params = wait_for_callback(&listener).await?;
-
-                        let access_token = params
-                            .get("access_token")
-                            .ok_or_else(|| anyhow::anyhow!("No access_token in callback"))?;
-                        let refresh_token = params
-                            .get("refresh_token")
-                            .ok_or_else(|| anyhow::anyhow!("No refresh_token in callback"))?;
-                        let expires_in = params
-                            .get("expires_in")
-                            .ok_or_else(|| anyhow::anyhow!("No expires_in in callback"))?;
-
-                        println!("\nReceived tokens, completing authentication...");
-
-                        let mut credentials = serde_json::Map::new();
-                        credentials.insert("access_token".into(), access_token.clone().into());
-                        credentials.insert("refresh_token".into(), refresh_token.clone().into());
-                        credentials.insert("expires_in".into(), expires_in.clone().into());
-                        credentials
-                    }
-                    ConnectStepKind::Credentials => {
-                        let creds_data: CredentialsData = serde_json::from_value(step_data)
-                            .context("Failed to parse credentials data from provider")?;
-
-                        let mut credentials = serde_json::Map::new();
-                        for field in &creds_data.fields {
-                            if let Some(ref help) = field.help {
-                                println!("{}", help);
-                            }
-                            let value = match field.field_type {
-                                FieldType::Password => prompt_password(&field.label)?,
-                                _ => prompt_text(&field.label)?,
-                            };
-                            credentials.insert(field.id.clone(), value.into());
-                        }
-
-                        println!("\nValidating credentials...");
-                        credentials
-                    }
-                };
+                data = run_connect_step(step, step_data, &listener, &redirect_uri).await?;
             }
         }
     };
@@ -310,6 +202,121 @@ async fn run_parsed(caldir: &mut Caldir, provider_slug: ProviderSlug, hosted: bo
     }
 
     Ok(())
+}
+
+/// Run one iteration of the connect state machine: prompt the user or wait for an
+/// OAuth callback, then return the data to send back to the provider on the next call.
+async fn run_connect_step(
+    step: ConnectStepKind,
+    step_data: serde_json::Value,
+    listener: &TcpListener,
+    redirect_uri: &str,
+) -> Result<serde_json::Map<String, serde_json::Value>> {
+    match step {
+        ConnectStepKind::NeedsSetup => {
+            let setup_data: SetupData = serde_json::from_value(step_data)
+                .context("Failed to parse setup data from provider")?;
+
+            println!("{}\n", setup_data.instructions);
+
+            let mut fields = serde_json::Map::new();
+            for field in &setup_data.fields {
+                if let Some(ref help) = field.help {
+                    println!("{}", help);
+                }
+                let value = match field.field_type {
+                    FieldType::Password => prompt_password(&field.label)?,
+                    _ => prompt_text(&field.label)?,
+                };
+                fields.insert(field.id.clone(), value.into());
+            }
+
+            println!("\nSetup complete. Continuing with connection...\n");
+            Ok(fields)
+        }
+        ConnectStepKind::OAuthRedirect => {
+            let oauth: OAuthData = serde_json::from_value(step_data)
+                .context("Failed to parse OAuth data from provider")?;
+
+            println!("Open this URL in your browser to authenticate:\n");
+            println!("{}\n", oauth.authorization_url);
+
+            if open::that(&oauth.authorization_url).is_err() {
+                println!("(Could not open browser automatically, please copy the URL above)");
+            }
+
+            let params = wait_for_callback(listener).await?;
+
+            let code = params
+                .get("code")
+                .ok_or_else(|| anyhow::anyhow!("No code in callback"))?;
+            let state = params
+                .get("state")
+                .ok_or_else(|| anyhow::anyhow!("No state in callback"))?;
+
+            if state != &oauth.state {
+                anyhow::bail!("OAuth state mismatch - possible CSRF attack");
+            }
+
+            println!("\nReceived authorization code, exchanging for tokens...");
+
+            let mut credentials = serde_json::Map::new();
+            credentials.insert("code".into(), code.clone().into());
+            credentials.insert("state".into(), state.clone().into());
+            credentials.insert("redirect_uri".into(), redirect_uri.to_string().into());
+            Ok(credentials)
+        }
+        ConnectStepKind::HostedOAuth => {
+            let hosted_data: HostedOAuthData = serde_json::from_value(step_data)
+                .context("Failed to parse hosted OAuth data from provider")?;
+
+            println!("Open this URL in your browser to authenticate:\n");
+            println!("{}\n", hosted_data.url);
+
+            if open::that(&hosted_data.url).is_err() {
+                println!("(Could not open browser automatically, please copy the URL above)");
+            }
+
+            let params = wait_for_callback(listener).await?;
+
+            let access_token = params
+                .get("access_token")
+                .ok_or_else(|| anyhow::anyhow!("No access_token in callback"))?;
+            let refresh_token = params
+                .get("refresh_token")
+                .ok_or_else(|| anyhow::anyhow!("No refresh_token in callback"))?;
+            let expires_in = params
+                .get("expires_in")
+                .ok_or_else(|| anyhow::anyhow!("No expires_in in callback"))?;
+
+            println!("\nReceived tokens, completing authentication...");
+
+            let mut credentials = serde_json::Map::new();
+            credentials.insert("access_token".into(), access_token.clone().into());
+            credentials.insert("refresh_token".into(), refresh_token.clone().into());
+            credentials.insert("expires_in".into(), expires_in.clone().into());
+            Ok(credentials)
+        }
+        ConnectStepKind::Credentials => {
+            let creds_data: CredentialsData = serde_json::from_value(step_data)
+                .context("Failed to parse credentials data from provider")?;
+
+            let mut credentials = serde_json::Map::new();
+            for field in &creds_data.fields {
+                if let Some(ref help) = field.help {
+                    println!("{}", help);
+                }
+                let value = match field.field_type {
+                    FieldType::Password => prompt_password(&field.label)?,
+                    _ => prompt_text(&field.label)?,
+                };
+                credentials.insert(field.id.clone(), value.into());
+            }
+
+            println!("\nValidating credentials...");
+            Ok(credentials)
+        }
+    }
 }
 
 /// Wait for an HTTP callback on a pre-bound listener and return all query parameters.
