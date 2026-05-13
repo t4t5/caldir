@@ -79,12 +79,15 @@ mod tests {
             .into_iter()
             .map(Result::unwrap)
             .collect();
+
         let from_utc = DateTime::parse_from_rfc3339(from)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap();
+
         let to_utc = DateTime::parse_from_rfc3339(to)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap();
+
         all.into_iter()
             .filter(|event| event.recurrence.is_some() || event.occurs_in_range(from_utc, to_utc))
             .collect()

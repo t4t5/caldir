@@ -25,114 +25,113 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
 
     let body = response.text().await?;
 
-    let display_name = extract_property(&body, "X-WR-CALNAME");
-    let color = extract_property(&body, "X-APPLE-CALENDAR-COLOR");
+    Ok(vec![build_calendar_config(&body, url)?])
+}
 
-    // Fall back to the URL host for the display name
-    let name = display_name.unwrap_or_else(|| {
+fn build_calendar_config(body: &str, url: &str) -> Result<CalendarConfig> {
+    let cal: icalendar::Calendar = body
+        .parse()
+        .map_err(|e| anyhow::anyhow!("Failed to parse ICS feed: {e}"))?;
+
+    let name = cal.get_name().map(str::to_string).unwrap_or_else(|| {
         url::Url::parse(url)
             .ok()
             .and_then(|u| u.host_str().map(|h| h.to_string()))
             .unwrap_or_else(|| "Webcal".to_string())
     });
 
+    let color = cal
+        .property_value("X-APPLE-CALENDAR-COLOR")
+        .map(str::to_string);
+
     let params = WebcalRemoteConfig::new(url).into_remote_config_params();
     let remote_config = RemoteConfig::new(ProviderSlug::from(PROVIDER_NAME), params);
 
-    let config = CalendarConfig::new(Some(name), color, Some(true), Some(remote_config));
-
-    Ok(vec![config])
-}
-
-/// Extract a top-level ICS property value by simple string search.
-///
-/// Handles RFC 5545 line folding: continuation lines start with a single
-/// space or tab and are appended (after stripping the leading whitespace)
-/// to the previous logical line.
-fn extract_property(ics_body: &str, property: &str) -> Option<String> {
-    let prefix = format!("{property}:");
-    let mut lines = ics_body.lines();
-
-    while let Some(raw) = lines.next() {
-        let Some(value_start) = raw.strip_prefix(&prefix) else {
-            continue;
-        };
-
-        let mut value = value_start.to_string();
-        // Pull in any continuation lines (RFC 5545 line folding).
-        for cont in lines.by_ref() {
-            if let Some(rest) = cont.strip_prefix(' ').or_else(|| cont.strip_prefix('\t')) {
-                value.push_str(rest);
-            } else {
-                break;
-            }
-        }
-
-        let trimmed = value.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-        return Some(trimmed.to_string());
-    }
-
-    None
+    Ok(CalendarConfig::new(
+        Some(name),
+        color,
+        Some(true),
+        Some(remote_config),
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn extract_property_returns_value_when_present() {
-        let ics = r"BEGIN:VCALENDAR
-VERSION:2.0
-X-WR-CALNAME:Bank Holidays
-END:VCALENDAR
-"
-        .replace('\n', "\r\n");
-        assert_eq!(
-            extract_property(&ics, "X-WR-CALNAME"),
-            Some("Bank Holidays".to_string())
-        );
+    fn ics(properties: &str) -> String {
+        format!("BEGIN:VCALENDAR\nVERSION:2.0\n{properties}END:VCALENDAR\n").replace('\n', "\r\n")
+    }
+
+    fn expected(name: &str, color: Option<&str>, url: &str) -> CalendarConfig {
+        let params = WebcalRemoteConfig::new(url).into_remote_config_params();
+        let remote_config = RemoteConfig::new(ProviderSlug::from(PROVIDER_NAME), params);
+        CalendarConfig::new(
+            Some(name.to_string()),
+            color.map(str::to_string),
+            Some(true),
+            Some(remote_config),
+        )
     }
 
     #[test]
-    fn extract_property_returns_none_when_missing() {
-        let ics = r"BEGIN:VCALENDAR
-VERSION:2.0
-END:VCALENDAR
-"
-        .replace('\n', "\r\n");
-        assert_eq!(extract_property(&ics, "X-WR-CALNAME"), None);
+    fn name_comes_from_x_wr_calname() {
+        let body = ics("X-WR-CALNAME:Bank Holidays\n");
+        let url = "https://example.com/cal.ics";
+
+        let config = build_calendar_config(&body, url).unwrap();
+
+        assert_eq!(config, expected("Bank Holidays", None, url));
     }
 
     #[test]
-    fn extract_property_unfolds_continuation_lines() {
-        // RFC 5545 line folding: long lines split with a leading space/tab
-        // on the continuation. Common in real feeds when X-WR-CALNAME is long.
-        let ics = r"BEGIN:VCALENDAR
-X-WR-CALNAME:UK Government Bank Holidays
- England and Wales
-END:VCALENDAR
-"
-        .replace('\n', "\r\n");
-        assert_eq!(
-            extract_property(&ics, "X-WR-CALNAME"),
-            Some("UK Government Bank HolidaysEngland and Wales".to_string())
-        );
+    fn name_falls_back_to_url_host_when_calendar_unnamed() {
+        let body = ics("");
+        let url = "https://feeds.example.com/holidays.ics";
+
+        let config = build_calendar_config(&body, url).unwrap();
+
+        assert_eq!(config.name(), Some("feeds.example.com"));
     }
 
     #[test]
-    fn extract_property_handles_tab_continuation() {
-        let ics = r"BEGIN:VCALENDAR
-X-WR-CALNAME:Hello
-	World
-END:VCALENDAR
-"
-        .replace('\n', "\r\n");
-        assert_eq!(
-            extract_property(&ics, "X-WR-CALNAME"),
-            Some("HelloWorld".to_string())
-        );
+    fn name_falls_back_to_literal_webcal_when_url_unparseable() {
+        let body = ics("");
+        let url = "not a url";
+
+        let config = build_calendar_config(&body, url).unwrap();
+
+        assert_eq!(config.name(), Some("Webcal"));
+    }
+
+    #[test]
+    fn color_comes_from_x_apple_calendar_color() {
+        let body = ics("X-WR-CALNAME:Holidays\nX-APPLE-CALENDAR-COLOR:#FF5733\n");
+        let url = "https://example.com/cal.ics";
+
+        let config = build_calendar_config(&body, url).unwrap();
+
+        assert_eq!(config, expected("Holidays", Some("#FF5733"), url));
+    }
+
+    #[test]
+    fn remote_config_carries_webcal_url_and_provider_slug() {
+        let body = ics("X-WR-CALNAME:Holidays\n");
+        let url = "https://example.com/cal.ics";
+
+        let config = build_calendar_config(&body, url).unwrap();
+
+        let remote = config.remote_config().unwrap();
+        assert_eq!(remote.provider_slug().to_string(), PROVIDER_NAME);
+        assert_eq!(remote.get("webcal_url").and_then(|v| v.as_str()), Some(url));
+    }
+
+    #[test]
+    fn read_only_is_true() {
+        let body = ics("X-WR-CALNAME:Holidays\n");
+
+        let config = build_calendar_config(&body, "https://example.com/cal.ics").unwrap();
+
+        assert_eq!(config.read_only(), Some(true));
     }
 }

@@ -189,6 +189,7 @@ dependencies = [
  "anyhow",
  "caldir-core",
  "chrono",
+ "icalendar",
  "reqwest",
  "serde",
  "serde_json",
