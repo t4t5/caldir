@@ -10,7 +10,7 @@ use caldir_core::remote::protocol::{
     Connect, ConnectResponse, ConnectStepKind, CredentialField, CredentialsData, FieldType,
     ProviderRequestContext,
 };
-use caldir_provider_caldav::ops;
+use caldir_provider_caldav::caldav::ops;
 
 use crate::constants::CALDAV_ENDPOINT;
 use crate::session::Session;

@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use caldir_core::remote::protocol::{DeleteEvent, ProviderRequestContext};
-use caldir_provider_caldav::ops;
+use caldir_provider_caldav::caldav::ops;
 
 use crate::remote_config::ICloudRemoteConfig;
 use crate::session::Session;

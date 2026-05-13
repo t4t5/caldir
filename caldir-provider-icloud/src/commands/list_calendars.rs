@@ -6,7 +6,7 @@ use caldir_core::remote::{
     Remote,
     protocol::{ListCalendars, ProviderRequestContext},
 };
-use caldir_provider_caldav::ops;
+use caldir_provider_caldav::caldav::ops;
 
 use crate::constants::PROVIDER_NAME;
 use crate::remote_config::ICloudRemoteConfig;

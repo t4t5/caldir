@@ -8,7 +8,7 @@ use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::{
     Connect, ConnectResponse, ConnectStepKind, CredentialField, CredentialsData, FieldType,
 };
-use caldir_provider_caldav::ops;
+use caldir_provider_caldav::caldav::ops;
 
 use crate::constants::PROVIDER_NAME;
 use crate::session::{Session, SessionStore};

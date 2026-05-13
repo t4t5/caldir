@@ -4,7 +4,7 @@ use anyhow::Result;
 use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::ListCalendars;
 use caldir_core::{CalendarConfig, ProviderSlug, RemoteConfig};
-use caldir_provider_caldav::ops::{self, RawCalendar};
+use caldir_provider_caldav::caldav::ops::{self, RawCalendar};
 
 use crate::constants::PROVIDER_NAME;
 use crate::remote_config::CaldavRemoteConfig;
