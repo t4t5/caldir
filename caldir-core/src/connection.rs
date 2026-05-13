@@ -51,10 +51,54 @@ impl Connection {
         Ok(diff)
     }
 
-    /// Apply outgoing changes to the remote, then rewrite local files with the
-    /// canonical events the provider returned so subsequent diffs don't see
-    /// spurious updates (e.g. when the provider adds X-GOOGLE-EVENT-ID).
-    pub async fn push(&mut self, diff: &CalendarDiff) -> Result<(), ConnectionError> {
+    // pull
+    pub fn apply_incoming_diff(&mut self, diff: &CalendarDiff) -> Result<(), ConnectionError> {
+        let mut events_by_instance_id: HashMap<EventInstanceId, CalendarEvent> = self
+            .local
+            .events()?
+            .into_iter()
+            .map(|e| (e.event().event_instance_id(), e))
+            .collect();
+
+        for change in diff.incoming() {
+            match change {
+                EventChange::Create(event) => {
+                    let cal_event = self.local.create_event(event.clone())?;
+                    events_by_instance_id.insert(cal_event.event().event_instance_id(), cal_event);
+                }
+                EventChange::Update { to, .. } => {
+                    if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id())
+                    {
+                        cal_event.update(to.clone()).map_err(CalendarError::from)?;
+                    }
+                }
+                EventChange::Delete(event) => {
+                    if let Some(cal_event) =
+                        events_by_instance_id.remove(&event.event_instance_id())
+                    {
+                        cal_event.delete().map_err(CalendarError::from)?;
+                    }
+                }
+            }
+        }
+
+        let synced_ids = diff.incoming().iter().filter_map(|change| match change {
+            EventChange::Create(event) | EventChange::Update { to: event, .. } => {
+                Some(event.event_instance_id())
+            }
+            EventChange::Delete(_) => None,
+        });
+
+        self.local.record_synced_ids(synced_ids)?;
+
+        Ok(())
+    }
+
+    // pull
+    pub async fn apply_outgoing_diff(
+        &mut self,
+        diff: &CalendarDiff,
+    ) -> Result<(), ConnectionError> {
         let mut events_by_instance_id: HashMap<EventInstanceId, CalendarEvent> = self
             .local
             .events()?
@@ -100,6 +144,42 @@ impl Connection {
         Ok(())
     }
 
+    // discard
+    pub fn discard_outgoing_diff(&self, diff: &CalendarDiff) -> Result<(), ConnectionError> {
+        let mut events_by_instance_id: HashMap<EventInstanceId, CalendarEvent> = self
+            .local
+            .events()?
+            .into_iter()
+            .map(|e| (e.event().event_instance_id(), e))
+            .collect();
+
+        for change in diff.outgoing() {
+            match change {
+                EventChange::Create(event) => {
+                    if let Some(cal_event) =
+                        events_by_instance_id.remove(&event.event_instance_id())
+                    {
+                        cal_event.delete().map_err(CalendarError::from)?;
+                    }
+                }
+                EventChange::Update { from, to } => {
+                    if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id())
+                    {
+                        cal_event
+                            .update(from.clone())
+                            .map_err(CalendarError::from)?;
+                    }
+                }
+                EventChange::Delete(event) => {
+                    let cal_event = self.local.create_event(event.clone())?;
+                    events_by_instance_id.insert(cal_event.event().event_instance_id(), cal_event);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn synced_event_ids(&self) -> &SyncedEventIds {
         self.local().state().synced_event_ids()
     }
@@ -112,8 +192,9 @@ mod tests {
     use crate::event::XProperty;
     use crate::provider::mock_provider::MockProvider;
     use crate::test_utils::{
-        outgoing_create_diff, outgoing_delete_diff, outgoing_update_diff, test_caldir, test_event,
-        test_mock_provider, test_remote_config, test_remote_params,
+        incoming_create_diff, incoming_delete_diff, incoming_update_diff, outgoing_create_diff,
+        outgoing_delete_diff, outgoing_update_diff, test_caldir, test_event, test_mock_provider,
+        test_remote_config, test_remote_params,
     };
     use crate::{CalendarConfig, rpc};
     use pretty_assertions::assert_eq;
@@ -180,14 +261,107 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn push_sends_create_event_for_outgoing_create() {
+    async fn apply_incoming_diff_creates_file_for_incoming_create() {
+        let (_tmp, _mock, mut connection) = writable_connection();
+        let event = test_event();
+
+        connection
+            .apply_incoming_diff(&incoming_create_diff(event))
+            .unwrap();
+
+        let expected_path = connection
+            .local()
+            .path()
+            .join("2026-01-01T1200__test-event.ics");
+        assert!(expected_path.is_file());
+    }
+
+    #[tokio::test]
+    async fn apply_incoming_diff_updates_file_for_incoming_update() {
+        let (_tmp, _mock, mut connection) = writable_connection();
+        let from = test_event();
+        let cal_event = connection.local().create_event(from.clone()).unwrap();
+        let old_path = cal_event.path().to_path_buf();
+
+        let mut to = from.clone();
+        to.summary = Some("Updated Test Event".to_string());
+
+        connection
+            .apply_incoming_diff(&incoming_update_diff(from, to))
+            .unwrap();
+
+        let new_path = connection
+            .local()
+            .path()
+            .join("2026-01-01T1200__updated-test-event.ics");
+        assert!(new_path.is_file());
+        assert!(!old_path.exists());
+    }
+
+    #[tokio::test]
+    async fn apply_incoming_diff_deletes_file_for_incoming_delete() {
+        let (_tmp, _mock, mut connection) = writable_connection();
+        let event = test_event();
+        let cal_event = connection.local().create_event(event.clone()).unwrap();
+        let path = cal_event.path().to_path_buf();
+
+        connection
+            .apply_incoming_diff(&incoming_delete_diff(event))
+            .unwrap();
+
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn apply_incoming_diff_records_incoming_create_in_state() {
+        let (_tmp, _mock, mut connection) = writable_connection();
+        let event = test_event();
+        let id = event.event_instance_id();
+
+        connection
+            .apply_incoming_diff(&incoming_create_diff(event))
+            .unwrap();
+
+        assert!(connection.local().state().synced_event_ids().contains(&id));
+    }
+
+    #[tokio::test]
+    async fn apply_incoming_diff_persists_state_to_disk() {
+        let (_tmp, _mock, mut connection) = writable_connection();
+        let event = test_event();
+        let id = event.event_instance_id();
+
+        connection
+            .apply_incoming_diff(&incoming_create_diff(event))
+            .unwrap();
+
+        let reloaded = Calendar::load(connection.local().path()).unwrap();
+        assert!(reloaded.state().synced_event_ids().contains(&id));
+    }
+
+    #[tokio::test]
+    async fn apply_incoming_diff_does_not_record_deletes_in_state() {
+        let (_tmp, _mock, mut connection) = writable_connection();
+        let event = test_event();
+        let id = event.event_instance_id();
+        connection.local().create_event(event.clone()).unwrap();
+
+        connection
+            .apply_incoming_diff(&incoming_delete_diff(event))
+            .unwrap();
+
+        assert!(!connection.local().state().synced_event_ids().contains(&id));
+    }
+
+    #[tokio::test]
+    async fn apply_outgoing_diff_sends_create_event_for_outgoing_create() {
         let (_tmp, mock, mut connection) = writable_connection();
         let event = test_event();
         connection.local().create_event(event.clone()).unwrap();
 
         mock.reply::<rpc::CreateEvent>(event.clone());
         connection
-            .push(&outgoing_create_diff(event.clone()))
+            .apply_outgoing_diff(&outgoing_create_diff(event.clone()))
             .await
             .unwrap();
 
@@ -195,7 +369,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn push_sends_update_event_for_outgoing_update() {
+    async fn apply_outgoing_diff_sends_update_event_for_outgoing_update() {
         let (_tmp, mock, mut connection) = writable_connection();
         let from = test_event();
         let mut to = from.clone();
@@ -204,7 +378,7 @@ mod tests {
 
         mock.reply::<rpc::UpdateEvent>(to.clone());
         connection
-            .push(&outgoing_update_diff(from, to.clone()))
+            .apply_outgoing_diff(&outgoing_update_diff(from, to.clone()))
             .await
             .unwrap();
 
@@ -212,13 +386,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn push_sends_delete_event_for_outgoing_delete() {
+    async fn apply_outgoing_diff_sends_delete_event_for_outgoing_delete() {
         let (_tmp, mock, mut connection) = writable_connection();
         let event = test_event();
 
         mock.reply::<rpc::DeleteEvent>(());
         connection
-            .push(&outgoing_delete_diff(event.clone()))
+            .apply_outgoing_diff(&outgoing_delete_diff(event.clone()))
             .await
             .unwrap();
 
@@ -226,7 +400,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn push_rewrites_local_with_canonical_event_from_provider() {
+    async fn apply_outgoing_diff_rewrites_local_with_canonical_event_from_provider() {
         let (_tmp, mock, mut connection) = writable_connection();
         let local = test_event();
         connection.local().create_event(local.clone()).unwrap();
@@ -238,7 +412,10 @@ mod tests {
         ));
         mock.reply::<rpc::CreateEvent>(canonical.clone());
 
-        connection.push(&outgoing_create_diff(local)).await.unwrap();
+        connection
+            .apply_outgoing_diff(&outgoing_create_diff(local))
+            .await
+            .unwrap();
 
         let reloaded = connection.local().events().unwrap();
         assert_eq!(reloaded.len(), 1);
@@ -246,15 +423,65 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn push_records_synced_id_for_outgoing_create() {
+    async fn apply_outgoing_diff_records_synced_id_for_outgoing_create() {
         let (_tmp, mock, mut connection) = writable_connection();
         let event = test_event();
         let id = event.event_instance_id();
         connection.local().create_event(event.clone()).unwrap();
 
         mock.reply::<rpc::CreateEvent>(event.clone());
-        connection.push(&outgoing_create_diff(event)).await.unwrap();
+        connection
+            .apply_outgoing_diff(&outgoing_create_diff(event))
+            .await
+            .unwrap();
 
         assert!(connection.local().state().synced_event_ids().contains(&id));
+    }
+
+    #[tokio::test]
+    async fn discard_outgoing_diff_deletes_file_for_outgoing_create() {
+        let (_tmp, _mock, connection) = writable_connection();
+        let event = test_event();
+        let cal_event = connection.local().create_event(event.clone()).unwrap();
+        let path = cal_event.path().to_path_buf();
+
+        connection
+            .discard_outgoing_diff(&outgoing_create_diff(event))
+            .unwrap();
+
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn discard_outgoing_diff_reverts_local_update_to_remote_version() {
+        let (_tmp, _mock, connection) = writable_connection();
+        let original = test_event();
+        let mut modified = original.clone();
+        modified.summary = Some("Locally Edited".to_string());
+        connection.local().create_event(modified.clone()).unwrap();
+
+        connection
+            .discard_outgoing_diff(&outgoing_update_diff(original.clone(), modified))
+            .unwrap();
+
+        let reloaded = connection.local().events().unwrap();
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0].event().summary, original.summary);
+    }
+
+    #[tokio::test]
+    async fn discard_outgoing_diff_recreates_file_for_outgoing_delete() {
+        let (_tmp, _mock, connection) = writable_connection();
+        let event = test_event();
+
+        connection
+            .discard_outgoing_diff(&outgoing_delete_diff(event))
+            .unwrap();
+
+        let expected_path = connection
+            .local()
+            .path()
+            .join("2026-01-01T1200__test-event.ics");
+        assert!(expected_path.is_file());
     }
 }

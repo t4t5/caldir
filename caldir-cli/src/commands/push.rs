@@ -95,7 +95,7 @@ async fn push_connection(
         return;
     }
 
-    match connection.push(&diff).await {
+    match connection.apply_outgoing_diff(&diff).await {
         Ok(()) => applied.push(diff),
         Err(e) => println!("   {}", e.to_string().red()),
     }

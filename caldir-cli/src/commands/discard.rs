@@ -81,7 +81,7 @@ pub async fn run(
     }
 
     for (connection, diff) in &pending {
-        connection.local().discard_diff(diff)?;
+        connection.discard_outgoing_diff(diff)?;
     }
 
     let (created, updated, deleted) = pending.iter().fold((0, 0, 0), |(c, u, d), (_, diff)| {
