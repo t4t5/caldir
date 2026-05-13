@@ -38,7 +38,7 @@ pub(crate) trait Rpc: Serialize {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Method {
+pub enum Method {
     Connect,
     ListCalendars,
     ListEvents,
@@ -48,11 +48,11 @@ pub(crate) enum Method {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct Request {
+pub struct Request {
     #[serde(rename = "command")] // TODO: update providers so we can remove this
-    pub(crate) method: Method,
+    pub method: Method,
     #[serde(default)]
-    pub(crate) params: serde_json::Value,
+    pub params: serde_json::Value,
 }
 
 impl Request {
@@ -66,7 +66,25 @@ impl Request {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
-pub(crate) enum Response<T> {
+pub enum Response<T> {
     Success { data: T },
     Error { error: String },
+}
+
+impl<T: Serialize> Response<T> {
+    /// Serialize a success response to a JSON string for stdout.
+    pub fn success(data: T) -> String {
+        serde_json::to_string(&Response::Success { data })
+            .expect("Response::Success serialization is infallible for Serialize types")
+    }
+}
+
+impl Response<()> {
+    /// Serialize an error response to a JSON string for stdout.
+    pub fn error(msg: &str) -> String {
+        serde_json::to_string(&Response::<()>::Error {
+            error: msg.to_string(),
+        })
+        .expect("Response::Error serialization is infallible")
+    }
 }

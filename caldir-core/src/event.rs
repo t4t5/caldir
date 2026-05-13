@@ -112,6 +112,25 @@ impl Event {
         ical_event.try_into()
     }
 
+    /// Parse a multi-event VCALENDAR document into a list of `Event`s.
+    ///
+    /// Returns one `Event` per `VEVENT` component in document order. VEVENTs
+    /// that fail to convert (e.g. missing required fields) are silently
+    /// skipped — public feeds frequently contain partially-malformed events
+    /// and we want the rest to come through.
+    pub fn from_ics_feed(contents: &str) -> Result<Vec<Self>, EventError> {
+        let icalendar: icalendar::Calendar = contents
+            .parse()
+            .map_err(|err| EventError::InvalidIcs(contents.to_string(), err))?;
+
+        let events = icalendar
+            .events()
+            .filter_map(|ical_event| Event::try_from(ical_event).ok())
+            .collect();
+
+        Ok(events)
+    }
+
     pub(crate) fn to_ics_string(&self) -> String {
         let ical_event: icalendar::Event = self.into();
 
@@ -620,6 +639,70 @@ END:VCALENDAR
             event.attendee_status("bob@example.com"),
             Some(ParticipationStatus::Tentative)
         );
+    }
+
+    #[test]
+    fn from_ics_feed_returns_empty_for_calendar_without_events() {
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n";
+        let events = Event::from_ics_feed(ics).unwrap();
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn from_ics_feed_parses_single_event() {
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:only@caldir\r\nDTSTART:20260301T100000Z\r\nSUMMARY:Only event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        let events = Event::from_ics_feed(ics).unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].uid.as_str(), "only@caldir");
+        assert_eq!(events[0].summary.as_deref(), Some("Only event"));
+    }
+
+    #[test]
+    fn from_ics_feed_returns_events_in_document_order() {
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:first@caldir\r\nDTSTART:20260301T100000Z\r\nSUMMARY:First\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:second@caldir\r\nDTSTART:20260302T100000Z\r\nSUMMARY:Second\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:third@caldir\r\nDTSTART:20260303T100000Z\r\nSUMMARY:Third\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        let events = Event::from_ics_feed(ics).unwrap();
+
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].uid.as_str(), "first@caldir");
+        assert_eq!(events[1].uid.as_str(), "second@caldir");
+        assert_eq!(events[2].uid.as_str(), "third@caldir");
+    }
+
+    #[test]
+    fn from_ics_feed_handles_vtimezone_and_tzid_events() {
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTIMEZONE\r\nTZID:Europe/Stockholm\r\nBEGIN:STANDARD\r\nDTSTART:19701025T030000\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nRRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10\r\nTZNAME:CET\r\nEND:STANDARD\r\nBEGIN:DAYLIGHT\r\nDTSTART:19700329T020000\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nRRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=3\r\nTZNAME:CEST\r\nEND:DAYLIGHT\r\nEND:VTIMEZONE\r\nBEGIN:VEVENT\r\nUID:zoned@caldir\r\nDTSTART;TZID=Europe/Stockholm:20260615T100000\r\nSUMMARY:Zoned event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        let events = Event::from_ics_feed(ics).unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events[0].start,
+            EventTime::DateTimeZoned { ref tzid, .. } if tzid == "Europe/Stockholm"
+        ));
+    }
+
+    #[test]
+    fn from_ics_feed_rejects_malformed_top_level() {
+        // Missing END:VCALENDAR
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:x@caldir\r\nDTSTART:20260301T100000Z\r\nEND:VEVENT\r\n";
+
+        let result = Event::from_ics_feed(ics);
+
+        assert!(matches!(result, Err(EventError::InvalidIcs(_, _))));
+    }
+
+    #[test]
+    fn from_ics_feed_silently_skips_events_missing_required_fields() {
+        // Second VEVENT is missing UID — should be dropped, first is kept.
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:good@caldir\r\nDTSTART:20260301T100000Z\r\nSUMMARY:Good\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nDTSTART:20260302T100000Z\r\nSUMMARY:Missing UID\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        let events = Event::from_ics_feed(ics).unwrap();
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].uid.as_str(), "good@caldir");
     }
 
     fn dtstamp_line(ics: &str) -> &str {
