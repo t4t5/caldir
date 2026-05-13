@@ -101,20 +101,20 @@ enum Commands {
     //     #[arg(long)]
     //     force: bool,
     // },
-    // #[command(about = "List upcoming events across all calendars")]
-    // Events {
-    //     /// Only show events from this calendar (by slug)
-    //     #[arg(short, long)]
-    //     calendar: Option<String>,
-    //
-    //     /// Show events from this date (YYYY-MM-DD)
-    //     #[arg(long)]
-    //     from: Option<String>,
-    //
-    //     /// Show events until this date (YYYY-MM-DD)
-    //     #[arg(long)]
-    //     to: Option<String>,
-    // },
+    #[command(about = "List upcoming events across all calendars")]
+    Events {
+        /// Only show events from this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+
+        /// Show events from this date (YYYY-MM-DD)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Show events until this date (YYYY-MM-DD)
+        #[arg(long)]
+        to: Option<String>,
+    },
     #[command(about = "Show today's events")]
     Today {
         /// Only show events from this calendar (by slug)
@@ -237,9 +237,9 @@ async fn main() -> Result<()> {
         //     verbose,
         //     force,
         // } => commands::sync::run(&caldir, calendar, from, to, verbose, force).await,
-        // Commands::Events { calendar, from, to } => {
-        //     commands::events::run_events(&caldir, calendar, from, to)
-        // }
+        Commands::Events { calendar, from, to } => {
+            commands::events::run(&caldir, calendar, from, to)
+        }
         Commands::Today { calendar } => commands::today::run(&caldir, calendar),
         Commands::Week { calendar } => commands::week::run(&caldir, calendar),
         Commands::New {
