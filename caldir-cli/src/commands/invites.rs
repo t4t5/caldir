@@ -1,67 +1,67 @@
 use anyhow::Result;
-use caldir_core::Caldir;
-use caldir_core::Calendar;
-use chrono::Duration;
+use caldir_core::{Caldir, DateBounds, ParticipationStatus};
+use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
 
-use crate::render::{format_event_line, render_participation_status};
-use crate::utils::date::{format_date_only, start_of_today};
+use crate::render::event::{format_event_line, render_participation_status};
+use crate::render::time::format_date_only;
+use crate::utils::{require_calendars, resolve_calendars};
 
 pub fn run(caldir: &Caldir, calendar: Option<String>, all: bool) -> Result<()> {
-    require_calendars(&caldir)?;
-    let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
-    run_parsed(&caldir, calendars, all)
-}
+    require_calendars(caldir)?;
+    let calendars = resolve_calendars(caldir, calendar.as_deref())?;
 
-fn run_parsed(caldir: &Caldir, calendars: Vec<Calendar>, all: bool) -> Result<()> {
-    let today = start_of_today();
-    let from = today;
-    let to = today + Duration::days(30);
+    let tz: chrono_tz::Tz = iana_time_zone::get_timezone()?.parse()?;
+    let today = Utc::now().with_timezone(&tz).date_naive();
 
-    // (cal_slug, event, email, file_path)
-    let mut invites: Vec<(String, caldir_core::event::Event, String)> = Vec::new();
+    let from = today
+        .start_of_date()
+        .and_local_timezone(tz)
+        .earliest()
+        .unwrap()
+        .with_timezone(&Utc);
+
+    let to = (today + Duration::days(30))
+        .end_of_date()
+        .and_local_timezone(tz)
+        .latest()
+        .unwrap()
+        .with_timezone(&Utc);
+
+    let mut invites: Vec<(String, caldir_core::Event, String)> = Vec::new();
 
     for cal in &calendars {
-        let Some(email) = cal.account_email() else {
+        let Some(email) = cal.remote_email() else {
             continue;
         };
-        let cal_events = cal.events()?;
-        let events_in_range: Vec<_> = cal_events
-            .into_iter()
-            .filter(|ce| {
-                ce.event
-                    .start
-                    .to_utc()
-                    .is_some_and(|s| s >= from && s <= to)
-            })
-            .collect();
 
-        for ce in events_in_range {
-            let is_match = if all {
-                ce.event.is_invite_for(email)
+        let events = cal.expanded_events_in_range(from, to)?;
+        let cal_slug = cal.slug().unwrap_or("(Unknown calendar)").to_string();
+
+        for event in events {
+            let is_invite = event.is_invite_for(email);
+            let matches = if all {
+                is_invite
             } else {
-                ce.event.is_pending_invite_for(email)
+                is_invite && event.attendee_status(email) == Some(ParticipationStatus::NeedsAction)
             };
-            if is_match {
-                invites.push((cal.slug.clone(), ce.event, email.to_string()));
+            if matches {
+                invites.push((cal_slug.clone(), event, email.to_string()));
             }
         }
     }
 
-    // Sort by start time
-    invites.sort_by_key(|a| a.1.start.to_utc());
+    invites.sort_by_key(|(_, event, _)| event.start.to_utc());
 
     if invites.is_empty() {
         println!("{}", "No pending invites.".dimmed());
         return Ok(());
     }
 
-    // Group by day
     let mut current_date: Option<String> = None;
 
     for (cal_slug, event, email) in &invites {
         let date_label = format_date_only(&event.start);
-
         if current_date.as_ref() != Some(&date_label) {
             if current_date.is_some() {
                 println!();
@@ -70,11 +70,14 @@ fn run_parsed(caldir: &Caldir, calendars: Vec<Calendar>, all: bool) -> Result<()
             current_date = Some(date_label);
         }
 
-        let status = event
-            .my_status(email)
+        let status_suffix = event
+            .attendee_status(email)
             .map(|s| format!(" ({})", render_participation_status(s)))
             .unwrap_or_default();
-        println!("{}", format_event_line(event, cal_slug, &status, caldir));
+        println!(
+            "{}",
+            format_event_line(event, cal_slug, &status_suffix, caldir)
+        );
 
         if let Some(organizer) = event.organizer.as_ref().filter(|o| !o.email.is_empty()) {
             println!("       {} {}", "from:".dimmed(), organizer.email.dimmed());

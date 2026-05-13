@@ -174,16 +174,16 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
-    // #[command(about = "List pending invites across calendars")]
-    // Invites {
-    //     /// Only show invites from this calendar (by slug)
-    //     #[arg(short, long)]
-    //     calendar: Option<String>,
-    //
-    //     /// Include already-responded invites (not just pending)
-    //     #[arg(short, long)]
-    //     all: bool,
-    // },
+    #[command(about = "List pending invites across calendars")]
+    Invites {
+        /// Only show invites from this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+
+        /// Include already-responded invites (not just pending)
+        #[arg(short, long)]
+        all: bool,
+    },
     // #[command(about = "Respond to a calendar invites")]
     // Rsvp {
     //     /// Path to the .ics file (omit for interactive mode)
@@ -267,7 +267,7 @@ async fn main() -> Result<()> {
             verbose,
             force,
         } => commands::discard::run(&caldir, calendar, verbose, force).await,
-        // Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
+        Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
         // Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
         Commands::Config => commands::config::run(&caldir),
         Commands::Update => unreachable!("handled above"),
