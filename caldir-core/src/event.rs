@@ -108,7 +108,7 @@ impl Event {
         Ok(icalendar.events().map(Event::try_from).collect())
     }
 
-    pub(crate) fn to_ics_string(&self) -> String {
+    pub fn to_ics_string(&self) -> String {
         let ical_event: icalendar::Event = self.into();
 
         let ics = icalendar::Calendar::empty()

@@ -4,8 +4,7 @@
 //! provider (iCloud, generic CalDAV, etc.).
 
 use anyhow::{Context, Result};
-use caldir_core::event::Event;
-use caldir_core::ics::{generate_ics, parse_event};
+use caldir_core::Event;
 use http::Request;
 use libdav::caldav::{FindCalendarHomeSet, FindCalendars, GetCalendarResources};
 use libdav::dav::{GetEtag, GetProperty};
@@ -36,6 +35,17 @@ pub struct RawCalendar {
     /// derived from `DAV:current-user-privilege-set`. `None` if the server
     /// did not return a privilege set (assume writable).
     pub read_only: Option<bool>,
+}
+
+/// Parse the first valid event out of a single-resource ICS document.
+///
+/// CalDAV resources contain a single VEVENT (plus any RECURRENCE-ID overrides);
+/// we take the first one that parses cleanly and silently drop malformed events.
+fn parse_event(ics: &str) -> Option<Event> {
+    Event::from_ics_str(ics)
+        .ok()?
+        .into_iter()
+        .find_map(Result::ok)
 }
 
 /// Decide whether a calendar is writable from the privileges returned by
@@ -69,7 +79,7 @@ pub async fn discover_endpoints(
     let principal_url = absolute_url(&caldav, principal.path());
 
     let home_set_response = caldav
-        .request(FindCalendarHomeSet::new(&principal))
+        .request(FindCalendarHomeSet::new(principal.path()))
         .await
         .context("Failed to find calendar home set")?;
 
@@ -103,7 +113,7 @@ pub async fn list_calendars_raw(
         .context("Invalid calendar home URL")?;
 
     let response = caldav
-        .request(FindCalendars::new(&calendar_home_uri))
+        .request(FindCalendars::new(calendar_home_uri.path()))
         .await
         .context("Failed to list calendars")?;
 
@@ -206,9 +216,9 @@ pub async fn create_event(
 ) -> Result<Event> {
     let caldav = create_caldav_client(calendar_url, username, password)?;
 
-    let ics_content = generate_ics(&event)?;
+    let ics_content = event.to_ics_string();
 
-    let full_url = event_url(calendar_url, &event.uid);
+    let full_url = event_url(calendar_url, event.uid.as_str());
     let href = url_to_href(&full_url);
 
     // Use request_raw instead of libdav's PutResource to avoid a duplicate
@@ -263,11 +273,12 @@ pub async fn update_event(
 ) -> Result<Event> {
     let caldav = create_caldav_client(calendar_url, username, password)?;
 
-    let ics_content = generate_ics(&event)?;
+    let ics_content = event.to_ics_string();
     let calendar_href = url_to_href(calendar_url);
 
     // Try {uid}.ics first (most servers), fall back to UID-based REPORT query
-    let location = find_event_location(&caldav, &calendar_href, calendar_url, &event.uid).await?;
+    let location =
+        find_event_location(&caldav, &calendar_href, calendar_url, event.uid.as_str()).await?;
 
     // Use request_raw to avoid duplicate Content-Type header (see create_event).
     let uri = caldav.relative_uri(&location.href)?;
@@ -342,6 +353,59 @@ pub async fn delete_event(
                 Err(anyhow::anyhow!("Failed to delete event: {}", e))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writable_when_privilege_set_contains_all() {
+        assert!(is_writable_privilege_set(&["all".to_string()]));
+    }
+
+    #[test]
+    fn writable_when_privilege_set_contains_write() {
+        assert!(is_writable_privilege_set(&[
+            "read".to_string(),
+            "write".to_string()
+        ]));
+    }
+
+    #[test]
+    fn writable_when_privilege_set_contains_bind() {
+        assert!(is_writable_privilege_set(&[
+            "read".to_string(),
+            "bind".to_string()
+        ]));
+    }
+
+    #[test]
+    fn not_writable_when_only_read_privileges() {
+        assert!(!is_writable_privilege_set(&[
+            "read".to_string(),
+            "read-current-user-privilege-set".to_string()
+        ]));
+    }
+
+    #[test]
+    fn not_writable_when_privilege_set_empty() {
+        assert!(!is_writable_privilege_set(&[]));
+    }
+
+    #[test]
+    fn parse_event_extracts_uid_and_summary() {
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:evt-1@caldir\r\nDTSTART:20260615T100000Z\r\nDTEND:20260615T110000Z\r\nSUMMARY:Test\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        let event = parse_event(ics).expect("should parse");
+        assert_eq!(event.uid.as_str(), "evt-1@caldir");
+        assert_eq!(event.summary.as_deref(), Some("Test"));
+    }
+
+    #[test]
+    fn parse_event_returns_none_on_invalid_ics() {
+        assert!(parse_event("not ics").is_none());
     }
 }
 

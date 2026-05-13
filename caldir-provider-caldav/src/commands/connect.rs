@@ -4,15 +4,14 @@
 //! On submit: discovers endpoints, saves session.
 
 use anyhow::Result;
-use caldir_core::remote::protocol::{
+use caldir_core::rpc::{
     Connect, ConnectResponse, ConnectStepKind, CredentialField, CredentialsData, FieldType,
-    ProviderRequestContext,
 };
 use caldir_provider_caldav::ops;
 
 use crate::session::Session;
 
-pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<ConnectResponse> {
+pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
     // If data contains credentials, this is the submit step.
     if cmd.data.contains_key("server_url") {
         let server_url = cmd
@@ -44,7 +43,7 @@ pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<Con
             &endpoints.principal_url,
             &endpoints.calendar_home_url,
         );
-        session.save(&context)?;
+        session.save()?;
 
         return Ok(ConnectResponse::Done {
             account_identifier: Some(account_identifier),

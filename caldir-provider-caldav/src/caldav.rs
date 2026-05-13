@@ -3,12 +3,12 @@
 //! Provides utilities for creating libdav CalDav clients with basic auth.
 
 use anyhow::{Context, Result};
-use http::{Method, Uri};
+use http::{Method, Request, Uri};
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use libdav::CalDavClient;
-use libdav::dav::WebDavClient;
-use libdav::requests::{DavRequest, ParseResponseError, PreparedRequest};
+use libdav::dav::{WebDavClient, make_relative_url};
+use libdav::requests::{DavRequest, ParseResponseError};
 use tower::ServiceBuilder;
 use tower_http::{auth::AddAuthorization, follow_redirect::FollowRedirect};
 
@@ -133,7 +133,7 @@ impl DavRequest for GetCalendarResourcesInRange<'_> {
     type ParseError = ParseResponseError;
     type Error<E> = libdav::dav::WebDavError<E>;
 
-    fn prepare_request(&self) -> std::result::Result<PreparedRequest, http::Error> {
+    fn prepare_request(&self, base_url: Uri) -> std::result::Result<Request<String>, http::Error> {
         // Build calendar-query REPORT with time-range filter
         let body = format!(
             r#"<C:calendar-query xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
@@ -152,12 +152,12 @@ impl DavRequest for GetCalendarResourcesInRange<'_> {
             self.start, self.end
         );
 
-        Ok(PreparedRequest {
-            method: Method::from_bytes(b"REPORT")?,
-            path: self.collection_href.to_string(),
-            body,
-            headers: vec![("Depth".to_string(), "1".to_string())],
-        })
+        Request::builder()
+            .method(Method::from_bytes(b"REPORT")?)
+            .uri(make_relative_url(base_url, self.collection_href)?)
+            .header("Depth", "1")
+            .header("Content-Type", "application/xml")
+            .body(body)
     }
 
     fn parse_response(
@@ -258,7 +258,7 @@ impl DavRequest for FindEventByUid<'_> {
     type ParseError = ParseResponseError;
     type Error<E> = libdav::dav::WebDavError<E>;
 
-    fn prepare_request(&self) -> std::result::Result<PreparedRequest, http::Error> {
+    fn prepare_request(&self, base_url: Uri) -> std::result::Result<Request<String>, http::Error> {
         let body = format!(
             r#"<C:calendar-query xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
     <prop>
@@ -277,12 +277,12 @@ impl DavRequest for FindEventByUid<'_> {
             self.uid
         );
 
-        Ok(PreparedRequest {
-            method: Method::from_bytes(b"REPORT")?,
-            path: self.collection_href.to_string(),
-            body,
-            headers: vec![("Depth".to_string(), "1".to_string())],
-        })
+        Request::builder()
+            .method(Method::from_bytes(b"REPORT")?)
+            .uri(make_relative_url(base_url, self.collection_href)?)
+            .header("Depth", "1")
+            .header("Content-Type", "application/xml")
+            .body(body)
     }
 
     fn parse_response(
@@ -349,7 +349,7 @@ impl DavRequest for GetCurrentUserPrivilegeSet<'_> {
     type ParseError = ParseResponseError;
     type Error<E> = libdav::dav::WebDavError<E>;
 
-    fn prepare_request(&self) -> std::result::Result<PreparedRequest, http::Error> {
+    fn prepare_request(&self, base_url: Uri) -> std::result::Result<Request<String>, http::Error> {
         let body = r#"<D:propfind xmlns:D="DAV:">
     <D:prop>
         <D:current-user-privilege-set/>
@@ -357,12 +357,12 @@ impl DavRequest for GetCurrentUserPrivilegeSet<'_> {
 </D:propfind>"#
             .to_string();
 
-        Ok(PreparedRequest {
-            method: Method::from_bytes(b"PROPFIND")?,
-            path: self.href.to_string(),
-            body,
-            headers: vec![("Depth".to_string(), "0".to_string())],
-        })
+        Request::builder()
+            .method(Method::from_bytes(b"PROPFIND")?)
+            .uri(make_relative_url(base_url, self.href)?)
+            .header("Depth", "0")
+            .header("Content-Type", "application/xml")
+            .body(body)
     }
 
     fn parse_response(
@@ -444,5 +444,69 @@ pub fn format_caldav_datetime(datetime: &str) -> String {
         }
     } else {
         cleaned
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_caldav_datetime_handles_rfc3339_zulu() {
+        assert_eq!(
+            format_caldav_datetime("2025-06-15T10:30:00Z"),
+            "20250615T103000Z"
+        );
+    }
+
+    #[test]
+    fn format_caldav_datetime_strips_positive_offset() {
+        assert_eq!(
+            format_caldav_datetime("2025-06-15T10:30:00+02:00"),
+            "20250615T103000Z"
+        );
+    }
+
+    #[test]
+    fn format_caldav_datetime_strips_negative_offset() {
+        assert_eq!(
+            format_caldav_datetime("2025-06-15T10:30:00-05:00"),
+            "20250615T103000Z"
+        );
+    }
+
+    #[test]
+    fn format_caldav_datetime_pads_date_only_to_midnight() {
+        assert_eq!(format_caldav_datetime("2025-06-15"), "20250615T000000Z");
+    }
+
+    #[test]
+    fn event_url_joins_calendar_and_uid() {
+        assert_eq!(
+            event_url("https://server/dav/cal/1/", "abc123"),
+            "https://server/dav/cal/1/abc123.ics"
+        );
+    }
+
+    #[test]
+    fn event_url_handles_trailing_slash() {
+        // Trailing-slash and no-trailing-slash forms produce the same URL
+        assert_eq!(
+            event_url("https://server/dav/cal/1", "x"),
+            event_url("https://server/dav/cal/1/", "x")
+        );
+    }
+
+    #[test]
+    fn url_to_href_strips_scheme_and_host() {
+        assert_eq!(
+            url_to_href("https://caldav.fastmail.com/dav/calendars/1/"),
+            "/dav/calendars/1/"
+        );
+    }
+
+    #[test]
+    fn url_to_href_passes_through_unparseable() {
+        assert_eq!(url_to_href("not a url"), "not a url");
     }
 }
