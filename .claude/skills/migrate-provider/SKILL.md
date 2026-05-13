@@ -174,7 +174,7 @@ Most remaining errors fall into the table at the top of this skill. Two non-obvi
 
 ### 9. Handle shared library drift (if any)
 
-If the provider has a `lib.rs` exposing modules consumed by sibling crates (e.g. `caldir-provider-caldav` exposes `ops` and `caldav` to `caldir-provider-icloud`), those library modules may have accumulated drift while the crate was out of the workspace. Common cases:
+If the provider has a `lib.rs` exposing modules consumed by sibling crates (e.g. `caldir-provider-caldav` exposes its `caldav` module — which contains `caldav::client` and `caldav::ops` — to `caldir-provider-icloud`), those library modules may have accumulated drift while the crate was out of the workspace. Common cases:
 
 - **`caldir_core::ics::{generate_ics, parse_event}` is gone.** Replace with `event.to_ics_string()` (now `pub` in caldir-core) and a small local helper over `Event::from_ics_str(...).into_iter().find_map(Result::ok)`.
 - **External-crate API drift** (e.g. libdav 0.10.5 changed `DavRequest::prepare_request` to take `Uri` and return `Request<String>`). Update against the actual crate source under `~/.cargo/registry/src/.../<crate>-<version>/src/` — don't guess from docs.
@@ -223,11 +223,12 @@ For session-bearing providers, an end-to-end check with a real account (`caldir 
 
 ## Common pitfalls
 
-- **Don't widen the migration scope.** The user asked to migrate one provider, not to clean up sibling providers or change the protocol. Library files like `ops.rs` that are consumed by other crates should only be touched where they literally fail to compile.
+- **Don't widen the migration scope.** The user asked to migrate one provider, not to clean up sibling providers or change the protocol. Shared library modules consumed by other crates (e.g. `caldir-provider-caldav`'s `caldav::ops`) should only be touched where they literally fail to compile.
 - **Don't invent ICS helpers.** `Event::to_ics_string()` is the only path; if it's still `pub(crate)` in caldir-core, make it `pub` (it already is post-migration of caldav).
 - **Don't preserve `From<X> for RemoteConfig`.** The new `RemoteConfig` is constructed differently — callers should use `RemoteConfig::new(ProviderSlug::from(PROVIDER_NAME), params)`.
 - **Don't try to keep `ProviderRequestContext`** as an "optional" parameter "for compatibility." It's gone; threading it through is dead weight.
 - **Don't mock IO in tests.** Webcal tests parsing and filtering against static ICS strings — same pattern here. If a function only makes sense with a live server, it doesn't get a unit test.
+- **Don't leave `mod.rs` files behind.** Webcal uses the Rust 2018 layout: `foo.rs` alongside a `foo/` directory for submodules. If the target crate still has `foo/mod.rs`, `git mv` it to `foo.rs` so the structure matches.
 
 ## When this skill does NOT apply
 
