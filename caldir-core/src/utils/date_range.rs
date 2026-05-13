@@ -1,22 +1,10 @@
 //! Date range for filtering events.
 
+use crate::utils::DateBounds;
 use chrono::{NaiveDate, NaiveDateTime};
 
-pub trait DateBounds {
-    fn start_of_date(self) -> NaiveDateTime;
-    fn end_of_date(self) -> NaiveDateTime;
-}
-
-impl DateBounds for NaiveDate {
-    fn start_of_date(self) -> NaiveDateTime {
-        self.and_hms_opt(0, 0, 0).expect("0:0:0 is always valid")
-    }
-
-    fn end_of_date(self) -> NaiveDateTime {
-        self.and_hms_opt(23, 59, 59)
-            .expect("23:59:59 is always valid")
-    }
-}
+const UNBOUNDED_PAST: &str = "1970-01-01T00:00:00+00:00";
+const UNBOUNDED_FUTURE: &str = "2100-01-01T00:00:00+00:00";
 
 #[derive(Debug, Clone)]
 pub struct DateRange {
@@ -29,6 +17,24 @@ impl DateRange {
         DateRange {
             from: from.map(|d| d.start_of_date()),
             to: to.map(|d| d.end_of_date()),
+        }
+    }
+
+    /// RFC3339 `from`, or a sentinel deep-past timestamp when unbounded.
+    /// Naive timestamps are interpreted as UTC.
+    pub fn from_rfc3339(&self) -> String {
+        match self.from {
+            Some(dt) => format!("{}+00:00", dt.format("%Y-%m-%dT%H:%M:%S")),
+            None => UNBOUNDED_PAST.to_string(),
+        }
+    }
+
+    /// RFC3339 `to`, or a sentinel deep-future timestamp when unbounded.
+    /// Naive timestamps are interpreted as UTC.
+    pub fn to_rfc3339(&self) -> String {
+        match self.to {
+            Some(dt) => format!("{}+00:00", dt.format("%Y-%m-%dT%H:%M:%S")),
+            None => UNBOUNDED_FUTURE.to_string(),
         }
     }
 }
@@ -54,5 +60,24 @@ mod tests {
 
         assert!(range.from.is_none());
         assert!(range.to.is_none());
+    }
+
+    #[test]
+    fn rfc3339_uses_bounded_dates_when_set() {
+        let range = DateRange::from_dates(
+            Some(NaiveDate::from_ymd_opt(2026, 3, 20).unwrap()),
+            Some(NaiveDate::from_ymd_opt(2026, 3, 25).unwrap()),
+        );
+
+        assert_eq!(range.from_rfc3339(), "2026-03-20T00:00:00+00:00");
+        assert_eq!(range.to_rfc3339(), "2026-03-25T23:59:59+00:00");
+    }
+
+    #[test]
+    fn rfc3339_uses_sentinels_when_unbounded() {
+        let range = DateRange::from_dates(None, None);
+
+        assert_eq!(range.from_rfc3339(), "1970-01-01T00:00:00+00:00");
+        assert_eq!(range.to_rfc3339(), "2100-01-01T00:00:00+00:00");
     }
 }

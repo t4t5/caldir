@@ -4,7 +4,7 @@ mod event;
 
 use crate::diff::{CalendarDiff, EventChange};
 use crate::provider::ProviderError;
-use crate::{Event, Provider, rpc};
+use crate::{DateRange, Event, Provider, rpc};
 
 pub use config::{RemoteConfig, RemoteConfigParams};
 pub(crate) use error::RemoteError;
@@ -21,11 +21,13 @@ impl Remote {
         Self { provider, params }
     }
 
-    pub async fn list_events(&self) -> Result<Vec<RemoteEvent>, RemoteError> {
+    pub async fn list_events(&self, range: &DateRange) -> Result<Vec<RemoteEvent>, RemoteError> {
         let events = self
             .provider
             .call(rpc::ListEvents {
                 remote: self.params.clone(),
+                from: range.from_rfc3339(),
+                to: range.to_rfc3339(),
             })
             .await?
             .into_iter()

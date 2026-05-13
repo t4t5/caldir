@@ -1,6 +1,6 @@
 mod error;
 
-use crate::{Calendar, CalendarDiff, Remote};
+use crate::{Calendar, CalendarDiff, DateRange, Remote};
 use error::ConnectionError;
 
 use crate::calendar::SyncedEventIds;
@@ -24,9 +24,9 @@ impl Connection {
         &self.remote
     }
 
-    pub async fn diff(&self) -> Result<CalendarDiff, ConnectionError> {
+    pub async fn diff(&self, range: &DateRange) -> Result<CalendarDiff, ConnectionError> {
         let local_events = self.local().events()?;
-        let remote_events = self.remote().list_events().await?;
+        let remote_events = self.remote().list_events(range).await?;
 
         let synced_ids = self.synced_event_ids();
 

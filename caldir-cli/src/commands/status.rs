@@ -33,7 +33,7 @@ pub async fn run(
 async fn run_parsed(
     caldir: &Caldir,
     connections: Vec<Result<Connection, CaldirError>>,
-    _range: DateRange,
+    range: DateRange,
     verbose: bool,
 ) -> Result<()> {
     let total = connections.len();
@@ -43,7 +43,7 @@ async fn run_parsed(
             Ok(connection) => {
                 let cal = connection.local();
                 let spinner = tui::create_spinner(cal.render(caldir));
-                let result = connection.diff().await;
+                let result = connection.diff(&range).await;
                 spinner.finish_and_clear();
 
                 println!("{}", cal.render(caldir));
