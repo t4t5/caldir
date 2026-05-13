@@ -29,24 +29,24 @@ enum Commands {
         #[arg(long, default_value_t = true)]
         hosted: bool,
     },
-    // #[command(about = "Check if any events have changed (local and remote)")]
-    // Status {
-    //     /// Only operate on this calendar (by slug)
-    //     #[arg(short, long)]
-    //     calendar: Option<String>,
-    //
-    //     /// Show events from this date (YYYY-MM-DD, or "start" for all past events)
-    //     #[arg(long)]
-    //     from: Option<String>,
-    //
-    //     /// Show events until this date (YYYY-MM-DD)
-    //     #[arg(long)]
-    //     to: Option<String>,
-    //
-    //     /// Show all events (instead of compact view when >5 events)
-    //     #[arg(short, long)]
-    //     verbose: bool,
-    // },
+    #[command(about = "Check if any events have changed (local and remote)")]
+    Status {
+        /// Only operate on this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+
+        /// Show events from this date (YYYY-MM-DD, or "start" for all past events)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Show events until this date (YYYY-MM-DD)
+        #[arg(long)]
+        to: Option<String>,
+
+        /// Show all events (instead of compact view when >5 events)
+        #[arg(short, long)]
+        verbose: bool,
+    },
     // #[command(about = "Pull changes from remote calendars into local caldir")]
     // Pull {
     //     /// Only operate on this calendar (by slug)
@@ -213,12 +213,12 @@ async fn main() -> Result<()> {
         Commands::Connect { provider, hosted } => {
             commands::connect::run(&mut caldir, provider, hosted).await
         }
-        // Commands::Status {
-        //     calendar,
-        //     from,
-        //     to,
-        //     verbose,
-        // } => commands::status::run(&caldir, calendar, from, to, verbose).await,
+        Commands::Status {
+            calendar,
+            from,
+            to,
+            verbose,
+        } => commands::status::run(&caldir, calendar, from, to, verbose).await,
         // Commands::Pull {
         //     calendar,
         //     from,
@@ -273,55 +273,3 @@ async fn main() -> Result<()> {
         // Commands::Update => unreachable!("handled above"),
     }
 }
-
-// fn resolve_provider(caldir: &Caldir, provider: Option<String>) -> Result<Provider> {
-//     let name = match provider {
-//         Some(name) => name,
-//         None => {
-//             let installed = caldir.provider_names();
-//             if installed.is_empty() {
-//                 anyhow::bail!(
-//                     "Missing provider argument.\n\n\
-//                     Usage: caldir connect <provider>\n\n\
-//                     No providers detected. Install one with:\n  \
-//                     cargo install caldir-provider-google"
-//                 );
-//             } else {
-//                 anyhow::bail!(
-//                     "Missing provider argument.\n\n\
-//                     Usage: caldir connect <provider>\n\n\
-//                     Detected providers: {}",
-//                     installed
-//                         .iter()
-//                         .map(|p| format!("\"{}\"", p))
-//                         .collect::<Vec<_>>()
-//                         .join(", ")
-//                 );
-//             }
-//         }
-//     };
-//
-//     match caldir.provider(&name) {
-//         Ok(provider) => Ok(provider),
-//         Err(_) => {
-//             let installed = caldir.provider_names();
-//             if installed.is_empty() {
-//                 anyhow::bail!(
-//                     "Unknown provider \"{name}\".\n\n\
-//                     No providers detected. Install one with:\n  \
-//                     cargo install caldir-provider-{name}"
-//                 );
-//             } else {
-//                 anyhow::bail!(
-//                     "Unknown provider \"{name}\".\n\n\
-//                     Detected providers: {}",
-//                     installed
-//                         .iter()
-//                         .map(|p| format!("\"{}\"", p))
-//                         .collect::<Vec<_>>()
-//                         .join(", ")
-//                 );
-//             }
-//         }
-//     }
-// }

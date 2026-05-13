@@ -16,7 +16,7 @@ pub fn render_events_in_range(
     let mut all_events: Vec<(Option<&str>, Option<&str>, Event)> = Vec::new();
 
     for cal in &calendars {
-        let events = cal.events_in_range(from, to)?;
+        let events = cal.expanded_events_in_range(from, to)?;
 
         // Used to check the user's attendance status:
         let remote_email = cal.remote_email();

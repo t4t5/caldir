@@ -37,11 +37,11 @@ pub fn format_time_only(time: &EventTime, time_format: TimeFormat) -> String {
 
 // Format a compact date+time string (e.g. "Today 15:00", "Tomorrow all-day", "Wed Mar 20 15:00")
 // Used in contexts where events are not grouped by date (e.g. status/diff output).
-// pub fn format_datetime(time: &EventTime, time_format: TimeFormat) -> String {
-//     let date_label = format_date_only(time);
-//     let time_label = format_time_only(time, time_format).trim_start().to_string();
-//     format!("{}, {}", date_label, time_label)
-// }
+pub fn format_datetime(time: &EventTime, time_format: TimeFormat) -> String {
+    let date_label = format_date_only(time);
+    let time_label = format_time_only(time, time_format).trim_start().to_string();
+    format!("{}, {}", date_label, time_label)
+}
 
 /// Convert a zoned datetime to the system's local NaiveDateTime.
 /// Falls back to the original datetime if the timezone can't be parsed.

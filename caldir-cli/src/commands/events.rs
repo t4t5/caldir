@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use caldir_core::Caldir;
 use caldir_core::DateBounds;
-use chrono::{DateTime, Duration, NaiveDate, TimeZone, Utc};
+use chrono::{DateTime, Duration, TimeZone, Utc};
 
 use crate::render::events_in_range::render_events_in_range;
+use crate::utils::parse_date;
 use crate::utils::{require_calendars, resolve_calendars};
 
 pub fn run(
@@ -17,6 +18,7 @@ pub fn run(
     let calendars = resolve_calendars(caldir, calendar.as_deref())?;
 
     let tz: chrono_tz::Tz = iana_time_zone::get_timezone()?.parse()?;
+
     let (from, to) = resolve_range(
         Utc::now().with_timezone(&tz),
         from.as_deref(),
@@ -32,6 +34,7 @@ fn resolve_range<Tz: TimeZone>(
     to: Option<&str>,
 ) -> Result<(DateTime<Utc>, DateTime<Utc>)> {
     let tz = now.timezone();
+
     let today = now.date_naive();
 
     let from_date = match from {
@@ -60,13 +63,10 @@ fn resolve_range<Tz: TimeZone>(
     Ok((start, end))
 }
 
-fn parse_date(input: &str) -> Result<NaiveDate> {
-    Ok(NaiveDate::parse_from_str(input, "%Y-%m-%d")?)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::NaiveDate;
     use chrono_tz::Europe::Stockholm;
 
     fn stockholm_date(d: DateTime<Utc>) -> NaiveDate {

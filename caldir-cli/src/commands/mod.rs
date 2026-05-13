@@ -11,6 +11,6 @@ pub mod today;
 // pub mod pull;
 // pub mod push;
 // pub mod rsvp;
-// pub mod status;
+pub mod status;
 // pub mod sync;
 // pub mod update;

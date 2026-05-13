@@ -133,7 +133,7 @@ impl Calendar {
     }
 
     /// List all events occurring within time range
-    pub fn events_in_range(
+    pub fn expanded_events_in_range(
         &self,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
