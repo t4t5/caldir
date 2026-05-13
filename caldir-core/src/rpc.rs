@@ -1,6 +1,7 @@
 mod connect;
 mod create_event;
 mod delete_event;
+mod handler;
 mod list_calendars;
 mod list_events;
 mod update_event;
@@ -16,6 +17,7 @@ pub use connect::{
 };
 pub use create_event::CreateEvent;
 pub use delete_event::DeleteEvent;
+pub use handler::{HandlerError, HandlerResult, ProviderHandler, process_request, run_provider};
 pub use list_calendars::ListCalendars;
 pub use list_events::ListEvents;
 pub use update_event::UpdateEvent;
