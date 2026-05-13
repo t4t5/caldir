@@ -24,10 +24,20 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
 
     let body = response.text().await?;
 
-    let all_events = Event::from_ics_feed(&body)
-        .map_err(|e| anyhow::anyhow!("Failed to parse webcal feed: {e}"))?;
+    let all_events: Vec<Event> = Event::from_ics_str(&body)
+        .map_err(|e| anyhow::anyhow!("Failed to parse webcal feed: {e}"))?
+        .into_iter()
+        .filter_map(|result| match result {
+            Ok(event) => Some(event),
+            Err(err) => {
+                eprintln!("caldir-provider-webcal: skipping malformed event: {err}");
+                None
+            }
+        })
+        .collect();
 
     let from_utc = DateTime::parse_from_rfc3339(&cmd.from).map(|dt| dt.with_timezone(&Utc))?;
+
     let to_utc = DateTime::parse_from_rfc3339(&cmd.to).map(|dt| dt.with_timezone(&Utc))?;
 
     let filtered = all_events
@@ -64,7 +74,11 @@ mod tests {
 
     /// Apply the in-process filter logic without doing the HTTP fetch.
     fn filter_events(body: &str, from: &str, to: &str) -> Vec<Event> {
-        let all = Event::from_ics_feed(body).unwrap();
+        let all: Vec<Event> = Event::from_ics_str(body)
+            .unwrap()
+            .into_iter()
+            .map(Result::unwrap)
+            .collect();
         let from_utc = DateTime::parse_from_rfc3339(from)
             .map(|dt| dt.with_timezone(&Utc))
             .unwrap();

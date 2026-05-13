@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn converts_reminders() {
         let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:test@caldir\r\nDTSTART:20260101T120000Z\r\nBEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT10M\r\nEND:VALARM\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
-        let event = crate::event::Event::from_ics_str(ics).unwrap();
+        let event = crate::event::Event::parse_single_ics(ics);
 
         assert_eq!(event.reminders.len(), 1);
         assert_eq!(event.reminders[0], crate::event::Reminder::from_minutes(10));

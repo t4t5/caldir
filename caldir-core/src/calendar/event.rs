@@ -33,8 +33,20 @@ impl CalendarEvent {
 
         let contents = std::fs::read_to_string(&path)?;
 
-        let event = Event::from_ics_str(&contents)
+        let events = Event::from_ics_str(&contents)
             .map_err(|err| CalendarEventError::InvalidEvent(path.clone(), err))?;
+
+        let event = match <[Result<Event, _>; 1]>::try_from(events) {
+            Ok([result]) => {
+                result.map_err(|err| CalendarEventError::InvalidEvent(path.clone(), err))?
+            }
+            Err(events) => {
+                return Err(CalendarEventError::ExpectedSingleEvent {
+                    path,
+                    found: events.len(),
+                });
+            }
+        };
 
         Ok(CalendarEvent { event, path })
     }
