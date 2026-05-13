@@ -184,14 +184,14 @@ enum Commands {
         #[arg(short, long)]
         all: bool,
     },
-    // #[command(about = "Respond to a calendar invites")]
-    // Rsvp {
-    //     /// Path to the .ics file (omit for interactive mode)
-    //     path: Option<String>,
-    //
-    //     /// Response: accept, decline, maybe
-    //     response: Option<String>,
-    // },
+    #[command(about = "Respond to a calendar invite")]
+    Rsvp {
+        /// Path to the .ics file (omit for interactive mode)
+        path: Option<String>,
+
+        /// Response: accept, decline, maybe
+        response: Option<String>,
+    },
     #[command(about = "Show configuration paths and calendar info")]
     Config,
     #[command(about = "Update caldir and installed providers to the latest version")]
@@ -268,7 +268,7 @@ async fn main() -> Result<()> {
             force,
         } => commands::discard::run(&caldir, calendar, verbose, force).await,
         Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
-        // Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
+        Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
         Commands::Config => commands::config::run(&caldir),
         Commands::Update => unreachable!("handled above"),
     }
