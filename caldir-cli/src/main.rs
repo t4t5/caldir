@@ -160,20 +160,20 @@ enum Commands {
         #[arg(long)]
         no_reminders: bool,
     },
-    // #[command(about = "Discard unpushed local changes (restore to remote state)")]
-    // Discard {
-    //     /// Only operate on this calendar (by slug)
-    //     #[arg(short, long)]
-    //     calendar: Option<String>,
-    //
-    //     /// Show all events (instead of compact view when >5 events)
-    //     #[arg(short, long)]
-    //     verbose: bool,
-    //
-    //     /// Skip confirmation prompt
-    //     #[arg(long)]
-    //     force: bool,
-    // },
+    #[command(about = "Discard unpushed local changes (restore to remote state)")]
+    Discard {
+        /// Only operate on this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+
+        /// Show all events (instead of compact view when >5 events)
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+    },
     // #[command(about = "List pending invites across calendars")]
     // Invites {
     //     /// Only show invites from this calendar (by slug)
@@ -262,11 +262,11 @@ async fn main() -> Result<()> {
             reminder,
             no_reminders,
         ),
-        // Commands::Discard {
-        //     calendar,
-        //     verbose,
-        //     force,
-        // } => commands::discard::run(&caldir, calendar, verbose, force).await,
+        Commands::Discard {
+            calendar,
+            verbose,
+            force,
+        } => commands::discard::run(&caldir, calendar, verbose, force).await,
         // Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
         // Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
         Commands::Config => commands::config::run(&caldir),

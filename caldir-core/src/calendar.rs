@@ -211,6 +211,41 @@ impl Calendar {
         Ok(())
     }
 
+    /// Revert outgoing local changes so the calendar matches the remote side
+    /// of `diff`. Create → delete the local file, Update → rewrite with the
+    /// remote version, Delete → recreate from the remote event.
+    pub fn discard_diff(&self, diff: &CalendarDiff) -> Result<(), CalendarError> {
+        let mut events_by_instance_id: HashMap<EventInstanceId, CalendarEvent> = self
+            .events()?
+            .into_iter()
+            .map(|e| (e.event().event_instance_id(), e))
+            .collect();
+
+        for change in diff.outgoing() {
+            match change {
+                EventChange::Create(event) => {
+                    if let Some(cal_event) =
+                        events_by_instance_id.remove(&event.event_instance_id())
+                    {
+                        cal_event.delete()?;
+                    }
+                }
+                EventChange::Update { from, to } => {
+                    if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id())
+                    {
+                        cal_event.update(from.clone())?;
+                    }
+                }
+                EventChange::Delete(event) => {
+                    let cal_event = self.create_event(event.clone())?;
+                    events_by_instance_id.insert(cal_event.event().event_instance_id(), cal_event);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn base_slug_for(name: Option<&str>) -> String {
         name.map(slugify).unwrap_or_else(|| "calendar".to_string())
     }
@@ -220,8 +255,9 @@ impl Calendar {
 mod tests {
     use super::*;
     use crate::test_utils::{
-        incoming_create_diff, incoming_delete_diff, incoming_update_diff, test_caldir,
-        test_calendar, test_calendar_config, test_calendar_path, test_event,
+        incoming_create_diff, incoming_delete_diff, incoming_update_diff, outgoing_create_diff,
+        outgoing_delete_diff, outgoing_update_diff, test_caldir, test_calendar,
+        test_calendar_config, test_calendar_path, test_event,
     };
 
     #[test]
@@ -453,5 +489,45 @@ mod tests {
         // Synced IDs are append-only: the delete doesn't add anything new,
         // and we don't remove existing entries.
         assert!(!calendar.state().synced_event_ids().contains(&id));
+    }
+
+    #[test]
+    fn discard_diff_deletes_file_for_outgoing_create() {
+        let (_tmp, calendar) = test_calendar();
+        let event = test_event();
+        let cal_event = calendar.create_event(event.clone()).unwrap();
+        let path = cal_event.path().to_path_buf();
+
+        calendar.discard_diff(&outgoing_create_diff(event)).unwrap();
+
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn discard_diff_reverts_local_update_to_remote_version() {
+        let (_tmp, calendar) = test_calendar();
+        let original = test_event();
+        let mut modified = original.clone();
+        modified.summary = Some("Locally Edited".to_string());
+        calendar.create_event(modified.clone()).unwrap();
+
+        calendar
+            .discard_diff(&outgoing_update_diff(original.clone(), modified))
+            .unwrap();
+
+        let reloaded = calendar.events().unwrap();
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0].event().summary, original.summary);
+    }
+
+    #[test]
+    fn discard_diff_recreates_file_for_outgoing_delete() {
+        let (_tmp, calendar) = test_calendar();
+        let event = test_event();
+
+        calendar.discard_diff(&outgoing_delete_diff(event)).unwrap();
+
+        let expected_path = calendar.path().join("2026-01-01T1200__test-event.ics");
+        assert!(expected_path.is_file());
     }
 }
