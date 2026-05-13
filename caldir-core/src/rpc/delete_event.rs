@@ -11,7 +11,7 @@ pub struct DeleteEvent {
 
 impl Rpc for DeleteEvent {
     const METHOD: Method = Method::DeleteEvent;
-    type Response = Event;
+    type Response = ();
 }
 
 #[cfg(test)]

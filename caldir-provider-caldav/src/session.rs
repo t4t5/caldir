@@ -26,7 +26,9 @@ fn storage_dir() -> Result<PathBuf> {
     if let Ok(dir) = std::env::var("CALDIR_PROVIDER_STORAGE_DIR") {
         return Ok(PathBuf::from(dir));
     }
+
     let home = std::env::var("HOME").context("HOME not set")?;
+
     Ok(PathBuf::from(home)
         .join(".config/caldir/providers")
         .join(PROVIDER_NAME))

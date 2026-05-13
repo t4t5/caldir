@@ -35,7 +35,7 @@ impl provider::Handler for CaldavProvider {
         Ok(commands::update_event::handle(cmd).await?)
     }
 
-    async fn delete_event(&self, cmd: DeleteEvent) -> provider::Result<Event> {
+    async fn delete_event(&self, cmd: DeleteEvent) -> provider::Result<()> {
         Ok(commands::delete_event::handle(cmd).await?)
     }
 }

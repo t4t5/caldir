@@ -133,7 +133,7 @@ mod tests {
     async fn apply_diff_sends_delete_event_for_outgoing_delete() {
         let (mock, remote) = test_remote();
         let event = test_event();
-        mock.reply::<rpc::DeleteEvent>(event.clone());
+        mock.reply::<rpc::DeleteEvent>(());
 
         remote
             .apply_diff(&outgoing_delete_diff(event.clone()))

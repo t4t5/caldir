@@ -44,7 +44,7 @@ pub trait Handler: Send + Sync {
         Err("This provider does not support updating events".into())
     }
 
-    async fn delete_event(&self, _cmd: DeleteEvent) -> Result<Event> {
+    async fn delete_event(&self, _cmd: DeleteEvent) -> Result<()> {
         Err("This provider does not support deleting events".into())
     }
 }
