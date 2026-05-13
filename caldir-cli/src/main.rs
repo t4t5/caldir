@@ -115,12 +115,12 @@ enum Commands {
     //     #[arg(long)]
     //     to: Option<String>,
     // },
-    // #[command(about = "Show today's events")]
-    // Today {
-    //     /// Only show events from this calendar (by slug)
-    //     #[arg(short, long)]
-    //     calendar: Option<String>,
-    // },
+    #[command(about = "Show today's events")]
+    Today {
+        /// Only show events from this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+    },
     #[command(about = "Show this week's events (through Sunday)")]
     Week {
         /// Only show events from this calendar (by slug)
@@ -240,7 +240,7 @@ async fn main() -> Result<()> {
         // Commands::Events { calendar, from, to } => {
         //     commands::events::run_events(&caldir, calendar, from, to)
         // }
-        // Commands::Today { calendar } => commands::events::run_today(&caldir, calendar),
+        Commands::Today { calendar } => commands::today::run(&caldir, calendar),
         Commands::Week { calendar } => commands::week::run(&caldir, calendar),
         Commands::New {
             title,

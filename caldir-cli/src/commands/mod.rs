@@ -7,6 +7,7 @@ pub mod week;
 // pub mod guards;
 // pub mod invites;
 pub mod new;
+pub mod today;
 // pub mod pull;
 // pub mod push;
 // pub mod rsvp;

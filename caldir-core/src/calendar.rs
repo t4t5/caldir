@@ -4,7 +4,7 @@ mod event;
 mod state;
 
 use crate::diff::{CalendarDiff, EventChange};
-use crate::event::EventInstanceId;
+use crate::event::{EventInstanceId, expand_in_range};
 use crate::utils::slugify;
 use crate::{Event, RemoteConfig};
 use std::collections::HashMap;
@@ -132,19 +132,14 @@ impl Calendar {
         Ok(calendar_event)
     }
 
+    /// List all events occurring within time range
     pub fn events_in_range(
         &self,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
-    ) -> Result<Vec<CalendarEvent>, CalendarError> {
-        let events = self.events()?;
-
-        let filtered = events
-            .into_iter()
-            .filter(|e| e.event().occurs_in_range(from, to))
-            .collect();
-
-        Ok(filtered)
+    ) -> Result<Vec<Event>, CalendarError> {
+        let events = self.events()?.into_iter().map(|ce| ce.event().clone());
+        Ok(expand_in_range(events, from, to))
     }
 
     /// Create new event in calendar

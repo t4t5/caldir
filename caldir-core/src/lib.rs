@@ -16,7 +16,9 @@ pub use caldir::{Caldir, CaldirConfig, TimeFormat};
 pub use calendar::{Calendar, CalendarConfig, CalendarEvent};
 pub use connection::Connection;
 pub use diff::{CalendarDiff, EventChange};
-pub use event::{Attendee, Event, EventTime, ParticipationStatus, Recurrence, Reminder};
+pub use event::{
+    Attendee, Event, EventTime, ParticipationStatus, Recurrence, Reminder, expand_in_range,
+};
 pub use provider::{Provider, ProviderRegistry, ProviderSlug};
 pub use remote::{Remote, RemoteConfig, RemoteConfigParams, RemoteEvent};
 pub use utils::{DateBounds, DateRange};
