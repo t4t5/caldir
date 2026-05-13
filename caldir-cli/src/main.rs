@@ -47,24 +47,24 @@ enum Commands {
         #[arg(short, long)]
         verbose: bool,
     },
-    // #[command(about = "Pull changes from remote calendars into local caldir")]
-    // Pull {
-    //     /// Only operate on this calendar (by slug)
-    //     #[arg(short, long)]
-    //     calendar: Option<String>,
-    //
-    //     /// Pull events from this date (YYYY-MM-DD, or "start" for all past events)
-    //     #[arg(long)]
-    //     from: Option<String>,
-    //
-    //     /// Pull events until this date (YYYY-MM-DD)
-    //     #[arg(long)]
-    //     to: Option<String>,
-    //
-    //     /// Show all events (instead of compact view when >5 events)
-    //     #[arg(short, long)]
-    //     verbose: bool,
-    // },
+    #[command(about = "Pull changes from remote calendars into local caldir")]
+    Pull {
+        /// Only operate on this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+
+        /// Pull events from this date (YYYY-MM-DD, or "start" for all past events)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Pull events until this date (YYYY-MM-DD)
+        #[arg(long)]
+        to: Option<String>,
+
+        /// Show all events (instead of compact view when >5 events)
+        #[arg(short, long)]
+        verbose: bool,
+    },
     #[command(about = "Push changes from local caldir to remote calendars")]
     Push {
         /// Only operate on this calendar (by slug)
@@ -219,12 +219,12 @@ async fn main() -> Result<()> {
             to,
             verbose,
         } => commands::status::run(&caldir, calendar, from, to, verbose).await,
-        // Commands::Pull {
-        //     calendar,
-        //     from,
-        //     to,
-        //     verbose,
-        // } => commands::pull::run(&caldir, calendar, from, to, verbose).await,
+        Commands::Pull {
+            calendar,
+            from,
+            to,
+            verbose,
+        } => commands::pull::run(&caldir, calendar, from, to, verbose).await,
         Commands::Push {
             calendar,
             verbose,

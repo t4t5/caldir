@@ -131,7 +131,6 @@ fn pluralize(word: &str, count: usize) -> &str {
 /// Extended rendering for CalendarDiff with directional output
 pub trait CalendarDiffRender {
     fn render(&self, verbose: bool, caldir: &Caldir) -> String;
-    fn render_sync(&self, verbose: bool, caldir: &Caldir) -> String;
     fn render_pull(&self, verbose: bool, caldir: &Caldir) -> String;
     fn render_push(&self, verbose: bool, caldir: &Caldir) -> String;
     fn render_discard(&self, verbose: bool, caldir: &Caldir) -> String;
@@ -174,16 +173,6 @@ impl CalendarDiffRender for CalendarDiff {
             caldir,
             "Local changes (to push)",
             "Remote changes (to pull)",
-        )
-    }
-
-    fn render_sync(&self, verbose: bool, caldir: &Caldir) -> String {
-        render_bidirectional(
-            self,
-            verbose,
-            caldir,
-            "Local changes (pushed)",
-            "Remote changes (pulled)",
         )
     }
 
