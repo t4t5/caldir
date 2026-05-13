@@ -12,6 +12,7 @@ use caldir_core::rpc::{
 use caldir_core::{CalendarConfig, ProviderSlug, RemoteConfig};
 
 use crate::constants::PROVIDER_NAME;
+use crate::http;
 use crate::remote_config::WebcalRemoteConfig;
 
 pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
@@ -26,19 +27,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
         // Normalize webcal:// to https://
         let url = raw_url.replacen("webcal://", "https://", 1);
 
-        // Fetch the ICS feed to validate it
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .user_agent("caldir-provider-webcal")
-            .build()?;
-
-        let response = client.get(&url).send().await?;
-
-        if !response.status().is_success() {
-            anyhow::bail!("Failed to fetch calendar URL: HTTP {}", response.status());
-        }
-
-        let body = response.text().await?;
+        let body = http::fetch_feed(&url).await?;
 
         if !body.contains("BEGIN:VCALENDAR") {
             anyhow::bail!(

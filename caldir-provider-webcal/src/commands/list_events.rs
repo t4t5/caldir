@@ -5,24 +5,13 @@ use caldir_core::Event;
 use caldir_core::rpc::ListEvents;
 use chrono::{DateTime, Utc};
 
+use crate::http;
 use crate::remote_config::WebcalRemoteConfig;
 
 pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
     let config = WebcalRemoteConfig::try_from(&cmd.remote)?;
 
-    // Fetch the ICS feed
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .user_agent("caldir-provider-webcal")
-        .build()?;
-
-    let response = client.get(&config.webcal_url).send().await?;
-
-    if !response.status().is_success() {
-        anyhow::bail!("Failed to fetch webcal feed: HTTP {}", response.status());
-    }
-
-    let body = response.text().await?;
+    let body = http::fetch_feed(&config.webcal_url).await?;
 
     let all_events: Vec<Event> = Event::from_ics_str(&body)
         .map_err(|e| anyhow::anyhow!("Failed to parse webcal feed: {e}"))?

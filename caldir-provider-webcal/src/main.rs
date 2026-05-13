@@ -4,6 +4,7 @@
 
 mod commands;
 mod constants;
+mod http;
 mod remote_config;
 
 use async_trait::async_trait;

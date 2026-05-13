@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{CalendarConfig, Event};
 
-// Handles stderr outputs from provider bins
+/// Handles JSON errors from provider bins
 pub type HandlerError = Box<dyn StdError + Send + Sync>;
 
 pub type HandlerResult<T> = Result<T, HandlerError>;
@@ -79,8 +79,20 @@ pub async fn process_request<H: ProviderHandler>(handler: &H, line: &str) -> Str
 
     match dispatch(handler, request).await {
         Ok(data) => Response::success(data),
-        Err(e) => Response::error(&format!("Error handling request: {e}")),
+        Err(e) => Response::error(&format!("Error handling request: {}", format_chain(&*e))),
     }
+}
+
+/// Preserves context from providers' `anyhow::Context`
+fn format_chain(err: &(dyn StdError + 'static)) -> String {
+    let mut out = err.to_string();
+    let mut source = err.source();
+    while let Some(e) = source {
+        out.push_str(": ");
+        out.push_str(&e.to_string());
+        source = e.source();
+    }
+    out
 }
 
 async fn dispatch<H: ProviderHandler>(
@@ -161,6 +173,49 @@ mod tests {
             "got: {}",
             parsed["error"]
         );
+    }
+
+    #[tokio::test]
+    async fn error_response_includes_source_chain() {
+        #[derive(Debug)]
+        struct Outer;
+        impl std::fmt::Display for Outer {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "outer")
+            }
+        }
+        impl StdError for Outer {
+            fn source(&self) -> Option<&(dyn StdError + 'static)> {
+                Some(&Inner)
+            }
+        }
+
+        #[derive(Debug)]
+        struct Inner;
+        impl std::fmt::Display for Inner {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "inner")
+            }
+        }
+        impl StdError for Inner {}
+
+        struct ChainHandler;
+        #[async_trait]
+        impl ProviderHandler for ChainHandler {
+            async fn connect(&self, _cmd: Connect) -> HandlerResult<ConnectResponse> {
+                Err(Box::new(Outer))
+            }
+        }
+
+        let response = process_request(
+            &ChainHandler,
+            r#"{"command":"connect","params":{"options":{},"data":{}}}"#,
+        )
+        .await;
+
+        let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(parsed["status"], "error");
+        assert_eq!(parsed["error"], "Error handling request: outer: inner");
     }
 
     #[tokio::test]
