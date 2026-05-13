@@ -30,7 +30,7 @@ impl Connection {
 
         let synced_ids = self.synced_event_ids();
 
-        let diff = CalendarDiff::compute(local_events, remote_events, synced_ids);
+        let diff = CalendarDiff::compute(local_events, remote_events, synced_ids, range);
 
         Ok(diff)
     }

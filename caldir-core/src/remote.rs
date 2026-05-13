@@ -22,12 +22,13 @@ impl Remote {
     }
 
     pub async fn list_events(&self, range: &DateRange) -> Result<Vec<RemoteEvent>, RemoteError> {
+        let (from, to) = range.to_rfc3339();
         let events = self
             .provider
             .call(rpc::ListEvents {
                 remote: self.params.clone(),
-                from: range.from_rfc3339(),
-                to: range.to_rfc3339(),
+                from,
+                to,
             })
             .await?
             .into_iter()

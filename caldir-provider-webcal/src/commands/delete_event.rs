@@ -1,8 +1,9 @@
 //! Delete event is not supported for webcal subscriptions.
 
 use anyhow::Result;
-use caldir_core::remote::protocol::{DeleteEvent, ProviderRequestContext};
+use caldir_core::Event;
+use caldir_core::rpc::DeleteEvent;
 
-pub async fn handle(_context: ProviderRequestContext, _cmd: DeleteEvent) -> Result<()> {
+pub async fn handle(_cmd: DeleteEvent) -> Result<Event> {
     anyhow::bail!("This calendar is read-only (webcal subscription)")
 }

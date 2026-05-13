@@ -9,9 +9,9 @@ mod constants;
 mod remote_config;
 
 use anyhow::Result;
-use caldir_core::remote::protocol::{
-    Command, Connect, CreateEvent, DeleteEvent, ListCalendars, ListEvents, ProviderCommand,
-    ProviderRequestContext, Request, Response, UpdateEvent,
+use caldir_core::rpc::{
+    Connect, CreateEvent, DeleteEvent, ListCalendars, ListEvents, Method, Request, Response,
+    UpdateEvent,
 };
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -50,48 +50,37 @@ async fn process_request(line: &str) -> String {
     }
 }
 
-/// Dispatch a command to its handler with compile-time type safety.
-async fn dispatch<C, F, Fut>(
-    context: ProviderRequestContext,
-    params: serde_json::Value,
-    handler: F,
-) -> Result<serde_json::Value>
+async fn dispatch<C, R, F, Fut>(params: serde_json::Value, handler: F) -> Result<serde_json::Value>
 where
-    C: ProviderCommand + DeserializeOwned,
-    C::Response: Serialize,
-    F: FnOnce(ProviderRequestContext, C) -> Fut,
-    Fut: Future<Output = Result<C::Response>>,
+    C: DeserializeOwned,
+    R: Serialize,
+    F: FnOnce(C) -> Fut,
+    Fut: Future<Output = Result<R>>,
 {
     let cmd: C = serde_json::from_value(params)?;
-    let response = handler(context, cmd).await?;
+    let response = handler(cmd).await?;
     Ok(serde_json::to_value(response)?)
 }
 
 async fn handle_request(request: Request) -> Result<serde_json::Value> {
-    let Request {
-        command,
-        context,
-        params,
-    } = request;
+    let Request { method, params } = request;
 
-    match command {
-        Command::Connect => {
-            dispatch::<Connect, _, _>(context, params, commands::connect::handle).await
+    match method {
+        Method::Connect => dispatch::<Connect, _, _, _>(params, commands::connect::handle).await,
+        Method::ListCalendars => {
+            dispatch::<ListCalendars, _, _, _>(params, commands::list_calendars::handle).await
         }
-        Command::ListCalendars => {
-            dispatch::<ListCalendars, _, _>(context, params, commands::list_calendars::handle).await
+        Method::ListEvents => {
+            dispatch::<ListEvents, _, _, _>(params, commands::list_events::handle).await
         }
-        Command::ListEvents => {
-            dispatch::<ListEvents, _, _>(context, params, commands::list_events::handle).await
+        Method::CreateEvent => {
+            dispatch::<CreateEvent, _, _, _>(params, commands::create_event::handle).await
         }
-        Command::CreateEvent => {
-            dispatch::<CreateEvent, _, _>(context, params, commands::create_event::handle).await
+        Method::UpdateEvent => {
+            dispatch::<UpdateEvent, _, _, _>(params, commands::update_event::handle).await
         }
-        Command::UpdateEvent => {
-            dispatch::<UpdateEvent, _, _>(context, params, commands::update_event::handle).await
-        }
-        Command::DeleteEvent => {
-            dispatch::<DeleteEvent, _, _>(context, params, commands::delete_event::handle).await
+        Method::DeleteEvent => {
+            dispatch::<DeleteEvent, _, _, _>(params, commands::delete_event::handle).await
         }
     }
 }
