@@ -10,5 +10,5 @@ pub mod push;
 pub mod status;
 pub mod sync;
 pub mod today;
-// pub mod update;
+pub mod update;
 pub mod week;

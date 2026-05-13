@@ -194,8 +194,8 @@ enum Commands {
     // },
     #[command(about = "Show configuration paths and calendar info")]
     Config,
-    // #[command(about = "Update caldir and installed providers to the latest version")]
-    // Update,
+    #[command(about = "Update caldir and installed providers to the latest version")]
+    Update,
 }
 
 #[tokio::main]
@@ -203,9 +203,9 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // `update` doesn't touch the caldir, so dispatch it before loading anything.
-    // if let Commands::Update = cli.command {
-    //     return commands::update::run().await;
-    // }
+    if let Commands::Update = cli.command {
+        return commands::update::run().await;
+    }
 
     let mut caldir = Caldir::load()?;
 
@@ -270,6 +270,6 @@ async fn main() -> Result<()> {
         // Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
         // Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
         Commands::Config => commands::config::run(&caldir),
-        // Commands::Update => unreachable!("handled above"),
+        Commands::Update => unreachable!("handled above"),
     }
 }
