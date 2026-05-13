@@ -3,6 +3,7 @@ mod error;
 mod handler;
 mod registry;
 mod slug;
+mod storage;
 pub(crate) mod transport;
 
 #[cfg(test)]
@@ -18,6 +19,7 @@ pub(crate) use error::ProviderError;
 pub use handler::{Error, Handler, Result, process_request, run_provider};
 pub use registry::ProviderRegistry;
 pub use slug::{ProviderSlug, provider_slug_from_filename};
+pub use storage::{ProviderStorage, StorageError};
 
 #[derive(Debug, Clone)]
 pub struct Provider {

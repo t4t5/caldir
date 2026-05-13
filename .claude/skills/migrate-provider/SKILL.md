@@ -21,7 +21,7 @@ If you're unsure whether a file should change: diff its shape against the equiva
 | Handler signatures | `fn handle(ctx: ProviderRequestContext, cmd: X) -> Result<Y>` | `fn handle(cmd: X) -> Result<Y>` |
 | Remote-config wrapper | `TryFrom<&serde_json::Map<String, serde_json::Value>>`, `From<X> for RemoteConfig` | `TryFrom<&RemoteConfigParams>`, `into_remote_config_params(self) -> RemoteConfigParams` |
 | Flattened-params field | `cmd.remote_config` | `cmd.remote` |
-| Session storage dir | Passed via `ctx.provider_dir` | Resolved via `CALDIR_PROVIDER_STORAGE_DIR` env var, fall back to `~/.config/caldir/providers/{name}/` |
+| Session storage dir | Passed via `ctx.provider_dir` | Inject `ProviderStorage::for_provider(name)` into a provider-specific store struct; tests pass `ProviderStorage::new(tempdir)` |
 | `Event.uid` | `String` | `EventUid` newtype — use `.as_str()` for `&str` slots |
 | Workspace `Cargo.toml` | Crate commented out of `members` | Crate listed in `members` |
 | Crate `Cargo.toml` | No `async-trait`; possibly `toml = "0.9"` | Add `async-trait = "0.1"`; bump `toml = "1"` to match workspace |
@@ -115,21 +115,43 @@ Per file:
 
 ### 5. Rewrite `session.rs` if the provider has one
 
-Drop every `&ProviderRequestContext` parameter. Add a private helper:
+Two structs:
+
+- **`Session`** — pure data. Credentials, discovered URLs, plus pure helpers like `account_identifier` / `credentials` / `new`. **No method on `Session` reads env vars or touches the filesystem.**
+- **`SessionStore`** — owns all IO. Takes a `ProviderStorage` at construction; exposes `save(&Session)` and `load(account_identifier) -> Session`.
 
 ```rust
-fn storage_dir() -> Result<PathBuf> {
-    if let Ok(dir) = std::env::var("CALDIR_PROVIDER_STORAGE_DIR") {
-        return Ok(PathBuf::from(dir));
-    }
-    let home = std::env::var("HOME").context("HOME not set")?;
-    Ok(PathBuf::from(home)
-        .join(".config/caldir/providers")
-        .join(PROVIDER_NAME))
+use caldir_core::provider::ProviderStorage;
+
+pub struct Session { /* fields */ }
+impl Session { /* new, account_identifier, credentials, private slug, … */ }
+
+pub struct SessionStore {
+    storage: ProviderStorage,
+}
+
+impl SessionStore {
+    pub fn new(storage: ProviderStorage) -> Self { Self { storage } }
+    pub fn save(&self, session: &Session) -> Result<()> { /* writes under storage.root() */ }
+    pub fn load(&self, account_identifier: &str) -> Result<Session> { /* reads under storage.root() */ }
 }
 ```
 
-`Session::save(&self)`, `Session::load(account_identifier)`, `Session::path()` etc. all call `storage_dir()?` internally. **Preserve** existing slug derivation logic byte-for-byte — users have session files on disk under those filenames. **Preserve** the `0o600` chmod on Unix.
+Production wiring (in `commands/connect.rs` and the read-path handlers):
+
+```rust
+let store = SessionStore::new(ProviderStorage::for_provider(PROVIDER_NAME)?);
+store.save(&session)?;            // or: store.load(&account_id)?
+```
+
+Tests construct the store with an explicit tempdir — no env vars, no parallel-test contention:
+
+```rust
+let tmp = tempfile::TempDir::new()?;
+let store = SessionStore::new(ProviderStorage::new(tmp.path()));
+```
+
+**Preserve** existing slug derivation logic byte-for-byte — users already have session files on disk under those filenames. **Preserve** the `0o600` chmod on Unix.
 
 If the provider has no on-disk state (webcal-style), skip this whole file.
 
@@ -176,7 +198,9 @@ Apply the same shape in the target crate. The natural seams are usually:
 | Permission/privilege parsing in `ops` | No IO |
 | ICS parsing wrappers | No IO |
 
-Add `#[cfg(test)] mod tests` co-located in each file. **Don't** try to test save/load of session files — env-var manipulation is flaky under parallel test runs and the value you get from those tests is low.
+Add `#[cfg(test)] mod tests` co-located in each file.
+
+For session/token/cursor stores: follow the **pure-data + IO-struct + injected `ProviderStorage`** shape from step 5. Tests construct the store with `ProviderStorage::new(tempdir.path())` and round-trip against it. `Session` itself stays pure data, so its tests don't need a tempdir at all. The pattern generalizes — any future provider state (OAuth tokens, sync cursors, etc.) should follow the same split.
 
 ### 11. Verify end-to-end
 

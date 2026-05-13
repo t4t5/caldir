@@ -102,8 +102,12 @@ impl CaldirConfig {
         Ok(())
     }
 
+    /// Caldir config directory:
+    /// - Linux/BSD: `$XDG_CONFIG_HOME/caldir` or `~/.config/caldir`
+    /// - macOS: `~/.config/caldir`
+    /// - Windows: `%APPDATA%\caldir`
     pub fn default_system_config_path() -> Result<PathBuf, CaldirConfigError> {
-        let dir = Self::default_system_config_dir()?;
+        let dir = Self::platform_config_dir()?.join("caldir");
 
         Ok(dir.join("config.toml"))
     }
@@ -125,28 +129,8 @@ impl CaldirConfig {
         toml::to_string(self)
     }
 
-    /// Caldir config directory:
-    /// - Linux/BSD: `$XDG_CONFIG_HOME/caldir` or `~/.config/caldir`
-    /// - macOS: `~/.config/caldir`
-    /// - Windows: `%APPDATA%\caldir`
-    fn default_system_config_dir() -> Result<PathBuf, CaldirConfigError> {
-        let config_dir_path = Self::platform_config_dir()?.join("caldir");
-
-        Ok(config_dir_path)
-    }
-
-    /// Make the macOS path ~/.config/caldir (like Linux)
-    /// instead of the dirs::config_dir default of ~/Library/Application Support
-    #[cfg(target_os = "macos")]
     fn platform_config_dir() -> Result<PathBuf, CaldirConfigError> {
-        let home = dirs::home_dir().ok_or(CaldirConfigError::UnknownConfigDirectory)?;
-        Ok(home.join(".config"))
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    fn platform_config_dir() -> Result<PathBuf, CaldirConfigError> {
-        let path = dirs::config_dir().ok_or(CaldirConfigError::UnknownConfigDirectory)?;
-        Ok(path)
+        crate::utils::paths::platform_config_dir().ok_or(CaldirConfigError::UnknownConfigDirectory)
     }
 }
 
@@ -246,30 +230,30 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "macos")]
-    fn default_system_dir_uses_home_dot_config_on_macos() {
+    fn default_system_path_uses_home_dot_config_on_macos() {
         let home = PathBuf::from(std::env::var("HOME").unwrap());
-        let dir = CaldirConfig::default_system_config_dir().unwrap();
-        assert_eq!(dir, home.join(".config").join("caldir"));
+        let path = CaldirConfig::default_system_config_path().unwrap();
+        assert_eq!(path, home.join(".config/caldir/config.toml"));
     }
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn default_system_dir_uses_xdg_config_dir_on_linux() {
+    fn default_system_path_uses_xdg_config_dir_on_linux() {
         let expected_parent = std::env::var("XDG_CONFIG_HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from(std::env::var("HOME").unwrap()).join(".config"));
 
-        let dir = CaldirConfig::default_system_config_dir().unwrap();
+        let path = CaldirConfig::default_system_config_path().unwrap();
 
-        assert_eq!(dir, expected_parent.join("caldir"));
+        assert_eq!(path, expected_parent.join("caldir/config.toml"));
     }
 
     #[test]
     #[cfg(target_os = "windows")]
-    fn default_system_dir_uses_appdata_on_windows() {
+    fn default_system_path_uses_appdata_on_windows() {
         let appdata = PathBuf::from(std::env::var("APPDATA").unwrap());
-        let dir = CaldirConfig::default_system_config_dir().unwrap();
-        assert_eq!(dir, appdata.join("caldir"));
+        let path = CaldirConfig::default_system_config_path().unwrap();
+        assert_eq!(path, appdata.join("caldir/config.toml"));
     }
 
     #[test]

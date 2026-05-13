@@ -1,16 +1,18 @@
 //! List CalDAV calendars for a given account.
 
 use anyhow::Result;
+use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::ListCalendars;
 use caldir_core::{CalendarConfig, ProviderSlug, RemoteConfig};
 use caldir_provider_caldav::ops::{self, RawCalendar};
 
 use crate::constants::PROVIDER_NAME;
 use crate::remote_config::CaldavRemoteConfig;
-use crate::session::Session;
+use crate::session::{Session, SessionStore};
 
 pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
-    let session = Session::load(&cmd.account_identifier)?;
+    let store = SessionStore::new(ProviderStorage::for_provider(PROVIDER_NAME)?);
+    let session = store.load(&cmd.account_identifier)?;
     let (username, password) = session.credentials();
 
     let raw_calendars =

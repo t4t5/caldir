@@ -1,5 +1,6 @@
 mod date_bounds;
 mod date_range;
+pub(crate) mod paths;
 mod slugify;
 mod tilde_expansion;
 

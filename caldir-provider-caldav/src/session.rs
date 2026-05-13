@@ -1,16 +1,13 @@
 //! Credential storage for generic CalDAV authentication.
 //!
-//! Stores server URL, username, password, and discovered URLs under
-//! `{storage_dir}/session/`, where `storage_dir` is `CALDIR_PROVIDER_STORAGE_DIR`
-//! when set and `~/.config/caldir/providers/{provider}/` otherwise.
+//! All filesystem IO lives on `SessionStore`
 
 use anyhow::{Context, Result};
+use caldir_core::provider::ProviderStorage;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::constants::PROVIDER_NAME;
-
-/// Generic CalDAV session (credentials + discovered URLs).
+/// Generic CalDAV session: credentials + discovered URLs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub server_url: String,
@@ -22,49 +19,7 @@ pub struct Session {
     pub calendar_home_url: String,
 }
 
-fn storage_dir() -> Result<PathBuf> {
-    if let Ok(dir) = std::env::var("CALDIR_PROVIDER_STORAGE_DIR") {
-        return Ok(PathBuf::from(dir));
-    }
-
-    let home = std::env::var("HOME").context("HOME not set")?;
-
-    Ok(PathBuf::from(home)
-        .join(".config/caldir/providers")
-        .join(PROVIDER_NAME))
-}
-
 impl Session {
-    /// Derive a slug from username and server host for use as filename.
-    fn slug(username: &str, server_url: &str) -> String {
-        let host = url::Url::parse(server_url)
-            .ok()
-            .and_then(|u| u.host_str().map(|h| h.to_string()))
-            .unwrap_or_else(|| "unknown".to_string());
-        let raw = format!("{}@{}", username, host);
-        raw.replace(['/', '\\', ':', '@', '.'], "_")
-    }
-
-    fn path_for(username: &str, server_url: &str) -> Result<PathBuf> {
-        let slug = Self::slug(username, server_url);
-        Ok(storage_dir()?
-            .join("session")
-            .join(format!("{}.toml", slug)))
-    }
-
-    fn path(&self) -> Result<PathBuf> {
-        Self::path_for(&self.username, &self.server_url)
-    }
-
-    /// Build an account identifier like "user@host".
-    pub fn account_identifier(username: &str, server_url: &str) -> String {
-        let host = url::Url::parse(server_url)
-            .ok()
-            .and_then(|u| u.host_str().map(|h| h.to_string()))
-            .unwrap_or_else(|| "unknown".to_string());
-        format!("{}@{}", username, host)
-    }
-
     pub fn new(
         server_url: impl Into<String>,
         username: impl Into<String>,
@@ -81,33 +36,47 @@ impl Session {
         }
     }
 
-    pub fn load(account_identifier: &str) -> Result<Self> {
-        // account_identifier is "user@host" — we need to find the session file
-        // by scanning the session directory since slug encoding may differ
-        let session_dir = storage_dir()?.join("session");
-        if !session_dir.exists() {
-            anyhow::bail!("CalDAV session for {} not found!", account_identifier);
-        }
-
-        for entry in std::fs::read_dir(&session_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("toml") {
-                let contents = std::fs::read_to_string(&path)?;
-                if let Ok(session) = toml::from_str::<Session>(&contents) {
-                    let id = Self::account_identifier(&session.username, &session.server_url);
-                    if id == account_identifier {
-                        return Ok(session);
-                    }
-                }
-            }
-        }
-
-        anyhow::bail!("CalDAV session for {} not found!", account_identifier);
+    /// Derive a slug from username and server host for use as a filename.
+    fn slug(username: &str, server_url: &str) -> String {
+        let host = url::Url::parse(server_url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.to_string()))
+            .unwrap_or_else(|| "unknown".to_string());
+        let raw = format!("{}@{}", username, host);
+        raw.replace(['/', '\\', ':', '@', '.'], "_")
     }
 
-    pub fn save(&self) -> Result<()> {
-        let path = self.path()?;
+    /// Build an account identifier like "user@host".
+    pub fn account_identifier(username: &str, server_url: &str) -> String {
+        let host = url::Url::parse(server_url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.to_string()))
+            .unwrap_or_else(|| "unknown".to_string());
+        format!("{}@{}", username, host)
+    }
+
+    /// Get credentials as `(username, password)` for HTTP basic auth.
+    pub fn credentials(&self) -> (&str, &str) {
+        (&self.username, &self.password)
+    }
+}
+
+/// Reads and writes [`Session`] files under a provider's storage root.
+///
+/// Layout: `{storage.root()}/session/{slug}.toml`, with the slug derived from
+/// the session's username + server host. Session files contain plaintext
+/// credentials; on Unix they're chmod'd to `0600`.
+pub struct SessionStore {
+    storage: ProviderStorage,
+}
+
+impl SessionStore {
+    pub fn new(storage: ProviderStorage) -> Self {
+        Self { storage }
+    }
+
+    pub fn save(&self, session: &Session) -> Result<()> {
+        let path = self.path_for(&session.username, &session.server_url);
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).with_context(|| {
@@ -115,12 +84,12 @@ impl Session {
             })?;
         }
 
-        let contents = toml::to_string_pretty(&self).context("Failed to serialize session")?;
+        let contents = toml::to_string_pretty(session).context("Failed to serialize session")?;
 
         std::fs::write(&path, contents)
             .with_context(|| format!("Failed to write session to {}", path.display()))?;
 
-        // Set to owner-only (0600) since file contains credentials
+        // Plaintext credentials — owner-only.
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -131,21 +100,68 @@ impl Session {
         Ok(())
     }
 
-    /// Get credentials as (username, password) tuple for HTTP basic auth
-    pub fn credentials(&self) -> (&str, &str) {
-        (&self.username, &self.password)
+    /// Find a session by its `account_identifier()` form ("user@host").
+    ///
+    /// Scans the session directory rather than computing the filename
+    /// directly, since the on-disk slug encoding (`.` → `_`) is one-way.
+    pub fn load(&self, account_identifier: &str) -> Result<Session> {
+        let session_dir = self.session_dir();
+        if !session_dir.exists() {
+            anyhow::bail!("CalDAV session for {} not found!", account_identifier);
+        }
+
+        for entry in std::fs::read_dir(&session_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("toml") {
+                let contents = std::fs::read_to_string(&path)?;
+                if let Ok(session) = toml::from_str::<Session>(&contents) {
+                    let id = Session::account_identifier(&session.username, &session.server_url);
+                    if id == account_identifier {
+                        return Ok(session);
+                    }
+                }
+            }
+        }
+
+        anyhow::bail!("CalDAV session for {} not found!", account_identifier);
+    }
+
+    fn session_dir(&self) -> PathBuf {
+        self.storage.root().join("session")
+    }
+
+    fn path_for(&self, username: &str, server_url: &str) -> PathBuf {
+        self.session_dir()
+            .join(format!("{}.toml", Session::slug(username, server_url)))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+
+    fn store() -> (TempDir, SessionStore) {
+        let tmp = TempDir::new().unwrap();
+        let store = SessionStore::new(ProviderStorage::new(tmp.path()));
+        (tmp, store)
+    }
+
+    fn sample_session() -> Session {
+        Session::new(
+            "https://caldav.fastmail.com/",
+            "alice@example.com",
+            "secretpass",
+            "/dav/principals/user/alice/",
+            "/dav/calendars/alice/",
+        )
+    }
 
     #[test]
     fn slug_is_filesystem_safe() {
         let slug = Session::slug("alice@example.com", "https://caldav.fastmail.com/");
         assert!(!slug.contains(['/', '\\', ':', '@', '.']));
-        // Username/host parts survive (with dots/at replaced)
         assert!(slug.contains("alice"));
         assert!(slug.contains("fastmail"));
     }
@@ -161,5 +177,76 @@ mod tests {
     fn account_identifier_falls_back_when_host_unparseable() {
         let id = Session::account_identifier("alice", "not a url");
         assert_eq!(id, "alice@unknown");
+    }
+
+    #[test]
+    fn save_writes_toml_under_session_subdir() {
+        let (tmp, store) = store();
+        let session = sample_session();
+
+        store.save(&session).unwrap();
+
+        let expected = tmp.path().join("session").join(format!(
+            "{}.toml",
+            Session::slug(&session.username, &session.server_url)
+        ));
+        assert!(
+            expected.is_file(),
+            "session file should exist at {expected:?}"
+        );
+    }
+
+    #[test]
+    fn load_round_trips_by_account_identifier() {
+        let (_tmp, store) = store();
+        let session = sample_session();
+        store.save(&session).unwrap();
+
+        let account_id = Session::account_identifier(&session.username, &session.server_url);
+        let loaded = store.load(&account_id).unwrap();
+
+        assert_eq!(loaded.server_url, session.server_url);
+        assert_eq!(loaded.username, session.username);
+        assert_eq!(loaded.password, session.password);
+        assert_eq!(loaded.principal_url, session.principal_url);
+        assert_eq!(loaded.calendar_home_url, session.calendar_home_url);
+    }
+
+    #[test]
+    fn load_errors_when_no_session_directory() {
+        let (_tmp, store) = store();
+        let err = store
+            .load("alice@example.com@caldav.fastmail.com")
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("alice@example.com@caldav.fastmail.com")
+        );
+    }
+
+    #[test]
+    fn load_errors_when_account_not_found() {
+        let (_tmp, store) = store();
+        store.save(&sample_session()).unwrap();
+
+        let err = store.load("ghost@example.com@nowhere").unwrap_err();
+        assert!(err.to_string().contains("ghost@example.com@nowhere"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_chmods_session_file_to_0600() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (tmp, store) = store();
+        let session = sample_session();
+        store.save(&session).unwrap();
+
+        let path = tmp.path().join("session").join(format!(
+            "{}.toml",
+            Session::slug(&session.username, &session.server_url)
+        ));
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
     }
 }
