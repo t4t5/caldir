@@ -1,9 +1,23 @@
+use std::fmt;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ParticipationStatus {
     Accepted,
     Declined,
     Tentative,
     NeedsAction,
+}
+
+impl fmt::Display for ParticipationStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::Accepted => "accepted",
+            Self::Declined => "declined",
+            Self::Tentative => "maybe",
+            Self::NeedsAction => "pending",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 impl ParticipationStatus {

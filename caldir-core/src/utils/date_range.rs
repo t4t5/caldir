@@ -1,66 +1,58 @@
 //! Date range for filtering events.
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{NaiveDate, NaiveDateTime};
 
-/// Date range for filtering events.
-/// None values mean unbounded in that direction.
+pub trait DateBounds {
+    fn start_of_date(self) -> NaiveDateTime;
+    fn end_of_date(self) -> NaiveDateTime;
+}
+
+impl DateBounds for NaiveDate {
+    fn start_of_date(self) -> NaiveDateTime {
+        self.and_hms_opt(0, 0, 0).expect("0:0:0 is always valid")
+    }
+
+    fn end_of_date(self) -> NaiveDateTime {
+        self.and_hms_opt(23, 59, 59)
+            .expect("23:59:59 is always valid")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DateRange {
-    pub from: Option<DateTime<Utc>>,
-    pub to: Option<DateTime<Utc>>,
+    pub from: Option<NaiveDateTime>,
+    pub to: Option<NaiveDateTime>,
 }
 
 impl DateRange {
-    /// Parse a date string into a DateRange.
-    /// - `from`: "start" for unbounded, or YYYY-MM-DD
-    /// - `to`: YYYY-MM-DD, defaults to +DEFAULT_SYNC_DAYS if not specified
-    pub fn from_args(from: &str, to: &str) -> Result<Self, String> {
-        let from_dt = match from {
-            "start" => None, // Unbounded past
-            s => Some(parse_date_start(s)?),
-        };
-
-        let to_dt = Some(parse_date_end(to)?);
-
-        Ok(DateRange {
-            from: from_dt,
-            to: to_dt,
-        })
-    }
-
-    /// Get `from` as RFC3339 string, using a very old date if unbounded.
-    pub fn from_rfc3339(&self) -> String {
-        self.from
-            .unwrap_or_else(|| {
-                DateTime::parse_from_rfc3339("1970-01-01T00:00:00Z")
-                    .unwrap()
-                    .into()
-            })
-            .to_rfc3339()
-    }
-
-    /// Get `to` as RFC3339 string, using a far future date if unbounded.
-    pub fn to_rfc3339(&self) -> String {
-        self.to
-            .unwrap_or_else(|| {
-                DateTime::parse_from_rfc3339("2100-01-01T00:00:00Z")
-                    .unwrap()
-                    .into()
-            })
-            .to_rfc3339()
+    pub fn from_dates(from: Option<NaiveDate>, to: Option<NaiveDate>) -> Self {
+        DateRange {
+            from: from.map(|d| d.start_of_date()),
+            to: to.map(|d| d.end_of_date()),
+        }
     }
 }
 
-/// Parse YYYY-MM-DD as start of day in UTC
-pub fn parse_date_start(s: &str) -> Result<DateTime<Utc>, String> {
-    let date = NaiveDate::parse_from_str(s, "%Y-%m-%d")
-        .map_err(|_| format!("Invalid date format '{}'. Expected YYYY-MM-DD", s))?;
-    Ok(date.and_hms_opt(0, 0, 0).unwrap().and_utc())
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-/// Parse YYYY-MM-DD as end of day in UTC
-pub fn parse_date_end(s: &str) -> Result<DateTime<Utc>, String> {
-    let date = NaiveDate::parse_from_str(s, "%Y-%m-%d")
-        .map_err(|_| format!("Invalid date format '{}'. Expected YYYY-MM-DD", s))?;
-    Ok(date.and_hms_opt(23, 59, 59).unwrap().and_utc())
+    #[test]
+    fn from_dates_expands_to_full_day_bounds() {
+        let from = NaiveDate::from_ymd_opt(2026, 3, 20).unwrap();
+        let to = NaiveDate::from_ymd_opt(2026, 3, 25).unwrap();
+
+        let range = DateRange::from_dates(Some(from), Some(to));
+
+        assert_eq!(range.from, Some(from.and_hms_opt(0, 0, 0).unwrap()));
+        assert_eq!(range.to, Some(to.and_hms_opt(23, 59, 59).unwrap()));
+    }
+
+    #[test]
+    fn from_dates_preserves_none() {
+        let range = DateRange::from_dates(None, None);
+
+        assert!(range.from.is_none());
+        assert!(range.to.is_none());
+    }
 }

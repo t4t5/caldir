@@ -36,6 +36,17 @@ impl RemoteConfig {
         &self.params
     }
 
+    /// Returns the account identifier for this remote, if present.
+    ///
+    /// Looks for a `{provider}_account` field in the config
+    /// (e.g., `google_account`, `icloud_account`)
+    /// Providers that have a concept of an account should include this field.
+    /// Providers without accounts (e.g., plain CalDAV servers) can omit it.
+    pub fn account_identifier(&self) -> Option<&str> {
+        let key = format!("{}_account", self.provider_slug());
+        self.params().get(&key).and_then(|v| v.as_str())
+    }
+
     #[cfg(test)]
     fn from_toml(s: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(s)
@@ -100,6 +111,25 @@ hooli_account = "user@hmail.com"
         let parsed = RemoteConfig::from_toml(&serialized).unwrap();
 
         assert_eq!(parsed, remote);
+    }
+
+    #[test]
+    fn account_identifier_returns_provider_account_field() {
+        let toml_str = r#"
+provider = "hooli"
+hooli_account = "user@hmail.com"
+"#;
+
+        let remote_config = RemoteConfig::from_toml(toml_str).unwrap();
+
+        assert_eq!(remote_config.account_identifier(), Some("user@hmail.com"));
+    }
+
+    #[test]
+    fn account_identifier_returns_none_when_missing() {
+        let remote_config = RemoteConfig::from_toml(r#"provider = "hooli""#).unwrap();
+
+        assert_eq!(remote_config.account_identifier(), None);
     }
 
     #[test]

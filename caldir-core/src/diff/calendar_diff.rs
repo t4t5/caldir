@@ -80,12 +80,16 @@ impl CalendarDiff {
         CalendarDiff { outgoing, incoming }
     }
 
-    pub(crate) fn incoming(&self) -> &[EventChange] {
+    pub fn incoming(&self) -> &[EventChange] {
         &self.incoming
     }
 
-    pub(crate) fn outgoing(&self) -> &[EventChange] {
+    pub fn outgoing(&self) -> &[EventChange] {
         &self.outgoing
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.outgoing.is_empty() && self.incoming.is_empty()
     }
 
     /// IDs of events whose presence in the calendar needs to be recorded in

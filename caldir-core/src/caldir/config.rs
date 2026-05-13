@@ -1,7 +1,7 @@
 mod error;
 mod time_format;
 
-use crate::{Reminder, utils::tilde_expansion::expand_tilde};
+use crate::{Reminder, utils::expand_tilde};
 pub(crate) use error::CaldirConfigError;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -76,6 +76,10 @@ impl CaldirConfig {
 
     pub fn data_dir(&self) -> PathBuf {
         expand_tilde(&self.data_dir)
+    }
+
+    pub fn time_format(&self) -> TimeFormat {
+        self.time_format
     }
 
     pub fn default_calendar_slug(&self) -> Option<&str> {

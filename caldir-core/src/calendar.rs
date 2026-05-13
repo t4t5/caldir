@@ -10,6 +10,7 @@ use crate::{Event, RemoteConfig};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use chrono::{DateTime, Utc};
 pub use config::CalendarConfig;
 pub use error::CalendarError;
 pub use event::CalendarEvent;
@@ -131,6 +132,21 @@ impl Calendar {
         Ok(calendar_event)
     }
 
+    pub fn events_in_range(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<CalendarEvent>, CalendarError> {
+        let events = self.events()?;
+
+        let filtered = events
+            .into_iter()
+            .filter(|e| e.event().occurs_in_range(from, to))
+            .collect();
+
+        Ok(filtered)
+    }
+
     /// Create new event in calendar
     pub fn create_event(&self, event: Event) -> Result<CalendarEvent, CalendarError> {
         let calendar_event = CalendarEvent::create(self, event)?;
@@ -150,6 +166,12 @@ impl Calendar {
 
     pub fn has_remote(&self) -> bool {
         self.remote_config().is_some()
+    }
+
+    pub fn remote_email(&self) -> Option<&str> {
+        self.remote_config()
+            .and_then(|remote_config| remote_config.account_identifier())
+            .filter(|id| id.contains('@'))
     }
 
     pub fn apply_diff(&mut self, diff: &CalendarDiff) -> Result<(), CalendarError> {

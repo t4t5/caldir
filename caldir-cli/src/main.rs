@@ -1,5 +1,5 @@
 mod commands;
-// mod render;
+mod render;
 mod utils;
 
 #[cfg(test)]
@@ -121,12 +121,12 @@ enum Commands {
     //     #[arg(short, long)]
     //     calendar: Option<String>,
     // },
-    // #[command(about = "Show this week's events (through Sunday)")]
-    // Week {
-    //     /// Only show events from this calendar (by slug)
-    //     #[arg(short, long)]
-    //     calendar: Option<String>,
-    // },
+    #[command(about = "Show this week's events (through Sunday)")]
+    Week {
+        /// Only show events from this calendar (by slug)
+        #[arg(short, long)]
+        calendar: Option<String>,
+    },
     #[command(about = "Create a new event in caldir")]
     New {
         /// Event title
@@ -241,7 +241,7 @@ async fn main() -> Result<()> {
         //     commands::events::run_events(&caldir, calendar, from, to)
         // }
         // Commands::Today { calendar } => commands::events::run_today(&caldir, calendar),
-        // Commands::Week { calendar } => commands::events::run_week(&caldir, calendar),
+        Commands::Week { calendar } => commands::week::run(&caldir, calendar),
         Commands::New {
             title,
             start,
@@ -324,18 +324,4 @@ async fn main() -> Result<()> {
 //             }
 //         }
 //     }
-// }
-//
-// fn require_calendars(caldir: &Caldir) -> Result<()> {
-//     if caldir.calendars().is_empty() {
-//         anyhow::bail!(
-//             "No calendars found.\n\n\
-//             Connect your first calendar with:\n  \
-//             caldir connect <provider>\n\n\
-//             Example:\n  \
-//             caldir connect google"
-//         );
-//     }
-//
-//     Ok(())
 // }

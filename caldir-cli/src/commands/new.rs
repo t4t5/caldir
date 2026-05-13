@@ -4,7 +4,7 @@ use chrono::Duration;
 use dialoguer::{Input, Select};
 use owo_colors::OwoColorize;
 
-use crate::utils::{path::PathExt, require_calendars};
+use crate::utils::{PathExt, require_calendars};
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(

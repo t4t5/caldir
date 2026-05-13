@@ -12,7 +12,7 @@ mod to_icalendar;
 mod transparency;
 mod x_property;
 
-use attendee::Attendee;
+pub use attendee::{Attendee, ParticipationStatus};
 use chrono::{DateTime, Utc};
 pub use error::EventError;
 pub use instance_id::{EventInstanceId, EventInstanceIdError, EventUid, RecurrenceId};
@@ -73,6 +73,10 @@ impl Event {
         }
     }
 
+    pub fn summary(&self) -> Option<&str> {
+        self.summary.as_deref()
+    }
+
     pub fn set_end(&mut self, end: EventTime) {
         self.end = Some(end);
     }
@@ -117,6 +121,38 @@ impl Event {
             .to_string();
 
         self.splice_valarms_into_vevent(ics)
+    }
+
+    pub fn occurs_in_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> bool {
+        let event_start = self.start.to_utc();
+        let event_end = self.end.as_ref().unwrap_or(&self.start).to_utc();
+
+        // Check if event overlaps with the range [from, to]
+        event_start < to && event_end > from
+    }
+
+    /// True if email is an attendee but NOT the organizer
+    pub fn is_invite_for(&self, email: &str) -> bool {
+        let is_attendee = self.find_attendee(email).is_some();
+
+        let is_organizer = self
+            .organizer
+            .as_ref()
+            .is_some_and(|o| o.email.eq_ignore_ascii_case(email));
+
+        is_attendee && !is_organizer
+    }
+
+    /// Get the user's participation status for this event
+    pub fn attendee_status(&self, email: &str) -> Option<ParticipationStatus> {
+        self.find_attendee(email)?.status
+    }
+
+    /// Find the attendee matching the given email (case-insensitive)
+    fn find_attendee(&self, email: &str) -> Option<&Attendee> {
+        self.attendees
+            .iter()
+            .find(|a| a.email.eq_ignore_ascii_case(email))
     }
 
     #[cfg(test)]
@@ -172,6 +208,7 @@ fn new_uid() -> EventUid {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -312,6 +349,275 @@ END:VCALENDAR
         let serialized_ics = event.to_ics_string();
 
         assert_eq!(strip_dtstamp(&original_ics), strip_dtstamp(&serialized_ics));
+    }
+
+    #[test]
+    fn occurs_in_range_returns_true_for_event_inside_range() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 15, 12, 0, 0).unwrap()),
+        );
+        event.set_end(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 15, 13, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_returns_false_for_event_before_range() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap()),
+        );
+        event.set_end(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 14, 13, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(!event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_returns_false_for_event_after_range() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap()),
+        );
+        event.set_end(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 17, 13, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(!event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_returns_true_for_event_overlapping_range_start() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 14, 23, 0, 0).unwrap()),
+        );
+        event.set_end(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 15, 1, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_returns_true_for_event_overlapping_range_end() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 15, 23, 0, 0).unwrap()),
+        );
+        event.set_end(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 16, 1, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_uses_start_as_end_when_end_missing() {
+        let event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 15, 12, 0, 0).unwrap()),
+        );
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_excludes_event_ending_exactly_at_range_start() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 14, 23, 0, 0).unwrap()),
+        );
+        event.set_end(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(!event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_excludes_event_starting_exactly_at_range_end() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap()),
+        );
+        event.set_end(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 16, 1, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(!event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn is_invite_for_returns_true_when_attendee_and_not_organizer() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee::new("bob@example.com")];
+
+        assert!(event.is_invite_for("bob@example.com"));
+    }
+
+    #[test]
+    fn is_invite_for_returns_false_when_email_is_organizer() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee::new("alice@example.com")];
+
+        assert!(!event.is_invite_for("alice@example.com"));
+    }
+
+    #[test]
+    fn is_invite_for_returns_false_when_email_is_not_an_attendee() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee::new("bob@example.com")];
+
+        assert!(!event.is_invite_for("carol@example.com"));
+    }
+
+    #[test]
+    fn is_invite_for_returns_false_when_event_has_no_attendees() {
+        let event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+
+        assert!(!event.is_invite_for("bob@example.com"));
+    }
+
+    #[test]
+    fn is_invite_for_returns_true_when_organizer_is_missing() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee::new("bob@example.com")];
+
+        assert!(event.is_invite_for("bob@example.com"));
+    }
+
+    #[test]
+    fn is_invite_for_matches_email_case_insensitively() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee::new("Bob@Example.com")];
+
+        assert!(event.is_invite_for("bob@example.com"));
+        assert!(event.is_invite_for("BOB@EXAMPLE.COM"));
+    }
+
+    #[test]
+    fn is_invite_for_matches_organizer_email_case_insensitively() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("Alice@Example.com"));
+        event.attendees = vec![Attendee::new("alice@example.com")];
+
+        assert!(!event.is_invite_for("ALICE@example.com"));
+    }
+
+    #[test]
+    fn attendee_status_returns_status_for_matching_attendee() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee {
+            email: "bob@example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::Accepted),
+        }];
+
+        assert_eq!(
+            event.attendee_status("bob@example.com"),
+            Some(ParticipationStatus::Accepted)
+        );
+    }
+
+    #[test]
+    fn attendee_status_returns_none_when_email_is_not_an_attendee() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee {
+            email: "bob@example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::Accepted),
+        }];
+
+        assert_eq!(event.attendee_status("carol@example.com"), None);
+    }
+
+    #[test]
+    fn attendee_status_returns_none_when_attendee_has_no_status() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee::new("bob@example.com")];
+
+        assert_eq!(event.attendee_status("bob@example.com"), None);
+    }
+
+    #[test]
+    fn attendee_status_matches_email_case_insensitively() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee {
+            email: "Bob@Example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::Tentative),
+        }];
+
+        assert_eq!(
+            event.attendee_status("bob@example.com"),
+            Some(ParticipationStatus::Tentative)
+        );
     }
 
     fn dtstamp_line(ics: &str) -> &str {

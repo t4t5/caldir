@@ -3,12 +3,16 @@
 //! This module provides extension traits that add colored terminal rendering
 //! to caldir-core types using owo_colors.
 
-use std::collections::HashMap;
+pub mod event;
+pub mod events_in_range;
+pub mod time;
 
-use caldir_core::caldir::Caldir;
-use caldir_core::calendar::Calendar;
-use caldir_core::diff::{CalendarDiff, DiffKind, EventDiff};
-use caldir_core::event::{Event, ParticipationStatus};
+/* use std::collections::HashMap;
+
+use caldir_core::{
+    Attendee, Caldir, Calendar, CalendarDiff, Event, EventChange, ParticipationStatus, Recurrence,
+    TimeFormat,
+};
 use owo_colors::OwoColorize;
 
 use crate::utils::date::{format_datetime, format_time_only};
@@ -20,31 +24,32 @@ pub trait Render {
     fn render(&self, caldir: &Caldir) -> String;
 }
 
-impl Render for DiffKind {
-    fn render(&self, _caldir: &Caldir) -> String {
-        let symbol = self.symbol();
-        match self {
-            DiffKind::Create => symbol.green().to_string(),
-            DiffKind::Update => symbol.yellow().to_string(),
-            DiffKind::Delete => symbol.red().to_string(),
-        }
+fn event_change_symbol(kind: &EventChange) -> &str {
+    match kind {
+        EventChange::Create(_) => "+",
+        EventChange::Update { .. } => "~",
+        EventChange::Delete(_) => "-",
     }
 }
 
 /// Colorize text according to the diff kind
-fn colorize_diff(kind: DiffKind, text: &str) -> String {
+fn colorize_diff(kind: &EventChange, text: &str) -> String {
     match kind {
-        DiffKind::Create => text.green().to_string(),
-        DiffKind::Update => text.yellow().to_string(),
-        DiffKind::Delete => text.red().to_string(),
+        EventChange::Create(_) => text.green().to_string(),
+        EventChange::Update { .. } => text.yellow().to_string(),
+        EventChange::Delete(_) => text.red().to_string(),
     }
 }
 
-impl Render for EventDiff {
+impl Render for EventChange {
     fn render(&self, caldir: &Caldir) -> String {
-        let event = self.event();
-        let summary = colorize_diff(self.kind, &event.to_string());
-        let time = format_datetime(&event.start, caldir.config().time_format);
+        let event = match self {
+            EventChange::Create(event) | EventChange::Delete(event) => event,
+            EventChange::Update { to, .. } => to,
+        };
+
+        let summary = colorize_diff(self, &event.summary().unwrap_or("(Untitled)"));
+        let time = format_datetime(&event.start, caldir.config().time_format());
         let recurring = if event.recurrence.is_some() {
             " 🔁"
         } else {
@@ -53,7 +58,7 @@ impl Render for EventDiff {
 
         format!(
             "{} {} {}{}",
-            self.kind.render(caldir),
+            colorize_diff(&self, event_change_symbol(self)),
             summary,
             time.dimmed(),
             recurring
@@ -63,7 +68,7 @@ impl Render for EventDiff {
 
 impl Render for Calendar {
     fn render(&self, _caldir: &Caldir) -> String {
-        format!("📅 {}", self.slug)
+        format!("📅 {}", self.slug().unwrap_or(""))
     }
 }
 
@@ -71,13 +76,18 @@ impl Render for Calendar {
 const COMPACT_THRESHOLD: usize = 5;
 
 /// Render a list of diffs, using compact view if there are many events and verbose is false
-fn render_diff_list(diffs: &[EventDiff], verbose: bool, caldir: &Caldir, lines: &mut Vec<String>) {
+fn render_diff_list(
+    diffs: &[EventChange],
+    verbose: bool,
+    caldir: &Caldir,
+    lines: &mut Vec<String>,
+) {
     if verbose || diffs.len() <= COMPACT_THRESHOLD {
         // Full view: show each event
         for diff in diffs {
             lines.push(format!("   {}", diff.render(caldir)));
             // Always show field diffs for updates when in full view
-            if diff.kind == DiffKind::Update {
+            if let EventChange::Update { .. } = diff {
                 lines.extend(
                     render_field_diffs(diff, caldir)
                         .into_iter()
@@ -87,9 +97,20 @@ fn render_diff_list(diffs: &[EventDiff], verbose: bool, caldir: &Caldir, lines: 
         }
     } else {
         // Compact view: show counts by diff kind
-        let creates = diffs.iter().filter(|d| d.kind == DiffKind::Create).count();
-        let updates = diffs.iter().filter(|d| d.kind == DiffKind::Update).count();
-        let deletes = diffs.iter().filter(|d| d.kind == DiffKind::Delete).count();
+        let creates = diffs
+            .iter()
+            .filter(|d| matches!(d, EventChange::Create(_)))
+            .count();
+
+        let updates = diffs
+            .iter()
+            .filter(|d| matches!(d, EventChange::Update { .. }))
+            .count();
+
+        let deletes = diffs
+            .iter()
+            .filter(|d| matches!(d, EventChange::Delete(_)))
+            .count();
 
         if creates > 0 {
             let label = format!("({} new {})", creates, pluralize("event", creates));
@@ -140,17 +161,17 @@ fn render_bidirectional(
 
     let mut lines = Vec::new();
 
-    if !diff.to_push.is_empty() {
+    if !diff.outgoing().is_empty() {
         lines.push(format!("   {}:", push_label).dimmed().to_string());
-        render_diff_list(&diff.to_push, verbose, caldir, &mut lines);
+        render_diff_list(&diff.outgoing(), verbose, caldir, &mut lines);
     }
 
-    if !diff.to_pull.is_empty() {
-        if !diff.to_push.is_empty() {
+    if !diff.incoming().is_empty() {
+        if !diff.incoming().is_empty() {
             lines.push(String::new());
         }
         lines.push(format!("   {}:", pull_label).dimmed().to_string());
-        render_diff_list(&diff.to_pull, verbose, caldir, &mut lines);
+        render_diff_list(&diff.incoming(), verbose, caldir, &mut lines);
     }
 
     lines.join("\n")
@@ -178,27 +199,27 @@ impl CalendarDiffRender for CalendarDiff {
     }
 
     fn render_pull(&self, verbose: bool, caldir: &Caldir) -> String {
-        if self.to_pull.is_empty() {
+        if self.incoming().is_empty() {
             return "   No changes to pull".dimmed().to_string();
         }
 
         let mut lines = Vec::new();
-        render_diff_list(&self.to_pull, verbose, caldir, &mut lines);
+        render_diff_list(&self.incoming(), verbose, caldir, &mut lines);
         lines.join("\n")
     }
 
     fn render_push(&self, verbose: bool, caldir: &Caldir) -> String {
-        if self.to_push.is_empty() {
+        if self.outgoing().is_empty() {
             return "   No changes to push".dimmed().to_string();
         }
 
         let mut lines = Vec::new();
-        render_diff_list(&self.to_push, verbose, caldir, &mut lines);
+        render_diff_list(&self.outgoing(), verbose, caldir, &mut lines);
         lines.join("\n")
     }
 
     fn render_discard(&self, verbose: bool, caldir: &Caldir) -> String {
-        if self.to_push.is_empty() {
+        if self.outgoing().is_empty() {
             return "   Nothing to discard".dimmed().to_string();
         }
 
@@ -208,24 +229,24 @@ impl CalendarDiffRender for CalendarDiff {
                 .dimmed()
                 .to_string(),
         );
-        render_diff_list(&self.to_push, verbose, caldir, &mut lines);
+        render_diff_list(&self.outgoing(), verbose, caldir, &mut lines);
         lines.join("\n")
     }
 }
 
 /// Render field-by-field differences for an EventDiff (only for updates)
-fn render_field_diffs(diff: &EventDiff, caldir: &Caldir) -> Vec<String> {
+fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
     let mut lines = Vec::new();
-    let time_format = caldir.config().time_format;
+    let time_format = caldir.config().time_format();
 
     // Only show field diffs for updates
-    if let (Some(old), Some(new)) = (&diff.old, &diff.new) {
+    if let EventChange::Update { from: old, to: new } = diff {
         if old.summary != new.summary {
             lines.push(format!(
                 "{}: {} → {}",
                 "summary".dimmed(),
-                old.summary.red(),
-                new.summary.green()
+                old.summary.as_deref().unwrap_or("(Untitled)").red(),
+                new.summary.as_deref().unwrap_or("(Untitled)").green()
             ));
         }
         if old.description != new.description {
@@ -254,8 +275,14 @@ fn render_field_diffs(diff: &EventDiff, caldir: &Caldir) -> Vec<String> {
             lines.push(format!(
                 "{}: {} → {}",
                 "end".dimmed(),
-                format_datetime(&old.end, time_format).red(),
-                format_datetime(&new.end, time_format).green()
+                old.end
+                    .as_ref()
+                    .map_or("(none)".into(), |e| format_datetime(e, time_format))
+                    .red(),
+                new.end
+                    .as_ref()
+                    .map_or("(none)".into(), |e| format_datetime(e, time_format))
+                    .green()
             ));
         }
         if old.status != new.status {
@@ -308,12 +335,8 @@ fn render_field_diffs(diff: &EventDiff, caldir: &Caldir) -> Vec<String> {
                 lines.extend(attendee_lines.into_iter().map(|l| format!("  {}", l)));
             }
         }
-        if old.conference_url != new.conference_url {
-            lines.push(render_optional_diff(
-                "conference_url",
-                &old.conference_url,
-                &new.conference_url,
-            ));
+        if old.url != new.url {
+            lines.push(render_optional_diff("url", &old.url, &new.url));
         }
     }
 
@@ -333,29 +356,29 @@ fn render_optional_diff(field: &str, old: &Option<String>, new: &Option<String>)
 }
 
 /// Render attendee changes, showing only what actually changed per attendee
-fn render_attendee_diffs(
-    old: &[caldir_core::event::Attendee],
-    new: &[caldir_core::event::Attendee],
-) -> Vec<String> {
+fn render_attendee_diffs(old: &[Attendee], new: &[Attendee]) -> Vec<String> {
     let mut lines = Vec::new();
 
-    let old_by_email: HashMap<String, &caldir_core::event::Attendee> =
+    let old_by_email: HashMap<String, &Attendee> =
         old.iter().map(|a| (a.email.to_lowercase(), a)).collect();
-    let new_by_email: HashMap<String, &caldir_core::event::Attendee> =
+
+    let new_by_email: HashMap<String, &Attendee> =
         new.iter().map(|a| (a.email.to_lowercase(), a)).collect();
 
     // Attendees in both old and new — check for status changes
     for (email, old_att) in &old_by_email {
         if let Some(new_att) = new_by_email.get(email)
-            && old_att.response_status != new_att.response_status
+            && old_att.status != new_att.status
         {
             let label = attendee_label(new_att);
             let old_status = old_att
-                .response_status
+                .status
                 .map_or("(none)".to_string(), |s| s.to_string());
+
             let new_status = new_att
-                .response_status
+                .status
                 .map_or("(none)".to_string(), |s| s.to_string());
+
             lines.push(format!(
                 "{}: {} → {}",
                 label.dimmed(),
@@ -382,33 +405,8 @@ fn render_attendee_diffs(
     lines
 }
 
-/// Format a standard event line: "  {time} {summary} [{cal_slug}]{status}"
-pub fn format_event_line(event: &Event, cal_slug: &str, status: &str, caldir: &Caldir) -> String {
-    let time = format_time_only(&event.start, caldir.config().time_format);
-    let cal_tag = format!("[{}]", cal_slug);
-    format!(
-        "  {} {} {}{}",
-        time,
-        event.summary,
-        cal_tag.dimmed(),
-        status
-    )
-}
-
-/// Render a participation status as colored text (e.g. "accepted" in green, "pending" in yellow)
-pub fn render_participation_status(status: ParticipationStatus) -> String {
-    let label = status.to_string();
-    match status {
-        ParticipationStatus::Accepted => label.green().to_string(),
-        ParticipationStatus::Declined => label.red().to_string(),
-        ParticipationStatus::Tentative | ParticipationStatus::NeedsAction => {
-            label.yellow().to_string()
-        }
-    }
-}
-
 /// Format an attendee as "Name (email)" or just "email"
-fn attendee_label(att: &caldir_core::event::Attendee) -> String {
+fn attendee_label(att: &Attendee) -> String {
     match &att.name {
         Some(name) if !name.is_empty() => format!("{} ({})", name, att.email),
         _ => att.email.clone(),
@@ -416,10 +414,7 @@ fn attendee_label(att: &caldir_core::event::Attendee) -> String {
 }
 
 /// Render recurrence diff showing RRULE and EXDATE changes
-fn render_recurrence_diff(
-    old: &Option<caldir_core::event::Recurrence>,
-    new: &Option<caldir_core::event::Recurrence>,
-) -> Vec<String> {
+fn render_recurrence_diff(old: &Option<Recurrence>, new: &Option<Recurrence>) -> Vec<String> {
     let mut lines = Vec::new();
 
     match (old, new) {
@@ -434,11 +429,22 @@ fn render_recurrence_diff(
             }
             // Show exdate changes
             use std::collections::HashSet;
-            let old_set: HashSet<_> = old_rec.exdates.iter().map(|e| format!("{}", e)).collect();
-            let new_set: HashSet<_> = new_rec.exdates.iter().map(|e| format!("{}", e)).collect();
+            let old_set: HashSet<_> = old_rec
+                .exdates
+                .iter()
+                .map(|e| format_datetime(e, TimeFormat::H24))
+                .collect();
+
+            let new_set: HashSet<_> = new_rec
+                .exdates
+                .iter()
+                .map(|e| format_datetime(e, TimeFormat::H24))
+                .collect();
+
             for ex in old_set.difference(&new_set) {
                 lines.push(format!("{} exdate {}", "-".red(), ex.red()));
             }
+
             for ex in new_set.difference(&old_set) {
                 lines.push(format!("{} exdate {}", "+".green(), ex.green()));
             }
@@ -446,17 +452,25 @@ fn render_recurrence_diff(
         (None, Some(new_rec)) => {
             lines.push(format!("{} rrule {}", "+".green(), new_rec.rrule.green()));
             for ex in &new_rec.exdates {
-                lines.push(format!("{} exdate {}", "+".green(), ex.to_string().green()));
+                lines.push(format!(
+                    "{} exdate {}",
+                    "+".green(),
+                    format_datetime(ex, TimeFormat::H24).green()
+                ));
             }
         }
         (Some(old_rec), None) => {
             lines.push(format!("{} rrule {}", "-".red(), old_rec.rrule.red()));
             for ex in &old_rec.exdates {
-                lines.push(format!("{} exdate {}", "-".red(), ex.to_string().red()));
+                lines.push(format!(
+                    "{} exdate {}",
+                    "-".red(),
+                    format_datetime(ex, TimeFormat::H24).red()
+                ));
             }
         }
         (None, None) => {}
     }
 
     lines
-}
+} */

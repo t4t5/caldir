@@ -1,5 +1,7 @@
 pub mod config;
 pub mod connect;
+pub mod events;
+pub mod week;
 // pub mod discard;
 // pub mod events;
 // pub mod guards;
