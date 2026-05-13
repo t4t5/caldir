@@ -1,7 +1,10 @@
 use crate::render::time::format_datetime;
-use caldir_core::{Attendee, Caldir, Calendar, CalendarDiff, EventChange, Recurrence, TimeFormat};
+use caldir_core::{
+    Attendee, Caldir, Calendar, CalendarDiff, EventChange, Recurrence, Reminder, TimeFormat,
+};
 use owo_colors::OwoColorize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::fmt;
 
 /// Extension trait for TUI rendering with colors. Implementations that format
 /// event times take the caldir context explicitly, so rendering has no global
@@ -272,12 +275,7 @@ fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
             ));
         }
         if old.status != new.status {
-            lines.push(format!(
-                "{}: {:?} → {:?}",
-                "status".dimmed(),
-                old.status,
-                new.status
-            ));
+            lines.push(render_optional_display("status", &old.status, &new.status));
         }
         if old.recurrence != new.recurrence {
             lines.extend(render_recurrence_diff(&old.recurrence, &new.recurrence));
@@ -291,27 +289,24 @@ fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
             ));
         }
         if old.reminders != new.reminders {
-            lines.push(format!(
-                "{}: {:?} → {:?}",
-                "reminders".dimmed(),
-                old.reminders,
-                new.reminders
-            ));
+            let reminder_lines = render_reminder_diffs(&old.reminders, &new.reminders);
+            if !reminder_lines.is_empty() {
+                lines.push(format!("{}:", "reminders".dimmed()));
+                lines.extend(reminder_lines.into_iter().map(|l| format!("  {}", l)));
+            }
         }
         if old.transparency != new.transparency {
-            lines.push(format!(
-                "{}: {:?} → {:?}",
-                "transparency".dimmed(),
-                old.transparency,
-                new.transparency
+            lines.push(render_optional_display(
+                "transparency",
+                &old.transparency,
+                &new.transparency,
             ));
         }
         if old.organizer != new.organizer {
-            lines.push(format!(
-                "{}: {:?} → {:?}",
-                "organizer".dimmed(),
-                old.organizer,
-                new.organizer
+            lines.push(render_optional_display(
+                "organizer",
+                &old.organizer,
+                &new.organizer,
             ));
         }
         if old.attendees != new.attendees {
@@ -339,6 +334,48 @@ fn render_optional_diff(field: &str, old: &Option<String>, new: &Option<String>)
         old_str.red(),
         new_str.green()
     )
+}
+
+/// Render an Option<T: Display> field diff with red/green colors and a
+/// `(none)` fallback. Used for enum-like fields (status, transparency) and
+/// structured fields with Display (organizer).
+fn render_optional_display<T: fmt::Display>(
+    field: &str,
+    old: &Option<T>,
+    new: &Option<T>,
+) -> String {
+    let old_str = old.as_ref().map_or("(none)".to_string(), |v| v.to_string());
+    let new_str = new.as_ref().map_or("(none)".to_string(), |v| v.to_string());
+    format!(
+        "{}: {} → {}",
+        field.dimmed(),
+        old_str.red(),
+        new_str.green()
+    )
+}
+
+/// Render reminder changes as add/remove lines (similar to attendee diffs).
+fn render_reminder_diffs(old: &[Reminder], new: &[Reminder]) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    let old_set: HashSet<i64> = old.iter().map(|r| r.minutes_before_start).collect();
+    let new_set: HashSet<i64> = new.iter().map(|r| r.minutes_before_start).collect();
+
+    for added in new
+        .iter()
+        .filter(|r| !old_set.contains(&r.minutes_before_start))
+    {
+        lines.push(format!("{} {}", "+".green(), added.to_string().green()));
+    }
+
+    for removed in old
+        .iter()
+        .filter(|r| !new_set.contains(&r.minutes_before_start))
+    {
+        lines.push(format!("{} {}", "-".red(), removed.to_string().red()));
+    }
+
+    lines
 }
 
 /// Render attendee changes, showing only what actually changed per attendee

@@ -1,4 +1,5 @@
 use icalendar::Property;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Organizer {
@@ -11,6 +12,15 @@ impl Organizer {
         Organizer {
             email: email.into(),
             name: None,
+        }
+    }
+}
+
+impl fmt::Display for Organizer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.name {
+            Some(name) if !name.is_empty() => write!(f, "{} ({})", name, self.email),
+            _ => write!(f, "{}", self.email),
         }
     }
 }
@@ -93,5 +103,27 @@ mod tests {
             prop.params().get("CN").map(|p| p.value()),
             Some("Alice Smith")
         );
+    }
+
+    #[test]
+    fn display_shows_name_and_email_when_name_present() {
+        let organizer = Organizer {
+            email: "alice@example.com".to_string(),
+            name: Some("Alice Smith".to_string()),
+        };
+
+        assert_eq!(organizer.to_string(), "Alice Smith (alice@example.com)");
+    }
+
+    #[test]
+    fn display_falls_back_to_email_when_name_missing_or_empty() {
+        let no_name = Organizer::new("alice@example.com");
+        assert_eq!(no_name.to_string(), "alice@example.com");
+
+        let empty_name = Organizer {
+            email: "alice@example.com".to_string(),
+            name: Some(String::new()),
+        };
+        assert_eq!(empty_name.to_string(), "alice@example.com");
     }
 }

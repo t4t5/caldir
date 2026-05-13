@@ -1,7 +1,19 @@
+use std::fmt;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Transparency {
     Opaque,
     Transparent,
+}
+
+impl fmt::Display for Transparency {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::Opaque => "busy",
+            Self::Transparent => "free",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 impl Transparency {
@@ -48,5 +60,11 @@ mod tests {
         assert_eq!(Transparency::from_ics_str("BUSY"), None);
         assert_eq!(Transparency::from_ics_str("opaque"), None);
         assert_eq!(Transparency::from_ics_str(""), None);
+    }
+
+    #[test]
+    fn display_uses_user_facing_label() {
+        assert_eq!(Transparency::Opaque.to_string(), "busy");
+        assert_eq!(Transparency::Transparent.to_string(), "free");
     }
 }

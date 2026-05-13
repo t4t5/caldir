@@ -1,8 +1,21 @@
+use std::fmt;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     Confirmed,
     Tentative,
     Cancelled,
+}
+
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Self::Confirmed => "confirmed",
+            Self::Tentative => "tentative",
+            Self::Cancelled => "cancelled",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 impl Status {
@@ -47,5 +60,12 @@ mod tests {
         assert_eq!(Status::from_ics_str("DRAFT"), None);
         assert_eq!(Status::from_ics_str("confirmed"), None);
         assert_eq!(Status::from_ics_str(""), None);
+    }
+
+    #[test]
+    fn display_uses_lowercase_label() {
+        assert_eq!(Status::Confirmed.to_string(), "confirmed");
+        assert_eq!(Status::Tentative.to_string(), "tentative");
+        assert_eq!(Status::Cancelled.to_string(), "cancelled");
     }
 }

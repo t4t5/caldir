@@ -1,6 +1,7 @@
 use icalendar::{Component, Property};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Reverse;
+use std::fmt;
 use std::time::Duration;
 
 const DEFAULT_REMINDER_DESCRIPTION: &str = "Reminder";
@@ -12,6 +13,12 @@ const MINUTES_PER_WEEK: u64 = 7 * MINUTES_PER_DAY;
 pub struct Reminder {
     /// Minutes before the event start.
     pub minutes_before_start: i64,
+}
+
+impl fmt::Display for Reminder {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} before start", self.to_human())
+    }
 }
 
 impl Serialize for Reminder {
@@ -383,6 +390,15 @@ mod tests {
 
         let minutes: Vec<_> = reminders.iter().map(|r| r.minutes_before_start).collect();
         assert_eq!(minutes, vec![30, 10, 5]);
+    }
+
+    #[test]
+    fn display_shows_humantime_with_before_start_suffix() {
+        assert_eq!(Reminder::from_minutes(10).to_string(), "10m before start");
+        assert_eq!(
+            Reminder::from_minutes(90).to_string(),
+            "1h 30m before start"
+        );
     }
 
     #[test]
