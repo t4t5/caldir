@@ -156,7 +156,7 @@ fn render_bidirectional(
     }
 
     if !diff.incoming().is_empty() {
-        if !diff.incoming().is_empty() {
+        if !diff.outgoing().is_empty() {
             lines.push(String::new());
         }
         lines.push(format!("   {}:", pull_label).dimmed().to_string());
