@@ -1,5 +1,6 @@
 mod account;
 mod error;
+mod handler;
 mod registry;
 mod slug;
 pub(crate) mod transport;
@@ -14,6 +15,7 @@ use std::sync::Arc;
 use transport::{ProviderTransport, SubprocessTransport};
 
 pub(crate) use error::ProviderError;
+pub use handler::{Error, Handler, Result, process_request, run_provider};
 pub use registry::ProviderRegistry;
 pub use slug::{ProviderSlug, provider_slug_from_filename};
 
@@ -24,7 +26,9 @@ pub struct Provider {
 }
 
 impl Provider {
-    pub(crate) fn from_binary_path(binary_path: PathBuf) -> Result<Self, ProviderError> {
+    pub(crate) fn from_binary_path(
+        binary_path: PathBuf,
+    ) -> std::result::Result<Self, ProviderError> {
         if !is_executable(&binary_path) {
             return Err(ProviderError::NotExecutable(binary_path));
         }
@@ -55,13 +59,16 @@ impl Provider {
         &self,
         options: serde_json::Map<String, serde_json::Value>,
         data: serde_json::Map<String, serde_json::Value>,
-    ) -> Result<rpc::ConnectResponse, ProviderError> {
+    ) -> std::result::Result<rpc::ConnectResponse, ProviderError> {
         let result = self.call(rpc::Connect { options, data }).await?;
 
         Ok(result)
     }
 
-    pub(crate) async fn call<C: rpc::Rpc>(&self, call: C) -> Result<C::Response, ProviderError> {
+    pub(crate) async fn call<C: rpc::Rpc>(
+        &self,
+        call: C,
+    ) -> std::result::Result<C::Response, ProviderError> {
         let request_value = call.to_json().map_err(ProviderError::Serialize)?;
         let request_json =
             serde_json::to_string(&request_value).map_err(ProviderError::Serialize)?;

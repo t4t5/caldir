@@ -1,21 +1,46 @@
-Providers should write data to the path specified by the `CALDIR_PROVIDER_STORAGE_DIR` env variable.
+# Building a provider
 
-Why env variable?
+A provider is a binary that speaks caldir's JSON RPC over stdin/stdout. Implement [`ProviderHandler`](../caldir-core/src/rpc/handler.rs) and let `run_provider` handle the protocol.
 
-1. It's not domain data. The protocol carries commands and their params — "list events from X to Y." Where the provider stores its private state is infrastructure config. Mixing those is the same smell as putting $HOME in every HTTP request body.
-2. It's invariant per process. Sending the same provider_storage_dir on every call is redundant. Set it once at spawn time and it's done.
-3. Standalone debuggability. A developer can run caldir-provider-google by hand to poke at it (the provider-rpc skill does this). With env var + sensible default, that's just:
-echo '{"command":"list_calendars","params":{...}}' | caldir-provider-google
-4. It's the standard Unix pattern. XDG_CONFIG_HOME, GIT_DIR, npm_config_* — infrastructure paths go in env, not in the protocol.
+## Minimal `main.rs`
 
-Concrete shape:
+```rust
+use async_trait::async_trait;
+use caldir_core::rpc::{Connect, ConnectResponse, HandlerResult, ProviderHandler};
 
-- Core spawns provider with `CALDIR_PROVIDER_STORAGE_DIR=<path>` set.
-- Provider reads the env var at startup. Falls back to ~/.config/caldir/providers/{name}/ if unset (or whatever XDG-correct default).
-- Tests inject a tempdir by setting the env var before spawning, same as they would for any other env-controlled tool.
-- The Request struct loses the field, becoming purely {command, params}.
+struct MyProvider;
 
-With a fallback default, a provider works standalone without core. Without a default, every invocation needs the env var set, which makes "run the provider directly to debug" annoying.
+#[async_trait]
+impl ProviderHandler for MyProvider {
+    async fn connect(&self, cmd: Connect) -> HandlerResult<ConnectResponse> { ... }
+}
 
-Tests would look like this: `Command::new(binary).env("CALDIR_PROVIDER_STATE_DIR", tempdir.path())`
+#[tokio::main]
+async fn main() {
+    caldir_core::rpc::run_provider(MyProvider).await
+}
+```
 
+Single-calendar providers skip `list_calendars` and return the calendar from `connect` instead.
+
+## File layout
+
+```
+src/
+├── main.rs            # ProviderHandler impl + run_provider — no stdin/stdout, no dispatch
+├── commands/          # one file per RPC; each exports `async fn handle(cmd) -> anyhow::Result<...>`
+├── remote_config.rs   # typed wrapper over RemoteConfigParams (TryFrom + into_remote_config_params)
+└── constants.rs       # PROVIDER_NAME and similar
+```
+
+Keep command handlers thin and IO-free where possible — pull HTTP, file IO, and parsing into separate modules (e.g. `http.rs`, `feed.rs`) so the logic can be unit-tested without the runner.
+
+## Errors
+
+`HandlerResult<T>` is `Result<T, Box<dyn Error + Send + Sync>>`. Command handlers should return `anyhow::Result<T>` internally for ergonomics — `?` converts at the trait boundary, and the runner walks `.source()` so `anyhow::Context` chains end up in the response message.
+
+`caldir-core` itself stays anyhow-free; only providers (which are binaries, not libraries) pull anyhow in. A shared library crate like `caldir-provider-caldav` should use `thiserror` instead.
+
+## Storage directory
+
+Providers that need on-disk state (OAuth tokens, app passwords, sync cursors) write to the path in `CALDIR_PROVIDER_STORAGE_DIR`, falling back to `~/.config/caldir/providers/{name}/` if unset.

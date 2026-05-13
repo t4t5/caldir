@@ -5,10 +5,6 @@ use anyhow::{Context, Result};
 const USER_AGENT: &str = "caldir-provider-webcal";
 const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Fetch the body of an ICS feed.
-///
-/// Errors if the HTTP request fails or the server returns a non-2xx status.
-/// The body is returned verbatim — parsing/validation is the caller's job.
 pub async fn fetch_feed(url: &str) -> Result<String> {
     let client = reqwest::Client::builder()
         .timeout(TIMEOUT)

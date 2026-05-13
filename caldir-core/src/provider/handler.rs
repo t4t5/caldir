@@ -1,6 +1,6 @@
 //! Scaffolding for caldir providers
 //!
-//! Providers implement [`ProviderHandler`].
+//! Providers implement [`Handler`].
 //! It takes care of reading JSON payloads from stdin
 //! and writing JSON responses to stdout.
 
@@ -11,46 +11,47 @@ use std::error::Error as StdError;
 use std::future::Future;
 use std::io::{self, BufRead, Write};
 
-use super::{
+use crate::rpc::{
     Connect, ConnectResponse, CreateEvent, DeleteEvent, ListCalendars, ListEvents, Method, Request,
     Response, UpdateEvent,
 };
 use crate::{CalendarConfig, Event};
 
-/// Handles JSON errors from provider bins
-pub type HandlerError = Box<dyn StdError + Send + Sync>;
+/// Error returned by [`Handler`] methods.
+pub type Error = Box<dyn StdError + Send + Sync>;
 
-pub type HandlerResult<T> = Result<T, HandlerError>;
+/// Result alias for [`Handler`] methods.
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Implemented by each provider to serve the caldir RPC protocol.
 #[async_trait]
-pub trait ProviderHandler: Send + Sync {
-    async fn connect(&self, cmd: Connect) -> HandlerResult<ConnectResponse>;
+pub trait Handler: Send + Sync {
+    async fn connect(&self, cmd: Connect) -> Result<ConnectResponse>;
 
-    async fn list_calendars(&self, _cmd: ListCalendars) -> HandlerResult<Vec<CalendarConfig>> {
+    async fn list_calendars(&self, _cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
         Err("list_calendars is not supported by this provider".into())
     }
 
-    async fn list_events(&self, _cmd: ListEvents) -> HandlerResult<Vec<Event>> {
+    async fn list_events(&self, _cmd: ListEvents) -> Result<Vec<Event>> {
         Err("list_events is not supported by this provider".into())
     }
 
-    async fn create_event(&self, _cmd: CreateEvent) -> HandlerResult<Event> {
+    async fn create_event(&self, _cmd: CreateEvent) -> Result<Event> {
         Err("This provider does not support creating events".into())
     }
 
-    async fn update_event(&self, _cmd: UpdateEvent) -> HandlerResult<Event> {
+    async fn update_event(&self, _cmd: UpdateEvent) -> Result<Event> {
         Err("This provider does not support updating events".into())
     }
 
-    async fn delete_event(&self, _cmd: DeleteEvent) -> HandlerResult<Event> {
+    async fn delete_event(&self, _cmd: DeleteEvent) -> Result<Event> {
         Err("This provider does not support deleting events".into())
     }
 }
 
 /// Run a provider as a subprocess speaking the caldir RPC protocol over
 /// stdin/stdout. Blocks until stdin closes.
-pub async fn run_provider<H: ProviderHandler>(handler: H) {
+pub async fn run_provider<H: Handler>(handler: H) {
     let input = io::stdin().lock();
     let mut output = io::stdout();
 
@@ -71,7 +72,7 @@ pub async fn run_provider<H: ProviderHandler>(handler: H) {
 
 /// Process a single JSON-encoded request line and return the JSON-encoded
 /// response. Exposed for unit tests — most providers only need [`run_provider`].
-pub async fn process_request<H: ProviderHandler>(handler: &H, line: &str) -> String {
+pub async fn process_request<H: Handler>(handler: &H, line: &str) -> String {
     let request: Request = match serde_json::from_str(line) {
         Ok(r) => r,
         Err(e) => return Response::error(&format!("Failed to parse request: {e}")),
@@ -95,10 +96,7 @@ fn format_chain(err: &(dyn StdError + 'static)) -> String {
     out
 }
 
-async fn dispatch<H: ProviderHandler>(
-    handler: &H,
-    request: Request,
-) -> HandlerResult<serde_json::Value> {
+async fn dispatch<H: Handler>(handler: &H, request: Request) -> Result<serde_json::Value> {
     let Request { method, params } = request;
 
     match method {
@@ -111,15 +109,12 @@ async fn dispatch<H: ProviderHandler>(
     }
 }
 
-async fn call<C, R, F, Fut>(
-    params: serde_json::Value,
-    handler: F,
-) -> HandlerResult<serde_json::Value>
+async fn call<C, R, F, Fut>(params: serde_json::Value, handler: F) -> Result<serde_json::Value>
 where
     C: DeserializeOwned,
     R: Serialize,
     F: FnOnce(C) -> Fut,
-    Fut: Future<Output = HandlerResult<R>>,
+    Fut: Future<Output = Result<R>>,
 {
     let cmd: C = serde_json::from_value(params)?;
     let response = handler(cmd).await?;
@@ -133,8 +128,8 @@ mod tests {
     struct StubHandler;
 
     #[async_trait]
-    impl ProviderHandler for StubHandler {
-        async fn connect(&self, _cmd: Connect) -> HandlerResult<ConnectResponse> {
+    impl Handler for StubHandler {
+        async fn connect(&self, _cmd: Connect) -> Result<ConnectResponse> {
             Ok(ConnectResponse::Done {
                 account_identifier: Some("me@example.com".to_string()),
                 calendars: None,
@@ -201,8 +196,8 @@ mod tests {
 
         struct ChainHandler;
         #[async_trait]
-        impl ProviderHandler for ChainHandler {
-            async fn connect(&self, _cmd: Connect) -> HandlerResult<ConnectResponse> {
+        impl Handler for ChainHandler {
+            async fn connect(&self, _cmd: Connect) -> Result<ConnectResponse> {
                 Err(Box::new(Outer))
             }
         }

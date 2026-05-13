@@ -8,23 +8,23 @@ mod http;
 mod remote_config;
 
 use async_trait::async_trait;
-use caldir_core::Event;
-use caldir_core::rpc::{Connect, ConnectResponse, HandlerResult, ListEvents, ProviderHandler};
+use caldir_core::rpc::{Connect, ConnectResponse, ListEvents};
+use caldir_core::{Event, provider};
 
 struct WebcalProvider;
 
 #[async_trait]
-impl ProviderHandler for WebcalProvider {
-    async fn connect(&self, cmd: Connect) -> HandlerResult<ConnectResponse> {
+impl provider::Handler for WebcalProvider {
+    async fn connect(&self, cmd: Connect) -> provider::Result<ConnectResponse> {
         Ok(commands::connect::handle(cmd).await?)
     }
 
-    async fn list_events(&self, cmd: ListEvents) -> HandlerResult<Vec<Event>> {
+    async fn list_events(&self, cmd: ListEvents) -> provider::Result<Vec<Event>> {
         Ok(commands::list_events::handle(cmd).await?)
     }
 }
 
 #[tokio::main]
 async fn main() {
-    caldir_core::rpc::run_provider(WebcalProvider).await
+    provider::run_provider(WebcalProvider).await
 }

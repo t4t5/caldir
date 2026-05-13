@@ -3,7 +3,7 @@ mod calendar;
 mod connection;
 mod diff;
 mod event;
-mod provider;
+pub mod provider;
 mod remote;
 pub mod rpc;
 mod utils;
