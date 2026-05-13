@@ -1,8 +1,5 @@
 use std::path::PathBuf;
 
-use chrono::NaiveDate;
-use icalendar::{Component, EventLike};
-
 use crate::caldir::TimeFormat;
 use crate::diff::{CalendarDiff, EventChange};
 use crate::provider::mock_provider::MockProvider;
@@ -10,6 +7,8 @@ use crate::{
     Caldir, CaldirConfig, Calendar, CalendarConfig, CalendarEvent, Event, EventTime, Provider,
     ProviderRegistry, ProviderSlug, Remote, RemoteConfig, RemoteConfigParams,
 };
+use chrono::NaiveDate;
+use icalendar::{Component, EventLike};
 use tempfile::TempDir;
 
 pub fn test_caldir() -> (TempDir, Caldir) {

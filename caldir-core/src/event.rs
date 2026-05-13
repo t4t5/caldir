@@ -249,9 +249,16 @@ mod tests {
     #[test]
     fn rejects_invalid_ics() {
         // Missing "END:VCALENDAR"
-        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:test-uid@caldir\nDTSTART:20240101T120000Z\nSUMMARY:Test Event\nEND:VEVENT";
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:test-uid@caldir
+DTSTART:20240101T120000Z
+SUMMARY:Test Event
+END:VEVENT"
+            .replace('\n', "\r\n");
 
-        let result = Event::from_ics_str(ics);
+        let result = Event::from_ics_str(&ics);
         assert!(matches!(result, Err(EventError::InvalidIcs(_, _))));
     }
 
@@ -264,9 +271,17 @@ mod tests {
 
     #[test]
     fn parses_event_with_arbitrary_tzid() {
-        let ics = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:test-uid@caldir\nDTSTART;TZID=Pacific Standard Time:20240101T120000\nSUMMARY:Test\nEND:VEVENT\nEND:VCALENDAR";
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:test-uid@caldir
+DTSTART;TZID=Pacific Standard Time:20240101T120000
+SUMMARY:Test
+END:VEVENT
+END:VCALENDAR"
+            .replace('\n', "\r\n");
 
-        let event = Event::parse_single_ics(ics);
+        let event = Event::parse_single_ics(&ics);
 
         assert_eq!(
             event.start,
@@ -300,12 +315,22 @@ mod tests {
 
     #[test]
     fn to_ics_string_updates_dtstamp() {
-        let original_ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:test@caldir\r\nDTSTAMP:20200101T000000Z\r\nDTSTART:20260101\r\nSUMMARY:Test\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let original_ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:test@caldir
+DTSTAMP:20200101T000000Z
+DTSTART:20260101
+SUMMARY:Test
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
 
-        let event = Event::parse_single_ics(original_ics);
+        let event = Event::parse_single_ics(&original_ics);
         let serialized = event.to_ics_string();
 
-        assert_ne!(dtstamp_line(original_ics), dtstamp_line(&serialized));
+        assert_ne!(dtstamp_line(&original_ics), dtstamp_line(&serialized));
     }
 
     #[test]
@@ -629,16 +654,29 @@ END:VCALENDAR
 
     #[test]
     fn from_ics_str_returns_empty_for_calendar_without_events() {
-        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n";
-        let events = Event::from_ics_str(ics).unwrap();
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
+        let events = Event::from_ics_str(&ics).unwrap();
         assert!(events.is_empty());
     }
 
     #[test]
     fn from_ics_str_parses_single_event() {
-        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:only@caldir\r\nDTSTART:20260301T100000Z\r\nSUMMARY:Only event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:only@caldir
+DTSTART:20260301T100000Z
+SUMMARY:Only event
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
 
-        let events = Event::from_ics_str(ics).unwrap();
+        let events = Event::from_ics_str(&ics).unwrap();
 
         assert_eq!(events.len(), 1);
         let event = events.into_iter().next().unwrap().unwrap();
@@ -648,9 +686,28 @@ END:VCALENDAR
 
     #[test]
     fn from_ics_str_returns_events_in_document_order() {
-        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:first@caldir\r\nDTSTART:20260301T100000Z\r\nSUMMARY:First\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:second@caldir\r\nDTSTART:20260302T100000Z\r\nSUMMARY:Second\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:third@caldir\r\nDTSTART:20260303T100000Z\r\nSUMMARY:Third\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:first@caldir
+DTSTART:20260301T100000Z
+SUMMARY:First
+END:VEVENT
+BEGIN:VEVENT
+UID:second@caldir
+DTSTART:20260302T100000Z
+SUMMARY:Second
+END:VEVENT
+BEGIN:VEVENT
+UID:third@caldir
+DTSTART:20260303T100000Z
+SUMMARY:Third
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
 
-        let events: Vec<Event> = Event::from_ics_str(ics)
+        let events: Vec<Event> = Event::from_ics_str(&ics)
             .unwrap()
             .into_iter()
             .map(Result::unwrap)
@@ -664,9 +721,35 @@ END:VCALENDAR
 
     #[test]
     fn from_ics_str_handles_vtimezone_and_tzid_events() {
-        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTIMEZONE\r\nTZID:Europe/Stockholm\r\nBEGIN:STANDARD\r\nDTSTART:19701025T030000\r\nTZOFFSETFROM:+0200\r\nTZOFFSETTO:+0100\r\nRRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10\r\nTZNAME:CET\r\nEND:STANDARD\r\nBEGIN:DAYLIGHT\r\nDTSTART:19700329T020000\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0200\r\nRRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=3\r\nTZNAME:CEST\r\nEND:DAYLIGHT\r\nEND:VTIMEZONE\r\nBEGIN:VEVENT\r\nUID:zoned@caldir\r\nDTSTART;TZID=Europe/Stockholm:20260615T100000\r\nSUMMARY:Zoned event\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VTIMEZONE
+TZID:Europe/Stockholm
+BEGIN:STANDARD
+DTSTART:19701025T030000
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10
+TZNAME:CET
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:19700329T020000
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0200
+RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=3
+TZNAME:CEST
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:zoned@caldir
+DTSTART;TZID=Europe/Stockholm:20260615T100000
+SUMMARY:Zoned event
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
 
-        let event = Event::parse_single_ics(ics);
+        let event = Event::parse_single_ics(&ics);
 
         assert!(matches!(
             event.start,
@@ -677,9 +760,16 @@ END:VCALENDAR
     #[test]
     fn from_ics_str_rejects_malformed_top_level() {
         // Missing END:VCALENDAR
-        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:x@caldir\r\nDTSTART:20260301T100000Z\r\nEND:VEVENT\r\n";
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:x@caldir
+DTSTART:20260301T100000Z
+END:VEVENT
+"
+        .replace('\n', "\r\n");
 
-        let result = Event::from_ics_str(ics);
+        let result = Event::from_ics_str(&ics);
 
         assert!(matches!(result, Err(EventError::InvalidIcs(_, _))));
     }
@@ -689,9 +779,22 @@ END:VCALENDAR
         // Second VEVENT is missing UID — surfaces as an inner Err, while the
         // first event still parses. Callers (e.g. webcal) decide whether to
         // skip or fail.
-        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:good@caldir\r\nDTSTART:20260301T100000Z\r\nSUMMARY:Good\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nDTSTART:20260302T100000Z\r\nSUMMARY:Missing UID\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:good@caldir
+DTSTART:20260301T100000Z
+SUMMARY:Good
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260302T100000Z
+SUMMARY:Missing UID
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
 
-        let events = Event::from_ics_str(ics).unwrap();
+        let events = Event::from_ics_str(&ics).unwrap();
 
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].as_ref().unwrap().uid.as_str(), "good@caldir");
