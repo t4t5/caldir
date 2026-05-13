@@ -163,6 +163,10 @@ impl Calendar {
         self.remote_config().is_some()
     }
 
+    pub(crate) fn config(&self) -> Option<&CalendarConfig> {
+        self.config.as_ref()
+    }
+
     pub fn remote_email(&self) -> Option<&str> {
         self.remote_config()
             .and_then(|remote_config| remote_config.account_identifier())

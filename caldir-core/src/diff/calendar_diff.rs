@@ -101,6 +101,12 @@ impl CalendarDiff {
         self.outgoing.is_empty() && self.incoming.is_empty()
     }
 
+    /// Drop outgoing changes. Used for read-only calendars where outgoing
+    /// could never be applied — surfacing them as pending pushes is misleading.
+    pub fn discard_outgoing(&mut self) {
+        self.outgoing.clear();
+    }
+
     /// IDs of events whose presence in the calendar needs to be recorded in
     /// sync state after applying this diff. `Delete`s are intentionally not
     /// removed — synced IDs are an append-only log of "ever seen" events, and

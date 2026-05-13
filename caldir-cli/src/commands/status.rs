@@ -42,11 +42,16 @@ async fn run_parsed(
         match connection {
             Ok(connection) => {
                 let cal = connection.local();
-                let spinner = tui::create_spinner(cal.render(caldir));
+                let header = if connection.read_only() {
+                    format!("{} {}", cal.render(caldir), "(read-only)".dimmed())
+                } else {
+                    cal.render(caldir)
+                };
+                let spinner = tui::create_spinner(header.clone());
                 let result = connection.diff(&range).await;
                 spinner.finish_and_clear();
 
-                println!("{}", cal.render(caldir));
+                println!("{}", header);
 
                 match result {
                     Ok(diff) => println!("{}", diff.render(verbose, caldir)),
