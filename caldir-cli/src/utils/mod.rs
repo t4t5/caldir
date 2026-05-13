@@ -1,3 +1,4 @@
+mod connections;
 mod date;
 mod guards;
 mod path;
@@ -6,6 +7,7 @@ mod resolve_calendars;
 mod sync_range;
 pub mod tui;
 
+pub use connections::{connections, count_changes};
 pub use date::parse_date;
 pub use guards::allow_mass_delete;
 pub use path::PathExt;

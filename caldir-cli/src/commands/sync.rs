@@ -1,13 +1,11 @@
 use anyhow::Result;
-use caldir_core::Caldir;
-use caldir_core::Calendar;
-use caldir_core::DateRange;
-use caldir_core::{BatchDiff, CalendarDiff};
+use caldir_core::{Caldir, Connection, DateRange};
 use owo_colors::OwoColorize;
 
-use crate::commands::guards::allow_mass_delete;
-use crate::render::{CalendarDiffRender, Render};
-use crate::utils::tui;
+use crate::render::diff::{CalendarDiffRender, Render};
+use crate::utils::{allow_mass_delete, connections, count_changes, resolve_sync_range, tui};
+
+type Counts = (usize, usize, usize);
 
 pub async fn run(
     caldir: &Caldir,
@@ -17,70 +15,99 @@ pub async fn run(
     verbose: bool,
     force: bool,
 ) -> Result<()> {
-    require_calendars(&caldir)?;
-    let calendars = resolve_calendars(&caldir, calendar.as_deref())?;
-    let range =
-        DateRange::from_args(from.as_deref(), to.as_deref()).map_err(|e| anyhow::anyhow!(e))?;
+    let connections = connections(caldir, calendar.as_deref());
+    let range = resolve_sync_range(from, to)?;
+    let mut pulled: Counts = (0, 0, 0);
+    let mut pushed: Counts = (0, 0, 0);
+    let total = connections.len();
 
-    run_parsed(&caldir, calendars, range, verbose, force).await
-}
-
-async fn run_parsed(
-    caldir: &Caldir,
-    calendars: Vec<Calendar>,
-    range: DateRange,
-    verbose: bool,
-    force: bool,
-) -> Result<()> {
-    let mut diffs = Vec::new();
-
-    for (i, cal) in calendars.iter().enumerate() {
-        if cal.remote().is_none() {
-            println!("{}", cal.render(caldir));
-            println!("   {}", "(local only)".dimmed());
-        } else {
-            let spinner = tui::create_spinner(cal.render(caldir));
-            let result = CalendarDiff::from_calendar(caldir, cal, &range).await;
-            spinner.finish_and_clear();
-
-            println!("{}", cal.render(caldir));
-
-            match result {
-                Ok(diff) => {
-                    println!("{}", diff.render_sync(verbose, caldir));
-                    diff.apply_pull()?;
-                    if !allow_mass_delete(&diff, force) {
-                        continue;
-                    }
-                    diff.apply_push().await?;
-                    diffs.push(diff);
-                }
-                Err(e) => println!("   {}", e.to_string().red()),
+    for (i, connection) in connections.into_iter().enumerate() {
+        match connection {
+            Ok(mut connection) => {
+                sync_connection(
+                    caldir,
+                    &mut connection,
+                    &range,
+                    verbose,
+                    force,
+                    &mut pulled,
+                    &mut pushed,
+                )
+                .await;
             }
+            Err(e) => println!("   {}", e.to_string().red()),
         }
 
-        if i < calendars.len() - 1 {
+        if i < total - 1 {
             println!();
         }
     }
 
-    let batch = BatchDiff(diffs);
-    let (pull_created, pull_updated, pull_deleted) = batch.pull_counts();
-    let (push_created, push_updated, push_deleted) = batch.push_counts();
+    if pulled != (0, 0, 0) || pushed != (0, 0, 0) {
+        println!();
+    }
 
-    if pull_created > 0 || pull_updated > 0 || pull_deleted > 0 {
+    if pulled != (0, 0, 0) {
         println!(
-            "\nPulled: {} created, {} updated, {} deleted",
-            pull_created, pull_updated, pull_deleted
+            "Pulled: {} created, {} updated, {} deleted",
+            pulled.0, pulled.1, pulled.2
         );
     }
 
-    if push_created > 0 || push_updated > 0 || push_deleted > 0 {
+    if pushed != (0, 0, 0) {
         println!(
             "Pushed: {} created, {} updated, {} deleted",
-            push_created, push_updated, push_deleted
+            pushed.0, pushed.1, pushed.2
         );
     }
 
     Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn sync_connection(
+    caldir: &Caldir,
+    connection: &mut Connection,
+    range: &DateRange,
+    verbose: bool,
+    force: bool,
+    pulled: &mut Counts,
+    pushed: &mut Counts,
+) {
+    let header = connection.local().render(caldir);
+    let spinner = tui::create_spinner(header.clone());
+    let result = connection.diff(range).await;
+    spinner.finish_and_clear();
+
+    println!("{}", header);
+
+    let diff = match result {
+        Ok(diff) => diff,
+        Err(e) => {
+            println!("   {}", e.to_string().red());
+            return;
+        }
+    };
+
+    println!("{}", diff.render(verbose, caldir));
+
+    match connection.apply_incoming_diff(&diff) {
+        Ok(()) => add_counts(pulled, count_changes(diff.incoming())),
+        Err(e) => println!("   {}", e.to_string().red()),
+    }
+
+    if !allow_mass_delete(&diff, force) {
+        return;
+    }
+
+    match connection.apply_outgoing_diff(&diff).await {
+        Ok(()) => add_counts(pushed, count_changes(diff.outgoing())),
+        Err(e) => println!("   {}", e.to_string().red()),
+    }
+}
+
+fn add_counts(acc: &mut Counts, delta: Counts) {
+    acc.0 += delta.0;
+    acc.1 += delta.1;
+    acc.2 += delta.2;
 }

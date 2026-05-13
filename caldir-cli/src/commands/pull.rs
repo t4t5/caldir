@@ -1,9 +1,9 @@
 use anyhow::Result;
-use caldir_core::{Caldir, CalendarDiff, Connection, DateRange, EventChange};
+use caldir_core::{Caldir, CalendarDiff, Connection, DateRange};
 use owo_colors::OwoColorize;
 
 use crate::render::diff::{CalendarDiffRender, Render};
-use crate::utils::{resolve_sync_range, tui};
+use crate::utils::{connections, count_changes, resolve_sync_range, tui};
 
 pub async fn run(
     caldir: &Caldir,
@@ -12,16 +12,7 @@ pub async fn run(
     to: Option<String>,
     verbose: bool,
 ) -> Result<()> {
-    let all_connections = caldir.connections();
-
-    let connections = match calendar {
-        Some(cal) => all_connections
-            .into_iter()
-            .filter(|conn| conn.as_ref().ok().and_then(|c| c.local().slug()) == Some(cal.as_str()))
-            .collect(),
-        None => all_connections,
-    };
-
+    let connections = connections(caldir, calendar.as_deref());
     let range = resolve_sync_range(from, to)?;
     let mut applied: Vec<CalendarDiff> = Vec::new();
     let total = connections.len();
@@ -39,15 +30,7 @@ pub async fn run(
         }
     }
 
-    let (created, updated, deleted) = applied.iter().fold((0, 0, 0), |(c, u, d), diff| {
-        diff.incoming()
-            .iter()
-            .fold((c, u, d), |(c, u, d), change| match change {
-                EventChange::Create(_) => (c + 1, u, d),
-                EventChange::Update { .. } => (c, u + 1, d),
-                EventChange::Delete(_) => (c, u, d + 1),
-            })
-    });
+    let (created, updated, deleted) = count_changes(applied.iter().flat_map(|d| d.incoming()));
 
     if created > 0 || updated > 0 || deleted > 0 {
         println!(
