@@ -42,6 +42,7 @@ Open these in order — don't migrate without them:
 - **If the provider stores credentials**: `caldir-provider-icloud/src/session.rs` (re-export entry), `session/types.rs` (pure `Session` + forward-deterministic slug), `session/store.rs` (`SessionStore` with direct-path `load`, chmod, tempdir-based tests) — the canonical session-storage layout
 - `caldir-core/src/provider/handler.rs` — `Handler` trait, default impls, `run_provider`
 - `caldir-core/src/rpc/` — the request/response struct shapes (every one flattens `remote: RemoteConfigParams`)
+- **If the provider builds `Event` structs from a wire format** (e.g. `google_event/from_google.rs`, `outlook_event/from_outlook.rs`): `caldir-core/src/event.rs` (struct + builders), `caldir-core/src/event/{status,transparency,attendee,organizer,reminder,x_property,instance_id}.rs` — the new struct shape diverges substantially from the pre-migration one; do NOT trust the old struct literal as a template.
 - `docs/providers.md` — written contract
 
 ### 2. Rewrite `main.rs`
@@ -116,7 +117,46 @@ Per file:
 - Replace `&cmd.remote_config` → `&cmd.remote` for `ListEvents`/`CreateEvent`/`UpdateEvent`/`DeleteEvent`.
 - For `connect.rs`: `CredentialField`, `CredentialsData`, `FieldType`, `ConnectStepKind`, `ConnectResponse` all come from `caldir_core::rpc::{...}` now. `cmd.data` is still `serde_json::Map<String, serde_json::Value>` — no change.
 - For `list_calendars.rs`: when building each `CalendarConfig`, use `CaldavRemoteConfig::new(...).into_remote_config_params()` and wrap with `RemoteConfig::new(ProviderSlug::from(PROVIDER_NAME), params)`. `CalendarConfig::new(name, color, read_only, Some(remote_config))` takes individual fields, not a struct literal.
-- Anywhere you pass `&event.uid` to a function expecting `&str`: change to `event.uid.as_str()` (the `uid` field is now an `EventUid` newtype).
+- Anywhere you pass `&event.uid` to a function expecting `&str`: change to `event.uid.as_str()` (the `uid` field is now an `EventUid` newtype). To construct, use `EventUid::new(s)`.
+- `event.custom_property(KEY)` → `event.x_property(KEY)` (returns `Option<&str>`).
+- `event.recurrence_id` is `Option<RecurrenceId>` now (was `Option<EventTime>`). Wrap on construction via `RecurrenceId::from_event_time(et)`; unwrap via `.as_event_time()` to get back to `&EventTime`.
+
+### 4b. Rewrite event-conversion modules (`{provider}_event/*.rs`) if the provider has them
+
+Providers that talk to a wire-format event API (Google, Outlook, …) typically have a conversion module like `src/{provider}_event/from_{provider}.rs` + `to_{provider}.rs`. **This is the heaviest single part of most migrations** because the `caldir_core::Event` struct shape has changed substantially.
+
+Field-rename map for the struct literal in `from_{provider}.rs` (and the reverse in `to_{provider}.rs`):
+
+| Old field / type | New field / type |
+|---|---|
+| `uid: String` | `uid: EventUid` — construct via `EventUid::new(s)`, read via `.as_str()` |
+| `summary: String` | `summary: Option<String>` |
+| `end: EventTime` | `end: Option<EventTime>` |
+| `status: EventStatus` (variants `Confirmed`, `Tentative`, `Cancelled`) | `status: Option<Status>` — same variant names, but the enum was renamed |
+| `transparency: Transparency` | `transparency: Option<Transparency>` |
+| `reminders: Reminders(Vec<Reminder>)` (newtype wrapper) | `reminders: Vec<Reminder>` — wrapper is gone |
+| `Reminder { minutes }` | `Reminder { minutes_before_start }` |
+| `recurrence_id: Option<EventTime>` | `recurrence_id: Option<RecurrenceId>` — wrap via `RecurrenceId::from_event_time(et)`, unwrap via `.as_event_time()` |
+| `organizer: Option<Attendee>` | `organizer: Option<Organizer>` — `Organizer { email, name }`, no `status` field |
+| `Attendee { name, email, response_status }` | `Attendee { email, name, status }` — `response_status` → `status` |
+| `conference_url: Option<String>` (dedicated field) | **removed** — store as an `X-…-CONFERENCE` x_property instead |
+| `updated: Option<DateTime<Utc>>` | `last_modified: Option<DateTime<Utc>>` |
+| `custom_properties: Vec<CustomProperty>` | `x_properties: Vec<XProperty>` — `CustomProperty::new(name, value)` → `XProperty::new(name, value)` |
+| (new field) | `url: Option<String>` — set to `None` when constructing from a provider that has no URL concept |
+| `Recurrence { rrule, exdates }` | `Recurrence { rrule, exdates, rdates: Vec::new() }` |
+
+Imports become a single crate-root use:
+
+```rust
+use caldir_core::{
+    Attendee, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
+    RecurrenceId, Reminder, Status, Transparency, XProperty,
+};
+```
+
+If any of those aren't re-exported at the crate root yet, add them to `caldir-core/src/lib.rs`'s `pub use event::{...}` line. They're part of the public surface — providers shouldn't reach into a private module.
+
+The pre-migration `caldir_core::event::{Foo}` paths all go through this single crate-root import in the new layout.
 
 ### 5. Rewrite `session.rs` if the provider has one
 
@@ -145,10 +185,13 @@ impl Session {
     pub fn new(/* … */) -> Self { /* … */ }
 
     /// Filesystem slug. Forward-deterministic from the account identifier so
-    /// `SessionStore::load` can compute the path directly. Preserve any
-    /// existing replacement logic byte-for-byte — users have files on disk.
+    /// `SessionStore::load` can compute the path directly. **Copy the
+    /// existing replacement set byte-for-byte from the pre-migration code**
+    /// — users have files on disk under those names. Different providers
+    /// have used different sets historically (iCloud: `/ \ : @ .`; Google:
+    /// `/ \ :`). Do NOT normalize across providers.
     pub(super) fn slug(account_identifier: &str) -> String {
-        account_identifier.replace(['/', '\\', ':', '@', '.'], "_")
+        account_identifier.replace(['/', '\\', ':' /* … the provider's existing set … */], "_")
     }
 
     pub fn credentials(&self) -> (&str, &str) {
@@ -218,6 +261,18 @@ Mirror iCloud's test set: `save_writes_toml_under_session_subdir`, `load_round_t
 
 If the provider has no on-disk state (webcal-style), skip this whole file.
 
+#### Multiple credential stores
+
+Some providers persist more than one credential file — e.g. Google has both `session/{email}.toml` (OAuth tokens, one per account) and `app_config.toml` (a single self-hosted OAuth client_id/secret). Apply the same **pure-data + Store** split for each: one `AppConfig` struct + `AppConfigStore` alongside the `Session` + `SessionStore`. Each handler builds both from one `ProviderStorage` (it's `Clone`):
+
+```rust
+let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
+let session_store = SessionStore::new(storage.clone());
+let app_config_store = AppConfigStore::new(storage);
+```
+
+If one store needs the other (e.g. `SessionStore::load_valid` needs `AppConfigStore` to refresh local-mode OAuth tokens), thread it through as a parameter — don't have stores reach into each other or into globals.
+
 ### 6. Update `Cargo.toml`
 
 - Add `async-trait = "0.1"` if missing.
@@ -230,10 +285,15 @@ In root `Cargo.toml`, add the crate to `members`. The full list is preserved in 
 
 ### 8. `cargo check -p <provider>` and iterate
 
-Most remaining errors fall into the table at the top of this skill. Two non-obvious ones:
+Most remaining errors fall into the table at the top of this skill. A few non-obvious ones:
 
 - **`expected Value, found Value`** in remote_config.rs → toml version mismatch (step 6).
-- **`private module 'event'`** → swap `caldir_core::event::Event` for `caldir_core::Event` at the crate root.
+- **`private module 'event'`** → swap `caldir_core::event::Event` for `caldir_core::Event` at the crate root. Same for `Status`, `Transparency`, `XProperty`, `EventUid`, `RecurrenceId`, `Organizer` — all re-exported at the crate root.
+- **`no method named 'minutes' found for struct Reminder`** → renamed to `minutes_before_start`.
+- **`no field 'updated' on type Event`** → renamed to `last_modified`.
+- **`no field 'response_status' on type Attendee`** → renamed to `status`.
+- **`no field 'custom_properties' on type Event`** → renamed to `x_properties` (and `CustomProperty` → `XProperty`).
+- **`expected i64, found i32`** when building `google_calendar::types::EventReminder` or `Event::sequence` → google's int types differ from caldir's (`Event.sequence` is `Option<i32>`, google's is `i64`). Cast at the boundary.
 
 ### 9. Handle shared library drift (if any)
 
@@ -287,11 +347,15 @@ For session-bearing providers, an end-to-end check with a real account (`caldir 
 ## Common pitfalls
 
 - **Don't widen the migration scope.** The user asked to migrate one provider, not to clean up sibling providers or change the protocol. Shared library modules consumed by other crates (e.g. `caldir-provider-caldav`'s `caldav::ops`) should only be touched where they literally fail to compile.
+- **Don't trust the old `Event` struct literal as a template.** The new `Event` shape diverges substantially (many fields became `Option<…>`, several renamed, some wrappers removed, one new field). Read `caldir-core/src/event.rs` first; use the field-rename table in step 4b.
 - **Don't invent ICS helpers.** `Event::to_ics_string()` is the only path; if it's still `pub(crate)` in caldir-core, make it `pub` (it already is post-migration of caldav).
 - **Don't preserve `From<X> for RemoteConfig`.** The new `RemoteConfig` is constructed differently — callers should use `RemoteConfig::new(ProviderSlug::from(PROVIDER_NAME), params)`.
 - **Don't try to keep `ProviderRequestContext`** as an "optional" parameter "for compatibility." It's gone; threading it through is dead weight.
+- **Don't normalize slug rules across providers.** Each provider's pre-migration slug replacement set must be preserved byte-for-byte — users have files on disk under those exact names. Different providers historically used different sets.
+- **Don't be afraid of small caldir-core changes.** If a method or type needs to be `pub`, or a re-export is missing at the crate root, or a one-helper method would save N inline call-sites — fold it in. The migration is a partnership with caldir-core, not a fight against an immutable wall.
 - **Don't mock IO in tests.** Webcal tests parsing and filtering against static ICS strings — same pattern here. If a function only makes sense with a live server, it doesn't get a unit test.
 - **Don't leave `mod.rs` files behind.** Webcal uses the Rust 2018 layout: `foo.rs` alongside a `foo/` directory for submodules. If the target crate still has `foo/mod.rs`, `git mv` it to `foo.rs` so the structure matches.
+- **Don't trust rust-analyzer's diagnostics mid-migration.** It caches stale buffer state across large file rewrites and surfaces phantom errors against content that no longer exists. Trust `cargo check` / `just check` — not the editor squiggles.
 
 ## When this skill does NOT apply
 
