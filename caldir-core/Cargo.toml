@@ -2,6 +2,12 @@
 name = "caldir-core"
 version = "0.9.0"
 edition = "2024"
+description = "Core library for caldir calendar storage, sync, and provider protocol"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["calendar", "ics", "caldav", "sync"]
+categories = ["data-structures"]
 
 [dependencies]
 async-trait = "0.1"
