@@ -49,7 +49,7 @@ pub struct Event {
     pub reminders: Vec<Reminder>,
     pub url: Option<String>,
 
-    #[educe(PartialEq(ignore))]
+    #[educe(PartialEq(method(x_properties_eq)))]
     pub x_properties: Vec<XProperty>,
 
     #[educe(PartialEq(ignore))]
@@ -232,6 +232,12 @@ impl<'de> Deserialize<'de> for Event {
 fn new_uid() -> EventUid {
     let uid = format!("{}@{}", uuid::Uuid::new_v4(), ICS_UID_DOMAIN);
     EventUid::new(uid)
+}
+
+// Order-independent compare: BTreeMap-parsed ICS files give alphabetical
+// order, but providers (e.g. Google) build x_properties in insertion order.
+fn x_properties_eq(a: &[XProperty], b: &[XProperty]) -> bool {
+    a.len() == b.len() && a.iter().all(|x| b.contains(x))
 }
 
 #[cfg(test)]

@@ -247,17 +247,14 @@ mod tests {
 
     #[test]
     fn sync_metadata_only_differences_produce_no_diff() {
-        // Differences confined to LAST-MODIFIED, SEQUENCE, and X-properties
-        // are sync noise — they shouldn't surface as pending updates.
+        // Differences confined to LAST-MODIFIED and SEQUENCE are sync noise —
+        // they shouldn't surface as pending updates.
         let (_tmp, calendar) = test_calendar();
         let local_event = test_event();
 
         let mut remote_event = local_event.clone();
         remote_event.last_modified = Some(Utc::now() + chrono::Duration::days(1));
         remote_event.sequence += 1;
-        remote_event
-            .x_properties
-            .push(crate::event::XProperty::new("X-CUSTOM-FIELD", "value"));
 
         let calendar_event = calendar.create_event(local_event.clone()).unwrap();
 
@@ -273,6 +270,60 @@ mod tests {
 
         assert_eq!(diff.outgoing, vec![]);
         assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn x_property_change_surfaces_as_diff() {
+        let (_tmp, calendar) = test_calendar();
+        let mut local_event = test_event();
+        local_event
+            .x_properties
+            .push(crate::event::XProperty::new("X-GOOGLE-COLOR-ID", "5"));
+
+        let mut remote_event = local_event.clone();
+        remote_event.x_properties = vec![crate::event::XProperty::new("X-GOOGLE-COLOR-ID", "9")];
+        remote_event.last_modified = Some(Utc::now() + chrono::Duration::days(1));
+
+        let calendar_event = calendar.create_event(local_event.clone()).unwrap();
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(local_event.event_instance_id());
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote_event.clone())],
+            &synced_ids,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(
+            diff.incoming,
+            vec![EventChange::Update {
+                from: local_event,
+                to: remote_event,
+            }]
+        );
+    }
+
+    #[test]
+    fn x_properties_compare_equal_regardless_of_order() {
+        // Local files come from BTreeMap-backed ICS parsing (alphabetical),
+        // but providers like Google build x_properties in insertion order.
+        // Same content in different order must compare equal.
+        let mut event_a = test_event();
+        event_a.x_properties = vec![
+            crate::event::XProperty::new("X-GOOGLE-EVENT-ID", "abc"),
+            crate::event::XProperty::new("X-GOOGLE-COLOR-ID", "5"),
+        ];
+
+        let mut event_b = event_a.clone();
+        event_b.x_properties = vec![
+            crate::event::XProperty::new("X-GOOGLE-COLOR-ID", "5"),
+            crate::event::XProperty::new("X-GOOGLE-EVENT-ID", "abc"),
+        ];
+
+        assert_eq!(event_a, event_b);
     }
 
     #[test]
