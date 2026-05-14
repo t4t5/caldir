@@ -136,6 +136,17 @@ impl Event {
         event_start < to && event_end > from
     }
 
+    /// Like occurs_in_range(), but expands the RRULE for recurring events
+    /// so a master with `UNTIL` in the past correctly reports no overlap.
+    pub fn has_occurrence_in_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> bool {
+        if self.recurrence.is_some() {
+            !occurrences::expand_master(self, from, to, &std::collections::HashMap::new())
+                .is_empty()
+        } else {
+            self.occurs_in_range(from, to)
+        }
+    }
+
     /// True if email is an attendee but NOT the organizer
     pub fn is_invite_for(&self, email: &str) -> bool {
         let is_attendee = self.find_attendee(email).is_some();
@@ -755,8 +766,7 @@ END:VCALENDAR
 
     #[test]
     fn with_x_properties_merged_from_carries_through_base_only_properties() {
-        // If local is missing an entire X-property the remote has, preserve it
-        // — same data-preservation principle as the param-level case.
+        // If local is missing the whole property, preserve it from base.
         let mut local = Event::new(
             "Test",
             EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),

@@ -55,7 +55,7 @@ pub fn expand_in_range(
     result
 }
 
-fn expand_master(
+pub(crate) fn expand_master(
     master: &Event,
     from: DateTime<Utc>,
     to: DateTime<Utc>,

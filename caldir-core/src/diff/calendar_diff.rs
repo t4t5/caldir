@@ -52,11 +52,10 @@ impl CalendarDiff {
                 continue;
             }
 
-            // Out-of-window non-recurring events: remote didn't fetch them,
-            // so we can't classify them. Leave untouched.
-            if event.recurrence.is_none()
-                && let (Some(from), Some(to)) = (range.from, range.to)
-                && !event.occurs_in_range(from, to)
+            // Out-of-window events aren't in the remote response, so we
+            // can't tell if they're deleted or just out of range. Skip.
+            if let (Some(from), Some(to)) = (range.from, range.to)
+                && !event.has_occurrence_in_range(from, to)
             {
                 continue;
             }
@@ -126,6 +125,7 @@ fn local_is_newer(local: &CalendarEvent, remote: &RemoteEvent) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Event;
     use crate::event::EventTime;
     use crate::test_utils::{test_calendar, test_calendar_event, test_event};
     use chrono::{TimeZone, Utc};
@@ -188,6 +188,35 @@ mod tests {
         );
 
         assert_eq!(diff.outgoing, vec![EventChange::Delete(remote_event)]);
+        assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn expired_recurring_event_not_flagged_as_delete() {
+        // Expired recurring event (UNTIL in the past) has no occurrences in
+        // the sync window, but it's not deleted — don't flag it as one.
+        let (_tmp, calendar) = test_calendar();
+
+        let mut event = Event::new(
+            "Old recurring",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(1968, 5, 8).unwrap()),
+        );
+        event.recurrence = Some(crate::event::Recurrence::new(
+            "FREQ=YEARLY;UNTIL=20080507T120000Z",
+        ));
+        let calendar_event = calendar.create_event(event.clone()).unwrap();
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(event.event_instance_id());
+
+        let range = DateRange {
+            from: Some(Utc.with_ymd_and_hms(2025, 5, 14, 0, 0, 0).unwrap()),
+            to: Some(Utc.with_ymd_and_hms(2027, 5, 14, 0, 0, 0).unwrap()),
+        };
+
+        let diff = CalendarDiff::compute(vec![calendar_event], vec![], &synced_ids, &range);
+
+        assert_eq!(diff.outgoing, vec![]);
         assert_eq!(diff.incoming, vec![]);
     }
 
