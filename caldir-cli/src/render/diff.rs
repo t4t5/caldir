@@ -1,6 +1,7 @@
 use crate::render::time::format_datetime;
 use caldir_core::{
     Attendee, Caldir, Calendar, CalendarDiff, EventChange, Recurrence, Reminder, TimeFormat,
+    XProperty,
 };
 use owo_colors::OwoColorize;
 use std::collections::{HashMap, HashSet};
@@ -307,6 +308,56 @@ fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
         }
         if old.url != new.url {
             lines.push(render_optional_diff("url", &old.url, &new.url));
+        }
+        let xprop_lines = render_x_property_diffs(&old.x_properties, &new.x_properties);
+        if !xprop_lines.is_empty() {
+            lines.push(format!("{}:", "x-properties".dimmed()));
+            lines.extend(xprop_lines.into_iter().map(|l| format!("  {}", l)));
+        }
+    }
+
+    lines
+}
+
+/// Render x-property changes as add/remove/update lines, keyed by name.
+fn render_x_property_diffs(old: &[XProperty], new: &[XProperty]) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    let old_by_name: HashMap<&str, &XProperty> = old.iter().map(|p| (p.name.as_str(), p)).collect();
+    let new_by_name: HashMap<&str, &XProperty> = new.iter().map(|p| (p.name.as_str(), p)).collect();
+
+    for (name, old_p) in &old_by_name {
+        if let Some(new_p) = new_by_name.get(name)
+            && old_p != new_p
+        {
+            lines.push(format!(
+                "{}: {} → {}",
+                name.dimmed(),
+                old_p.value.red(),
+                new_p.value.green()
+            ));
+        }
+    }
+
+    for (name, new_p) in &new_by_name {
+        if !old_by_name.contains_key(name) {
+            lines.push(format!(
+                "{} {} {}",
+                "+".green(),
+                name.green(),
+                new_p.value.dimmed()
+            ));
+        }
+    }
+
+    for (name, old_p) in &old_by_name {
+        if !new_by_name.contains_key(name) {
+            lines.push(format!(
+                "{} {} {}",
+                "-".red(),
+                name.red(),
+                old_p.value.dimmed()
+            ));
         }
     }
 
