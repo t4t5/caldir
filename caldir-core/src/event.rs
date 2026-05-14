@@ -147,10 +147,18 @@ impl Event {
     }
 
     /// Find the attendee matching the given email (case-insensitive)
-    fn find_attendee(&self, email: &str) -> Option<&Attendee> {
+    pub fn find_attendee(&self, email: &str) -> Option<&Attendee> {
         self.attendees
             .iter()
             .find(|a| a.email.eq_ignore_ascii_case(email))
+    }
+
+    /// Find the first x-property value matching the given name.
+    pub fn x_property(&self, name: &str) -> Option<&str> {
+        self.x_properties
+            .iter()
+            .find(|x| x.name == name)
+            .map(|x| x.value.as_str())
     }
 
     #[cfg(test)]
@@ -216,7 +224,7 @@ impl<'de> Deserialize<'de> for Event {
 
 fn new_uid() -> EventUid {
     let uid = format!("{}@{}", uuid::Uuid::new_v4(), ICS_UID_DOMAIN);
-    EventUid::from_str(uid)
+    EventUid::new(uid)
 }
 
 #[cfg(test)]

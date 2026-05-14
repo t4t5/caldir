@@ -34,14 +34,11 @@ impl EventInstanceId {
                 let event_time = parse_recurrence_id(rid_str)?;
 
                 Ok(EventInstanceId::new(
-                    EventUid::from_str(uid_str.to_string()),
+                    EventUid::new(uid_str.to_string()),
                     Some(RecurrenceId::from_event_time(event_time)),
                 ))
             }
-            None => Ok(EventInstanceId::new(
-                EventUid::from_str(s.to_string()),
-                None,
-            )),
+            None => Ok(EventInstanceId::new(EventUid::new(s.to_string()), None)),
         }
     }
 
@@ -109,7 +106,7 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     fn uid() -> EventUid {
-        EventUid::from_str("abc123@hooli.com".to_string())
+        EventUid::new("abc123@hooli.com".to_string())
     }
 
     fn assert_round_trip(id: &EventInstanceId, expected_str: &str) {
@@ -185,7 +182,7 @@ mod tests {
     fn round_trips_uid_containing_double_underscore() {
         // Some providers emit UIDs with embedded "__" — rsplit_once on the
         // last occurrence keeps the rid intact.
-        let weird_uid = EventUid::from_str("event__weird@example.com".to_string());
+        let weird_uid = EventUid::new("event__weird@example.com".to_string());
         let id = EventInstanceId::new(
             weird_uid,
             Some(RecurrenceId::from_event_time(EventTime::Date(

@@ -69,13 +69,13 @@ mod tests {
     fn sample_ids() -> HashSet<EventInstanceId> {
         HashSet::from([
             EventInstanceId::new(
-                EventUid::from_str("t5slp0vorqgoasogqkvadjt9jj@hooli.com".to_string()),
+                EventUid::new("t5slp0vorqgoasogqkvadjt9jj@hooli.com".to_string()),
                 Some(RecurrenceId::from_event_time(EventTime::DateTimeUtc(
                     Utc.with_ymd_and_hms(2024, 6, 25, 17, 0, 0).unwrap(),
                 ))),
             ),
             EventInstanceId::new(
-                EventUid::from_str("t5slp0vorqgoasogqkvadjt9jj@hooli.com".to_string()),
+                EventUid::new("t5slp0vorqgoasogqkvadjt9jj@hooli.com".to_string()),
                 Some(RecurrenceId::from_event_time(EventTime::DateTimeFloating(
                     NaiveDate::from_ymd_opt(2024, 6, 25)
                         .unwrap()
@@ -84,7 +84,7 @@ mod tests {
                 ))),
             ),
             EventInstanceId::new(
-                EventUid::from_str("t81pd0rkq8ujaughbrjhh87svo@hooli.com".to_string()),
+                EventUid::new("t81pd0rkq8ujaughbrjhh87svo@hooli.com".to_string()),
                 None,
             ),
         ])

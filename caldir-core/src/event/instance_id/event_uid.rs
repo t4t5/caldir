@@ -3,8 +3,8 @@
 pub struct EventUid(String);
 
 impl EventUid {
-    pub fn from_str(uid: String) -> Self {
-        EventUid(uid)
+    pub fn new(uid: impl Into<String>) -> Self {
+        EventUid(uid.into())
     }
 
     pub fn as_str(&self) -> &str {

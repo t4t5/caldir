@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn converts_uid() {
         let mut event = test_event();
-        event.uid = EventUid::from_str("abc123@hooli.com".to_string());
+        event.uid = EventUid::new("abc123@hooli.com".to_string());
 
         let ical_event: icalendar::Event = event.into();
 

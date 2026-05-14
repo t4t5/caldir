@@ -1,21 +1,28 @@
 use anyhow::{Context, Result, anyhow};
-use caldir_core::event::{Event, EventTime};
-use caldir_core::remote::protocol::{CreateEvent, ProviderRequestContext};
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::CreateEvent;
+use caldir_core::{Event, EventTime};
 use google_calendar::types::SendUpdates;
 
-use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
+use crate::app_config::AppConfigStore;
+use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
-use crate::session::Session;
+use crate::session::SessionStore;
 
-pub async fn handle(context: ProviderRequestContext, cmd: CreateEvent) -> Result<Event> {
-    let config = GoogleRemoteConfig::try_from(&cmd.remote_config)?;
+pub async fn handle(cmd: CreateEvent) -> Result<Event> {
+    let config = GoogleRemoteConfig::try_from(&cmd.remote)?;
     let account_email = &config.google_account;
     let calendar_id = &config.google_calendar_id;
 
-    let client = Session::load_valid(&context, account_email)
-        .await?
-        .client(&context)?;
+    let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
+    let session_store = SessionStore::new(storage.clone());
+    let app_config_store = AppConfigStore::new(storage);
+
+    let session = session_store
+        .load_valid(account_email, &app_config_store)
+        .await?;
+    let client = session_store.client(&session, &app_config_store)?;
 
     // Recurring instance overrides share the master's iCalUID, so creating
     // them via events().insert() trips Google's "duplicate identifier" check.
@@ -25,7 +32,7 @@ pub async fn handle(context: ProviderRequestContext, cmd: CreateEvent) -> Result
     if let Some(rid) = cmd.event.recurrence_id.as_ref() {
         let master_id = cmd
             .event
-            .custom_property(PROVIDER_EVENT_ID_PROPERTY)
+            .x_property(PROVIDER_EVENT_ID_PROPERTY)
             .ok_or_else(|| {
                 anyhow!(
                     "Cannot create recurring instance override without master's \
@@ -33,7 +40,11 @@ pub async fn handle(context: ProviderRequestContext, cmd: CreateEvent) -> Result
                 )
             })?;
 
-        let instance_id = format!("{}_{}", master_id, google_instance_suffix(rid));
+        let instance_id = format!(
+            "{}_{}",
+            master_id,
+            google_instance_suffix(rid.as_event_time())
+        );
 
         let mut google_event = cmd.event.to_google();
         google_event.id = instance_id.clone();

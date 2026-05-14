@@ -47,7 +47,7 @@ impl TryFrom<&icalendar::Event> for Event {
             .collect();
 
         Ok(Event {
-            uid: EventUid::from_str(uid),
+            uid: EventUid::new(uid),
             summary: value.get_summary().map(ToString::to_string),
             description: value.get_description().map(ToString::to_string),
             location: value.get_location().map(ToString::to_string),

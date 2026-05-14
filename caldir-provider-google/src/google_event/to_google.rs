@@ -1,5 +1,5 @@
-use caldir_core::event::{
-    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Transparency,
+use caldir_core::{
+    Attendee, Event, EventTime, ParticipationStatus, Recurrence, RecurrenceId, Status, Transparency,
 };
 
 use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
@@ -11,15 +11,19 @@ pub trait ToGoogle {
 impl ToGoogle for Event {
     fn to_google(&self) -> google_calendar::types::Event {
         let start = event_time_to_google(&self.start);
-        let end = event_time_to_google(&self.end);
+        let end = self
+            .end
+            .as_ref()
+            .map(event_time_to_google)
+            .unwrap_or(start.clone());
 
-        let status = match self.status {
-            EventStatus::Confirmed => "confirmed".to_string(),
-            EventStatus::Tentative => "tentative".to_string(),
-            EventStatus::Cancelled => "cancelled".to_string(),
+        let status = match self.status.unwrap_or(Status::Confirmed) {
+            Status::Confirmed => "confirmed".to_string(),
+            Status::Tentative => "tentative".to_string(),
+            Status::Cancelled => "cancelled".to_string(),
         };
 
-        let transparency = match self.transparency {
+        let transparency = match self.transparency.unwrap_or(Transparency::Opaque) {
             Transparency::Opaque => "opaque".to_string(),
             Transparency::Transparent => "transparent".to_string(),
         };
@@ -27,10 +31,10 @@ impl ToGoogle for Event {
         let valid_reminders: Vec<_> = self
             .reminders
             .iter()
-            .filter(|r| r.minutes > 0)
+            .filter(|r| r.minutes_before_start > 0)
             .map(|r| google_calendar::types::EventReminder {
                 method: "popup".to_string(),
-                minutes: r.minutes,
+                minutes: r.minutes_before_start,
             })
             .collect();
         let reminders = if valid_reminders.is_empty() {
@@ -51,23 +55,26 @@ impl ToGoogle for Event {
             .map(recurrence_to_google)
             .unwrap_or_default();
 
-        let original_start_time = self.recurrence_id.as_ref().map(event_time_to_google);
+        let original_start_time = self
+            .recurrence_id
+            .as_ref()
+            .map(RecurrenceId::as_event_time)
+            .map(event_time_to_google);
 
-        // Get Google's event ID from custom properties (if available)
         let google_event_id = self
-            .custom_property(PROVIDER_EVENT_ID_PROPERTY)
+            .x_property(PROVIDER_EVENT_ID_PROPERTY)
             .unwrap_or_default()
             .to_string();
 
         let color_id = self
-            .custom_property(PROVIDER_COLOR_ID_PROPERTY)
+            .x_property(PROVIDER_COLOR_ID_PROPERTY)
             .unwrap_or_default()
             .to_string();
 
         google_calendar::types::Event {
             id: google_event_id,
-            i_cal_uid: self.uid.clone(),
-            summary: self.summary.clone(),
+            i_cal_uid: self.uid.as_str().to_string(),
+            summary: self.summary.clone().unwrap_or_default(),
             description: self.description.clone().unwrap_or_default(),
             location: self.location.clone().unwrap_or_default(),
             start: Some(start),
@@ -78,7 +85,7 @@ impl ToGoogle for Event {
             attendees,
             recurrence,
             original_start_time,
-            sequence: self.sequence.unwrap_or(0),
+            sequence: self.sequence.unwrap_or(0) as i64,
             color_id,
             ..Default::default()
         }
@@ -90,7 +97,7 @@ fn attendee_to_google(attendee: &Attendee) -> google_calendar::types::EventAtten
         email: attendee.email.clone(),
         display_name: attendee.name.clone().unwrap_or_default(),
         response_status: attendee
-            .response_status
+            .status
             .map(participation_status_to_google)
             .unwrap_or("needsAction")
             .to_string(),

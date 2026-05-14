@@ -1,7 +1,7 @@
 use anyhow::Result;
-use caldir_core::event::{
-    Attendee, CustomProperty, Event, EventStatus, EventTime, ParticipationStatus, Recurrence,
-    Reminder, Reminders, Transparency,
+use caldir_core::{
+    Attendee, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence, RecurrenceId,
+    Reminder, Status, Transparency, XProperty,
 };
 
 use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
@@ -21,52 +21,54 @@ impl FromGoogle for Event {
         let end = google_dt_to_event_time(event.end.as_ref())
             .ok_or_else(|| anyhow::anyhow!("Event has no end time ({})", describe_event(&event)))?;
 
-        let status = match event.status.as_str() {
-            "tentative" => EventStatus::Tentative,
-            "cancelled" => EventStatus::Cancelled,
-            _ => EventStatus::Confirmed,
-        };
+        let status = Some(match event.status.as_str() {
+            "tentative" => Status::Tentative,
+            "cancelled" => Status::Cancelled,
+            _ => Status::Confirmed,
+        });
 
         let recurrence = parse_google_recurrence(&event.recurrence);
 
-        let recurrence_id = google_dt_to_event_time(event.original_start_time.as_ref());
+        let recurrence_id = google_dt_to_event_time(event.original_start_time.as_ref())
+            .map(RecurrenceId::from_event_time);
 
-        let reminders = if let Some(ref rem) = event.reminders {
+        let reminders: Vec<Reminder> = if let Some(ref rem) = event.reminders {
             rem.overrides
                 .iter()
-                .map(|r| Reminder { minutes: r.minutes })
+                .map(|r| Reminder {
+                    minutes_before_start: r.minutes,
+                })
                 .collect()
         } else {
-            Reminders(vec![])
+            Vec::new()
         };
 
-        let transparency = if event.transparency == "transparent" {
+        let transparency = Some(if event.transparency == "transparent" {
             Transparency::Transparent
         } else {
             Transparency::Opaque
-        };
+        });
 
-        let organizer = event.organizer.as_ref().map(|o| Attendee {
+        let organizer = event.organizer.as_ref().map(|o| Organizer {
+            email: o.email.clone(),
             name: if o.display_name.is_empty() {
                 None
             } else {
                 Some(o.display_name.clone())
             },
-            email: o.email.clone(),
-            response_status: None,
         });
 
         let attendees: Vec<Attendee> = event
             .attendees
             .iter()
             .map(|a| Attendee {
+                email: a.email.clone(),
                 name: if a.display_name.is_empty() {
                     None
                 } else {
                     Some(a.display_name.clone())
                 },
-                email: a.email.clone(),
-                response_status: google_to_participation_status(&a.response_status),
+                status: google_to_participation_status(&a.response_status),
             })
             .collect();
 
@@ -77,22 +79,23 @@ impl FromGoogle for Event {
                 .map(|ep| ep.uri.clone())
         });
 
-        let mut custom_properties = Vec::new();
+        let mut x_properties = Vec::new();
         // Store Google's event ID for API calls (updates, deletes)
-        custom_properties.push(CustomProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id));
+        x_properties.push(XProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id));
         if let Some(ref url) = conference_url {
-            custom_properties.push(CustomProperty::new("X-GOOGLE-CONFERENCE", url));
+            x_properties.push(XProperty::new("X-GOOGLE-CONFERENCE", url));
         }
         if !event.color_id.is_empty() {
-            custom_properties.push(CustomProperty::new(
-                PROVIDER_COLOR_ID_PROPERTY,
-                event.color_id,
-            ));
+            x_properties.push(XProperty::new(PROVIDER_COLOR_ID_PROPERTY, event.color_id));
         }
 
         Ok(Event {
-            uid: event.i_cal_uid,
-            summary: event.summary,
+            uid: EventUid::new(event.i_cal_uid),
+            summary: if event.summary.is_empty() {
+                None
+            } else {
+                Some(event.summary)
+            },
             description: if event.description.is_empty() {
                 None
             } else {
@@ -104,22 +107,22 @@ impl FromGoogle for Event {
                 Some(event.location)
             },
             start,
-            end,
+            end: Some(end),
             status,
+            transparency,
             recurrence,
             recurrence_id,
-            reminders,
-            transparency,
-            organizer,
-            attendees,
-            conference_url,
-            updated: event.updated,
+            last_modified: event.updated,
             sequence: if event.sequence > 0 {
-                Some(event.sequence)
+                Some(event.sequence as i32)
             } else {
                 None
             },
-            custom_properties,
+            organizer,
+            attendees,
+            reminders,
+            url: None,
+            x_properties,
         })
     }
 }
@@ -161,7 +164,11 @@ fn parse_google_recurrence(entries: &[String]) -> Option<Recurrence> {
         .flatten()
         .collect();
 
-    Some(Recurrence { rrule, exdates })
+    Some(Recurrence {
+        rrule,
+        exdates,
+        rdates: Vec::new(),
+    })
 }
 
 /// Parse a single EXDATE value string into an EventTime.

@@ -1,23 +1,30 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use caldir_core::event::{CustomProperty, Event, EventStatus, EventTime, Reminders};
-use caldir_core::remote::protocol::{ListEvents, ProviderRequestContext};
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::ListEvents;
+use caldir_core::{Event, EventTime, EventUid, RecurrenceId, Status, Transparency, XProperty};
 use google_calendar::types::OrderBy;
 
-use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
+use crate::app_config::AppConfigStore;
+use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::google_event::{FromGoogle, google_dt_to_event_time};
 use crate::remote_config::GoogleRemoteConfig;
-use crate::session::Session;
+use crate::session::SessionStore;
 
-pub async fn handle(context: ProviderRequestContext, cmd: ListEvents) -> Result<Vec<Event>> {
-    let config = GoogleRemoteConfig::try_from(&cmd.remote_config)?;
+pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
+    let config = GoogleRemoteConfig::try_from(&cmd.remote)?;
     let account_email = &config.google_account;
     let calendar_id = &config.google_calendar_id;
 
-    let client = Session::load_valid(&context, account_email)
-        .await?
-        .client(&context)?;
+    let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
+    let session_store = SessionStore::new(storage.clone());
+    let app_config_store = AppConfigStore::new(storage);
+
+    let session = session_store
+        .load_valid(account_email, &app_config_store)
+        .await?;
+    let client = session_store.client(&session, &app_config_store)?;
 
     let google_events = client
         .events()
@@ -115,27 +122,31 @@ fn cancellation_to_event(
     };
 
     Some(Event {
-        uid,
-        summary,
+        uid: EventUid::new(uid),
+        summary: if summary.is_empty() {
+            None
+        } else {
+            Some(summary)
+        },
         description: None,
         location: None,
         start,
-        end,
-        status: EventStatus::Cancelled,
+        end: Some(end),
+        status: Some(Status::Cancelled),
+        transparency: Some(Transparency::Opaque),
         recurrence: None,
-        recurrence_id: Some(recurrence_id),
-        reminders: Reminders(Vec::new()),
-        transparency: caldir_core::event::Transparency::Opaque,
-        organizer: None,
-        attendees: Vec::new(),
-        conference_url: None,
-        updated: ge.updated,
+        recurrence_id: Some(RecurrenceId::from_event_time(recurrence_id)),
+        last_modified: ge.updated,
         sequence: if ge.sequence > 0 {
-            Some(ge.sequence)
+            Some(ge.sequence as i32)
         } else {
             None
         },
-        custom_properties: vec![CustomProperty::new(PROVIDER_EVENT_ID_PROPERTY, &ge.id)],
+        organizer: None,
+        attendees: Vec::new(),
+        reminders: Vec::new(),
+        url: None,
+        x_properties: vec![XProperty::new(PROVIDER_EVENT_ID_PROPERTY, &ge.id)],
     })
 }
 
@@ -201,12 +212,13 @@ mod tests {
 
         assert_eq!(result.len(), 2);
         let cancellation = result.iter().find(|e| e.recurrence_id.is_some()).unwrap();
-        assert_eq!(cancellation.uid, "uid@google.com");
-        assert_eq!(cancellation.summary, "Weekly retro");
-        assert_eq!(cancellation.status, EventStatus::Cancelled);
+        assert_eq!(cancellation.uid.as_str(), "uid@google.com");
+        assert_eq!(cancellation.summary.as_deref(), Some("Weekly retro"));
+        assert_eq!(cancellation.status, Some(Status::Cancelled));
+        let rid_event_time = cancellation.recurrence_id.as_ref().unwrap().as_event_time();
         assert!(matches!(
-            cancellation.recurrence_id,
-            Some(EventTime::DateTimeZoned { ref tzid, .. }) if tzid == "Europe/Oslo"
+            rid_event_time,
+            EventTime::DateTimeZoned { tzid, .. } if tzid == "Europe/Oslo"
         ));
     }
 
@@ -222,9 +234,9 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].uid, "orphan_master@google.com");
-        assert_eq!(result[0].summary, "");
-        assert_eq!(result[0].status, EventStatus::Cancelled);
+        assert_eq!(result[0].uid.as_str(), "orphan_master@google.com");
+        assert_eq!(result[0].summary, None);
+        assert_eq!(result[0].status, Some(Status::Cancelled));
     }
 
     #[test]
@@ -256,8 +268,8 @@ mod tests {
         let result =
             process_google_events(vec![master("m1", "uid1@google.com", "Weekly retro")]).unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0].uid, "uid1@google.com");
+        assert_eq!(result[0].uid.as_str(), "uid1@google.com");
         assert!(result[0].recurrence.is_some());
-        assert_eq!(result[0].status, EventStatus::Confirmed);
+        assert_eq!(result[0].status, Some(Status::Confirmed));
     }
 }
