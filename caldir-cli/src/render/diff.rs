@@ -319,7 +319,7 @@ fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
     lines
 }
 
-/// Render x-property changes as add/remove/update lines, keyed by name.
+// Includes attributes on the property, not just the value
 fn render_x_property_diffs(old: &[XProperty], new: &[XProperty]) -> Vec<String> {
     let mut lines = Vec::new();
 
@@ -330,12 +330,7 @@ fn render_x_property_diffs(old: &[XProperty], new: &[XProperty]) -> Vec<String> 
         if let Some(new_p) = new_by_name.get(name)
             && old_p != new_p
         {
-            lines.push(format!(
-                "{}: {} → {}",
-                name.dimmed(),
-                old_p.value.red(),
-                new_p.value.green()
-            ));
+            lines.extend(render_x_property_change(name, old_p, new_p));
         }
     }
 
@@ -358,6 +353,64 @@ fn render_x_property_diffs(old: &[XProperty], new: &[XProperty]) -> Vec<String> 
                 name.red(),
                 old_p.value.dimmed()
             ));
+        }
+    }
+
+    lines
+}
+
+fn render_x_property_change(name: &str, old: &XProperty, new: &XProperty) -> Vec<String> {
+    let mut lines = Vec::new();
+    let param_lines = render_x_property_param_diffs(&old.params, &new.params);
+
+    if old.value != new.value {
+        lines.push(format!(
+            "{}: {} → {}",
+            name.dimmed(),
+            old.value.red(),
+            new.value.green()
+        ));
+    } else if !param_lines.is_empty() {
+        lines.push(format!("{}:", name.dimmed()));
+    }
+
+    lines.extend(param_lines.into_iter().map(|l| format!("  {}", l)));
+    lines
+}
+
+fn render_x_property_param_diffs(
+    old: &[(String, String)],
+    new: &[(String, String)],
+) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    let old_params: HashMap<&str, &str> =
+        old.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let new_params: HashMap<&str, &str> =
+        new.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+
+    for (k, old_v) in &old_params {
+        if let Some(new_v) = new_params.get(k)
+            && new_v != old_v
+        {
+            lines.push(format!(
+                "{}: {} → {}",
+                k.dimmed(),
+                old_v.red(),
+                new_v.green()
+            ));
+        }
+    }
+
+    for (k, new_v) in &new_params {
+        if !old_params.contains_key(k) {
+            lines.push(format!("{} {}={}", "+".green(), k.green(), new_v.dimmed()));
+        }
+    }
+
+    for (k, old_v) in &old_params {
+        if !new_params.contains_key(k) {
+            lines.push(format!("{} {}={}", "-".red(), k.red(), old_v.dimmed()));
         }
     }
 

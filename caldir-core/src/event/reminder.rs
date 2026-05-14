@@ -55,11 +55,9 @@ impl Reminder {
         humantime::format_duration(Duration::from_secs(seconds)).to_string()
     }
 
-    /// Parse display VALARMs that represent "N minutes before event start".
-    ///
-    /// Other alarm forms are intentionally ignored: absolute alarms, alarms
-    /// relative to the event end, positive offsets, audio/email actions, and
-    /// repeat rules are outside caldir's reminder model.
+    /// We intentionally treat all alarms the same,
+    /// and don't distinguish between ACTION:DISPLAY, ACTION:AUDIO, or ACTION:EMAIL.
+    /// (How alarms are handled should be up to the app layer instead)
     pub(crate) fn from_ical_event(event: &icalendar::Event) -> Vec<Self> {
         let mut reminders: Vec<Self> = event
             .components()
@@ -71,17 +69,7 @@ impl Reminder {
         reminders
     }
 
-    /// Build a [`Reminder`] from any `VALARM`-shaped component.
-    ///
-    /// Generic over [`Component`] because `icalendar::Other` (the type returned
-    /// by `Event::components()` for child VALARMs) is not part of the crate's
-    /// public API.
     fn from_valarm<C: Component + ?Sized>(value: &C) -> Result<Self, ()> {
-        let action = value.property_value("ACTION").unwrap_or("DISPLAY");
-        if !action.eq_ignore_ascii_case("DISPLAY") {
-            return Err(());
-        }
-
         let trigger_prop = value.properties().get("TRIGGER").ok_or(())?;
         parse_trigger_minutes_before_start(trigger_prop).map(Reminder::from_minutes)
     }
@@ -310,11 +298,22 @@ mod tests {
     }
 
     #[test]
-    fn skips_non_display_alarm() {
-        let reminders =
-            parse_reminders("BEGIN:VALARM\r\nACTION:AUDIO\r\nTRIGGER:-PT10M\r\nEND:VALARM");
+    fn accepts_audio_alarm() {
+        // iCloud emits AUDIO alarms by default
+        let reminder = parse_reminder(
+            "BEGIN:VALARM\r\nACTION:AUDIO\r\nATTACH:Basso\r\nTRIGGER:-PT10M\r\nEND:VALARM",
+        );
 
-        assert!(reminders.is_empty());
+        assert_eq!(reminder, Reminder::from_minutes(10));
+    }
+
+    #[test]
+    fn accepts_email_alarm() {
+        let reminder = parse_reminder(
+            "BEGIN:VALARM\r\nACTION:EMAIL\r\nATTENDEE:mailto:a@b.com\r\nTRIGGER:-PT10M\r\nEND:VALARM",
+        );
+
+        assert_eq!(reminder, Reminder::from_minutes(10));
     }
 
     #[test]
