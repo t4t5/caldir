@@ -53,9 +53,9 @@ impl TryFrom<&icalendar::Event> for Event {
 
         Ok(Event {
             uid: EventUid::new(uid),
-            summary: value.get_summary().map(ToString::to_string),
-            description: value.get_description().map(ToString::to_string),
-            location: value.get_location().map(ToString::to_string),
+            summary: non_empty(value.get_summary()),
+            description: non_empty(value.get_description()),
+            location: non_empty(value.get_location()),
             start,
             end,
             status,
@@ -84,6 +84,13 @@ impl TryFrom<icalendar::Event> for Event {
     fn try_from(value: icalendar::Event) -> Result<Self, Self::Error> {
         Event::try_from(&value)
     }
+}
+
+// A bare `SUMMARY:` (or DESCRIPTION/LOCATION) line carries no information
+// `None` doesn't. Normalizing here keeps cross-provider comparison stable —
+// Google omits the property when empty, iCloud sometimes emits it bare.
+fn non_empty(s: Option<&str>) -> Option<String> {
+    s.filter(|v| !v.is_empty()).map(ToString::to_string)
 }
 
 #[cfg(test)]
@@ -132,6 +139,24 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.summary.as_deref(), Some("Hello world"));
+    }
+
+    #[test]
+    fn empty_summary_description_and_location_become_none() {
+        // Bare `SUMMARY:` lines (and friends) should round-trip equal to a
+        // missing property — keeps `Some("") != None` from showing as a diff
+        // when one side has the bare line and the other has nothing.
+        let ical_event = test_icalendar_event()
+            .summary("")
+            .description("")
+            .location("")
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.summary, None);
+        assert_eq!(event.description, None);
+        assert_eq!(event.location, None);
     }
 
     #[test]

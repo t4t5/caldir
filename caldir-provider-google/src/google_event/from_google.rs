@@ -117,7 +117,9 @@ impl FromGoogle for Event {
             organizer,
             attendees,
             reminders,
-            url: None,
+            // Also mirrored in X-GOOGLE-CONFERENCE — kept here so local files
+            // round-trip stably (Google's API has no writable URL field).
+            url: conference_url,
             x_properties,
         })
     }
@@ -337,5 +339,38 @@ mod tests {
         let event = Event::from_google(ge).unwrap();
 
         assert_eq!(event.transparency, Transparency::Transparent);
+    }
+
+    #[test]
+    fn conference_url_populates_url_and_x_google_conference() {
+        // Google has no writable URL field, so we mirror the conference URL
+        // into Event.url for round-trip stability with legacy local files.
+        let mut ge = minimal_event();
+        ge.conference_data = Some(
+            serde_json::from_value(serde_json::json!({
+                "entryPoints": [
+                    {"entryPointType": "video", "uri": "https://meet.google.com/abc-def-ghi"}
+                ]
+            }))
+            .unwrap(),
+        );
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(
+            event.url.as_deref(),
+            Some("https://meet.google.com/abc-def-ghi")
+        );
+        assert_eq!(
+            event.x_property("X-GOOGLE-CONFERENCE"),
+            Some("https://meet.google.com/abc-def-ghi")
+        );
+    }
+
+    #[test]
+    fn no_conference_data_leaves_url_none() {
+        let event = Event::from_google(minimal_event()).unwrap();
+
+        assert_eq!(event.url, None);
     }
 }
