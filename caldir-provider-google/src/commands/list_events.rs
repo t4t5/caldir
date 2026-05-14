@@ -26,6 +26,16 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
         .await?;
     let client = session_store.client(&session, &app_config_store)?;
 
+    // The calendar's default reminders apply
+    // to every event with `reminders.useDefault: true`
+    let default_reminders = client
+        .calendar_list()
+        .list_get(calendar_id)
+        .await
+        .context("Failed to fetch calendar default reminders")?
+        .body
+        .default_reminders;
+
     let google_events = client
         .events()
         .list_all(
@@ -49,7 +59,7 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
         .context("Failed to fetch events")?
         .body;
 
-    process_google_events(google_events)
+    process_google_events(google_events, &default_reminders)
 }
 
 /// Convert Google's raw events list into caldir Events.
@@ -62,12 +72,15 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
 ///
 /// Standalone deleted events arrive as tombstones too (no recurringEventId);
 /// those are dropped — there's nothing local to attach them to.
-fn process_google_events(google_events: Vec<google_calendar::types::Event>) -> Result<Vec<Event>> {
+fn process_google_events(
+    google_events: Vec<google_calendar::types::Event>,
+    default_reminders: &[google_calendar::types::EventReminder],
+) -> Result<Vec<Event>> {
     let mut master_info_by_google_id: HashMap<String, (String, String)> = HashMap::new();
     let mut cancellations: Vec<google_calendar::types::Event> = Vec::new();
     let mut events: Vec<Event> = Vec::with_capacity(google_events.len());
 
-    for ge in google_events {
+    for mut ge in google_events {
         let has_start = ge
             .start
             .as_ref()
@@ -84,6 +97,7 @@ fn process_google_events(google_events: Vec<google_calendar::types::Event>) -> R
             master_info_by_google_id
                 .insert(ge.id.clone(), (ge.i_cal_uid.clone(), ge.summary.clone()));
         }
+        apply_default_reminders(&mut ge, default_reminders);
         events.push(Event::from_google(ge)?);
     }
 
@@ -94,6 +108,21 @@ fn process_google_events(google_events: Vec<google_calendar::types::Event>) -> R
     }
 
     Ok(events)
+}
+
+/// Expand `reminders.useDefault: true` into explicit overrides so downstream
+/// conversion sees the same shape as an event with event-level reminders.
+fn apply_default_reminders(
+    ge: &mut google_calendar::types::Event,
+    default_reminders: &[google_calendar::types::EventReminder],
+) {
+    if let Some(rem) = ge.reminders.as_mut()
+        && rem.use_default
+        && rem.overrides.is_empty()
+    {
+        rem.overrides = default_reminders.to_vec();
+        rem.use_default = false;
+    }
 }
 
 fn cancellation_to_event(
@@ -197,14 +226,17 @@ mod tests {
 
     #[test]
     fn cancelled_recurring_instance_becomes_cancelled_override() {
-        let result = process_google_events(vec![
-            master("master_id", "uid@google.com", "Weekly retro"),
-            cancelled_instance(
-                "master_id_20260213T150000Z",
-                "master_id",
-                "2026-02-13T15:00:00Z",
-            ),
-        ])
+        let result = process_google_events(
+            vec![
+                master("master_id", "uid@google.com", "Weekly retro"),
+                cancelled_instance(
+                    "master_id_20260213T150000Z",
+                    "master_id",
+                    "2026-02-13T15:00:00Z",
+                ),
+            ],
+            &[],
+        )
         .unwrap();
 
         assert_eq!(result.len(), 2);
@@ -223,11 +255,14 @@ mod tests {
     fn cancellation_without_master_in_batch_falls_back_to_synthetic_uid() {
         // The master may sit outside the requested date range — we still want the
         // cancellation captured so the engine can skip the occurrence.
-        let result = process_google_events(vec![cancelled_instance(
-            "orphan_id_20260213T150000Z",
-            "orphan_master",
-            "2026-02-13T15:00:00Z",
-        )])
+        let result = process_google_events(
+            vec![cancelled_instance(
+                "orphan_id_20260213T150000Z",
+                "orphan_master",
+                "2026-02-13T15:00:00Z",
+            )],
+            &[],
+        )
         .unwrap();
 
         assert_eq!(result.len(), 1);
@@ -244,7 +279,7 @@ mod tests {
         tombstone.id = "deleted_id".into();
         tombstone.status = "cancelled".into();
 
-        let result = process_google_events(vec![tombstone]).unwrap();
+        let result = process_google_events(vec![tombstone], &[]).unwrap();
         assert!(result.is_empty());
     }
 
@@ -256,18 +291,60 @@ mod tests {
         bad.status = "cancelled".into();
         bad.recurring_event_id = "master".into();
 
-        let result = process_google_events(vec![bad]).unwrap();
+        let result = process_google_events(vec![bad], &[]).unwrap();
         assert!(result.is_empty());
     }
 
     #[test]
     fn normal_events_pass_through() {
         let result =
-            process_google_events(vec![master("m1", "uid1@google.com", "Weekly retro")]).unwrap();
+            process_google_events(vec![master("m1", "uid1@google.com", "Weekly retro")], &[])
+                .unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].uid.as_str(), "uid1@google.com");
         assert!(result[0].recurrence.is_some());
         assert_eq!(result[0].status, Status::Confirmed);
+    }
+
+    #[test]
+    fn use_default_reminders_expand_to_calendar_defaults() {
+        let mut ge = master("m1", "uid1@google.com", "Weekly retro");
+        ge.reminders = Some(g::Reminders {
+            use_default: true,
+            overrides: vec![],
+        });
+
+        let defaults = vec![g::EventReminder {
+            method: "popup".into(),
+            minutes: 30,
+        }];
+
+        let result = process_google_events(vec![ge], &defaults).unwrap();
+
+        assert_eq!(result[0].reminders.len(), 1);
+        assert_eq!(result[0].reminders[0].minutes_before_start, 30);
+    }
+
+    #[test]
+    fn explicit_overrides_are_not_overwritten_by_defaults() {
+        let mut ge = master("m1", "uid1@google.com", "Weekly retro");
+        ge.reminders = Some(g::Reminders {
+            use_default: false,
+            overrides: vec![g::EventReminder {
+                method: "popup".into(),
+                minutes: 10,
+            }],
+        });
+
+        let defaults = vec![g::EventReminder {
+            method: "popup".into(),
+            minutes: 30,
+        }];
+
+        let result = process_google_events(vec![ge], &defaults).unwrap();
+
+        assert_eq!(result[0].reminders.len(), 1);
+        assert_eq!(result[0].reminders[0].minutes_before_start, 10);
     }
 
     #[test]
@@ -278,7 +355,7 @@ mod tests {
         let mut ge = master("m1", "uid1@google.com", "Weekly retro");
         ge.status = "cancelled".into();
 
-        let result = process_google_events(vec![ge]).unwrap();
+        let result = process_google_events(vec![ge], &[]).unwrap();
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].uid.as_str(), "uid1@google.com");
