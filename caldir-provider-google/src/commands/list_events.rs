@@ -36,7 +36,8 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
             &[],
             "", // search query
             &[],
-            false,
+            true, // show_deleted: include cancelled events so they surface as
+            // STATUS:CANCELLED locally rather than disappearing silently.
             false,
             false,
             &cmd.to,
@@ -267,5 +268,20 @@ mod tests {
         assert_eq!(result[0].uid.as_str(), "uid1@google.com");
         assert!(result[0].recurrence.is_some());
         assert_eq!(result[0].status, Status::Confirmed);
+    }
+
+    #[test]
+    fn cancelled_event_with_full_data_passes_through_as_cancelled() {
+        // With showDeleted=true, Google returns cancelled masters as full
+        // events. They flow through Event::from_google and surface with
+        // Status::Cancelled rather than being treated as remote deletions.
+        let mut ge = master("m1", "uid1@google.com", "Weekly retro");
+        ge.status = "cancelled".into();
+
+        let result = process_google_events(vec![ge]).unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].uid.as_str(), "uid1@google.com");
+        assert_eq!(result[0].status, Status::Cancelled);
     }
 }

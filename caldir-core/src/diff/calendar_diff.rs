@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::event_change::EventChange;
+use crate::event::Status;
 use crate::{CalendarEvent, DateRange, RemoteEvent, calendar::SyncedEventIds};
 
 pub struct CalendarDiff {
@@ -38,6 +39,14 @@ impl CalendarDiff {
                     continue;
                 }
 
+                // Both cancelled: treat as in-sync regardless of field drift.
+                // Cancelled events are historical; we don't churn syncing them.
+                if event.status == Status::Cancelled
+                    && remote_event.event().status == Status::Cancelled
+                {
+                    continue;
+                }
+
                 if local_is_newer(local_event, remote_event) {
                     outgoing.push(EventChange::Update {
                         from: remote_event.event().clone(),
@@ -72,6 +81,15 @@ impl CalendarDiff {
 
             // Already in local and remote, skip
             if local_event_ids.contains(&id) {
+                continue;
+            }
+
+            // Missing locally + cancelled on remote: treat as already in sync.
+            // A missing file is semantically equivalent to STATUS:CANCELLED —
+            // both mean "not active". Avoids resurrecting tombstones on pull
+            // and avoids spurious push-deletes for events Google has already
+            // cancelled.
+            if remote_event.event().status == Status::Cancelled {
                 continue;
             }
 
@@ -188,6 +206,85 @@ mod tests {
         );
 
         assert_eq!(diff.outgoing, vec![EventChange::Delete(remote_event)]);
+        assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn invitee_seeing_cancellation_gets_status_flip_update() {
+        // Active local + cancelled remote (same UID) → pull the status flip
+        // so the user sees the cancellation in their calendar.
+        let (_tmp, calendar) = test_calendar();
+        let event = test_event();
+        let calendar_event = calendar.create_event(event.clone()).unwrap();
+
+        let mut cancelled = event.clone();
+        cancelled.status = Status::Cancelled;
+        // Cancellation happens on the provider side, so the remote LAST-MODIFIED
+        // is fresher than the local file's mtime — pull direction. Far-future
+        // timestamp keeps the test deterministic vs. the just-written tempfile.
+        cancelled.last_modified = Some(Utc.with_ymd_and_hms(3000, 1, 1, 0, 0, 0).unwrap());
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![RemoteEvent::new(cancelled.clone())],
+            &SyncedEventIds::new(),
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(
+            diff.incoming,
+            vec![EventChange::Update {
+                from: event,
+                to: cancelled,
+            }]
+        );
+    }
+
+    #[test]
+    fn missing_local_cancelled_remote_is_skipped() {
+        // No local file + remote cancelled tombstone → already in sync.
+        // Prevents spurious "outgoing delete" churn and stops cancelled
+        // tombstones from being re-created on pull.
+        let mut cancelled = test_event();
+        cancelled.status = Status::Cancelled;
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(cancelled.event_instance_id());
+
+        let diff = CalendarDiff::compute(
+            vec![],
+            vec![RemoteEvent::new(cancelled)],
+            &synced_ids,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn both_cancelled_with_field_drift_is_skipped() {
+        // Same UID, both cancelled, but local has stripped data and remote
+        // has full data. Don't surface this as churn — cancelled events are
+        // historical record, the field-shape drift doesn't matter.
+        let (_tmp, calendar) = test_calendar();
+        let mut local = test_event();
+        local.status = Status::Cancelled;
+        let calendar_event = calendar.create_event(local.clone()).unwrap();
+
+        let mut remote = local.clone();
+        remote.summary = Some("Now with extra data".into());
+        remote.location = Some("Somewhere".into());
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote)],
+            &SyncedEventIds::new(),
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
         assert_eq!(diff.incoming, vec![]);
     }
 
