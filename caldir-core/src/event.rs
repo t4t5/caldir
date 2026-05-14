@@ -31,7 +31,8 @@ const ICS_PRODID: &str = "CALDIR";
 const ICS_VERSION: &str = "2.0";
 const ICS_UID_DOMAIN: &str = "caldir";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq, educe::Educe)]
+#[educe(PartialEq)]
 pub struct Event {
     pub uid: EventUid,
     pub summary: Option<String>,
@@ -43,13 +44,19 @@ pub struct Event {
     pub transparency: Transparency,
     pub recurrence: Option<Recurrence>,
     pub recurrence_id: Option<RecurrenceId>,
-    pub last_modified: Option<DateTime<Utc>>,
-    pub sequence: i32,
     pub organizer: Option<Organizer>,
     pub attendees: Vec<Attendee>,
     pub reminders: Vec<Reminder>,
     pub url: Option<String>,
+
+    #[educe(PartialEq(ignore))]
     pub x_properties: Vec<XProperty>,
+
+    #[educe(PartialEq(ignore))]
+    pub last_modified: Option<DateTime<Utc>>,
+
+    #[educe(PartialEq(ignore))]
+    pub sequence: i32,
 }
 
 impl Event {

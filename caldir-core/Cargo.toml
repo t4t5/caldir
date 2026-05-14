@@ -8,6 +8,7 @@ async-trait = "0.1"
 chrono = "0.4.42"
 chrono-tz = "0.10.4"
 dirs = "6.0.0"
+educe = { version = "0.6.0", default-features = false, features = ["PartialEq"] }
 home = "0.5.12"
 humantime = "2.3.0"
 icalendar = "0.17.10"

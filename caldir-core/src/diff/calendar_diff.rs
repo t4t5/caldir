@@ -246,6 +246,36 @@ mod tests {
     }
 
     #[test]
+    fn sync_metadata_only_differences_produce_no_diff() {
+        // Differences confined to LAST-MODIFIED, SEQUENCE, and X-properties
+        // are sync noise — they shouldn't surface as pending updates.
+        let (_tmp, calendar) = test_calendar();
+        let local_event = test_event();
+
+        let mut remote_event = local_event.clone();
+        remote_event.last_modified = Some(Utc::now() + chrono::Duration::days(1));
+        remote_event.sequence += 1;
+        remote_event
+            .x_properties
+            .push(crate::event::XProperty::new("X-CUSTOM-FIELD", "value"));
+
+        let calendar_event = calendar.create_event(local_event.clone()).unwrap();
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(local_event.event_instance_id());
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote_event)],
+            &synced_ids,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
     fn updated_remote_event_becomes_incoming_update() {
         let (_tmp, calendar) = test_calendar();
         let local_event = test_event();
