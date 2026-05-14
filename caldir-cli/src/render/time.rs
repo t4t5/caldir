@@ -1,7 +1,8 @@
 use caldir_core::{EventTime, TimeFormat};
-use chrono::{NaiveDateTime, Timelike};
+use chrono::{Datelike, NaiveDateTime, Timelike};
 
-/// Format a date as a human-readable label (e.g. "Today", "Tomorrow", "Wed Feb 25")
+/// Format a date as a human-readable label (e.g. "Today", "Tomorrow", "Wed Feb 25").
+/// The year is appended when the date is not in the current year (e.g. "Wed Feb 25 2023").
 pub fn format_date_only(time: &EventTime) -> String {
     let today = chrono::Local::now().date_naive();
 
@@ -16,7 +17,8 @@ pub fn format_date_only(time: &EventTime) -> String {
     match diff {
         0 => "Today".to_string(),
         1 => "Tomorrow".to_string(),
-        _ => date.format("%a %b %-d").to_string(),
+        _ if date.year() == today.year() => date.format("%a %b %-d").to_string(),
+        _ => date.format("%a %b %-d %Y").to_string(),
     }
 }
 

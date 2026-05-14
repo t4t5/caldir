@@ -39,7 +39,9 @@ impl Render for EventChange {
         };
 
         let summary = colorize_diff(self, event.summary().unwrap_or("(Untitled)"));
+
         let time = format_datetime(&event.start, caldir.config().time_format());
+
         let recurring = if event.recurrence.is_some() {
             " 🔁"
         } else {
@@ -554,7 +556,6 @@ fn render_recurrence_diff(old: &Option<Recurrence>, new: &Option<Recurrence>) ->
                 ));
             }
             // Show exdate changes
-            use std::collections::HashSet;
             let old_set: HashSet<_> = old_rec
                 .exdates
                 .iter()
