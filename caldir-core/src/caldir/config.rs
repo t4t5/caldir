@@ -106,6 +106,12 @@ impl CaldirConfig {
         Ok(())
     }
 
+    /// Persist to the user's system config file (e.g. `~/.config/caldir/config.toml`).
+    /// Tests should call [`Self::write`] with an explicit path instead.
+    pub fn save(&self) -> Result<(), CaldirConfigError> {
+        self.write(&Self::default_system_config_path()?)
+    }
+
     /// Caldir config directory:
     /// - Linux/BSD: `$XDG_CONFIG_HOME/caldir` or `~/.config/caldir`
     /// - macOS: `~/.config/caldir`

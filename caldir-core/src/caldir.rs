@@ -110,8 +110,13 @@ impl Caldir {
         &self.config
     }
 
-    pub fn update_config(&mut self, new_config: CaldirConfig) {
+    /// Persist `new_config` to disk and adopt it as the in-memory config.
+    /// Either both sides commit or neither — on write failure the in-memory
+    /// config is left untouched.
+    pub fn save_config(&mut self, new_config: CaldirConfig) -> Result<(), CaldirError> {
+        new_config.save()?;
         self.config = new_config;
+        Ok(())
     }
 
     /// Generate a unique slug that doesn't conflict with existing calendar directories.

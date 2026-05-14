@@ -3,7 +3,7 @@ use caldir_core::rpc::{
     ConnectResponse, ConnectStepKind, CredentialsData, FieldType, HostedOAuthData, OAuthData,
     SetupData,
 };
-use caldir_core::{Caldir, CaldirConfig, Calendar, CalendarConfig, Connection, ProviderSlug};
+use caldir_core::{Caldir, Calendar, CalendarConfig, Connection, ProviderSlug};
 use dialoguer::MultiSelect;
 use std::collections::HashMap;
 use std::io::{self, Write};
@@ -184,9 +184,7 @@ async fn run_parsed(caldir: &mut Caldir, provider_slug: ProviderSlug, hosted: bo
     {
         let mut config = caldir.config().clone();
         config.set_default_calendar_slug(Some(slug.to_string()));
-        let config_path = CaldirConfig::default_system_config_path()?;
-        config.write(&config_path)?;
-        caldir.update_config(config);
+        caldir.save_config(config)?;
     }
 
     println!("\nCalendars saved to {}\n", caldir.data_dir().display());
