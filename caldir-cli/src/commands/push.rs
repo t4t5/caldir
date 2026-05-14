@@ -11,7 +11,8 @@ pub async fn run(
     verbose: bool,
     force: bool,
 ) -> Result<()> {
-    let connections = connections(caldir, calendar.as_deref());
+    let calendar_slugs: Vec<String> = calendar.into_iter().collect();
+    let connections = connections(caldir, &calendar_slugs);
     let range = DateRange::default();
     let mut applied: Vec<CalendarDiff> = Vec::new();
     let total = connections.len();

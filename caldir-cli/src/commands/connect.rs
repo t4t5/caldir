@@ -189,16 +189,9 @@ async fn run_parsed(caldir: &mut Caldir, provider_slug: ProviderSlug, hosted: bo
 
     println!("\nCalendars saved to {}\n", caldir.data_dir().display());
 
-    // Load the newly created calendars and do an initial pull
-    let calendars: Vec<Calendar> = created_slugs
-        .iter()
-        .filter_map(|slug| caldir.calendar(slug).ok())
-        .collect();
-
-    if !calendars.is_empty() {
+    if !created_slugs.is_empty() {
         println!("Pulling events...\n");
-        // TODO: PULL EVENTS BY DEFAULT:
-        // super::pull::run(caldir, calendars, DateRange::default(), false).await?;
+        super::pull::run(caldir, created_slugs, None, None, false).await?;
     }
 
     Ok(())

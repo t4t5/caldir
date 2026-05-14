@@ -7,12 +7,12 @@ use crate::utils::{connections, count_changes, resolve_sync_range, tui};
 
 pub async fn run(
     caldir: &Caldir,
-    calendar: Option<String>,
+    calendar_slugs: Vec<String>,
     from: Option<String>,
     to: Option<String>,
     verbose: bool,
 ) -> Result<()> {
-    let connections = connections(caldir, calendar.as_deref());
+    let connections = connections(caldir, &calendar_slugs);
     let range = resolve_sync_range(from, to)?;
     let mut applied: Vec<CalendarDiff> = Vec::new();
     let total = connections.len();

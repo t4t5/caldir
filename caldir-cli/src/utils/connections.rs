@@ -1,15 +1,26 @@
 use caldir_core::{Caldir, CaldirError, Connection, EventChange};
 
-/// Return the caldir's connections, optionally narrowed to a single calendar slug.
-pub fn connections(caldir: &Caldir, slug: Option<&str>) -> Vec<Result<Connection, CaldirError>> {
+/// Return the caldir's connections, optionally narrowed to specific calendar slugs.
+/// An empty `calendar_slugs` slice returns all connections.
+pub fn connections(
+    caldir: &Caldir,
+    calendar_slugs: &[String],
+) -> Vec<Result<Connection, CaldirError>> {
     let all = caldir.connections();
-    match slug {
-        Some(s) => all
-            .into_iter()
-            .filter(|conn| conn.as_ref().ok().and_then(|c| c.local().slug()) == Some(s))
-            .collect(),
-        None => all,
+
+    if calendar_slugs.is_empty() {
+        return all;
     }
+
+    all.into_iter()
+        .filter(|conn| {
+            conn.as_ref()
+                .ok()
+                .and_then(|c| c.local().slug())
+                .map(|s| calendar_slugs.iter().any(|x| x == s))
+                .unwrap_or(false)
+        })
+        .collect()
 }
 
 /// Count `(created, updated, deleted)` over a sequence of event changes.

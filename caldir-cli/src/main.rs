@@ -224,7 +224,7 @@ async fn main() -> Result<()> {
             from,
             to,
             verbose,
-        } => commands::pull::run(&caldir, calendar, from, to, verbose).await,
+        } => commands::pull::run(&caldir, calendar.into_iter().collect(), from, to, verbose).await,
         Commands::Push {
             calendar,
             verbose,

@@ -15,7 +15,8 @@ pub async fn run(
     verbose: bool,
     force: bool,
 ) -> Result<()> {
-    let connections = connections(caldir, calendar.as_deref());
+    let calendar_slugs: Vec<String> = calendar.into_iter().collect();
+    let connections = connections(caldir, &calendar_slugs);
     let range = resolve_sync_range(from, to)?;
     let mut pulled: Counts = (0, 0, 0);
     let mut pushed: Counts = (0, 0, 0);
