@@ -61,6 +61,10 @@ impl CalendarConfig {
         self.name.as_deref()
     }
 
+    pub fn color(&self) -> Option<&str> {
+        self.color.as_deref()
+    }
+
     pub fn read_only(&self) -> Option<bool> {
         self.read_only
     }

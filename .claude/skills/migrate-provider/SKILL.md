@@ -6,9 +6,13 @@ user_invocable: true
 
 # /migrate-provider — Port a provider to the new caldir-core surface
 
-`caldir-provider-webcal` and `caldir-provider-caldav` are the **reference implementations** of the new pattern. When migrating, open it side-by-side and copy the shape — not the contents — into the target crate. `docs/providers.md` is the written contract.
+The reference implementations of the new pattern, by area:
 
-If you're unsure whether a file should change: diff its shape against the equivalent file in webcal.
+- **Overall shape** (`main.rs`, `remote_config.rs`, the `commands/*.rs` handlers): `caldir-provider-webcal`. Read-only, no session — the simplest possible incarnation of the new surface.
+- **Sessions / on-disk credentials**: `caldir-provider-icloud`. The canonical `Session` (pure data) + `SessionStore` (IO with injected `ProviderStorage`) split, including the direct-path `load` shape that all future providers should mirror.
+- **Shared `pub mod` library consumed by sibling providers**: `caldir-provider-caldav`. iCloud reuses its `caldav::ops` for the actual CalDAV calls.
+
+When migrating, open the relevant one side-by-side and copy the shape — not the contents — into the target crate. `docs/providers.md` is the written contract.
 
 ## Source vs. target at a glance
 
@@ -35,6 +39,7 @@ Open these in order — don't migrate without them:
 - `caldir-provider-webcal/src/remote_config.rs` — the `TryFrom<&RemoteConfigParams>` + `into_remote_config_params` pattern
 - `caldir-provider-webcal/src/commands/connect.rs` — the credentials-step shape (uses `caldir_core::rpc::{ConnectStepKind, CredentialField, CredentialsData, FieldType}`)
 - `caldir-provider-webcal/src/commands/list_events.rs` — the `cmd.remote` field usage
+- **If the provider stores credentials**: `caldir-provider-icloud/src/session.rs` (re-export entry), `session/types.rs` (pure `Session` + forward-deterministic slug), `session/store.rs` (`SessionStore` with direct-path `load`, chmod, tempdir-based tests) — the canonical session-storage layout
 - `caldir-core/src/provider/handler.rs` — `Handler` trait, default impls, `run_provider`
 - `caldir-core/src/rpc/` — the request/response struct shapes (every one flattens `remote: RemoteConfigParams`)
 - `docs/providers.md` — written contract
@@ -115,16 +120,48 @@ Per file:
 
 ### 5. Rewrite `session.rs` if the provider has one
 
-Two structs:
+iCloud's session module is the canonical shape — mirror it. Three files under `src/session/`, all with co-located `#[cfg(test)] mod tests`:
 
-- **`Session`** — pure data. Credentials, discovered URLs, plus pure helpers like `account_identifier` / `credentials` / `new`. **No method on `Session` reads env vars or touches the filesystem.**
-- **`SessionStore`** — owns all IO. Takes a `ProviderStorage` at construction; exposes `save(&Session)` and `load(account_identifier) -> Session`.
+**`src/session.rs`** — module entry, re-exports only:
+
+```rust
+mod store;
+mod types;
+pub use store::SessionStore;
+pub use types::Session;
+```
+
+**`src/session/types.rs`** — pure data; no IO, no env vars, no `ProviderRequestContext`. `Session::slug` is forward-deterministic from one input (the account identifier), which is what lets the store compute paths directly instead of scanning:
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Session {
+    pub account_identifier: String,     // whatever uniquely identifies the account
+    pub credential: String,             // password / token / refresh token / …
+    // …any discovered URLs, expiry timestamps, etc.
+}
+
+impl Session {
+    pub fn new(/* … */) -> Self { /* … */ }
+
+    /// Filesystem slug. Forward-deterministic from the account identifier so
+    /// `SessionStore::load` can compute the path directly. Preserve any
+    /// existing replacement logic byte-for-byte — users have files on disk.
+    pub(super) fn slug(account_identifier: &str) -> String {
+        account_identifier.replace(['/', '\\', ':', '@', '.'], "_")
+    }
+
+    pub fn credentials(&self) -> (&str, &str) {
+        (&self.account_identifier, &self.credential)
+    }
+}
+```
+
+**`src/session/store.rs`** — all IO. Holds an injected `ProviderStorage`. `load` computes the path directly (no scan); the on-disk slug is forward-deterministic from the account identifier:
 
 ```rust
 use caldir_core::provider::ProviderStorage;
-
-pub struct Session { /* fields */ }
-impl Session { /* new, account_identifier, credentials, private slug, … */ }
+use super::Session;
 
 pub struct SessionStore {
     storage: ProviderStorage,
@@ -132,8 +169,32 @@ pub struct SessionStore {
 
 impl SessionStore {
     pub fn new(storage: ProviderStorage) -> Self { Self { storage } }
-    pub fn save(&self, session: &Session) -> Result<()> { /* writes under storage.root() */ }
-    pub fn load(&self, account_identifier: &str) -> Result<Session> { /* reads under storage.root() */ }
+
+    pub fn save(&self, session: &Session) -> Result<()> {
+        let path = self.path_for(&session.account_identifier);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(&path, toml::to_string_pretty(session)?)?;
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+        }
+        Ok(())
+    }
+
+    pub fn load(&self, account_identifier: &str) -> Result<Session> {
+        let path = self.path_for(account_identifier);
+        if !path.exists() {
+            anyhow::bail!("session for {} not found!", account_identifier);
+        }
+        Ok(toml::from_str(&std::fs::read_to_string(&path)?)?)
+    }
+
+    fn session_dir(&self) -> PathBuf { self.storage.root().join("session") }
+    fn path_for(&self, account_identifier: &str) -> PathBuf {
+        self.session_dir().join(format!("{}.toml", Session::slug(account_identifier)))
+    }
 }
 ```
 
@@ -150,6 +211,8 @@ Tests construct the store with an explicit tempdir — no env vars, no parallel-
 let tmp = tempfile::TempDir::new()?;
 let store = SessionStore::new(ProviderStorage::new(tmp.path()));
 ```
+
+Mirror iCloud's test set: `save_writes_toml_under_session_subdir`, `load_round_trips_by_account_identifier`, `load_errors_when_missing`, and `#[cfg(unix)] save_chmods_session_file_to_0600`. Add `tempfile = "3"` under `[dev-dependencies]`.
 
 **Preserve** existing slug derivation logic byte-for-byte — users already have session files on disk under those filenames. **Preserve** the `0o600` chmod on Unix.
 

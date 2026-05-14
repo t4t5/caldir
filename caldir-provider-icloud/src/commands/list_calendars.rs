@@ -28,22 +28,20 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
 ///
 /// Pure transformation — no IO — so it can be unit-tested without a server.
 fn raw_to_config(account_id: &str, cal: RawCalendar) -> CalendarConfig {
-    let color = cal.color.map(|c| normalize_color(&c));
+    // iCloud returns colors as `#RRGGBBAA` — strip the alpha so caldir
+    // stores the standard `#RRGGBB` form.
+    let color = cal.color.map(|c| {
+        if c.len() == 9 && c.starts_with('#') {
+            c[..7].to_string()
+        } else {
+            c
+        }
+    });
 
     let params = ICloudRemoteConfig::new(account_id, &cal.url).into_remote_config_params();
     let remote_config = RemoteConfig::new(ProviderSlug::from(PROVIDER_NAME), params);
 
     CalendarConfig::new(Some(cal.name), color, cal.read_only, Some(remote_config))
-}
-
-/// iCloud returns colors as `#RRGGBBAA`. Strip the alpha so caldir
-/// stores the standard `#RRGGBB` form.
-fn normalize_color(color: &str) -> String {
-    if color.len() == 9 && color.starts_with('#') {
-        color[..7].to_string()
-    } else {
-        color.to_string()
-    }
 }
 
 #[cfg(test)]
@@ -61,20 +59,45 @@ mod tests {
     }
 
     #[test]
-    fn normalize_color_strips_alpha_from_rrggbbaa() {
-        assert_eq!(normalize_color("#0099ffaa"), "#0099ff");
+    fn normalizes_rrggbbaa_color_to_rrggbb() {
+        let cfg = raw_to_config(
+            "me@icloud.com",
+            raw(
+                "Personal",
+                "https://p01-caldav.icloud.com/123/calendars/personal/",
+                Some("#0099ffaa"),
+                Some(false),
+            ),
+        );
+        assert_eq!(cfg.color(), Some("#0099ff"));
     }
 
     #[test]
-    fn normalize_color_passes_through_rrggbb() {
-        assert_eq!(normalize_color("#0099ff"), "#0099ff");
+    fn passes_through_short_color_unchanged() {
+        let cfg = raw_to_config(
+            "me@icloud.com",
+            raw(
+                "Personal",
+                "https://p01-caldav.icloud.com/123/calendars/personal/",
+                Some("#0099ff"),
+                None,
+            ),
+        );
+        assert_eq!(cfg.color(), Some("#0099ff"));
     }
 
     #[test]
-    fn normalize_color_passes_through_unrecognized() {
-        // Anything that's not `#` + 8 hex chars is left alone.
-        assert_eq!(normalize_color("blue"), "blue");
-        assert_eq!(normalize_color("#abc"), "#abc");
+    fn passes_through_no_color() {
+        let cfg = raw_to_config(
+            "me@icloud.com",
+            raw(
+                "Personal",
+                "https://p01-caldav.icloud.com/123/calendars/personal/",
+                None,
+                None,
+            ),
+        );
+        assert_eq!(cfg.color(), None);
     }
 
     #[test]
