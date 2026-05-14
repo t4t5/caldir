@@ -55,7 +55,12 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         .transpose()?
         .map(RecurrenceId::from_event_time);
 
-    let reminders: Vec<Reminder> = if event.reminder_minutes_before_start > 0 {
+    // Graph keeps `reminderMinutesBeforeStart` at its last value (typically
+    // the mailbox default of 15) even when the user turns the reminder off,
+    // so the bool is the only reliable signal. A 0-minute reminder with
+    // `isReminderOn: true` ("fire at event start") is also a legitimate state
+    // that must round-trip.
+    let reminders: Vec<Reminder> = if event.is_reminder_on {
         vec![Reminder {
             minutes_before_start: event.reminder_minutes_before_start,
         }]
@@ -541,6 +546,51 @@ mod tests {
             parsed.original_start.as_deref(),
             Some("2026-05-01T16:00:00Z")
         );
+    }
+
+    // Microsoft Graph leaves `reminderMinutesBeforeStart` at its last value
+    // (often the mailbox default of 15) when the user disables the reminder,
+    // so gating on the number alone would create phantom reminders for events
+    // the user explicitly turned reminders off on.
+    #[test]
+    fn reminder_off_with_default_minutes_emits_no_reminder() {
+        let mut ge = minimal_graph_event();
+        ge.is_reminder_on = false;
+        ge.reminder_minutes_before_start = 15;
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert!(
+            event.reminders.is_empty(),
+            "expected no reminder when isReminderOn=false, got {:?}",
+            event.reminders
+        );
+    }
+
+    // "Fire at event start" is a legitimate Outlook setting and must survive
+    // the inbound conversion.
+    #[test]
+    fn reminder_on_with_zero_minutes_emits_zero_minute_reminder() {
+        let mut ge = minimal_graph_event();
+        ge.is_reminder_on = true;
+        ge.reminder_minutes_before_start = 0;
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.reminders.len(), 1);
+        assert_eq!(event.reminders[0].minutes_before_start, 0);
+    }
+
+    #[test]
+    fn reminder_on_with_positive_minutes_round_trips() {
+        let mut ge = minimal_graph_event();
+        ge.is_reminder_on = true;
+        ge.reminder_minutes_before_start = 30;
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.reminders.len(), 1);
+        assert_eq!(event.reminders[0].minutes_before_start, 30);
     }
 
     #[test]

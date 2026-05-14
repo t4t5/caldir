@@ -75,7 +75,10 @@ pub struct GraphEvent {
     #[serde(default, skip_serializing_if = "is_zero_i64")]
     pub reminder_minutes_before_start: i64,
     /// Outlook ignores `reminderMinutesBeforeStart` unless this is also set, so
-    /// `to_outlook` always emits both. On inbound it's ignored.
+    /// `to_outlook` always emits both. On inbound this is the source of truth
+    /// for whether a reminder exists — `reminderMinutesBeforeStart` retains its
+    /// last value (typically the mailbox default of 15) even when the user has
+    /// turned the reminder off.
     #[serde(default, skip_serializing_if = "is_false")]
     pub is_reminder_on: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
