@@ -132,8 +132,9 @@ Field-rename map for the struct literal in `from_{provider}.rs` (and the reverse
 | `uid: String` | `uid: EventUid` — construct via `EventUid::new(s)`, read via `.as_str()` |
 | `summary: String` | `summary: Option<String>` |
 | `end: EventTime` | `end: Option<EventTime>` |
-| `status: EventStatus` (variants `Confirmed`, `Tentative`, `Cancelled`) | `status: Option<Status>` — same variant names, but the enum was renamed |
-| `transparency: Transparency` | `transparency: Option<Transparency>` |
+| `status: EventStatus` (variants `Confirmed`, `Tentative`, `Cancelled`) | `status: Status` — same variant names, enum was renamed. **Non-Option**: missing/default = `Status::Confirmed` (RFC 5545 default). Map provider "confirmed" / empty / unknown straight to `Status::Confirmed` — do NOT encode "default" as `None` or invent an Option wrapper |
+| `transparency: Transparency` | `transparency: Transparency` (shape unchanged). **Non-Option**: missing/default = `Transparency::Opaque`. Map provider "opaque" / empty straight to `Transparency::Opaque` |
+| `sequence: Option<i64>` | `sequence: i32` — **non-Option**, default 0 (RFC 5545 default). Map provider int directly (cast at the boundary); do NOT encode 0 as `None` |
 | `reminders: Reminders(Vec<Reminder>)` (newtype wrapper) | `reminders: Vec<Reminder>` — wrapper is gone |
 | `Reminder { minutes }` | `Reminder { minutes_before_start }` |
 | `recurrence_id: Option<EventTime>` | `recurrence_id: Option<RecurrenceId>` — wrap via `RecurrenceId::from_event_time(et)`, unwrap via `.as_event_time()` |
@@ -293,7 +294,7 @@ Most remaining errors fall into the table at the top of this skill. A few non-ob
 - **`no field 'updated' on type Event`** → renamed to `last_modified`.
 - **`no field 'response_status' on type Attendee`** → renamed to `status`.
 - **`no field 'custom_properties' on type Event`** → renamed to `x_properties` (and `CustomProperty` → `XProperty`).
-- **`expected i64, found i32`** when building `google_calendar::types::EventReminder` or `Event::sequence` → google's int types differ from caldir's (`Event.sequence` is `Option<i32>`, google's is `i64`). Cast at the boundary.
+- **`expected i64, found i32`** when building `google_calendar::types::EventReminder` or `Event::sequence` → provider int types often differ from caldir's (`Event.sequence` is `i32`, google's is `i64`). Cast at the boundary.
 
 ### 9. Handle shared library drift (if any)
 
@@ -348,6 +349,7 @@ For session-bearing providers, an end-to-end check with a real account (`caldir 
 
 - **Don't widen the migration scope.** The user asked to migrate one provider, not to clean up sibling providers or change the protocol. Shared library modules consumed by other crates (e.g. `caldir-provider-caldav`'s `caldav::ops`) should only be touched where they literally fail to compile.
 - **Don't trust the old `Event` struct literal as a template.** The new `Event` shape diverges substantially (many fields became `Option<…>`, several renamed, some wrappers removed, one new field). Read `caldir-core/src/event.rs` first; use the field-rename table in step 4b.
+- **Don't wrap RFC-default fields in `Option` or encode defaults as `None`.** `status`, `transparency`, and `sequence` have RFC 5545 defaults (`Confirmed`, `Opaque`, `0`) and are intentionally non-Option in the new core. If the provider API returns a default-equivalent value ("confirmed", "opaque", `0`), map it straight to the corresponding variant/zero — wrapping in `Some(...)` or encoding `0` as `None` reintroduces a phantom-Option class of bug where local files (which omit the line for defaults) compare unequal to freshly-fetched remote events.
 - **Don't invent ICS helpers.** `Event::to_ics_string()` is the only path; if it's still `pub(crate)` in caldir-core, make it `pub` (it already is post-migration of caldav).
 - **Don't preserve `From<X> for RemoteConfig`.** The new `RemoteConfig` is constructed differently — callers should use `RemoteConfig::new(ProviderSlug::from(PROVIDER_NAME), params)`.
 - **Don't try to keep `ProviderRequestContext`** as an "optional" parameter "for compatibility." It's gone; threading it through is dead weight.
