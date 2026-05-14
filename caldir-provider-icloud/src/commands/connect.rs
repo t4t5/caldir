@@ -1,21 +1,21 @@
 //! Handle the connect flow for iCloud Calendar.
 //!
 //! iCloud uses credential-based auth (Apple ID + app-specific password).
-//! The flow is two steps:
+//! Two steps:
 //! 1. Return credential field requirements (NeedsInput with Credentials)
-//! 2. Validate credentials, discover CalDAV endpoints, return Done
+//! 2. Validate credentials, discover CalDAV endpoints, save session, return Done
 
 use anyhow::Result;
-use caldir_core::remote::protocol::{
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::{
     Connect, ConnectResponse, ConnectStepKind, CredentialField, CredentialsData, FieldType,
-    ProviderRequestContext,
 };
 use caldir_provider_caldav::caldav::ops;
 
-use crate::constants::CALDAV_ENDPOINT;
-use crate::session::Session;
+use crate::constants::{CALDAV_ENDPOINT, PROVIDER_NAME};
+use crate::session::{Session, SessionStore};
 
-pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<ConnectResponse> {
+pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
     // If data contains credentials, this is the submit step.
     if cmd.data.contains_key("apple_id") {
         let apple_id = cmd
@@ -38,7 +38,8 @@ pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<Con
             &endpoints.principal_url,
             &endpoints.calendar_home_url,
         );
-        session.save(&context)?;
+        let store = SessionStore::new(ProviderStorage::for_provider(PROVIDER_NAME)?);
+        store.save(&session)?;
 
         return Ok(ConnectResponse::Done {
             account_identifier: Some(apple_id.to_string()),

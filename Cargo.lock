@@ -213,6 +213,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "caldir-provider-icloud"
+version = "0.2.8"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "caldir-core",
+ "caldir-provider-caldav",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+]
+
+[[package]]
 name = "caldir-provider-webcal"
 version = "0.1.2"
 dependencies = [

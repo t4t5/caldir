@@ -6,7 +6,7 @@ user_invocable: true
 
 # /migrate-provider — Port a provider to the new caldir-core surface
 
-`caldir-provider-webcal` is the **reference implementation** of the new pattern. When migrating, open it side-by-side and copy the shape — not the contents — into the target crate. `docs/providers.md` is the written contract.
+`caldir-provider-webcal` and `caldir-provider-caldav` are the **reference implementations** of the new pattern. When migrating, open it side-by-side and copy the shape — not the contents — into the target crate. `docs/providers.md` is the written contract.
 
 If you're unsure whether a file should change: diff its shape against the equivalent file in webcal.
 
