@@ -7,22 +7,28 @@
 //! 4. If OAuth credentials submitted → exchange for tokens, GET /me, return Done
 
 use anyhow::{Context, Result};
-use caldir_core::remote::protocol::{
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::{
     Connect, ConnectResponse, ConnectStepKind, CredentialField, FieldType, HostedOAuthData,
-    OAuthData, ProviderRequestContext, SetupData,
+    OAuthData, SetupData,
 };
 use url::Url;
 
-use crate::app_config::AppConfig;
+use crate::app_config::{AppConfig, AppConfigStore};
+use crate::constants::PROVIDER_NAME;
 use crate::graph_api::client::GraphClient;
 use crate::graph_api::types::GraphUser;
-use crate::session::{AuthMode, Session, SessionData};
+use crate::session::{AuthMode, Session, SessionData, SessionStore};
 
 const AUTHORIZE_URL: &str = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
 const TOKEN_URL: &str = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const SCOPES: &str = "Calendars.ReadWrite User.Read offline_access";
 
-pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<ConnectResponse> {
+pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
+    let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
+    let session_store = SessionStore::new(storage.clone());
+    let app_config_store = AppConfigStore::new(storage);
+
     let redirect_uri = cmd
         .options
         .get("redirect_uri")
@@ -55,11 +61,10 @@ pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<Con
             .and_then(|v| v.as_str())
             .context("Missing client_secret")?
             .to_string();
-        AppConfig {
+        app_config_store.save(&AppConfig {
             client_id,
             client_secret,
-        }
-        .save(&context)?;
+        })?;
         // Fall through to generate OAuth URL
     }
 
@@ -67,7 +72,8 @@ pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<Con
     let has_auth_data = cmd.data.contains_key("code") || cmd.data.contains_key("access_token");
 
     if has_auth_data {
-        let account_email = complete_auth(&context, &cmd, &redirect_uri).await?;
+        let account_email =
+            complete_auth(&cmd, &redirect_uri, &session_store, &app_config_store).await?;
         return Ok(ConnectResponse::Done {
             account_identifier: Some(account_email),
             calendars: None,
@@ -75,7 +81,7 @@ pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<Con
     }
 
     // Initial step: check if app config exists
-    if !AppConfig::exists(&context) {
+    if !app_config_store.exists() {
         if hosted {
             let port = Url::parse(&redirect_uri)?
                 .port()
@@ -125,7 +131,7 @@ pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<Con
     }
 
     // Self-hosted path: generate OAuth redirect URL
-    let app_config = AppConfig::load(&context)?;
+    let app_config = app_config_store.load()?;
 
     let state = format!("{:x}", rand_u64());
 
@@ -151,9 +157,10 @@ pub async fn handle(context: ProviderRequestContext, cmd: Connect) -> Result<Con
 
 /// Complete authentication by exchanging credentials for tokens.
 async fn complete_auth(
-    context: &ProviderRequestContext,
     cmd: &Connect,
     redirect_uri: &str,
+    session_store: &SessionStore,
+    app_config_store: &AppConfigStore,
 ) -> Result<String> {
     let (session_data, auth_mode, access_token) =
         if let Some(access_token) = cmd.data.get("access_token").and_then(|v| v.as_str()) {
@@ -189,7 +196,7 @@ async fn complete_auth(
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow::anyhow!("Missing 'code' in credentials"))?;
 
-            let app_config = AppConfig::load(context)?;
+            let app_config = app_config_store.load()?;
 
             let client = reqwest::Client::new();
             let response = client
@@ -242,8 +249,8 @@ async fn complete_auth(
 
     let account_email = user.email().to_string();
 
-    let session = Session::new(&account_email, session_data, auth_mode);
-    session.save(context)?;
+    let session = Session::new(&account_email, &session_data, auth_mode);
+    session_store.save(&session)?;
 
     Ok(account_email)
 }

@@ -1,6 +1,6 @@
 //! Convert caldir Event to a Microsoft Graph event.
 
-use caldir_core::event::{Event, EventTime, ParticipationStatus, Transparency};
+use caldir_core::{Event, EventTime, ParticipationStatus, Transparency};
 use chrono::{Datelike, Duration, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
 use crate::constants::HTML_DESC_PROPERTY;
@@ -24,7 +24,7 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
     .to_string();
 
     let (reminder_minutes, is_reminder_on) = match event.reminders.first() {
-        Some(r) => (r.minutes, true),
+        Some(r) => (r.minutes_before_start, true),
         None => (0, false),
     };
 
@@ -38,7 +38,7 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
             },
             status: Some(ResponseStatus {
                 response: a
-                    .response_status
+                    .status
                     .map(participation_status_to_outlook)
                     .unwrap_or("none")
                     .to_string(),
@@ -55,10 +55,10 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
     GraphEvent {
         id: String::new(),
         i_cal_uid: String::new(),
-        subject: event.summary.clone(),
+        subject: event.summary.clone().unwrap_or_default(),
         body,
         start: Some(event_time_to_graph(&event.start)),
-        end: Some(event_time_to_graph(&event.end)),
+        end: event.end.as_ref().map(event_time_to_graph),
         location,
         original_start_time_zone: None,
         original_end_time_zone: None,
@@ -83,7 +83,7 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
 /// otherwise plain text — so a local edit to DESCRIPTION wins over the stale
 /// HTML and the user's intent reaches Outlook.
 fn build_body(event: &Event) -> Option<GraphBody> {
-    let html = event.custom_property(HTML_DESC_PROPERTY);
+    let html = event.x_property(HTML_DESC_PROPERTY);
 
     match (html, event.description.as_deref()) {
         (Some(html), Some(desc)) if html_to_plaintext(html) == desc => Some(GraphBody {
@@ -421,39 +421,58 @@ fn iana_to_windows_timezone(tz: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caldir_core::event::{
-        CustomProperty, Event, EventStatus, EventTime, Reminders, Transparency,
-    };
+    use caldir_core::{Event, EventTime, EventUid, Status, Transparency, XProperty};
     use chrono::NaiveDate;
+
+    fn make_event(start: EventTime, end: Option<EventTime>) -> Event {
+        Event {
+            uid: EventUid::new("u".to_string()),
+            summary: Some("x".to_string()),
+            description: None,
+            location: None,
+            start,
+            end,
+            status: Status::Confirmed,
+            transparency: Transparency::Opaque,
+            recurrence: None,
+            recurrence_id: None,
+            organizer: None,
+            attendees: vec![],
+            reminders: vec![],
+            url: None,
+            x_properties: vec![],
+            last_modified: None,
+            sequence: 0,
+        }
+    }
 
     fn html_event() -> Event {
         let html = "<html><body><div>Here's a <b>fun</b>&nbsp;little tricky thing to <span style=\"color:red\">decode</span>!</div></body></html>";
-        let mut e = Event::new(
-            "Event with HTML".into(),
-            EventTime::DateTimeUtc(
-                NaiveDate::from_ymd_opt(2026, 4, 29)
-                    .unwrap()
-                    .and_hms_opt(7, 0, 0)
-                    .unwrap()
-                    .and_utc(),
-            ),
-            EventTime::DateTimeUtc(
-                NaiveDate::from_ymd_opt(2026, 4, 29)
-                    .unwrap()
-                    .and_hms_opt(8, 0, 0)
-                    .unwrap()
-                    .and_utc(),
-            ),
-            Some("Here's a fun little tricky thing to decode!".into()),
-            None,
-            None,
-            vec![],
+        let start = EventTime::DateTimeUtc(
+            NaiveDate::from_ymd_opt(2026, 4, 29)
+                .unwrap()
+                .and_hms_opt(7, 0, 0)
+                .unwrap()
+                .and_utc(),
         );
-        e.custom_properties = vec![
-            CustomProperty::new(HTML_DESC_PROPERTY, html)
-                .with_param("FMTTYPE", "text/html")
-                .with_param("VALUE", "TEXT"),
-        ];
+        let end = EventTime::DateTimeUtc(
+            NaiveDate::from_ymd_opt(2026, 4, 29)
+                .unwrap()
+                .and_hms_opt(8, 0, 0)
+                .unwrap()
+                .and_utc(),
+        );
+        let mut e = make_event(start, Some(end));
+        e.summary = Some("Event with HTML".to_string());
+        e.description = Some("Here's a fun little tricky thing to decode!".to_string());
+        e.x_properties = vec![XProperty {
+            name: HTML_DESC_PROPERTY.to_string(),
+            value: html.to_string(),
+            params: vec![
+                ("FMTTYPE".to_string(), "text/html".to_string()),
+                ("VALUE".to_string(), "TEXT".to_string()),
+            ],
+        }];
         e
     }
 
@@ -484,41 +503,25 @@ mod tests {
         // Treat "no description" as empty when the HTML strips to empty —
         // matches how `from_outlook` drops Outlook's auto-generated
         // whitespace-only HTML bodies.
-        let mut e = Event {
-            uid: "u".into(),
-            summary: "x".into(),
-            description: None,
-            location: None,
-            start: EventTime::DateTimeUtc(
-                NaiveDate::from_ymd_opt(2026, 4, 29)
-                    .unwrap()
-                    .and_hms_opt(7, 0, 0)
-                    .unwrap()
-                    .and_utc(),
-            ),
-            end: EventTime::DateTimeUtc(
-                NaiveDate::from_ymd_opt(2026, 4, 29)
-                    .unwrap()
-                    .and_hms_opt(8, 0, 0)
-                    .unwrap()
-                    .and_utc(),
-            ),
-            status: EventStatus::Confirmed,
-            recurrence: None,
-            recurrence_id: None,
-            reminders: Reminders(vec![]),
-            transparency: Transparency::Opaque,
-            organizer: None,
-            attendees: vec![],
-            conference_url: None,
-            updated: None,
-            sequence: None,
-            custom_properties: vec![],
-        };
+        let start = EventTime::DateTimeUtc(
+            NaiveDate::from_ymd_opt(2026, 4, 29)
+                .unwrap()
+                .and_hms_opt(7, 0, 0)
+                .unwrap()
+                .and_utc(),
+        );
+        let end = EventTime::DateTimeUtc(
+            NaiveDate::from_ymd_opt(2026, 4, 29)
+                .unwrap()
+                .and_hms_opt(8, 0, 0)
+                .unwrap()
+                .and_utc(),
+        );
+        let mut e = make_event(start, Some(end));
         // No description, no html → no body
         assert!(build_body(&e).is_none());
         // Empty-stripping HTML + no description → still send the empty html
-        e.custom_properties = vec![CustomProperty::new(
+        e.x_properties = vec![XProperty::new(
             HTML_DESC_PROPERTY,
             "<html><body><div>&nbsp;</div></body></html>",
         )];

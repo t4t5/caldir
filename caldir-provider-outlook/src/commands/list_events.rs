@@ -1,19 +1,29 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use caldir_core::event::Event;
-use caldir_core::remote::protocol::{ListEvents, ProviderRequestContext};
+use caldir_core::Event;
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::ListEvents;
 use chrono::{DateTime, Utc};
 
+use crate::app_config::AppConfigStore;
+use crate::constants::PROVIDER_NAME;
 use crate::graph_api::client::GraphClient;
 use crate::graph_api::types::{GraphEvent, GraphResponse};
 use crate::outlook_event::from_outlook::from_outlook;
 use crate::remote_config::OutlookRemoteConfig;
-use crate::session::Session;
+use crate::session::SessionStore;
 
-pub async fn handle(context: ProviderRequestContext, cmd: ListEvents) -> Result<Vec<Event>> {
-    let config = OutlookRemoteConfig::try_from(&cmd.remote_config)?;
-    let session = Session::load_valid(&context, &config.outlook_account).await?;
+pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
+    let config = OutlookRemoteConfig::try_from(&cmd.remote)?;
+
+    let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
+    let session_store = SessionStore::new(storage.clone());
+    let app_config_store = AppConfigStore::new(storage);
+
+    let session = session_store
+        .load_valid(&config.outlook_account, &app_config_store)
+        .await?;
     let graph = GraphClient::new(session.access_token());
 
     // `/events` returns single events and recurring series masters (with

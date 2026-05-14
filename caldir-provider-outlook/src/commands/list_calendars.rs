@@ -1,20 +1,25 @@
 use anyhow::{Context, Result};
-use caldir_core::calendar::config::CalendarConfig;
-use caldir_core::remote::Remote;
-use caldir_core::remote::protocol::{ListCalendars, ProviderRequestContext};
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::ListCalendars;
+use caldir_core::{CalendarConfig, ProviderSlug, RemoteConfig};
 
+use crate::app_config::AppConfigStore;
 use crate::constants::PROVIDER_NAME;
 use crate::graph_api::client::GraphClient;
 use crate::graph_api::types::{GraphCalendar, GraphResponse};
 use crate::remote_config::OutlookRemoteConfig;
-use crate::session::Session;
+use crate::session::SessionStore;
 
-pub async fn handle(
-    context: ProviderRequestContext,
-    cmd: ListCalendars,
-) -> Result<Vec<CalendarConfig>> {
+pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
     let account_email = &cmd.account_identifier;
-    let session = Session::load_valid(&context, account_email).await?;
+
+    let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
+    let session_store = SessionStore::new(storage.clone());
+    let app_config_store = AppConfigStore::new(storage);
+
+    let session = session_store
+        .load_valid(account_email, &app_config_store)
+        .await?;
     let graph = GraphClient::new(session.access_token());
 
     let response = graph.get("/me/calendars").await?;
@@ -27,19 +32,18 @@ pub async fn handle(
         .value
         .iter()
         .map(|cal| {
-            let remote_config = OutlookRemoteConfig::new(account_email, &cal.id);
-            let remote = Remote::new(PROVIDER_NAME, remote_config.into());
+            let params =
+                OutlookRemoteConfig::new(account_email, &cal.id).into_remote_config_params();
+            let remote_config = RemoteConfig::new(ProviderSlug::from(PROVIDER_NAME), params);
             let read_only = !cal.can_edit;
-
-            // Map Graph color names to hex colors
             let color = graph_color_to_hex(&cal.color);
 
-            CalendarConfig {
-                name: Some(cal.name.clone()),
-                color: Some(color),
-                read_only: Some(read_only),
-                remote: Some(remote),
-            }
+            CalendarConfig::new(
+                Some(cal.name.clone()),
+                Some(color),
+                Some(read_only),
+                Some(remote_config),
+            )
         })
         .collect();
 

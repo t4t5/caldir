@@ -1,9 +1,10 @@
 //! App-level configuration for the Outlook provider.
 //!
-//! User-provided Azure AD OAuth credentials stored at `{provider_dir}/app_config.toml`.
+//! User-provided Azure AD OAuth credentials stored at `{storage.root()}/app_config.toml`.
+//! Only present when the user opts into self-hosted OAuth (`--hosted=false`).
 
 use anyhow::{Context, Result};
-use caldir_core::remote::protocol::ProviderRequestContext;
+use caldir_core::provider::ProviderStorage;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -14,17 +15,25 @@ pub struct AppConfig {
     pub client_secret: String,
 }
 
-impl AppConfig {
-    fn path(context: &ProviderRequestContext) -> PathBuf {
-        context.provider_dir.join("app_config.toml")
+/// Filesystem-backed storage for [`AppConfig`].
+///
+/// Layout: `{storage.root()}/app_config.toml`. Contains a client secret, so
+/// chmod'd to `0600` on Unix.
+pub struct AppConfigStore {
+    storage: ProviderStorage,
+}
+
+impl AppConfigStore {
+    pub fn new(storage: ProviderStorage) -> Self {
+        Self { storage }
     }
 
-    pub fn exists(context: &ProviderRequestContext) -> bool {
-        Self::path(context).exists()
+    pub fn exists(&self) -> bool {
+        self.path().exists()
     }
 
-    pub fn load(context: &ProviderRequestContext) -> Result<Self> {
-        let path = Self::path(context);
+    pub fn load(&self) -> Result<AppConfig> {
+        let path = self.path();
 
         if !path.exists() {
             anyhow::bail!(
@@ -42,20 +51,21 @@ impl AppConfig {
         Ok(app_config)
     }
 
-    pub fn save(&self, context: &ProviderRequestContext) -> Result<()> {
-        let path = Self::path(context);
+    pub fn save(&self, app_config: &AppConfig) -> Result<()> {
+        let path = self.path();
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directory {}", parent.display()))?;
         }
 
-        let contents = toml::to_string_pretty(self).context("Failed to serialize app config")?;
+        let contents =
+            toml::to_string_pretty(app_config).context("Failed to serialize app config")?;
 
         std::fs::write(&path, contents)
             .with_context(|| format!("Failed to write app_config to {}", path.display()))?;
 
-        // Set to owner-only (0600) since file contains OAuth client secret:
+        // Plaintext client secret — owner-only.
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -64,5 +74,74 @@ impl AppConfig {
         }
 
         Ok(())
+    }
+
+    fn path(&self) -> PathBuf {
+        self.storage.root().join("app_config.toml")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn store() -> (TempDir, AppConfigStore) {
+        let tmp = TempDir::new().unwrap();
+        let store = AppConfigStore::new(ProviderStorage::new(tmp.path()));
+        (tmp, store)
+    }
+
+    fn sample() -> AppConfig {
+        AppConfig {
+            client_id: "azure-app-id".to_string(),
+            client_secret: "secret".to_string(),
+        }
+    }
+
+    #[test]
+    fn save_writes_toml_under_storage_root() {
+        let (tmp, store) = store();
+        store.save(&sample()).unwrap();
+        assert!(tmp.path().join("app_config.toml").is_file());
+    }
+
+    #[test]
+    fn load_round_trips() {
+        let (_tmp, store) = store();
+        let cfg = sample();
+        store.save(&cfg).unwrap();
+
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.client_id, cfg.client_id);
+        assert_eq!(loaded.client_secret, cfg.client_secret);
+    }
+
+    #[test]
+    fn load_errors_when_missing() {
+        let (_tmp, store) = store();
+        let err = store.load().unwrap_err();
+        assert!(err.to_string().contains("Outlook app config not found"));
+    }
+
+    #[test]
+    fn exists_reports_presence() {
+        let (_tmp, store) = store();
+        assert!(!store.exists());
+        store.save(&sample()).unwrap();
+        assert!(store.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_chmods_app_config_to_0600() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (tmp, store) = store();
+        store.save(&sample()).unwrap();
+
+        let path = tmp.path().join("app_config.toml");
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
     }
 }
