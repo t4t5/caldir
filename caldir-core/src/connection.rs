@@ -122,8 +122,9 @@ impl Connection {
                     }
                     synced_ids.push(canonical.event_instance_id());
                 }
-                EventChange::Update { to, .. } => {
-                    let remote_event = self.remote.update_event(to.clone()).await?;
+                EventChange::Update { from, to } => {
+                    let merged = to.clone().with_x_properties_merged_from(from);
+                    let remote_event = self.remote.update_event(merged).await?;
                     let canonical = remote_event.event();
                     if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id())
                     {

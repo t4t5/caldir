@@ -79,8 +79,9 @@ impl Remote {
                 EventChange::Create(event) => {
                     self.create_event(event.clone()).await?;
                 }
-                EventChange::Update { to, .. } => {
-                    self.update_event(to.clone()).await?;
+                EventChange::Update { from, to } => {
+                    let merged = to.clone().with_x_properties_merged_from(from);
+                    self.update_event(merged).await?;
                 }
                 EventChange::Delete(event) => {
                     self.delete_event(event.clone()).await?;
@@ -127,6 +128,42 @@ mod tests {
             .unwrap();
 
         assert_eq!(mock.captured_request::<rpc::UpdateEvent>().event, to);
+    }
+
+    #[tokio::test]
+    async fn apply_diff_update_merges_x_property_params_from_remote() {
+        // Local copy was written by an old parser that dropped params;
+        // remote still carries them. Push must send the union so we don't
+        // strip provider-managed metadata.
+        let (mock, remote) = test_remote();
+
+        let mut from = test_event();
+        from.x_properties = vec![crate::event::XProperty {
+            name: "X-APPLE-STRUCTURED-LOCATION".to_string(),
+            value: "geo:51.47,-0.45".to_string(),
+            params: vec![("X-TITLE".to_string(), "London Heathrow".to_string())],
+        }];
+
+        let mut to = from.clone();
+        to.summary = Some("Updated".into());
+        to.x_properties = vec![crate::event::XProperty::new(
+            "X-APPLE-STRUCTURED-LOCATION",
+            "geo:51.47,-0.45",
+        )];
+
+        mock.reply::<rpc::UpdateEvent>(to.clone());
+
+        remote
+            .apply_diff(&outgoing_update_diff(from, to))
+            .await
+            .unwrap();
+
+        let captured = mock.captured_request::<rpc::UpdateEvent>().event;
+        assert_eq!(captured.x_properties.len(), 1);
+        assert_eq!(
+            captured.x_properties[0].params,
+            vec![("X-TITLE".to_string(), "London Heathrow".to_string())]
+        );
     }
 
     #[tokio::test]

@@ -1,10 +1,18 @@
 use icalendar::Property;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct XProperty {
     pub name: String,
     pub value: String,
     pub params: Vec<(String, String)>,
+}
+
+// Exclude attributes from the x-properties when comparing them
+// (for backwards-compatibility reasons)
+impl PartialEq for XProperty {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.value == other.value
+    }
 }
 
 impl XProperty {
@@ -95,5 +103,28 @@ mod tests {
             prop.params().get("FMTTYPE").map(|p| p.value()),
             Some("text/html")
         );
+    }
+
+    #[test]
+    fn eq_ignores_param_drift() {
+        let bare = XProperty::new("X-APPLE-STRUCTURED-LOCATION", "geo:51.47,-0.45");
+        let with_params = XProperty {
+            name: "X-APPLE-STRUCTURED-LOCATION".to_string(),
+            value: "geo:51.47,-0.45".to_string(),
+            params: vec![
+                ("VALUE".to_string(), "URI".to_string()),
+                ("X-TITLE".to_string(), "London Heathrow".to_string()),
+            ],
+        };
+
+        assert_eq!(bare, with_params);
+    }
+
+    #[test]
+    fn eq_distinguishes_value_changes() {
+        let a = XProperty::new("X-APPLE-STRUCTURED-LOCATION", "geo:51.47,-0.45");
+        let b = XProperty::new("X-APPLE-STRUCTURED-LOCATION", "geo:1.0,2.0");
+
+        assert_ne!(a, b);
     }
 }

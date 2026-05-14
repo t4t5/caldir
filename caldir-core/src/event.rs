@@ -204,6 +204,25 @@ impl Event {
     pub fn event_instance_id(&self) -> EventInstanceId {
         EventInstanceId::new(self.uid.clone(), self.recurrence_id.clone())
     }
+
+    /// Make sure local copy doesn't strip provider-managed metadata from remote
+    pub fn with_x_properties_merged_from(mut self, base: &Event) -> Self {
+        for local in &mut self.x_properties {
+            if let Some(base_prop) = base.x_properties.iter().find(|p| p.name == local.name) {
+                for (k, v) in &base_prop.params {
+                    if !local.params.iter().any(|(lk, _)| lk == k) {
+                        local.params.push((k.clone(), v.clone()));
+                    }
+                }
+            }
+        }
+        for base_prop in &base.x_properties {
+            if !self.x_properties.iter().any(|p| p.name == base_prop.name) {
+                self.x_properties.push(base_prop.clone());
+            }
+        }
+        self
+    }
 }
 
 // Wire format for events is ICS, not JSON
@@ -670,6 +689,88 @@ END:VCALENDAR
             event.attendee_status("bob@example.com"),
             Some(ParticipationStatus::Tentative)
         );
+    }
+
+    #[test]
+    fn with_x_properties_merged_from_preserves_base_only_params() {
+        // Example of local file written by old parser that stripped X-APPLE-STRUCTURED-LOCATION params.
+        // Make sure we don't strip them from the remote
+        let mut local = Event::new(
+            "Flight",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        local.x_properties = vec![XProperty::new(
+            "X-APPLE-STRUCTURED-LOCATION",
+            "geo:51.47,-0.45",
+        )];
+
+        let mut remote = local.clone();
+        remote.x_properties = vec![XProperty {
+            name: "X-APPLE-STRUCTURED-LOCATION".to_string(),
+            value: "geo:51.47,-0.45".to_string(),
+            params: vec![
+                ("VALUE".to_string(), "URI".to_string()),
+                ("X-TITLE".to_string(), "London Heathrow".to_string()),
+            ],
+        }];
+
+        let merged = local.with_x_properties_merged_from(&remote);
+
+        assert_eq!(merged.x_properties.len(), 1);
+        assert_eq!(
+            merged.x_properties[0].params,
+            vec![
+                ("VALUE".to_string(), "URI".to_string()),
+                ("X-TITLE".to_string(), "London Heathrow".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn with_x_properties_merged_from_local_params_win_shared_keys() {
+        let mut local = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        local.x_properties = vec![XProperty {
+            name: "X-APPLE-STRUCTURED-LOCATION".to_string(),
+            value: "geo:0,0".to_string(),
+            params: vec![("X-TITLE".to_string(), "New title".to_string())],
+        }];
+
+        let mut remote = local.clone();
+        remote.x_properties = vec![XProperty {
+            name: "X-APPLE-STRUCTURED-LOCATION".to_string(),
+            value: "geo:0,0".to_string(),
+            params: vec![("X-TITLE".to_string(), "Old title".to_string())],
+        }];
+
+        let merged = local.with_x_properties_merged_from(&remote);
+
+        assert_eq!(
+            merged.x_properties[0].params,
+            vec![("X-TITLE".to_string(), "New title".to_string())]
+        );
+    }
+
+    #[test]
+    fn with_x_properties_merged_from_carries_through_base_only_properties() {
+        // If local is missing an entire X-property the remote has, preserve it
+        // — same data-preservation principle as the param-level case.
+        let mut local = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        local.x_properties = vec![];
+
+        let mut remote = local.clone();
+        remote.x_properties = vec![XProperty::new("X-GOOGLE-EVENT-ID", "abc123")];
+
+        let merged = local.with_x_properties_merged_from(&remote);
+
+        assert_eq!(merged.x_properties.len(), 1);
+        assert_eq!(merged.x_properties[0].name, "X-GOOGLE-EVENT-ID");
+        assert_eq!(merged.x_properties[0].value, "abc123");
     }
 
     #[test]
