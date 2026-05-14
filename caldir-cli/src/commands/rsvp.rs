@@ -201,7 +201,7 @@ fn apply_response(event: &Event, email: &str, status: ParticipationStatus) -> Re
         .find(|a| a.email.eq_ignore_ascii_case(email))
         .with_context(|| format!("Not an attendee: {}", email))?;
     attendee.status = Some(status);
-    updated.sequence = Some(event.sequence.unwrap_or(0) + 1);
+    updated.sequence = event.sequence + 1;
     updated.last_modified = Some(Utc::now());
     Ok(updated)
 }

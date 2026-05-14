@@ -87,7 +87,7 @@ fn expand_master(
             let occ_time = occurrence_to_event_time(&occ, &master.start);
 
             if let Some(override_event) = overrides.get(&occ_time) {
-                if override_event.status == Some(Status::Cancelled) {
+                if override_event.status == Status::Cancelled {
                     return None;
                 }
                 return Some(override_event.clone());
@@ -465,7 +465,7 @@ mod tests {
     fn cancelled_override_drops_instance() {
         let master = recurring("Standup", utc(2026, 1, 5, 9, 0), "FREQ=DAILY;COUNT=3");
         let mut cancelled = override_for(&master, EventTime::DateTimeUtc(utc(2026, 1, 6, 9, 0)));
-        cancelled.status = Some(Status::Cancelled);
+        cancelled.status = Status::Cancelled;
 
         let result = expand_in_range(
             vec![master, cancelled],

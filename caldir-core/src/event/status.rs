@@ -1,7 +1,11 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Status {
+    // CONFIRMED is the RFC 5545 default — an event with no STATUS line is
+    // semantically confirmed, so absence and "confirmed" must round-trip the
+    // same way.
+    #[default]
     Confirmed,
     Tentative,
     Cancelled,

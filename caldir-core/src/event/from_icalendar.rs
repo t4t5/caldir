@@ -29,13 +29,18 @@ impl TryFrom<&icalendar::Event> for Event {
             .map(|props| props.iter().map(Attendee::from).collect())
             .unwrap_or_default();
 
+        // STATUS and TRANSP default to CONFIRMED / OPAQUE per RFC 5545, so a
+        // missing line is treated as the default value rather than an
+        // independent "unset" state.
         let status = value
             .property_value("STATUS")
-            .and_then(Status::from_ics_str);
+            .and_then(Status::from_ics_str)
+            .unwrap_or_default();
 
         let transparency = value
             .property_value("TRANSP")
-            .and_then(Transparency::from_ics_str);
+            .and_then(Transparency::from_ics_str)
+            .unwrap_or_default();
 
         let reminders = Reminder::from_ical_event(value);
 
@@ -58,9 +63,12 @@ impl TryFrom<&icalendar::Event> for Event {
             recurrence,
             recurrence_id,
             last_modified: value.get_last_modified(),
+            // SEQUENCE defaults to 0 per RFC 5545; treat missing or
+            // unparseable values the same as an explicit 0.
             sequence: value
                 .property_value("SEQUENCE")
-                .and_then(|s| s.parse().ok()),
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0),
             organizer,
             attendees,
             reminders,
@@ -206,16 +214,16 @@ mod tests {
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.status, Some(crate::event::Status::Tentative));
+        assert_eq!(event.status, Status::Tentative);
     }
 
     #[test]
-    fn status_is_none_when_missing() {
+    fn status_defaults_to_confirmed_when_missing() {
         let ical_event = test_icalendar_event().done();
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.status, None);
+        assert_eq!(event.status, Status::Confirmed);
     }
 
     #[test]
@@ -226,16 +234,16 @@ mod tests {
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.transparency, Some(Transparency::Transparent));
+        assert_eq!(event.transparency, Transparency::Transparent);
     }
 
     #[test]
-    fn transparency_is_none_when_missing() {
+    fn transparency_defaults_to_opaque_when_missing() {
         let ical_event = test_icalendar_event().done();
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.transparency, None);
+        assert_eq!(event.transparency, Transparency::Opaque);
     }
 
     #[test]
@@ -316,7 +324,7 @@ mod tests {
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.sequence, Some(3));
+        assert_eq!(event.sequence, 3);
     }
 
     #[test]
@@ -327,16 +335,16 @@ mod tests {
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.sequence, Some(-1));
+        assert_eq!(event.sequence, -1);
     }
 
     #[test]
-    fn sequence_is_none_when_missing() {
+    fn sequence_defaults_to_zero_when_missing() {
         let ical_event = test_icalendar_event().done();
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.sequence, None);
+        assert_eq!(event.sequence, 0);
     }
 
     #[test]

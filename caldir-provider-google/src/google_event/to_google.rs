@@ -17,13 +17,13 @@ impl ToGoogle for Event {
             .map(event_time_to_google)
             .unwrap_or(start.clone());
 
-        let status = match self.status.unwrap_or(Status::Confirmed) {
+        let status = match self.status {
             Status::Confirmed => "confirmed".to_string(),
             Status::Tentative => "tentative".to_string(),
             Status::Cancelled => "cancelled".to_string(),
         };
 
-        let transparency = match self.transparency.unwrap_or(Transparency::Opaque) {
+        let transparency = match self.transparency {
             Transparency::Opaque => "opaque".to_string(),
             Transparency::Transparent => "transparent".to_string(),
         };
@@ -85,7 +85,7 @@ impl ToGoogle for Event {
             attendees,
             recurrence,
             original_start_time,
-            sequence: self.sequence.unwrap_or(0) as i64,
+            sequence: self.sequence as i64,
             color_id,
             ..Default::default()
         }

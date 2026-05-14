@@ -1,7 +1,9 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Transparency {
+    // OPAQUE is the RFC 5545 default — see `Status` for the rationale.
+    #[default]
     Opaque,
     Transparent,
 }

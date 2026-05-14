@@ -264,7 +264,7 @@ fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
             ));
         }
         if old.status != new.status {
-            lines.push(render_optional_display("status", &old.status, &new.status));
+            lines.push(render_display("status", &old.status, &new.status));
         }
         if old.recurrence != new.recurrence {
             lines.extend(render_recurrence_diff(&old.recurrence, &new.recurrence));
@@ -285,7 +285,7 @@ fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
             }
         }
         if old.transparency != new.transparency {
-            lines.push(render_optional_display(
+            lines.push(render_display(
                 "transparency",
                 &old.transparency,
                 &new.transparency,
@@ -326,8 +326,7 @@ fn render_optional_diff(field: &str, old: &Option<String>, new: &Option<String>)
 }
 
 /// Render an Option<T: Display> field diff with red/green colors and a
-/// `(none)` fallback. Used for enum-like fields (status, transparency) and
-/// structured fields with Display (organizer).
+/// `(none)` fallback. Used for structured fields with Display (organizer).
 fn render_optional_display<T: fmt::Display>(
     field: &str,
     old: &Option<T>,
@@ -340,6 +339,17 @@ fn render_optional_display<T: fmt::Display>(
         field.dimmed(),
         old_str.red(),
         new_str.green()
+    )
+}
+
+/// Render a `T: Display` field diff with red/green colors. Used for enum-like
+/// fields with defaults (status, transparency).
+fn render_display<T: fmt::Display>(field: &str, old: &T, new: &T) -> String {
+    format!(
+        "{}: {} → {}",
+        field.dimmed(),
+        old.to_string().red(),
+        new.to_string().green()
     )
 }
 

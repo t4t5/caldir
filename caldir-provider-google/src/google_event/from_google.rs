@@ -21,15 +21,10 @@ impl FromGoogle for Event {
         let end = google_dt_to_event_time(event.end.as_ref())
             .ok_or_else(|| anyhow::anyhow!("Event has no end time ({})", describe_event(&event)))?;
 
-        // Treat iCalendar defaults as absent: a local .ics file with no STATUS
-        // line parses to `None`, so Google returning the default "confirmed"
-        // must also map to `None` — otherwise diffing flags a phantom change
-        // against any local file that was written without an explicit STATUS.
-        // Same logic for TRANSP (default OPAQUE).
         let status = match event.status.as_str() {
-            "tentative" => Some(Status::Tentative),
-            "cancelled" => Some(Status::Cancelled),
-            _ => None,
+            "tentative" => Status::Tentative,
+            "cancelled" => Status::Cancelled,
+            _ => Status::Confirmed,
         };
 
         let recurrence = parse_google_recurrence(&event.recurrence);
@@ -49,9 +44,9 @@ impl FromGoogle for Event {
         };
 
         let transparency = if event.transparency == "transparent" {
-            Some(Transparency::Transparent)
+            Transparency::Transparent
         } else {
-            None
+            Transparency::Opaque
         };
 
         let organizer = event.organizer.as_ref().map(|o| Organizer {
@@ -118,11 +113,7 @@ impl FromGoogle for Event {
             recurrence,
             recurrence_id,
             last_modified: event.updated,
-            sequence: if event.sequence > 0 {
-                Some(event.sequence as i32)
-            } else {
-                None
-            },
+            sequence: event.sequence as i32,
             organizer,
             attendees,
             reminders,
@@ -275,76 +266,76 @@ mod tests {
     }
 
     #[test]
-    fn confirmed_status_maps_to_none() {
-        // CONFIRMED is the iCalendar default; local .ics files written without
-        // a STATUS line parse to None, so the Google representation must too.
+    fn confirmed_status_maps_to_confirmed() {
         let mut ge = minimal_event();
         ge.status = "confirmed".into();
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.status, None);
+        assert_eq!(event.status, Status::Confirmed);
     }
 
     #[test]
-    fn empty_status_maps_to_none() {
+    fn empty_status_maps_to_confirmed() {
+        // Google omits `status` for events that haven't been explicitly set;
+        // RFC 5545 says CONFIRMED is the default in that case.
         let mut ge = minimal_event();
         ge.status = String::new();
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.status, None);
+        assert_eq!(event.status, Status::Confirmed);
     }
 
     #[test]
-    fn tentative_status_maps_to_some() {
+    fn tentative_status_maps_to_tentative() {
         let mut ge = minimal_event();
         ge.status = "tentative".into();
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.status, Some(Status::Tentative));
+        assert_eq!(event.status, Status::Tentative);
     }
 
     #[test]
-    fn cancelled_status_maps_to_some() {
+    fn cancelled_status_maps_to_cancelled() {
         let mut ge = minimal_event();
         ge.status = "cancelled".into();
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.status, Some(Status::Cancelled));
+        assert_eq!(event.status, Status::Cancelled);
     }
 
     #[test]
-    fn opaque_transparency_maps_to_none() {
-        // OPAQUE is the iCalendar default; absent TRANSP in a local .ics parses
-        // to None, so Google's "opaque" must too.
+    fn opaque_transparency_maps_to_opaque() {
         let mut ge = minimal_event();
         ge.transparency = "opaque".into();
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.transparency, None);
+        assert_eq!(event.transparency, Transparency::Opaque);
     }
 
     #[test]
-    fn empty_transparency_maps_to_none() {
+    fn empty_transparency_maps_to_opaque() {
+        // Google omits `transparency` for events using the default availability;
+        // RFC 5545 says OPAQUE is the default in that case.
         let mut ge = minimal_event();
         ge.transparency = String::new();
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.transparency, None);
+        assert_eq!(event.transparency, Transparency::Opaque);
     }
 
     #[test]
-    fn transparent_transparency_maps_to_some() {
+    fn transparent_transparency_maps_to_transparent() {
         let mut ge = minimal_event();
         ge.transparency = "transparent".into();
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.transparency, Some(Transparency::Transparent));
+        assert_eq!(event.transparency, Transparency::Transparent);
     }
 }

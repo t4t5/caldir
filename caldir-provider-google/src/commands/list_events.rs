@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::ListEvents;
-use caldir_core::{Event, EventTime, EventUid, RecurrenceId, Status, XProperty};
+use caldir_core::{Event, EventTime, EventUid, RecurrenceId, Status, Transparency, XProperty};
 use google_calendar::types::OrderBy;
 
 use crate::app_config::AppConfigStore;
@@ -132,16 +132,12 @@ fn cancellation_to_event(
         location: None,
         start,
         end: Some(end),
-        status: Some(Status::Cancelled),
-        transparency: None,
+        status: Status::Cancelled,
+        transparency: Transparency::Opaque,
         recurrence: None,
         recurrence_id: Some(RecurrenceId::from_event_time(recurrence_id)),
         last_modified: ge.updated,
-        sequence: if ge.sequence > 0 {
-            Some(ge.sequence as i32)
-        } else {
-            None
-        },
+        sequence: ge.sequence as i32,
         organizer: None,
         attendees: Vec::new(),
         reminders: Vec::new(),
@@ -214,7 +210,7 @@ mod tests {
         let cancellation = result.iter().find(|e| e.recurrence_id.is_some()).unwrap();
         assert_eq!(cancellation.uid.as_str(), "uid@google.com");
         assert_eq!(cancellation.summary.as_deref(), Some("Weekly retro"));
-        assert_eq!(cancellation.status, Some(Status::Cancelled));
+        assert_eq!(cancellation.status, Status::Cancelled);
         let rid_event_time = cancellation.recurrence_id.as_ref().unwrap().as_event_time();
         assert!(matches!(
             rid_event_time,
@@ -236,7 +232,7 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].uid.as_str(), "orphan_master@google.com");
         assert_eq!(result[0].summary, None);
-        assert_eq!(result[0].status, Some(Status::Cancelled));
+        assert_eq!(result[0].status, Status::Cancelled);
     }
 
     #[test]
@@ -270,8 +266,6 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].uid.as_str(), "uid1@google.com");
         assert!(result[0].recurrence.is_some());
-        // "confirmed" is the iCalendar default; we represent absence as None so
-        // it matches local .ics files that omit the STATUS line.
-        assert_eq!(result[0].status, None);
+        assert_eq!(result[0].status, Status::Confirmed);
     }
 }

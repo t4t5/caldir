@@ -1,4 +1,4 @@
-use crate::event::Event;
+use crate::event::{Event, Status, Transparency};
 use icalendar::{Component, EventLike};
 
 impl From<&Event> for icalendar::Event {
@@ -11,14 +11,20 @@ impl From<&Event> for icalendar::Event {
             event.ends(icalendar::DatePerhapsTime::from(end));
         }
 
-        if let Some(status) = value.status {
-            event.append_property(icalendar::Property::new("STATUS", status.as_ics_str()));
+        // Omit STATUS / TRANSP when they hold their RFC 5545 defaults so files
+        // round-trip cleanly (a parsed-then-written event yields the same bytes
+        // it came from, even if the original had no STATUS line).
+        if value.status != Status::default() {
+            event.append_property(icalendar::Property::new(
+                "STATUS",
+                value.status.as_ics_str(),
+            ));
         }
 
-        if let Some(transparency) = value.transparency {
+        if value.transparency != Transparency::default() {
             event.append_property(icalendar::Property::new(
                 "TRANSP",
-                transparency.as_ics_str(),
+                value.transparency.as_ics_str(),
             ));
         }
 
@@ -48,8 +54,13 @@ impl From<&Event> for icalendar::Event {
             event.last_modified(last_modified);
         }
 
-        if let Some(sequence) = value.sequence {
-            event.append_property(icalendar::Property::new("SEQUENCE", sequence.to_string()));
+        // Omit SEQUENCE when it holds its RFC 5545 default (0) for the same
+        // round-trip-cleanliness reason as STATUS / TRANSP.
+        if value.sequence != 0 {
+            event.append_property(icalendar::Property::new(
+                "SEQUENCE",
+                value.sequence.to_string(),
+            ));
         }
 
         if let Some(organizer) = &value.organizer {
@@ -175,7 +186,7 @@ mod tests {
     #[test]
     fn converts_status() {
         let mut event = test_event();
-        event.status = Some(crate::event::Status::Cancelled);
+        event.status = Status::Cancelled;
 
         let ical_event: icalendar::Event = event.into();
 
@@ -183,9 +194,9 @@ mod tests {
     }
 
     #[test]
-    fn omits_status_when_none() {
+    fn omits_status_when_default() {
         let mut event = test_event();
-        event.status = None;
+        event.status = Status::Confirmed;
 
         let ical_event: icalendar::Event = event.into();
 
@@ -195,7 +206,7 @@ mod tests {
     #[test]
     fn converts_transparency() {
         let mut event = test_event();
-        event.transparency = Some(crate::event::Transparency::Transparent);
+        event.transparency = Transparency::Transparent;
 
         let ical_event: icalendar::Event = event.into();
 
@@ -203,9 +214,9 @@ mod tests {
     }
 
     #[test]
-    fn omits_transparency_when_none() {
+    fn omits_transparency_when_default() {
         let mut event = test_event();
-        event.transparency = None;
+        event.transparency = Transparency::Opaque;
 
         let ical_event: icalendar::Event = event.into();
 
@@ -294,7 +305,7 @@ mod tests {
     #[test]
     fn converts_sequence() {
         let mut event = test_event();
-        event.sequence = Some(3);
+        event.sequence = 3;
 
         let ical_event: icalendar::Event = event.into();
 
@@ -304,7 +315,7 @@ mod tests {
     #[test]
     fn converts_negative_sequence() {
         let mut event = test_event();
-        event.sequence = Some(-1);
+        event.sequence = -1;
 
         let ical_event: icalendar::Event = event.into();
 
@@ -312,9 +323,9 @@ mod tests {
     }
 
     #[test]
-    fn omits_sequence_when_none() {
+    fn omits_sequence_when_default() {
         let mut event = test_event();
-        event.sequence = None;
+        event.sequence = 0;
 
         let ical_event: icalendar::Event = event.into();
 

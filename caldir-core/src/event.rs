@@ -39,12 +39,12 @@ pub struct Event {
     pub location: Option<String>,
     pub start: EventTime,
     pub end: Option<EventTime>,
-    pub status: Option<Status>,
-    pub transparency: Option<Transparency>,
+    pub status: Status,
+    pub transparency: Transparency,
     pub recurrence: Option<Recurrence>,
     pub recurrence_id: Option<RecurrenceId>,
     pub last_modified: Option<DateTime<Utc>>,
-    pub sequence: Option<i32>,
+    pub sequence: i32,
     pub organizer: Option<Organizer>,
     pub attendees: Vec<Attendee>,
     pub reminders: Vec<Reminder>,
@@ -61,12 +61,12 @@ impl Event {
             location: None,
             start,
             end: None,
-            status: None,
-            transparency: None,
+            status: Status::default(),
+            transparency: Transparency::default(),
             recurrence: None,
             recurrence_id: None,
             last_modified: None,
-            sequence: None,
+            sequence: 0,
             organizer: None,
             attendees: Vec::new(),
             reminders: Vec::new(),
@@ -358,7 +358,6 @@ ORGANIZER:mailto:alice@example.com
 RECURRENCE-ID;TZID=Europe/Oslo:20260515T160000
 RRULE:FREQ=WEEKLY;BYDAY=FR
 SEQUENCE:1
-STATUS:CONFIRMED
 SUMMARY:Friday retro
 TRANSP:TRANSPARENT
 UID:event-uid-123@example.com
