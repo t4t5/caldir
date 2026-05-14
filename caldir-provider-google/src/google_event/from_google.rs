@@ -21,11 +21,16 @@ impl FromGoogle for Event {
         let end = google_dt_to_event_time(event.end.as_ref())
             .ok_or_else(|| anyhow::anyhow!("Event has no end time ({})", describe_event(&event)))?;
 
-        let status = Some(match event.status.as_str() {
-            "tentative" => Status::Tentative,
-            "cancelled" => Status::Cancelled,
-            _ => Status::Confirmed,
-        });
+        // Treat iCalendar defaults as absent: a local .ics file with no STATUS
+        // line parses to `None`, so Google returning the default "confirmed"
+        // must also map to `None` — otherwise diffing flags a phantom change
+        // against any local file that was written without an explicit STATUS.
+        // Same logic for TRANSP (default OPAQUE).
+        let status = match event.status.as_str() {
+            "tentative" => Some(Status::Tentative),
+            "cancelled" => Some(Status::Cancelled),
+            _ => None,
+        };
 
         let recurrence = parse_google_recurrence(&event.recurrence);
 
@@ -43,11 +48,11 @@ impl FromGoogle for Event {
             Vec::new()
         };
 
-        let transparency = Some(if event.transparency == "transparent" {
-            Transparency::Transparent
+        let transparency = if event.transparency == "transparent" {
+            Some(Transparency::Transparent)
         } else {
-            Transparency::Opaque
-        });
+            None
+        };
 
         let organizer = event.organizer.as_ref().map(|o| Organizer {
             email: o.email.clone(),
@@ -235,5 +240,111 @@ fn google_to_participation_status(google_status: &str) -> Option<ParticipationSt
         "tentative" => Some(ParticipationStatus::Tentative),
         "needsAction" => Some(ParticipationStatus::NeedsAction),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use google_calendar::types as g;
+
+    fn empty_event() -> g::Event {
+        serde_json::from_value(serde_json::json!({})).unwrap()
+    }
+
+    fn empty_dt() -> g::EventDateTime {
+        serde_json::from_value(serde_json::json!({})).unwrap()
+    }
+
+    fn minimal_event() -> g::Event {
+        g::Event {
+            id: "id1".into(),
+            i_cal_uid: "uid1@google.com".into(),
+            start: Some(g::EventDateTime {
+                date_time: Some("2026-01-16T15:00:00Z".parse().unwrap()),
+                time_zone: "Europe/Oslo".into(),
+                ..empty_dt()
+            }),
+            end: Some(g::EventDateTime {
+                date_time: Some("2026-01-16T15:45:00Z".parse().unwrap()),
+                time_zone: "Europe/Oslo".into(),
+                ..empty_dt()
+            }),
+            ..empty_event()
+        }
+    }
+
+    #[test]
+    fn confirmed_status_maps_to_none() {
+        // CONFIRMED is the iCalendar default; local .ics files written without
+        // a STATUS line parse to None, so the Google representation must too.
+        let mut ge = minimal_event();
+        ge.status = "confirmed".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.status, None);
+    }
+
+    #[test]
+    fn empty_status_maps_to_none() {
+        let mut ge = minimal_event();
+        ge.status = String::new();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.status, None);
+    }
+
+    #[test]
+    fn tentative_status_maps_to_some() {
+        let mut ge = minimal_event();
+        ge.status = "tentative".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.status, Some(Status::Tentative));
+    }
+
+    #[test]
+    fn cancelled_status_maps_to_some() {
+        let mut ge = minimal_event();
+        ge.status = "cancelled".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.status, Some(Status::Cancelled));
+    }
+
+    #[test]
+    fn opaque_transparency_maps_to_none() {
+        // OPAQUE is the iCalendar default; absent TRANSP in a local .ics parses
+        // to None, so Google's "opaque" must too.
+        let mut ge = minimal_event();
+        ge.transparency = "opaque".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.transparency, None);
+    }
+
+    #[test]
+    fn empty_transparency_maps_to_none() {
+        let mut ge = minimal_event();
+        ge.transparency = String::new();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.transparency, None);
+    }
+
+    #[test]
+    fn transparent_transparency_maps_to_some() {
+        let mut ge = minimal_event();
+        ge.transparency = "transparent".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.transparency, Some(Transparency::Transparent));
     }
 }

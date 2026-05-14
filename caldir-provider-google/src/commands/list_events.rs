@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::ListEvents;
-use caldir_core::{Event, EventTime, EventUid, RecurrenceId, Status, Transparency, XProperty};
+use caldir_core::{Event, EventTime, EventUid, RecurrenceId, Status, XProperty};
 use google_calendar::types::OrderBy;
 
 use crate::app_config::AppConfigStore;
@@ -133,7 +133,7 @@ fn cancellation_to_event(
         start,
         end: Some(end),
         status: Some(Status::Cancelled),
-        transparency: Some(Transparency::Opaque),
+        transparency: None,
         recurrence: None,
         recurrence_id: Some(RecurrenceId::from_event_time(recurrence_id)),
         last_modified: ge.updated,
@@ -270,6 +270,8 @@ mod tests {
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].uid.as_str(), "uid1@google.com");
         assert!(result[0].recurrence.is_some());
-        assert_eq!(result[0].status, Some(Status::Confirmed));
+        // "confirmed" is the iCalendar default; we represent absence as None so
+        // it matches local .ics files that omit the STATUS line.
+        assert_eq!(result[0].status, None);
     }
 }
