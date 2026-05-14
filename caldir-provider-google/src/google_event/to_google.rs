@@ -177,3 +177,77 @@ pub(crate) fn participation_status_to_google(status: ParticipationStatus) -> &'s
         ParticipationStatus::NeedsAction => "needsAction",
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caldir_core::{Event, EventTime, Reminder};
+    use chrono::NaiveDate;
+
+    fn sample_event() -> Event {
+        Event::new(
+            "Test",
+            EventTime::DateTimeFloating(
+                NaiveDate::from_ymd_opt(2026, 1, 1)
+                    .unwrap()
+                    .and_hms_opt(12, 0, 0)
+                    .unwrap(),
+            ),
+        )
+    }
+
+    // Google's API rejects reminder overrides with `minutes: 0` ("Missing
+    // override reminder minutes"), because the `google-calendar` crate strips
+    // zero-valued integers from the serialized JSON. A reminder that fires at
+    // event start must not be sent to Google.
+    #[test]
+    fn zero_minute_reminder_is_stripped_to_avoid_google_400() {
+        let mut event = sample_event();
+        event.reminders = vec![Reminder {
+            minutes_before_start: 0,
+        }];
+
+        let google = event.to_google();
+
+        assert!(
+            google.reminders.is_none(),
+            "expected 0-minute reminder to be filtered out, got {:?}",
+            google.reminders
+        );
+    }
+
+    #[test]
+    fn zero_minute_reminder_is_stripped_but_other_reminders_pass_through() {
+        let mut event = sample_event();
+        event.reminders = vec![
+            Reminder {
+                minutes_before_start: 0,
+            },
+            Reminder {
+                minutes_before_start: 15,
+            },
+        ];
+
+        let google = event.to_google();
+        let reminders = google.reminders.expect("non-empty reminders");
+
+        assert_eq!(reminders.overrides.len(), 1);
+        assert_eq!(reminders.overrides[0].minutes, 15);
+    }
+
+    #[test]
+    fn nonzero_reminder_is_sent_to_google() {
+        let mut event = sample_event();
+        event.reminders = vec![Reminder {
+            minutes_before_start: 30,
+        }];
+
+        let google = event.to_google();
+        let reminders = google.reminders.expect("non-empty reminders");
+
+        assert_eq!(reminders.overrides.len(), 1);
+        assert_eq!(reminders.overrides[0].minutes, 30);
+        assert_eq!(reminders.overrides[0].method, "popup");
+        assert!(!reminders.use_default);
+    }
+}
