@@ -71,6 +71,14 @@ enum Commands {
         #[arg(short, long)]
         calendar: Option<String>,
 
+        /// Push events from this date (YYYY-MM-DD, or "start" for all past events)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Push events until this date (YYYY-MM-DD)
+        #[arg(long)]
+        to: Option<String>,
+
         /// Show all events (instead of compact view when >5 events)
         #[arg(short, long)]
         verbose: bool,
@@ -166,6 +174,14 @@ enum Commands {
         #[arg(short, long)]
         calendar: Option<String>,
 
+        /// Discard events from this date (YYYY-MM-DD, or "start" for all past events)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Discard events until this date (YYYY-MM-DD)
+        #[arg(long)]
+        to: Option<String>,
+
         /// Show all events (instead of compact view when >5 events)
         #[arg(short, long)]
         verbose: bool,
@@ -227,9 +243,11 @@ async fn main() -> Result<()> {
         } => commands::pull::run(&caldir, calendar.into_iter().collect(), from, to, verbose).await,
         Commands::Push {
             calendar,
+            from,
+            to,
             verbose,
             force,
-        } => commands::push::run(&caldir, calendar, verbose, force).await,
+        } => commands::push::run(&caldir, calendar, from, to, verbose, force).await,
         Commands::Sync {
             calendar,
             from,
@@ -264,9 +282,11 @@ async fn main() -> Result<()> {
         ),
         Commands::Discard {
             calendar,
+            from,
+            to,
             verbose,
             force,
-        } => commands::discard::run(&caldir, calendar, verbose, force).await,
+        } => commands::discard::run(&caldir, calendar, from, to, verbose, force).await,
         Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
         Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
         Commands::Config => commands::config::run(&caldir),

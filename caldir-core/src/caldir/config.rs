@@ -97,6 +97,10 @@ impl CaldirConfig {
     pub fn write(&self, path: &Path) -> Result<(), CaldirConfigError> {
         let contents = self.to_toml().map_err(CaldirConfigError::InvalidConfig)?;
 
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
         std::fs::write(path, contents)?;
 
         Ok(())
@@ -262,5 +266,38 @@ mod tests {
         let expected_path = expand_tilde(&PathBuf::from("~/.config/caldir/config.toml"));
 
         assert_eq!(path, expected_path);
+    }
+
+    #[test]
+    fn write_then_load_round_trips_through_disk() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+
+        let config = CaldirConfig::new(
+            PathBuf::from("/tmp/round-trip"),
+            TimeFormat::H12,
+            Some("personal".to_string()),
+            Some(vec![Reminder::from_minutes(15)]),
+        );
+
+        config.write(&path).unwrap();
+
+        let reloaded = CaldirConfig::load_or_default(&path).unwrap();
+        assert_eq!(reloaded, config);
+    }
+
+    #[test]
+    fn write_creates_missing_parent_directories() {
+        // The system config path is ~/.config/caldir/config.toml — and on a
+        // fresh machine the `caldir/` directory doesn't exist yet. write()
+        // needs to be tolerant of that, otherwise first-run `caldir connect`
+        // can't persist its choice of default_calendar.
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("nested").join("dir").join("config.toml");
+
+        let config = CaldirConfig::default();
+        config.write(&path).unwrap();
+
+        assert!(path.is_file(), "config file should exist after write");
     }
 }

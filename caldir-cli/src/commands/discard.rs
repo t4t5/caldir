@@ -1,14 +1,16 @@
 use anyhow::Result;
-use caldir_core::{Caldir, CalendarDiff, Connection, DateRange, EventChange};
+use caldir_core::{Caldir, CalendarDiff, Connection, EventChange};
 use dialoguer::Confirm;
 use owo_colors::OwoColorize;
 
 use crate::render::diff::{CalendarDiffRender, Render};
-use crate::utils::tui;
+use crate::utils::{resolve_sync_range, tui};
 
 pub async fn run(
     caldir: &Caldir,
     calendar: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
     verbose: bool,
     force: bool,
 ) -> Result<()> {
@@ -22,7 +24,7 @@ pub async fn run(
         None => all_connections,
     };
 
-    let range = DateRange::default();
+    let range = resolve_sync_range(from, to)?;
     let mut pending: Vec<(Connection, CalendarDiff)> = Vec::new();
     let total = connections.len();
 

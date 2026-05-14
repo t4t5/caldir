@@ -3,17 +3,19 @@ use caldir_core::{Caldir, CalendarDiff, Connection, DateRange};
 use owo_colors::OwoColorize;
 
 use crate::render::diff::{CalendarDiffRender, Render};
-use crate::utils::{allow_mass_delete, connections, count_changes, tui};
+use crate::utils::{allow_mass_delete, connections, count_changes, resolve_sync_range, tui};
 
 pub async fn run(
     caldir: &Caldir,
     calendar: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
     verbose: bool,
     force: bool,
 ) -> Result<()> {
     let calendar_slugs: Vec<String> = calendar.into_iter().collect();
     let connections = connections(caldir, &calendar_slugs);
-    let range = DateRange::default();
+    let range = resolve_sync_range(from, to)?;
     let mut applied: Vec<CalendarDiff> = Vec::new();
     let total = connections.len();
 
