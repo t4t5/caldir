@@ -190,16 +190,21 @@ async fn push_outgoing_changes(
     for change in diff.outgoing() {
         if let Some(remote_event) = remote.apply_change(change).await? {
             let returned_event = remote_event.event();
-            let instance_id = returned_event.event_instance_id();
 
-            // Update local event with returned instance:
-            if let Some(cal_event) = events_by_instance_id.get_mut(&instance_id) {
+            // Sometimes provider overwrite the event's UID:
+            let original_event_id = match change {
+                EventChange::Create(event) => event.event_instance_id(),
+                EventChange::Update { to, .. } => to.event_instance_id(),
+                EventChange::Delete(_) => unreachable!("apply_change returns None for Delete"),
+            };
+
+            if let Some(cal_event) = events_by_instance_id.get_mut(&original_event_id) {
                 cal_event
                     .update(returned_event.clone())
                     .map_err(CalendarError::from)?;
             }
 
-            synced_ids.push(instance_id);
+            synced_ids.push(returned_event.event_instance_id());
         }
     }
 
@@ -210,7 +215,7 @@ async fn push_outgoing_changes(
 mod tests {
     use super::*;
     use crate::diff::EventChange;
-    use crate::event::XProperty;
+    use crate::event::{EventUid, XProperty};
     use crate::provider::mock_provider::MockProvider;
     use crate::test_utils::{
         incoming_create_diff, incoming_delete_diff, incoming_update_diff, outgoing_create_diff,
@@ -441,6 +446,37 @@ mod tests {
         let reloaded = connection.local().events().unwrap();
         assert_eq!(reloaded.len(), 1);
         assert_eq!(reloaded[0].event().x_properties, canonical.x_properties);
+    }
+
+    #[tokio::test]
+    async fn apply_outgoing_diff_rewrites_local_when_provider_reassigns_uid() {
+        // Some providers (e.g. CalDAV servers) re-assign UID server-side. The
+        // local file must still be rewritten with the provider's canonical
+        // event, and the synced state must record the *returned* identity so
+        // the next sync doesn't see a phantom delete + duplicate create.
+        let (_tmp, mock, mut connection) = writable_connection();
+        let local = test_event();
+        let original_id = local.event_instance_id();
+        connection.local().create_event(local.clone()).unwrap();
+
+        let mut canonical = local.clone();
+        canonical.uid = EventUid::new("provider-assigned-uid@example.com");
+        let canonical_id = canonical.event_instance_id();
+        assert_ne!(original_id, canonical_id);
+        mock.reply::<rpc::CreateEvent>(canonical.clone());
+
+        connection
+            .apply_outgoing_diff(&outgoing_create_diff(local))
+            .await
+            .unwrap();
+
+        let reloaded = connection.local().events().unwrap();
+        assert_eq!(reloaded.len(), 1);
+        assert_eq!(reloaded[0].event().uid, canonical.uid);
+
+        let synced = connection.local().state().synced_event_ids();
+        assert!(synced.contains(&canonical_id));
+        assert!(!synced.contains(&original_id));
     }
 
     #[tokio::test]
