@@ -29,17 +29,19 @@ impl EventInstanceId {
     }
 
     pub fn from_str(s: &str) -> Result<Self, EventInstanceIdError> {
-        match s.rsplit_once(RID_SEPARATOR) {
-            Some((uid_str, rid_str)) => {
-                let event_time = parse_recurrence_id(rid_str)?;
-
-                Ok(EventInstanceId::new(
-                    EventUid::new(uid_str.to_string()),
-                    Some(RecurrenceId::from_event_time(event_time)),
-                ))
-            }
-            None => Ok(EventInstanceId::new(EventUid::new(s.to_string()), None)),
+        // UIDs may legitimately contain "__" (RFC 5545 allows any text), so a
+        // suffix that isn't a valid recurrence id means the whole string is
+        // the UID.
+        if let Some((uid_str, rid_str)) = s.rsplit_once(RID_SEPARATOR)
+            && let Ok(event_time) = parse_recurrence_id(rid_str)
+        {
+            return Ok(EventInstanceId::new(
+                EventUid::new(uid_str.to_string()),
+                Some(RecurrenceId::from_event_time(event_time)),
+            ));
         }
+
+        Ok(EventInstanceId::new(EventUid::new(s.to_string()), None))
     }
 
     // Example: abc123@google.com__20260101T170000Z
@@ -179,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    fn round_trips_uid_containing_double_underscore() {
+    fn round_trips_uid_containing_double_underscore_with_recurrence_id() {
         // Some providers emit UIDs with embedded "__" — rsplit_once on the
         // last occurrence keeps the rid intact.
         let weird_uid = EventUid::new("event__weird@example.com".to_string());
@@ -193,22 +195,24 @@ mod tests {
     }
 
     #[test]
-    fn rejects_malformed_recurrence_id() {
-        let result = EventInstanceId::from_str("abc__not-a-date");
-        assert_eq!(
-            result,
-            Err(EventInstanceIdError::InvalidRecurrenceId(
-                "not-a-date".to_string()
-            ))
-        );
+    fn round_trips_uid_containing_double_underscore_without_recurrence_id() {
+        // Without a trailing rid, the suffix after the last "__" isn't a
+        // valid recurrence id, so the whole string is the UID.
+        let id = EventInstanceId::new(EventUid::new("event__weird@example.com".to_string()), None);
+        assert_round_trip(&id, "event__weird@example.com");
     }
 
     #[test]
-    fn rejects_zoned_without_datetime() {
-        let result = EventInstanceId::from_str("abc__TZID=Europe/Stockholm");
-        assert!(matches!(
-            result,
-            Err(EventInstanceIdError::InvalidRecurrenceId(_))
-        ));
+    fn treats_malformed_recurrence_suffix_as_part_of_uid() {
+        let id = EventInstanceId::from_str("abc__not-a-date").unwrap();
+        assert_eq!(id.uid().as_str(), "abc__not-a-date");
+        assert!(id.recurrence_id().is_none());
+    }
+
+    #[test]
+    fn treats_zoned_suffix_without_datetime_as_part_of_uid() {
+        let id = EventInstanceId::from_str("abc__TZID=Europe/Stockholm").unwrap();
+        assert_eq!(id.uid().as_str(), "abc__TZID=Europe/Stockholm");
+        assert!(id.recurrence_id().is_none());
     }
 }
