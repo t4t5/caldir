@@ -93,11 +93,7 @@ impl Connection {
 
         let mut synced_ids = Vec::new();
 
-        // Run the loop, then persist whatever we accumulated regardless of
-        // outcome. If a mid-loop error short-circuited the `?`, dropping
-        // those ids would mean later local deletes of already-pushed events
-        // get silently reverted by the next pull (diff sees them as new on
-        // the remote, not as deletes).
+        // Handles mid-loop errors gracefully
         let loop_result = push_outgoing_changes(
             &self.remote,
             diff,
@@ -192,35 +188,18 @@ async fn push_outgoing_changes(
     synced_ids: &mut Vec<EventInstanceId>,
 ) -> Result<(), ConnectionError> {
     for change in diff.outgoing() {
-        match change {
-            EventChange::Create(event) => {
-                let remote_event = remote.create_event(event.clone()).await?;
-                let returned_event = remote_event.event();
+        if let Some(remote_event) = remote.apply_change(change).await? {
+            let returned_event = remote_event.event();
+            let instance_id = returned_event.event_instance_id();
 
-                if let Some(cal_event) = events_by_instance_id.get_mut(&event.event_instance_id()) {
-                    cal_event
-                        .update(returned_event.clone())
-                        .map_err(CalendarError::from)?;
-                }
-
-                synced_ids.push(returned_event.event_instance_id());
+            // Update local event with returned instance:
+            if let Some(cal_event) = events_by_instance_id.get_mut(&instance_id) {
+                cal_event
+                    .update(returned_event.clone())
+                    .map_err(CalendarError::from)?;
             }
-            EventChange::Update { from, to } => {
-                let merged_event = to.clone().with_x_properties_merged_from(from);
-                let remote_event = remote.update_event(merged_event).await?;
-                let returned_event = remote_event.event();
 
-                if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id()) {
-                    cal_event
-                        .update(returned_event.clone())
-                        .map_err(CalendarError::from)?;
-                }
-
-                synced_ids.push(returned_event.event_instance_id());
-            }
-            EventChange::Delete(event) => {
-                remote.delete_event(event.clone()).await?;
-            }
+            synced_ids.push(instance_id);
         }
     }
 

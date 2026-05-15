@@ -195,13 +195,16 @@ fn parse_response(input: &str) -> Result<ParticipationStatus> {
 
 fn apply_response(event: &Event, email: &str, status: ParticipationStatus) -> Result<Event> {
     let mut updated = event.clone();
+
     let attendee = updated
         .attendees
         .iter_mut()
         .find(|a| a.email.eq_ignore_ascii_case(email))
         .with_context(|| format!("Not an attendee: {}", email))?;
+
     attendee.status = Some(status);
     updated.sequence = event.sequence + 1;
     updated.last_modified = Some(Utc::now());
+
     Ok(updated)
 }

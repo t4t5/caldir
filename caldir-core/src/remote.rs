@@ -2,7 +2,7 @@ mod config;
 mod error;
 mod event;
 
-use crate::diff::{CalendarDiff, EventChange};
+use crate::diff::EventChange;
 use crate::provider::ProviderError;
 use crate::{DateRange, Event, Provider, rpc};
 
@@ -38,7 +38,28 @@ impl Remote {
         Ok(events)
     }
 
-    pub async fn create_event(&self, event: Event) -> Result<RemoteEvent, RemoteError> {
+    pub async fn apply_change(
+        &self,
+        change: &EventChange,
+    ) -> Result<Option<RemoteEvent>, RemoteError> {
+        match change {
+            EventChange::Create(event) => {
+                let remote_event = self.create_event(event.clone()).await?;
+                Ok(Some(remote_event))
+            }
+            EventChange::Update { from, to } => {
+                let merged = to.clone().with_x_properties_merged_from(from);
+                let remote_event = self.update_event(merged).await?;
+                Ok(Some(remote_event))
+            }
+            EventChange::Delete(event) => {
+                self.delete_event(event.clone()).await?;
+                Ok(None)
+            }
+        }
+    }
+
+    async fn create_event(&self, event: Event) -> Result<RemoteEvent, RemoteError> {
         let event = self
             .provider
             .call(rpc::CreateEvent {
@@ -50,7 +71,7 @@ impl Remote {
         Ok(RemoteEvent::new(event))
     }
 
-    pub async fn delete_event(&self, event: Event) -> Result<(), RemoteError> {
+    async fn delete_event(&self, event: Event) -> Result<(), RemoteError> {
         self.provider
             .call(rpc::DeleteEvent {
                 remote: self.params.clone(),
@@ -61,7 +82,7 @@ impl Remote {
         Ok(())
     }
 
-    pub async fn update_event(&self, event: Event) -> Result<RemoteEvent, RemoteError> {
+    async fn update_event(&self, event: Event) -> Result<RemoteEvent, RemoteError> {
         let event = self
             .provider
             .call(rpc::UpdateEvent {
@@ -72,42 +93,22 @@ impl Remote {
 
         Ok(RemoteEvent::new(event))
     }
-
-    pub async fn apply_diff(&self, diff: &CalendarDiff) -> Result<(), RemoteError> {
-        for change in diff.outgoing() {
-            match change {
-                EventChange::Create(event) => {
-                    self.create_event(event.clone()).await?;
-                }
-                EventChange::Update { from, to } => {
-                    let merged = to.clone().with_x_properties_merged_from(from);
-                    self.update_event(merged).await?;
-                }
-                EventChange::Delete(event) => {
-                    self.delete_event(event.clone()).await?;
-                }
-            }
-        }
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{
-        outgoing_create_diff, outgoing_delete_diff, outgoing_update_diff, test_event, test_remote,
-    };
+    use crate::test_utils::{test_event, test_remote};
     use pretty_assertions::assert_eq;
 
     #[tokio::test]
-    async fn apply_diff_sends_create_event_for_outgoing_create() {
+    async fn apply_change_sends_create_event_for_outgoing_create() {
         let (mock, remote) = test_remote();
         let event = test_event();
         mock.reply::<rpc::CreateEvent>(event.clone());
 
         remote
-            .apply_diff(&outgoing_create_diff(event.clone()))
+            .apply_change(&EventChange::Create(event.clone()))
             .await
             .unwrap();
 
@@ -115,7 +116,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn apply_diff_sends_update_event_for_outgoing_update() {
+    async fn apply_change_sends_update_event_for_outgoing_update() {
         let (mock, remote) = test_remote();
         let from = test_event();
         let mut to = from.clone();
@@ -123,7 +124,10 @@ mod tests {
         mock.reply::<rpc::UpdateEvent>(to.clone());
 
         remote
-            .apply_diff(&outgoing_update_diff(from, to.clone()))
+            .apply_change(&EventChange::Update {
+                from,
+                to: to.clone(),
+            })
             .await
             .unwrap();
 
@@ -131,7 +135,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn apply_diff_update_merges_x_property_params_from_remote() {
+    async fn apply_change_update_merges_x_property_params_from_remote() {
         // Local copy was written by an old parser that dropped params;
         // remote still carries them. Push must send the union so we don't
         // strip provider-managed metadata.
@@ -154,7 +158,7 @@ mod tests {
         mock.reply::<rpc::UpdateEvent>(to.clone());
 
         remote
-            .apply_diff(&outgoing_update_diff(from, to))
+            .apply_change(&EventChange::Update { from, to })
             .await
             .unwrap();
 
@@ -167,13 +171,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn apply_diff_sends_delete_event_for_outgoing_delete() {
+    async fn apply_change_sends_delete_event_for_outgoing_delete() {
         let (mock, remote) = test_remote();
         let event = test_event();
         mock.reply::<rpc::DeleteEvent>(());
 
         remote
-            .apply_diff(&outgoing_delete_diff(event.clone()))
+            .apply_change(&EventChange::Delete(event.clone()))
             .await
             .unwrap();
 
