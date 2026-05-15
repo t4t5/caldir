@@ -497,4 +497,62 @@ mod tests {
 
         assert!(event.x_properties.is_empty());
     }
+
+    #[test]
+    fn normalizes_windows_dtstart_tzid_to_iana() {
+        let mut dtstart = icalendar::Property::new("DTSTART", "20260601T090000");
+        dtstart.add_parameter("TZID", "E. South America Standard Time");
+        let ical_event = icalendar::Event::new()
+            .uid("outlook-feed-event@caldir")
+            .append_property(dtstart.done())
+            .summary("Daily standup")
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        match event.start {
+            EventTime::DateTimeZoned { tzid, .. } => {
+                assert_eq!(tzid, "America/Sao_Paulo");
+            }
+            other => panic!("expected DateTimeZoned, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn normalizes_windows_recurrence_id_tzid_to_iana() {
+        let ical_event = test_icalendar_event()
+            .recurrence_id(icalendar::DatePerhapsTime::DateTime(
+                icalendar::CalendarDateTime::WithTimezone {
+                    date_time: chrono::NaiveDate::from_ymd_opt(2026, 6, 5)
+                        .unwrap()
+                        .and_hms_opt(9, 0, 0)
+                        .unwrap(),
+                    tzid: "W. Europe Standard Time".to_string(),
+                },
+            ))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+        let rid_time = event.recurrence_id.unwrap().as_event_time().clone();
+        match rid_time {
+            EventTime::DateTimeZoned { tzid, .. } => assert_eq!(tzid, "Europe/Berlin"),
+            other => panic!("expected DateTimeZoned, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn passes_iana_tzid_through_unchanged() {
+        let mut dtstart = icalendar::Property::new("DTSTART", "20260101T120000");
+        dtstart.add_parameter("TZID", "America/New_York");
+        let ical_event = icalendar::Event::new()
+            .uid("iana-event@caldir")
+            .append_property(dtstart.done())
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+        match event.start {
+            EventTime::DateTimeZoned { tzid, .. } => assert_eq!(tzid, "America/New_York"),
+            other => panic!("expected DateTimeZoned, got {other:?}"),
+        }
+    }
 }

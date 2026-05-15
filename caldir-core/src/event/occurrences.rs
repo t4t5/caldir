@@ -615,4 +615,40 @@ mod tests {
 
         assert_eq!(result, vec![event]);
     }
+
+    #[test]
+    fn expands_recurring_event_parsed_from_windows_tzid_ics() {
+        // rrule rejects non-IANA TZIDs, so Windows zone names in DTSTART
+        // would silently collapse expansion to zero (or one) instances.
+        let ics = "BEGIN:VCALENDAR\r\n\
+                   VERSION:2.0\r\n\
+                   BEGIN:VEVENT\r\n\
+                   UID:windows-tzid-regression@caldir\r\n\
+                   SUMMARY:Daily standup from Outlook\r\n\
+                   DTSTART;TZID=E. South America Standard Time:20260601T090000\r\n\
+                   DTEND;TZID=E. South America Standard Time:20260601T093000\r\n\
+                   RRULE:FREQ=DAILY;COUNT=3\r\n\
+                   END:VEVENT\r\n\
+                   END:VCALENDAR\r\n";
+
+        let master = Event::parse_single_ics(ics);
+
+        match &master.start {
+            EventTime::DateTimeZoned { tzid, .. } => assert_eq!(tzid, "America/Sao_Paulo"),
+            other => panic!("expected DateTimeZoned start, got {other:?}"),
+        }
+
+        let result = expand_in_range(vec![master], utc(2026, 6, 1, 0, 0), utc(2026, 6, 5, 0, 0));
+
+        // São Paulo is UTC-3 (no DST), so 09:00 local = 12:00 UTC.
+        let starts: Vec<_> = result.iter().map(starts_at).collect();
+        assert_eq!(
+            starts,
+            vec![
+                utc(2026, 6, 1, 12, 0),
+                utc(2026, 6, 2, 12, 0),
+                utc(2026, 6, 3, 12, 0),
+            ]
+        );
+    }
 }

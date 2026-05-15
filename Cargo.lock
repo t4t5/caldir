@@ -213,6 +213,7 @@ dependencies = [
  "tokio",
  "toml",
  "uuid",
+ "windows-timezones",
 ]
 
 [[package]]
@@ -3537,6 +3538,15 @@ dependencies = [
  "windows_x86_64_gnu 0.53.1",
  "windows_x86_64_gnullvm 0.53.1",
  "windows_x86_64_msvc 0.53.1",
+]
+
+[[package]]
+name = "windows-timezones"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53bce119c4ac0adfe0945781383966cc9838c853c2876fa3bf71662d76df4ef2"
+dependencies = [
+ "chrono-tz",
 ]
 
 [[package]]

@@ -203,7 +203,7 @@ mod tests {
     }
 
     #[test]
-    fn from_ical_event_preserves_arbitrary_exdate_timezone() {
+    fn from_ical_event_normalizes_windows_exdate_timezone_to_iana() {
         let mut exdate = Property::new("EXDATE", "20260105T100000");
         exdate.add_parameter("TZID", "Pacific Standard Time");
 
@@ -221,7 +221,7 @@ mod tests {
                     .unwrap()
                     .and_hms_opt(10, 0, 0)
                     .unwrap(),
-                tzid: "Pacific Standard Time".to_string(),
+                tzid: "America/Los_Angeles".to_string(),
             }]
         );
     }
@@ -270,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn from_ical_event_preserves_arbitrary_rdate_timezone() {
+    fn from_ical_event_normalizes_windows_rdate_timezone_to_iana() {
         let mut rdate = Property::new("RDATE", "20260201T100000");
         rdate.add_parameter("TZID", "Pacific Standard Time");
 
@@ -288,7 +288,7 @@ mod tests {
                     .unwrap()
                     .and_hms_opt(10, 0, 0)
                     .unwrap(),
-                tzid: "Pacific Standard Time".to_string(),
+                tzid: "America/Los_Angeles".to_string(),
             }]
         );
     }

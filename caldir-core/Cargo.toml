@@ -26,6 +26,7 @@ thiserror = "2.0.18"
 tokio = { version = "1", features = ["process", "io-util", "time", "macros", "rt"] }
 toml = "1.1.2"
 uuid = { version = "1.23.1", features = ["v4"] }
+windows-timezones = { version = "0.5", default-features = false, features = ["std", "chrono-tz"] }
 
 [dev-dependencies]
 pretty_assertions = "1"

@@ -11,6 +11,7 @@ mod status;
 mod time;
 mod to_icalendar;
 mod transparency;
+pub mod windows_tz;
 mod x_property;
 
 pub use attendee::{Attendee, ParticipationStatus};
@@ -321,7 +322,7 @@ END:VEVENT"
     }
 
     #[test]
-    fn parses_event_with_arbitrary_tzid() {
+    fn normalizes_windows_tzid_to_iana_on_parse_and_write() {
         let ics = r"BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -341,13 +342,13 @@ END:VCALENDAR"
                     .unwrap()
                     .and_hms_opt(12, 0, 0)
                     .unwrap(),
-                tzid: "Pacific Standard Time".to_string(),
+                tzid: "America/Los_Angeles".to_string(),
             }
         );
         assert!(
             event
                 .to_ics_string()
-                .contains("DTSTART;TZID=Pacific Standard Time:20240101T120000")
+                .contains("DTSTART;TZID=America/Los_Angeles:20240101T120000")
         );
     }
 

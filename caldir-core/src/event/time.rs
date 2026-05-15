@@ -113,7 +113,8 @@ impl From<DatePerhapsTime> for EventTime {
             DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone { date_time, tzid }) => {
                 EventTime::DateTimeZoned {
                     datetime: date_time,
-                    tzid,
+                    // Single chokepoint for Windows → IANA normalization.
+                    tzid: super::windows_tz::normalize(tzid),
                 }
             }
         }
@@ -167,7 +168,7 @@ mod tests {
             .unwrap();
         let event_time = EventTime::DateTimeZoned {
             datetime: date_time,
-            tzid: "Pacific Standard Time".to_string(),
+            tzid: "Bogus/Zone".to_string(),
         };
 
         let local = event_time.to_local_tz(&chrono_tz::Europe::Stockholm);
