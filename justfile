@@ -6,21 +6,8 @@ default:
 cli +args:
   cargo run -p caldir-cli -- {{ args }}
 
-# TODO: Remove me after refactor:
-# [working-directory: 'caldir-core']
-# check:
-#   cargo check
-#   cargo clippy
-
-# TODO: Remove me after refactor:
-# [working-directory: 'caldir-core']
-# test:
-#   cargo test
-
-# TODO: Remove me after refactor:
-# [working-directory: 'caldir-core']
 format:
-  cargo fmt
+  cargo fmt --all
 
 check:
   cargo check --workspace
@@ -46,5 +33,5 @@ uninstall:
   rm -f ~/.cargo/bin/caldir ~/.cargo/bin/caldir-provider-*
 
 # Serve website locally
-serve:
+web:
   cd website && npm run dev
