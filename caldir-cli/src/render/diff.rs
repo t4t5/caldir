@@ -294,6 +294,13 @@ fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
                 &new.availability,
             ));
         }
+        if old.visibility != new.visibility {
+            lines.push(render_display(
+                "visibility",
+                &old.visibility,
+                &new.visibility,
+            ));
+        }
         if old.organizer != new.organizer {
             lines.push(render_optional_display(
                 "organizer",
