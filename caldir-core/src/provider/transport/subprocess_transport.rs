@@ -34,6 +34,7 @@ impl ProviderTransport for SubprocessTransport {
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::inherit())
+                .kill_on_drop(true)
                 .spawn()
                 .map_err(ProviderTransportError::Spawn)?;
 
