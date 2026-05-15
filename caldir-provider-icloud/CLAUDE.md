@@ -1,102 +1,15 @@
 # caldir-provider-icloud
 
-iCloud Calendar provider for caldir-cli using CalDAV protocol.
+iCloud Calendar provider via CalDAV (RFC 4791). Wraps the shared CalDAV ops in `caldir-provider-caldav` with iCloud-specific concerns (Apple-ID-keyed sessions, hex color normalization, the Apple discovery flow).
 
-## Design Decisions
+## App-specific passwords
 
-### Provider spec
+iCloud refuses the regular Apple ID password for third-party CalDAV access. Users generate a 16-character app-specific password at <https://account.apple.com> and provide that during `connect`. We surface this requirement in the connect prompt — it's the most common point of confusion.
 
-Providers let the user read and write calendar data on a remote host (e.g. iCloud Calendar).
+## Endpoint discovery
 
-Providers should be as minimal as possible and implement the following actions:
-- `connect` — Multi-step connection flow (returns `NeedsInput` or `Done`)
-- `list_calendars`
-- `list_events`
-- `create_event`
-- `update_event`
-- `delete_event`
+Apple uses a generic `caldav.icloud.com` entry point that redirects each user to their own server (`pNN-caldav.icloud.com`). The `connect` flow walks PROPFIND from the entry point → principal URL → calendar-home URL and records all three on the session. After that, every operation hits the user's real server directly.
 
-The `connect` command drives a state machine: the CLI calls it in a loop, each time sending back data gathered from the previous step. This decouples auth UI from the provider, allowing different frontends (CLI, GUI) to control the user experience while supporting different auth mechanisms (OAuth, app passwords, CalDAV credentials).
+## Read-only detection
 
-There should be *no* stateful side effects from the logic in provider libraries. They should only take JSON data IN and return JSON data out.
-
-### App-Specific Passwords
-
-iCloud requires app-specific passwords for third-party apps. Users must:
-1. Go to https://account.apple.com/sign-in
-2. Sign in and navigate to Sign-In and Security → App-Specific Passwords
-3. Generate a new password named "caldir"
-4. Use this 16-character password when running `caldir connect icloud`
-
-This is a security requirement from Apple - regular Apple ID passwords cannot be used for CalDAV access.
-
-### CalDAV Protocol
-
-iCloud uses CalDAV (RFC 4791) for calendar access. Key endpoints:
-- `caldav.icloud.com` - Initial endpoint (redirects to user-specific server)
-- `pXX-caldav.icloud.com` - User-specific CalDAV server
-- Calendar discovery via PROPFIND on principal URL
-- Events fetched via REPORT with calendar-query
-- Events created/updated via PUT
-- Events deleted via DELETE
-
-### Credential Storage
-
-Credentials are stored at `~/.config/caldir/providers/icloud/session/{apple_id_slug}.toml`:
-- Apple ID (email)
-- App-specific password
-- Discovered principal URL
-- Discovered calendar-home URL
-
-File permissions are set to 0600 (owner-only) for security.
-
-## CalDAV Request/Response Flow
-
-### Authentication (connect)
-
-1. PROPFIND on `caldav.icloud.com/` with `current-user-principal` property
-2. Parse response to get principal URL (e.g., `/123456789/principal/`)
-3. PROPFIND on principal URL with `calendar-home-set` property
-4. Parse response to get calendar home URL
-5. Save all discovered URLs with credentials
-
-### List Calendars
-
-1. PROPFIND on calendar-home URL with Depth: 1
-2. Filter responses for calendar collections (resourcetype contains calendar)
-3. Extract displayname and color for each calendar
-4. PROPFIND on each calendar with `DAV:current-user-privilege-set` to detect read-only access (see below)
-
-### Read-only detection
-
-For each calendar, we issue a `PROPFIND` (Depth: 0) for `DAV:current-user-privilege-set` (RFC 3744). A calendar is reported as writable if the response contains any of the privileges `all`, `write`, or `bind` — `bind` is the privilege actually required to create new resources in a collection. Otherwise it's flagged read-only and stored as `read_only = true` in `.caldir/config.toml`.
-
-If the server doesn't return the property, `read_only` is left as `None` and the calendar is treated as writable by default. iCloud surfaces accurate per-calendar privileges, including for shared calendars granted view-only.
-
-The actual implementation is shared with `caldir-provider-caldav` and lives in `caldir-provider-caldav/src/ops.rs::list_calendars_raw`.
-
-### List Events
-
-1. REPORT on calendar URL with `calendar-query`
-2. Filter by time-range (from/to dates)
-3. Parse VCALENDAR data from each response
-4. Convert to Event structs using caldir-core ICS parser
-
-### Create Event
-
-1. Generate ICS content from Event using caldir-core
-2. PUT to `{calendar_url}/{event_uid}.ics`
-3. Fetch the created event to get server modifications
-
-### Update Event
-
-1. Generate ICS content from Event using caldir-core
-2. Find event's href and etag: try `{calendar_url}/{event_uid}.ics` first, fall back to UID-based REPORT query (for servers with non-standard resource filenames)
-3. PUT to the found href with `If-Match` etag for conditional update
-4. Fetch the updated event to get server modifications
-
-### Delete Event
-
-1. Find event's href: try `{calendar_url}/{event_uid}.ics` first, fall back to UID-based REPORT query
-2. DELETE the found href
-3. Accept not-found (event already deleted) as success
+Shared with caldir-provider-caldav: a PROPFIND for `DAV:current-user-privilege-set` decides whether each calendar can be written. iCloud reports per-calendar privileges accurately, including for view-only shared calendars, so calendars surface in caldir with the correct read-only flag without any user configuration.

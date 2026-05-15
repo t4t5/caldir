@@ -1,19 +1,15 @@
 # caldir-provider-caldav
 
-Generic CalDAV provider for caldir-cli. Speaks plain CalDAV (RFC 4791) with HTTP basic auth, so it works with Fastmail, Nextcloud, Radicale, mailcow, and other self-hosted/standards-compliant servers.
+Generic CalDAV provider — speaks plain RFC 4791 with HTTP basic auth. Works with Fastmail, Nextcloud, Radicale, mailcow, and any standards-compliant server.
 
-## Shared CalDAV ops
+## Shared ops
 
-The pure CalDAV operations in `src/ops.rs` (`list_calendars_raw`, `fetch_events`, `create_event`, `update_event`, `delete_event`, `discover_endpoints`) are provider-agnostic and reused by `caldir-provider-icloud`. They take credentials and URLs as parameters and return `caldir-core` types — no provider-specific state.
+The pure CalDAV operations in `src/ops.rs` are provider-agnostic and reused by `caldir-provider-icloud`. They take credentials and URLs as parameters, return `caldir-core` types, and hold no provider-specific state. Each provider then wraps these in its own commands, layering on whatever quirks the host needs (iCloud's color normalization, Apple-ID session keys, etc.).
 
-Each provider then wraps these ops in its own `commands/list_calendars.rs` etc., adding provider-specific concerns (e.g. iCloud's `#RRGGBBAA → #RRGGBB` color normalization, Apple-ID-based session keys).
-
-Custom `DavRequest` impls — `GetCalendarResourcesInRange`, `FindEventByUid`, `GetCurrentUserPrivilegeSet` — live in `src/caldav.rs` for things `libdav` doesn't expose directly.
+Custom `DavRequest` impls live in `src/caldav.rs` for things `libdav` doesn't expose.
 
 ## Read-only detection
 
-For each calendar, `list_calendars_raw` issues a `PROPFIND` (Depth: 0) for `DAV:current-user-privilege-set` (RFC 3744). A calendar is reported as writable if the response contains any of the privileges `all`, `write`, or `bind` — `bind` is the privilege actually required to create new resources in a collection. Otherwise it's flagged read-only and stored as `read_only = true` in `.caldir/config.toml`.
+A PROPFIND for `DAV:current-user-privilege-set` (RFC 3744) decides whether each calendar can be written. We treat any of `all`, `write`, or `bind` as writable — `bind` is the privilege actually required to create new resources in a collection.
 
-If the server doesn't return the property, `read_only` is left as `None` and the calendar is treated as writable by default — matches `connect.rs`'s existing fallback. This means the change is graceful for servers that don't implement RFC 3744's ACL property.
-
-Most modern CalDAV servers (Fastmail, Nextcloud, Radicale, iCloud) expose this property. The check is also useful for things like holiday calendars that some servers expose as `DAV:read-only` collections.
+If the server doesn't return the property, the calendar defaults to writable so older or non-RFC-3744 servers don't silently break. Most modern servers (Fastmail, Nextcloud, Radicale, iCloud) implement the property correctly, including for things like holiday calendars and view-only shares.
