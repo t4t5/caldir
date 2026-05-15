@@ -199,6 +199,7 @@ dependencies = [
  "chrono-tz",
  "dirs",
  "educe",
+ "filetime",
  "home",
  "humantime",
  "icalendar",

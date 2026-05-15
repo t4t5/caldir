@@ -131,9 +131,14 @@ impl CalendarDiff {
     }
 }
 
+// After a pull, the local file's mtime equals the remote LAST-MODIFIED (see sync_file_mtime)
+// We only treat a diff as an outgoing change if mtime > LAST-MODIFIED
+// (Never if mtime == LAST-MODIFIED!)
+// This helps us augment old events with new potential properties
+// that previously might not have been parsed.
 fn local_is_newer(local: &CalendarEvent, remote: &RemoteEvent) -> bool {
     match (local.modified_at(), remote.modified_at()) {
-        (Some(l), Some(r)) => l >= r,
+        (Some(l), Some(r)) => l > r,
         (Some(_), None) => true,
         (None, Some(_)) => false,
         (None, None) => true,
@@ -396,6 +401,43 @@ mod tests {
 
         assert_eq!(diff.outgoing, vec![]);
         assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn equal_timestamps_with_field_drift_resolve_to_pull() {
+        // Regression: when local mtime equals remote LAST-MODIFIED but the
+        // events still differ on some field, the difference reflects a
+        // schema/parser change (the local file pre-dates our support for
+        // some property), not a local edit. Direction must be pull so the
+        // remote authoritative value refreshes the field we now understand.
+        let (_tmp, calendar) = test_calendar();
+        let when = Utc.with_ymd_and_hms(2026, 5, 15, 13, 12, 52).unwrap();
+
+        let mut local_event = test_event();
+        local_event.last_modified = Some(when);
+        let calendar_event = calendar.create_event(local_event.clone()).unwrap();
+
+        let mut remote_event = local_event.clone();
+        remote_event.visibility = crate::event::Visibility::Private;
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(local_event.event_instance_id());
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote_event.clone())],
+            &synced_ids,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(
+            diff.incoming,
+            vec![EventChange::Update {
+                from: local_event,
+                to: remote_event,
+            }]
+        );
     }
 
     #[test]

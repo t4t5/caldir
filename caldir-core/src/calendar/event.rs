@@ -20,6 +20,7 @@ impl CalendarEvent {
         let contents = event.to_ics_string();
 
         let path = write_best_event_file(calendar.path(), &base_slug, None, contents.as_bytes())?;
+        sync_file_mtime(&path, event.last_modified)?;
 
         Ok(CalendarEvent { event, path })
     }
@@ -58,6 +59,7 @@ impl CalendarEvent {
 
         let new_path =
             write_best_event_file(dir, &base_slug, Some(&self.path), contents.as_bytes())?;
+        sync_file_mtime(&new_path, event.last_modified)?;
 
         if new_path == self.path {
             self.event = event;
@@ -98,6 +100,23 @@ impl CalendarEvent {
             .and_then(|m| m.modified().ok())
             .map(DateTime::<Utc>::from)
     }
+}
+
+// Pin the file mtime to the event's LAST-MODIFIED so direction detection
+// reflects when the event was changed, not when bytes hit disk. Without this,
+// every pull leaves the file appearing newer than its remote counterpart —
+// any later code change that adds a parsed property would surface as an
+// outgoing push.
+fn sync_file_mtime(
+    path: &Path,
+    last_modified: Option<DateTime<Utc>>,
+) -> Result<(), CalendarEventError> {
+    let Some(ts) = last_modified else {
+        return Ok(());
+    };
+    let ft = filetime::FileTime::from_unix_time(ts.timestamp(), ts.timestamp_subsec_nanos());
+    filetime::set_file_mtime(path, ft)?;
+    Ok(())
 }
 
 fn write_best_event_file(
@@ -144,6 +163,7 @@ mod tests {
     use crate::test_utils::test_calendar;
     use crate::test_utils::test_calendar_event;
     use crate::test_utils::test_event;
+    use chrono::TimeZone;
     use std::fs;
 
     #[test]
@@ -268,6 +288,48 @@ mod tests {
 
         let contents = fs::read_to_string(cal_event.path()).unwrap();
         assert!(contents.contains("LOCATION:Conference Room"));
+    }
+
+    #[test]
+    fn create_pins_file_mtime_to_event_last_modified() {
+        let (_tmp, calendar) = test_calendar();
+        let mut event = test_event();
+        let when = Utc.with_ymd_and_hms(2025, 6, 15, 12, 0, 0).unwrap();
+        event.last_modified = Some(when);
+
+        let cal_event = CalendarEvent::create(&calendar, event).unwrap();
+
+        assert_eq!(cal_event.modified_at(), Some(when));
+    }
+
+    #[test]
+    fn create_leaves_file_mtime_alone_when_last_modified_is_none() {
+        // Fresh local events have no remote LAST-MODIFIED yet — fall back to
+        // the OS's wall-clock write time so the file's mtime still tracks
+        // local edits.
+        let (_tmp, calendar) = test_calendar();
+        let event = test_event();
+        assert!(event.last_modified.is_none());
+
+        let before = Utc::now();
+        let cal_event = CalendarEvent::create(&calendar, event).unwrap();
+        let after = Utc::now();
+
+        let mtime = cal_event.modified_at().expect("file should have mtime");
+        assert!(mtime >= before - chrono::Duration::seconds(1));
+        assert!(mtime <= after + chrono::Duration::seconds(1));
+    }
+
+    #[test]
+    fn update_pins_file_mtime_to_new_last_modified() {
+        let (_tmp, mut cal_event) = test_calendar_event();
+        let mut event = cal_event.event().clone();
+        let when = Utc.with_ymd_and_hms(2025, 6, 15, 12, 0, 0).unwrap();
+        event.last_modified = Some(when);
+
+        cal_event.update(event).unwrap();
+
+        assert_eq!(cal_event.modified_at(), Some(when));
     }
 
     #[test]
