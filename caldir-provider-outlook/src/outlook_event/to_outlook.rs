@@ -1,6 +1,6 @@
 //! Convert caldir Event to a Microsoft Graph event.
 
-use caldir_core::{Class, Event, EventTime, ParticipationStatus, Transparency, windows_tz};
+use caldir_core::{Event, EventTime, ParticipationStatus, Transparency, Visibility, windows_tz};
 use chrono::{Datelike, Duration, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
 use crate::constants::HTML_DESC_PROPERTY;
@@ -26,10 +26,10 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
     // Empty string lets Graph keep its default ("normal") and skips
     // overwriting any "personal" sensitivity already set on Outlook's side
     // (CLASS:PUBLIC can't disambiguate "explicitly normal" from "untouched").
-    let sensitivity = match event.class {
-        Class::Public => String::new(),
-        Class::Private => "private".to_string(),
-        Class::Confidential => "confidential".to_string(),
+    let sensitivity = match event.visibility {
+        Visibility::Public => String::new(),
+        Visibility::Private => "private".to_string(),
+        Visibility::Confidential => "confidential".to_string(),
     };
 
     let (reminder_minutes, is_reminder_on) = match event.reminders.first() {
@@ -405,7 +405,7 @@ mod tests {
             end,
             status: Status::Confirmed,
             transparency: Transparency::Opaque,
-            class: Default::default(),
+            visibility: Default::default(),
             recurrence: None,
             recurrence_id: None,
             organizer: None,
@@ -554,9 +554,9 @@ mod tests {
     }
 
     #[test]
-    fn private_class_sends_sensitivity_private() {
+    fn private_visibility_sends_sensitivity_private() {
         let mut event = make_event(start_on(2026, 1, 1), None);
-        event.class = Class::Private;
+        event.visibility = Visibility::Private;
 
         let graph = to_outlook(&event);
 
@@ -564,9 +564,9 @@ mod tests {
     }
 
     #[test]
-    fn confidential_class_sends_sensitivity_confidential() {
+    fn confidential_visibility_sends_sensitivity_confidential() {
         let mut event = make_event(start_on(2026, 1, 1), None);
-        event.class = Class::Confidential;
+        event.visibility = Visibility::Confidential;
 
         let graph = to_outlook(&event);
 
@@ -578,9 +578,9 @@ mod tests {
     // it already had — important because CLASS can't distinguish "this is
     // a normal event" from "I never touched the sensitivity field".
     #[test]
-    fn public_class_omits_sensitivity_from_payload() {
+    fn public_visibility_omits_sensitivity_from_payload() {
         let mut event = make_event(start_on(2026, 1, 1), None);
-        event.class = Class::Public;
+        event.visibility = Visibility::Public;
 
         let graph = to_outlook(&event);
 

@@ -1,7 +1,7 @@
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Class {
+pub enum Visibility {
     // PUBLIC is the RFC 5545 default
     #[default]
     Public,
@@ -9,7 +9,7 @@ pub enum Class {
     Confidential,
 }
 
-impl fmt::Display for Class {
+impl fmt::Display for Visibility {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             Self::Public => "public",
@@ -20,7 +20,7 @@ impl fmt::Display for Class {
     }
 }
 
-impl Class {
+impl Visibility {
     pub fn as_ics_str(&self) -> &'static str {
         match self {
             Self::Public => "PUBLIC",
@@ -45,18 +45,21 @@ mod tests {
 
     #[test]
     fn maps_to_rfc5545_strings() {
-        assert_eq!(Class::Public.as_ics_str(), "PUBLIC");
-        assert_eq!(Class::Private.as_ics_str(), "PRIVATE");
-        assert_eq!(Class::Confidential.as_ics_str(), "CONFIDENTIAL");
+        assert_eq!(Visibility::Public.as_ics_str(), "PUBLIC");
+        assert_eq!(Visibility::Private.as_ics_str(), "PRIVATE");
+        assert_eq!(Visibility::Confidential.as_ics_str(), "CONFIDENTIAL");
     }
 
     #[test]
     fn parses_each_rfc5545_string() {
-        assert_eq!(Class::from_ics_str("PUBLIC"), Some(Class::Public));
-        assert_eq!(Class::from_ics_str("PRIVATE"), Some(Class::Private));
+        assert_eq!(Visibility::from_ics_str("PUBLIC"), Some(Visibility::Public));
         assert_eq!(
-            Class::from_ics_str("CONFIDENTIAL"),
-            Some(Class::Confidential)
+            Visibility::from_ics_str("PRIVATE"),
+            Some(Visibility::Private)
+        );
+        assert_eq!(
+            Visibility::from_ics_str("CONFIDENTIAL"),
+            Some(Visibility::Confidential)
         );
     }
 
@@ -65,15 +68,15 @@ mod tests {
         // RFC 5545 permits implementation-defined CLASS values; we treat any
         // value we don't recognize as the default (PUBLIC) at the call site,
         // so `from_ics_str` reports unknown explicitly via `None`.
-        assert_eq!(Class::from_ics_str("SECRET"), None);
-        assert_eq!(Class::from_ics_str("private"), None);
-        assert_eq!(Class::from_ics_str(""), None);
+        assert_eq!(Visibility::from_ics_str("SECRET"), None);
+        assert_eq!(Visibility::from_ics_str("private"), None);
+        assert_eq!(Visibility::from_ics_str(""), None);
     }
 
     #[test]
     fn display_uses_lowercase_label() {
-        assert_eq!(Class::Public.to_string(), "public");
-        assert_eq!(Class::Private.to_string(), "private");
-        assert_eq!(Class::Confidential.to_string(), "confidential");
+        assert_eq!(Visibility::Public.to_string(), "public");
+        assert_eq!(Visibility::Private.to_string(), "private");
+        assert_eq!(Visibility::Confidential.to_string(), "confidential");
     }
 }

@@ -135,7 +135,7 @@ fn cancellation_to_event(
         end: Some(end),
         status: Status::Cancelled,
         transparency: Transparency::Opaque,
-        class: Default::default(),
+        visibility: Default::default(),
         recurrence: None,
         recurrence_id: Some(RecurrenceId::from_event_time(recurrence_id)),
         last_modified: ge.updated,

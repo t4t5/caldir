@@ -1,5 +1,4 @@
 mod attendee;
-mod class;
 mod error;
 mod from_icalendar;
 mod instance_id;
@@ -12,12 +11,12 @@ mod status;
 mod time;
 mod to_icalendar;
 mod transparency;
+mod visibility;
 pub mod windows_tz;
 mod x_property;
 
 pub use attendee::{Attendee, ParticipationStatus};
 use chrono::{DateTime, Utc};
-pub use class::Class;
 pub use error::EventError;
 pub use instance_id::{EventInstanceId, EventUid, RecurrenceId};
 pub use occurrences::expand_in_range;
@@ -28,6 +27,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use status::Status;
 pub use time::EventTime;
 pub use transparency::Transparency;
+pub use visibility::Visibility;
 pub use x_property::XProperty;
 
 const ICS_PRODID: &str = "CALDIR";
@@ -45,7 +45,7 @@ pub struct Event {
     pub end: Option<EventTime>,
     pub status: Status,
     pub transparency: Transparency,
-    pub class: Class,
+    pub visibility: Visibility,
     pub recurrence: Option<Recurrence>,
     pub recurrence_id: Option<RecurrenceId>,
     pub organizer: Option<Organizer>,
@@ -74,7 +74,7 @@ impl Event {
             end: None,
             status: Status::default(),
             transparency: Transparency::default(),
-            class: Class::default(),
+            visibility: Visibility::default(),
             recurrence: None,
             recurrence_id: None,
             last_modified: None,

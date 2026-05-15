@@ -1,6 +1,6 @@
 use crate::event::{
-    Attendee, Class, Event, EventError, EventTime, EventUid, Organizer, Recurrence, RecurrenceId,
-    Reminder, Status, Transparency, XProperty,
+    Attendee, Event, EventError, EventTime, EventUid, Organizer, Recurrence, RecurrenceId,
+    Reminder, Status, Transparency, Visibility, XProperty,
 };
 use icalendar::{Component, EventLike};
 
@@ -42,9 +42,9 @@ impl TryFrom<&icalendar::Event> for Event {
             .and_then(Transparency::from_ics_str)
             .unwrap_or_default();
 
-        let class = value
+        let visibility = value
             .property_value("CLASS")
-            .and_then(Class::from_ics_str)
+            .and_then(Visibility::from_ics_str)
             .unwrap_or_default();
 
         let reminders = Reminder::from_ical_event(value);
@@ -65,7 +65,7 @@ impl TryFrom<&icalendar::Event> for Event {
             end,
             status,
             transparency,
-            class,
+            visibility,
             recurrence,
             recurrence_id,
             last_modified: value.get_last_modified(),
@@ -278,23 +278,23 @@ mod tests {
     }
 
     #[test]
-    fn converts_class() {
+    fn converts_visibility() {
         let ical_event = test_icalendar_event()
             .append_property(icalendar::Property::new("CLASS", "PRIVATE"))
             .done();
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.class, Class::Private);
+        assert_eq!(event.visibility, Visibility::Private);
     }
 
     #[test]
-    fn class_defaults_to_public_when_missing() {
+    fn visibility_defaults_to_public_when_missing() {
         let ical_event = test_icalendar_event().done();
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.class, Class::Public);
+        assert_eq!(event.visibility, Visibility::Public);
     }
 
     #[test]

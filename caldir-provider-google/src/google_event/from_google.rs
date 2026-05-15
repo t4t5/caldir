@@ -1,7 +1,7 @@
 use anyhow::Result;
 use caldir_core::{
-    Attendee, Class, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
-    RecurrenceId, Reminder, Status, Transparency, XProperty,
+    Attendee, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence, RecurrenceId,
+    Reminder, Status, Transparency, Visibility, XProperty,
 };
 
 use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
@@ -56,10 +56,10 @@ impl FromGoogle for Event {
         // Google omits `visibility` (or sends "default") when the event
         // inherits the calendar's default visibility — treat that as PUBLIC
         // per RFC 5545, matching the ICS-side default.
-        let class = match event.visibility.as_str() {
-            "private" => Class::Private,
-            "confidential" => Class::Confidential,
-            _ => Class::Public,
+        let visibility = match event.visibility.as_str() {
+            "private" => Visibility::Private,
+            "confidential" => Visibility::Confidential,
+            _ => Visibility::Public,
         };
 
         let organizer = event.organizer.as_ref().map(|o| Organizer {
@@ -123,7 +123,7 @@ impl FromGoogle for Event {
             end: Some(end),
             status,
             transparency,
-            class,
+            visibility,
             recurrence,
             recurrence_id,
             last_modified: event.updated,
@@ -362,7 +362,7 @@ mod tests {
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.class, Class::Private);
+        assert_eq!(event.visibility, Visibility::Private);
     }
 
     #[test]
@@ -372,7 +372,7 @@ mod tests {
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.class, Class::Confidential);
+        assert_eq!(event.visibility, Visibility::Confidential);
     }
 
     #[test]
@@ -383,7 +383,7 @@ mod tests {
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.class, Class::Public);
+        assert_eq!(event.visibility, Visibility::Public);
     }
 
     #[test]
@@ -394,7 +394,7 @@ mod tests {
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.class, Class::Public);
+        assert_eq!(event.visibility, Visibility::Public);
     }
 
     #[test]

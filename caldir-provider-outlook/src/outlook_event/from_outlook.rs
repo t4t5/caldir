@@ -2,8 +2,8 @@
 
 use anyhow::Result;
 use caldir_core::{
-    Attendee, Class, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
-    RecurrenceId, Reminder, Status, Transparency, XProperty, windows_tz,
+    Attendee, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence, RecurrenceId,
+    Reminder, Status, Transparency, Visibility, XProperty, windows_tz,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
@@ -44,10 +44,10 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
     // (Outlook's "marked as personal" affordance) collapses to PRIVATE so we
     // err on the side of not leaking content when round-tripping through
     // systems that only understand CLASS.
-    let class = match event.sensitivity.as_str() {
-        "private" | "personal" => Class::Private,
-        "confidential" => Class::Confidential,
-        _ => Class::Public,
+    let visibility = match event.sensitivity.as_str() {
+        "private" | "personal" => Visibility::Private,
+        "confidential" => Visibility::Confidential,
+        _ => Visibility::Public,
     };
 
     let recurrence = event
@@ -190,7 +190,7 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         end: Some(end),
         status,
         transparency,
-        class,
+        visibility,
         recurrence,
         recurrence_id,
         organizer,
@@ -569,7 +569,7 @@ mod tests {
 
         let event = from_outlook(ge, "me@example.com").unwrap();
 
-        assert_eq!(event.class, Class::Private);
+        assert_eq!(event.visibility, Visibility::Private);
     }
 
     #[test]
@@ -579,7 +579,7 @@ mod tests {
 
         let event = from_outlook(ge, "me@example.com").unwrap();
 
-        assert_eq!(event.class, Class::Confidential);
+        assert_eq!(event.visibility, Visibility::Confidential);
     }
 
     // Graph's `personal` has no RFC 5545 equivalent; collapse to PRIVATE
@@ -592,7 +592,7 @@ mod tests {
 
         let event = from_outlook(ge, "me@example.com").unwrap();
 
-        assert_eq!(event.class, Class::Private);
+        assert_eq!(event.visibility, Visibility::Private);
     }
 
     #[test]
@@ -602,7 +602,7 @@ mod tests {
 
         let event = from_outlook(ge, "me@example.com").unwrap();
 
-        assert_eq!(event.class, Class::Public);
+        assert_eq!(event.visibility, Visibility::Public);
     }
 
     #[test]
@@ -610,7 +610,7 @@ mod tests {
         // Graph omits `sensitivity` when normal — treat absence as PUBLIC.
         let event = from_outlook(minimal_graph_event(), "me@example.com").unwrap();
 
-        assert_eq!(event.class, Class::Public);
+        assert_eq!(event.visibility, Visibility::Public);
     }
 
     #[test]

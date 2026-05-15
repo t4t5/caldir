@@ -1,4 +1,4 @@
-use crate::event::{Class, Event, Status, Transparency};
+use crate::event::{Event, Status, Transparency, Visibility};
 use icalendar::{Component, EventLike};
 
 impl From<&Event> for icalendar::Event {
@@ -28,8 +28,11 @@ impl From<&Event> for icalendar::Event {
             ));
         }
 
-        if value.class != Class::default() {
-            event.append_property(icalendar::Property::new("CLASS", value.class.as_ics_str()));
+        if value.visibility != Visibility::default() {
+            event.append_property(icalendar::Property::new(
+                "CLASS",
+                value.visibility.as_ics_str(),
+            ));
         }
 
         if let Some(recurrence) = &value.recurrence {
@@ -228,9 +231,9 @@ mod tests {
     }
 
     #[test]
-    fn converts_class() {
+    fn converts_visibility() {
         let mut event = test_event();
-        event.class = Class::Private;
+        event.visibility = Visibility::Private;
 
         let ical_event: icalendar::Event = event.into();
 
@@ -238,9 +241,9 @@ mod tests {
     }
 
     #[test]
-    fn omits_class_when_default() {
+    fn omits_visibility_when_default() {
         let mut event = test_event();
-        event.class = Class::Public;
+        event.visibility = Visibility::Public;
 
         let ical_event: icalendar::Event = event.into();
 
