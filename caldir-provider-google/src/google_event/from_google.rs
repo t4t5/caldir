@@ -32,6 +32,10 @@ impl FromGoogle for Event {
         let recurrence_id = google_dt_to_event_time(event.original_start_time.as_ref())
             .map(RecurrenceId::from_event_time);
 
+        // Note: when `reminders.useDefault: true` and overrides is empty, we
+        // intentionally leave reminders empty here — the local file has no
+        // VALARM, and `to_google` reads "no VALARM" as "inherit Google's
+        // calendar default reminders" on push.
         let reminders: Vec<Reminder> = if let Some(ref rem) = event.reminders {
             rem.overrides
                 .iter()
@@ -372,5 +376,41 @@ mod tests {
         let event = Event::from_google(minimal_event()).unwrap();
 
         assert_eq!(event.url, None);
+    }
+
+    // `useDefault: true` means "inherit the calendar's default reminders". We
+    // deliberately don't expand those into explicit VALARMs locally: round-
+    // tripping back via `to_google` would then send them as overrides and
+    // pin the event to today's defaults, even if the calendar default later
+    // changes. The empty-reminders state on disk is what makes the next push
+    // emit `useDefault: true` again.
+    #[test]
+    fn use_default_reminders_produces_empty_reminders() {
+        let mut ge = minimal_event();
+        ge.reminders = Some(g::Reminders {
+            use_default: true,
+            overrides: vec![],
+        });
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert!(event.reminders.is_empty());
+    }
+
+    #[test]
+    fn explicit_overrides_become_reminders() {
+        let mut ge = minimal_event();
+        ge.reminders = Some(g::Reminders {
+            use_default: false,
+            overrides: vec![g::EventReminder {
+                method: "popup".into(),
+                minutes: 10,
+            }],
+        });
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.reminders.len(), 1);
+        assert_eq!(event.reminders[0].minutes_before_start, 10);
     }
 }

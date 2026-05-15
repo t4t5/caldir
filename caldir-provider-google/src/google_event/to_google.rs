@@ -37,8 +37,14 @@ impl ToGoogle for Event {
                 minutes: r.minutes_before_start,
             })
             .collect();
+
+        // "No VALARM locally" = "inherit Google's calendar defaults"
+        // Sending `None` here would otherwise clear the calendar-level default
         let reminders = if valid_reminders.is_empty() {
-            None
+            Some(google_calendar::types::Reminders {
+                overrides: vec![],
+                use_default: true,
+            })
         } else {
             Some(google_calendar::types::Reminders {
                 overrides: valid_reminders,
@@ -199,7 +205,7 @@ mod tests {
     // Google's API rejects reminder overrides with `minutes: 0` ("Missing
     // override reminder minutes"), because the `google-calendar` crate strips
     // zero-valued integers from the serialized JSON. A reminder that fires at
-    // event start must not be sent to Google.
+    // event start must not be sent as an override.
     #[test]
     fn zero_minute_reminder_is_stripped_to_avoid_google_400() {
         let mut event = sample_event();
@@ -208,12 +214,16 @@ mod tests {
         }];
 
         let google = event.to_google();
+        let reminders = google.reminders.expect("reminders always set");
 
         assert!(
-            google.reminders.is_none(),
+            reminders.overrides.is_empty(),
             "expected 0-minute reminder to be filtered out, got {:?}",
-            google.reminders
+            reminders.overrides
         );
+        // With no surviving overrides, fall back to the calendar default
+        // rather than sending an empty `overrides` array that would clear it.
+        assert!(reminders.use_default);
     }
 
     #[test]
@@ -233,6 +243,7 @@ mod tests {
 
         assert_eq!(reminders.overrides.len(), 1);
         assert_eq!(reminders.overrides[0].minutes, 15);
+        assert!(!reminders.use_default);
     }
 
     #[test]
@@ -249,5 +260,19 @@ mod tests {
         assert_eq!(reminders.overrides[0].minutes, 30);
         assert_eq!(reminders.overrides[0].method, "popup");
         assert!(!reminders.use_default);
+    }
+
+    // Local files without VALARMs must push as `useDefault: true` so that
+    // we don't silently strip Google's calendar-level default reminders on push.
+    #[test]
+    fn empty_reminders_sends_use_default_true() {
+        let event = sample_event();
+        assert!(event.reminders.is_empty());
+
+        let google = event.to_google();
+        let reminders = google.reminders.expect("reminders always set");
+
+        assert!(reminders.use_default);
+        assert!(reminders.overrides.is_empty());
     }
 }
