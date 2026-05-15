@@ -1,6 +1,6 @@
 //! Convert caldir Event to a Microsoft Graph event.
 
-use caldir_core::{Event, EventTime, ParticipationStatus, Transparency, windows_tz};
+use caldir_core::{Class, Event, EventTime, ParticipationStatus, Transparency, windows_tz};
 use chrono::{Datelike, Duration, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
 use crate::constants::HTML_DESC_PROPERTY;
@@ -22,6 +22,15 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
         Transparency::Opaque => "busy",
     }
     .to_string();
+
+    // Empty string lets Graph keep its default ("normal") and skips
+    // overwriting any "personal" sensitivity already set on Outlook's side
+    // (CLASS:PUBLIC can't disambiguate "explicitly normal" from "untouched").
+    let sensitivity = match event.class {
+        Class::Public => String::new(),
+        Class::Private => "private".to_string(),
+        Class::Confidential => "confidential".to_string(),
+    };
 
     let (reminder_minutes, is_reminder_on) = match event.reminders.first() {
         Some(r) => (r.minutes_before_start, true),
@@ -70,6 +79,7 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
         reminder_minutes_before_start: reminder_minutes,
         is_reminder_on,
         show_as,
+        sensitivity,
         last_modified_date_time: None,
         online_meeting: None,
         original_start: None,
@@ -395,6 +405,7 @@ mod tests {
             end,
             status: Status::Confirmed,
             transparency: Transparency::Opaque,
+            class: Default::default(),
             recurrence: None,
             recurrence_id: None,
             organizer: None,
@@ -540,6 +551,42 @@ mod tests {
         let zoned_graph = event_time_to_graph(&zoned);
         assert_eq!(zoned_graph.date_time, "2026-05-05T11:00:00.0000000");
         assert_eq!(zoned_graph.time_zone, "GMT Standard Time");
+    }
+
+    #[test]
+    fn private_class_sends_sensitivity_private() {
+        let mut event = make_event(start_on(2026, 1, 1), None);
+        event.class = Class::Private;
+
+        let graph = to_outlook(&event);
+
+        assert_eq!(graph.sensitivity, "private");
+    }
+
+    #[test]
+    fn confidential_class_sends_sensitivity_confidential() {
+        let mut event = make_event(start_on(2026, 1, 1), None);
+        event.class = Class::Confidential;
+
+        let graph = to_outlook(&event);
+
+        assert_eq!(graph.sensitivity, "confidential");
+    }
+
+    // PUBLIC is the RFC 5545 default. Emitting an empty sensitivity (which
+    // `skip_serializing_if` strips from the JSON) lets Graph keep whatever
+    // it already had — important because CLASS can't distinguish "this is
+    // a normal event" from "I never touched the sensitivity field".
+    #[test]
+    fn public_class_omits_sensitivity_from_payload() {
+        let mut event = make_event(start_on(2026, 1, 1), None);
+        event.class = Class::Public;
+
+        let graph = to_outlook(&event);
+
+        assert!(graph.sensitivity.is_empty());
+        let json = serde_json::to_value(&graph).unwrap();
+        assert!(json.get("sensitivity").is_none());
     }
 
     #[test]

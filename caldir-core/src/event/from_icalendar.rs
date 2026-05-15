@@ -1,5 +1,5 @@
 use crate::event::{
-    Attendee, Event, EventError, EventTime, EventUid, Organizer, Recurrence, RecurrenceId,
+    Attendee, Class, Event, EventError, EventTime, EventUid, Organizer, Recurrence, RecurrenceId,
     Reminder, Status, Transparency, XProperty,
 };
 use icalendar::{Component, EventLike};
@@ -29,9 +29,9 @@ impl TryFrom<&icalendar::Event> for Event {
             .map(|props| props.iter().map(Attendee::from).collect())
             .unwrap_or_default();
 
-        // STATUS and TRANSP default to CONFIRMED / OPAQUE per RFC 5545, so a
-        // missing line is treated as the default value rather than an
-        // independent "unset" state.
+        // STATUS, TRANSP and CLASS default to CONFIRMED / OPAQUE / PUBLIC per
+        // RFC 5545, so a missing line is treated as the default value rather
+        // than an independent "unset" state.
         let status = value
             .property_value("STATUS")
             .and_then(Status::from_ics_str)
@@ -40,6 +40,11 @@ impl TryFrom<&icalendar::Event> for Event {
         let transparency = value
             .property_value("TRANSP")
             .and_then(Transparency::from_ics_str)
+            .unwrap_or_default();
+
+        let class = value
+            .property_value("CLASS")
+            .and_then(Class::from_ics_str)
             .unwrap_or_default();
 
         let reminders = Reminder::from_ical_event(value);
@@ -60,6 +65,7 @@ impl TryFrom<&icalendar::Event> for Event {
             end,
             status,
             transparency,
+            class,
             recurrence,
             recurrence_id,
             last_modified: value.get_last_modified(),
@@ -269,6 +275,26 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.transparency, Transparency::Opaque);
+    }
+
+    #[test]
+    fn converts_class() {
+        let ical_event = test_icalendar_event()
+            .append_property(icalendar::Property::new("CLASS", "PRIVATE"))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.class, Class::Private);
+    }
+
+    #[test]
+    fn class_defaults_to_public_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.class, Class::Public);
     }
 
     #[test]

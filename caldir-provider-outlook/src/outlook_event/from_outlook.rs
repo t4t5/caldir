@@ -2,8 +2,8 @@
 
 use anyhow::Result;
 use caldir_core::{
-    Attendee, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence, RecurrenceId,
-    Reminder, Status, Transparency, XProperty, windows_tz,
+    Attendee, Class, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
+    RecurrenceId, Reminder, Status, Transparency, XProperty, windows_tz,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
@@ -38,6 +38,16 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
     let transparency = match event.show_as.as_str() {
         "free" => Transparency::Transparent,
         _ => Transparency::Opaque,
+    };
+
+    // Graph has four sensitivity values; RFC 5545's CLASS has three. `personal`
+    // (Outlook's "marked as personal" affordance) collapses to PRIVATE so we
+    // err on the side of not leaking content when round-tripping through
+    // systems that only understand CLASS.
+    let class = match event.sensitivity.as_str() {
+        "private" | "personal" => Class::Private,
+        "confidential" => Class::Confidential,
+        _ => Class::Public,
     };
 
     let recurrence = event
@@ -180,6 +190,7 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         end: Some(end),
         status,
         transparency,
+        class,
         recurrence,
         recurrence_id,
         organizer,
@@ -466,6 +477,7 @@ mod tests {
             reminder_minutes_before_start: 0,
             is_reminder_on: false,
             show_as: "busy".to_string(),
+            sensitivity: String::new(),
             last_modified_date_time: None,
             online_meeting: None,
             original_start: None,
@@ -548,6 +560,57 @@ mod tests {
 
         assert_eq!(event.reminders.len(), 1);
         assert_eq!(event.reminders[0].minutes_before_start, 30);
+    }
+
+    #[test]
+    fn private_sensitivity_maps_to_private() {
+        let mut ge = minimal_graph_event();
+        ge.sensitivity = "private".into();
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.class, Class::Private);
+    }
+
+    #[test]
+    fn confidential_sensitivity_maps_to_confidential() {
+        let mut ge = minimal_graph_event();
+        ge.sensitivity = "confidential".into();
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.class, Class::Confidential);
+    }
+
+    // Graph's `personal` has no RFC 5545 equivalent; collapse to PRIVATE
+    // rather than PUBLIC so a "personal" event isn't downgraded to fully
+    // visible when it leaves Outlook.
+    #[test]
+    fn personal_sensitivity_collapses_to_private() {
+        let mut ge = minimal_graph_event();
+        ge.sensitivity = "personal".into();
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.class, Class::Private);
+    }
+
+    #[test]
+    fn normal_sensitivity_maps_to_public() {
+        let mut ge = minimal_graph_event();
+        ge.sensitivity = "normal".into();
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.class, Class::Public);
+    }
+
+    #[test]
+    fn empty_sensitivity_maps_to_public() {
+        // Graph omits `sensitivity` when normal — treat absence as PUBLIC.
+        let event = from_outlook(minimal_graph_event(), "me@example.com").unwrap();
+
+        assert_eq!(event.class, Class::Public);
     }
 
     #[test]

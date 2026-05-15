@@ -1,7 +1,7 @@
 use anyhow::Result;
 use caldir_core::{
-    Attendee, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence, RecurrenceId,
-    Reminder, Status, Transparency, XProperty,
+    Attendee, Class, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
+    RecurrenceId, Reminder, Status, Transparency, XProperty,
 };
 
 use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
@@ -51,6 +51,15 @@ impl FromGoogle for Event {
             Transparency::Transparent
         } else {
             Transparency::Opaque
+        };
+
+        // Google omits `visibility` (or sends "default") when the event
+        // inherits the calendar's default visibility — treat that as PUBLIC
+        // per RFC 5545, matching the ICS-side default.
+        let class = match event.visibility.as_str() {
+            "private" => Class::Private,
+            "confidential" => Class::Confidential,
+            _ => Class::Public,
         };
 
         let organizer = event.organizer.as_ref().map(|o| Organizer {
@@ -114,6 +123,7 @@ impl FromGoogle for Event {
             end: Some(end),
             status,
             transparency,
+            class,
             recurrence,
             recurrence_id,
             last_modified: event.updated,
@@ -343,6 +353,48 @@ mod tests {
         let event = Event::from_google(ge).unwrap();
 
         assert_eq!(event.transparency, Transparency::Transparent);
+    }
+
+    #[test]
+    fn private_visibility_maps_to_private() {
+        let mut ge = minimal_event();
+        ge.visibility = "private".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.class, Class::Private);
+    }
+
+    #[test]
+    fn confidential_visibility_maps_to_confidential() {
+        let mut ge = minimal_event();
+        ge.visibility = "confidential".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.class, Class::Confidential);
+    }
+
+    #[test]
+    fn default_visibility_maps_to_public() {
+        // "default" means "inherit from calendar"; treat as PUBLIC per RFC 5545.
+        let mut ge = minimal_event();
+        ge.visibility = "default".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.class, Class::Public);
+    }
+
+    #[test]
+    fn empty_visibility_maps_to_public() {
+        // Google omits `visibility` for events using the calendar default.
+        let mut ge = minimal_event();
+        ge.visibility = String::new();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.class, Class::Public);
     }
 
     #[test]

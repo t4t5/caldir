@@ -192,6 +192,7 @@ mod tests {
             reminder_minutes_before_start: 0,
             is_reminder_on: false,
             show_as: String::new(),
+            sensitivity: String::new(),
             last_modified_date_time: None,
             online_meeting: None,
             original_start: original_start.map(|s| s.to_string()),

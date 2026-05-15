@@ -83,6 +83,11 @@ pub struct GraphEvent {
     pub is_reminder_on: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub show_as: String,
+    /// Graph's privacy classification: `normal`, `personal`, `private`, or
+    /// `confidential`. Maps to RFC 5545's CLASS — `personal` collapses to
+    /// PRIVATE since CLASS has no equivalent middle ground.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub sensitivity: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_modified_date_time: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

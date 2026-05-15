@@ -1,5 +1,6 @@
 use caldir_core::{
-    Attendee, Event, EventTime, ParticipationStatus, Recurrence, RecurrenceId, Status, Transparency,
+    Attendee, Class, Event, EventTime, ParticipationStatus, Recurrence, RecurrenceId, Status,
+    Transparency,
 };
 
 use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
@@ -26,6 +27,15 @@ impl ToGoogle for Event {
         let transparency = match self.transparency {
             Transparency::Opaque => "opaque".to_string(),
             Transparency::Transparent => "transparent".to_string(),
+        };
+
+        // Send "default" rather than "public" when the event is unrestricted,
+        // so it inherits the calendar's visibility setting on Google's side
+        // instead of being explicitly pinned.
+        let visibility = match self.class {
+            Class::Public => "default".to_string(),
+            Class::Private => "private".to_string(),
+            Class::Confidential => "confidential".to_string(),
         };
 
         let valid_reminders: Vec<_> = self
@@ -87,6 +97,7 @@ impl ToGoogle for Event {
             end: Some(end),
             status,
             transparency,
+            visibility,
             reminders,
             attendees,
             recurrence,
@@ -187,7 +198,7 @@ pub(crate) fn participation_status_to_google(status: ParticipationStatus) -> &'s
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caldir_core::{Event, EventTime, Reminder};
+    use caldir_core::{Class, Event, EventTime, Reminder};
     use chrono::NaiveDate;
 
     fn sample_event() -> Event {
@@ -274,5 +285,38 @@ mod tests {
 
         assert!(reminders.use_default);
         assert!(reminders.overrides.is_empty());
+    }
+
+    #[test]
+    fn private_class_sends_visibility_private() {
+        let mut event = sample_event();
+        event.class = Class::Private;
+
+        let google = event.to_google();
+
+        assert_eq!(google.visibility, "private");
+    }
+
+    #[test]
+    fn confidential_class_sends_visibility_confidential() {
+        let mut event = sample_event();
+        event.class = Class::Confidential;
+
+        let google = event.to_google();
+
+        assert_eq!(google.visibility, "confidential");
+    }
+
+    // PUBLIC is the RFC 5545 default, and Google's "default" means "inherit
+    // calendar visibility" — sending "default" avoids pinning the event to
+    // PUBLIC when the calendar itself has a different default.
+    #[test]
+    fn public_class_sends_visibility_default() {
+        let mut event = sample_event();
+        event.class = Class::Public;
+
+        let google = event.to_google();
+
+        assert_eq!(google.visibility, "default");
     }
 }

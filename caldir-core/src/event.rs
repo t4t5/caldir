@@ -1,4 +1,5 @@
 mod attendee;
+mod class;
 mod error;
 mod from_icalendar;
 mod instance_id;
@@ -16,6 +17,7 @@ mod x_property;
 
 pub use attendee::{Attendee, ParticipationStatus};
 use chrono::{DateTime, Utc};
+pub use class::Class;
 pub use error::EventError;
 pub use instance_id::{EventInstanceId, EventUid, RecurrenceId};
 pub use occurrences::expand_in_range;
@@ -43,6 +45,7 @@ pub struct Event {
     pub end: Option<EventTime>,
     pub status: Status,
     pub transparency: Transparency,
+    pub class: Class,
     pub recurrence: Option<Recurrence>,
     pub recurrence_id: Option<RecurrenceId>,
     pub organizer: Option<Organizer>,
@@ -71,6 +74,7 @@ impl Event {
             end: None,
             status: Status::default(),
             transparency: Transparency::default(),
+            class: Class::default(),
             recurrence: None,
             recurrence_id: None,
             last_modified: None,
@@ -391,6 +395,7 @@ END:VCALENDAR
 VERSION:2.0
 PRODID:CALDIR
 BEGIN:VEVENT
+CLASS:CONFIDENTIAL
 DTSTAMP:20260502T173914Z
 DESCRIPTION:https://docs.example.com/document/d/abc123def456ghijklmnopqrstu
  v/edit?usp=sharing\n

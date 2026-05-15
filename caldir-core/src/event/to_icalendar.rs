@@ -1,4 +1,4 @@
-use crate::event::{Event, Status, Transparency};
+use crate::event::{Class, Event, Status, Transparency};
 use icalendar::{Component, EventLike};
 
 impl From<&Event> for icalendar::Event {
@@ -11,9 +11,9 @@ impl From<&Event> for icalendar::Event {
             event.ends(icalendar::DatePerhapsTime::from(end));
         }
 
-        // Omit STATUS / TRANSP when they hold their RFC 5545 defaults so files
-        // round-trip cleanly (a parsed-then-written event yields the same bytes
-        // it came from, even if the original had no STATUS line).
+        // Omit STATUS / TRANSP / CLASS when they hold their RFC 5545 defaults
+        // so files round-trip cleanly (a parsed-then-written event yields the
+        // same bytes it came from, even if the original had no STATUS line).
         if value.status != Status::default() {
             event.append_property(icalendar::Property::new(
                 "STATUS",
@@ -26,6 +26,10 @@ impl From<&Event> for icalendar::Event {
                 "TRANSP",
                 value.transparency.as_ics_str(),
             ));
+        }
+
+        if value.class != Class::default() {
+            event.append_property(icalendar::Property::new("CLASS", value.class.as_ics_str()));
         }
 
         if let Some(recurrence) = &value.recurrence {
@@ -221,6 +225,26 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.property_value("TRANSP"), None);
+    }
+
+    #[test]
+    fn converts_class() {
+        let mut event = test_event();
+        event.class = Class::Private;
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("CLASS"), Some("PRIVATE"));
+    }
+
+    #[test]
+    fn omits_class_when_default() {
+        let mut event = test_event();
+        event.class = Class::Public;
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("CLASS"), None);
     }
 
     #[test]
