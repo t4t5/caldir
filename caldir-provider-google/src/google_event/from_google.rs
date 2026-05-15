@@ -1,7 +1,7 @@
 use anyhow::Result;
 use caldir_core::{
-    Attendee, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence, RecurrenceId,
-    Reminder, Status, Transparency, Visibility, XProperty,
+    Attendee, Availability, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
+    RecurrenceId, Reminder, Status, Visibility, XProperty,
 };
 
 use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
@@ -47,10 +47,10 @@ impl FromGoogle for Event {
             Vec::new()
         };
 
-        let transparency = if event.transparency == "transparent" {
-            Transparency::Transparent
+        let availability = if event.transparency == "transparent" {
+            Availability::Free
         } else {
-            Transparency::Opaque
+            Availability::Busy
         };
 
         // Google omits `visibility` (or sends "default") when the event
@@ -122,7 +122,7 @@ impl FromGoogle for Event {
             start,
             end: Some(end),
             status,
-            transparency,
+            availability,
             visibility,
             recurrence,
             recurrence_id,
@@ -324,17 +324,17 @@ mod tests {
     }
 
     #[test]
-    fn opaque_transparency_maps_to_opaque() {
+    fn opaque_transparency_maps_to_busy() {
         let mut ge = minimal_event();
         ge.transparency = "opaque".into();
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.transparency, Transparency::Opaque);
+        assert_eq!(event.availability, Availability::Busy);
     }
 
     #[test]
-    fn empty_transparency_maps_to_opaque() {
+    fn empty_transparency_maps_to_busy() {
         // Google omits `transparency` for events using the default availability;
         // RFC 5545 says OPAQUE is the default in that case.
         let mut ge = minimal_event();
@@ -342,17 +342,17 @@ mod tests {
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.transparency, Transparency::Opaque);
+        assert_eq!(event.availability, Availability::Busy);
     }
 
     #[test]
-    fn transparent_transparency_maps_to_transparent() {
+    fn transparent_transparency_maps_to_free() {
         let mut ge = minimal_event();
         ge.transparency = "transparent".into();
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.transparency, Transparency::Transparent);
+        assert_eq!(event.availability, Availability::Free);
     }
 
     #[test]

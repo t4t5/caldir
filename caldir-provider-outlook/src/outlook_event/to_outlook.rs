@@ -1,6 +1,6 @@
 //! Convert caldir Event to a Microsoft Graph event.
 
-use caldir_core::{Event, EventTime, ParticipationStatus, Transparency, Visibility, windows_tz};
+use caldir_core::{Availability, Event, EventTime, ParticipationStatus, Visibility, windows_tz};
 use chrono::{Datelike, Duration, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
 use crate::constants::HTML_DESC_PROPERTY;
@@ -17,9 +17,9 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
         display_name: loc.clone(),
     });
 
-    let show_as = match event.transparency {
-        Transparency::Transparent => "free",
-        Transparency::Opaque => "busy",
+    let show_as = match event.availability {
+        Availability::Free => "free",
+        Availability::Busy => "busy",
     }
     .to_string();
 
@@ -392,7 +392,7 @@ fn extract_month(time: &EventTime) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caldir_core::{Event, EventTime, EventUid, Status, Transparency, XProperty};
+    use caldir_core::{Availability, Event, EventTime, EventUid, Status, XProperty};
     use chrono::NaiveDate;
 
     fn make_event(start: EventTime, end: Option<EventTime>) -> Event {
@@ -404,7 +404,7 @@ mod tests {
             start,
             end,
             status: Status::Confirmed,
-            transparency: Transparency::Opaque,
+            availability: Availability::Busy,
             visibility: Default::default(),
             recurrence: None,
             recurrence_id: None,

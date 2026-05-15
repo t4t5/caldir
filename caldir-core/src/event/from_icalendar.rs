@@ -1,6 +1,6 @@
 use crate::event::{
-    Attendee, Event, EventError, EventTime, EventUid, Organizer, Recurrence, RecurrenceId,
-    Reminder, Status, Transparency, Visibility, XProperty,
+    Attendee, Availability, Event, EventError, EventTime, EventUid, Organizer, Recurrence,
+    RecurrenceId, Reminder, Status, Visibility, XProperty,
 };
 use icalendar::{Component, EventLike};
 
@@ -37,9 +37,9 @@ impl TryFrom<&icalendar::Event> for Event {
             .and_then(Status::from_ics_str)
             .unwrap_or_default();
 
-        let transparency = value
+        let availability = value
             .property_value("TRANSP")
-            .and_then(Transparency::from_ics_str)
+            .and_then(Availability::from_ics_str)
             .unwrap_or_default();
 
         let visibility = value
@@ -64,7 +64,7 @@ impl TryFrom<&icalendar::Event> for Event {
             start,
             end,
             status,
-            transparency,
+            availability,
             visibility,
             recurrence,
             recurrence_id,
@@ -258,23 +258,23 @@ mod tests {
     }
 
     #[test]
-    fn converts_transparency() {
+    fn converts_availability() {
         let ical_event = test_icalendar_event()
             .append_property(icalendar::Property::new("TRANSP", "TRANSPARENT"))
             .done();
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.transparency, Transparency::Transparent);
+        assert_eq!(event.availability, Availability::Free);
     }
 
     #[test]
-    fn transparency_defaults_to_opaque_when_missing() {
+    fn availability_defaults_to_busy_when_missing() {
         let ical_event = test_icalendar_event().done();
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.transparency, Transparency::Opaque);
+        assert_eq!(event.availability, Availability::Busy);
     }
 
     #[test]

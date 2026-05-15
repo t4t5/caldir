@@ -1,6 +1,6 @@
 use caldir_core::{
-    Attendee, Event, EventTime, ParticipationStatus, Recurrence, RecurrenceId, Status,
-    Transparency, Visibility,
+    Attendee, Availability, Event, EventTime, ParticipationStatus, Recurrence, RecurrenceId,
+    Status, Visibility,
 };
 
 use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
@@ -24,9 +24,9 @@ impl ToGoogle for Event {
             Status::Cancelled => "cancelled".to_string(),
         };
 
-        let transparency = match self.transparency {
-            Transparency::Opaque => "opaque".to_string(),
-            Transparency::Transparent => "transparent".to_string(),
+        let transparency = match self.availability {
+            Availability::Busy => "opaque".to_string(),
+            Availability::Free => "transparent".to_string(),
         };
 
         // Send "default" rather than "public" when the event is unrestricted,

@@ -287,11 +287,11 @@ fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
                 lines.extend(reminder_lines.into_iter().map(|l| format!("  {}", l)));
             }
         }
-        if old.transparency != new.transparency {
+        if old.availability != new.availability {
             lines.push(render_display(
-                "transparency",
-                &old.transparency,
-                &new.transparency,
+                "availability",
+                &old.availability,
+                &new.availability,
             ));
         }
         if old.organizer != new.organizer {
@@ -449,7 +449,7 @@ fn render_optional_display<T: fmt::Display>(
 }
 
 /// Render a `T: Display` field diff with red/green colors. Used for enum-like
-/// fields with defaults (status, transparency).
+/// fields with defaults (status, availability).
 fn render_display<T: fmt::Display>(field: &str, old: &T, new: &T) -> String {
     format!(
         "{}: {} → {}",

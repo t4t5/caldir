@@ -1,4 +1,4 @@
-use crate::event::{Event, Status, Transparency, Visibility};
+use crate::event::{Availability, Event, Status, Visibility};
 use icalendar::{Component, EventLike};
 
 impl From<&Event> for icalendar::Event {
@@ -21,10 +21,10 @@ impl From<&Event> for icalendar::Event {
             ));
         }
 
-        if value.transparency != Transparency::default() {
+        if value.availability != Availability::default() {
             event.append_property(icalendar::Property::new(
                 "TRANSP",
-                value.transparency.as_ics_str(),
+                value.availability.as_ics_str(),
             ));
         }
 
@@ -211,9 +211,9 @@ mod tests {
     }
 
     #[test]
-    fn converts_transparency() {
+    fn converts_availability() {
         let mut event = test_event();
-        event.transparency = Transparency::Transparent;
+        event.availability = Availability::Free;
 
         let ical_event: icalendar::Event = event.into();
 
@@ -221,9 +221,9 @@ mod tests {
     }
 
     #[test]
-    fn omits_transparency_when_default() {
+    fn omits_availability_when_default() {
         let mut event = test_event();
-        event.transparency = Transparency::Opaque;
+        event.availability = Availability::Busy;
 
         let ical_event: icalendar::Event = event.into();
 

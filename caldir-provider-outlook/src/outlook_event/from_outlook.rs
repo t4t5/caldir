@@ -2,8 +2,8 @@
 
 use anyhow::Result;
 use caldir_core::{
-    Attendee, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence, RecurrenceId,
-    Reminder, Status, Transparency, Visibility, XProperty, windows_tz,
+    Attendee, Availability, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
+    RecurrenceId, Reminder, Status, Visibility, XProperty, windows_tz,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
@@ -35,9 +35,9 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         Status::Confirmed
     };
 
-    let transparency = match event.show_as.as_str() {
-        "free" => Transparency::Transparent,
-        _ => Transparency::Opaque,
+    let availability = match event.show_as.as_str() {
+        "free" => Availability::Free,
+        _ => Availability::Busy,
     };
 
     // Graph has four sensitivity values; RFC 5545's CLASS has three. `personal`
@@ -189,7 +189,7 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         start,
         end: Some(end),
         status,
-        transparency,
+        availability,
         visibility,
         recurrence,
         recurrence_id,

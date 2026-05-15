@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::ListEvents;
-use caldir_core::{Event, EventTime, EventUid, RecurrenceId, Status, Transparency, XProperty};
+use caldir_core::{Availability, Event, EventTime, EventUid, RecurrenceId, Status, XProperty};
 use google_calendar::types::OrderBy;
 
 use crate::app_config::AppConfigStore;
@@ -134,7 +134,7 @@ fn cancellation_to_event(
         start,
         end: Some(end),
         status: Status::Cancelled,
-        transparency: Transparency::Opaque,
+        availability: Availability::Busy,
         visibility: Default::default(),
         recurrence: None,
         recurrence_id: Some(RecurrenceId::from_event_time(recurrence_id)),

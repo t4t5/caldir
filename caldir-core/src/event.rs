@@ -1,4 +1,5 @@
 mod attendee;
+mod availability;
 mod error;
 mod from_icalendar;
 mod instance_id;
@@ -10,12 +11,12 @@ mod slugify;
 mod status;
 mod time;
 mod to_icalendar;
-mod transparency;
 mod visibility;
 pub mod windows_tz;
 mod x_property;
 
 pub use attendee::{Attendee, ParticipationStatus};
+pub use availability::Availability;
 use chrono::{DateTime, Utc};
 pub use error::EventError;
 pub use instance_id::{EventInstanceId, EventUid, RecurrenceId};
@@ -26,7 +27,6 @@ pub use reminder::Reminder;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use status::Status;
 pub use time::EventTime;
-pub use transparency::Transparency;
 pub use visibility::Visibility;
 pub use x_property::XProperty;
 
@@ -44,7 +44,7 @@ pub struct Event {
     pub start: EventTime,
     pub end: Option<EventTime>,
     pub status: Status,
-    pub transparency: Transparency,
+    pub availability: Availability,
     pub visibility: Visibility,
     pub recurrence: Option<Recurrence>,
     pub recurrence_id: Option<RecurrenceId>,
@@ -73,7 +73,7 @@ impl Event {
             start,
             end: None,
             status: Status::default(),
-            transparency: Transparency::default(),
+            availability: Availability::default(),
             visibility: Visibility::default(),
             recurrence: None,
             recurrence_id: None,
