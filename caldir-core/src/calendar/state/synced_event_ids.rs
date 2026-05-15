@@ -57,6 +57,9 @@ impl SyncedEventIds {
         }
     }
 
+    /// Writes atomically (tempfile + rename) so a kill mid-write can't truncate
+    /// the file. Truncation would make the next sync treat every known event
+    /// as new and re-create them remotely.
     pub fn write(&self, path: &Path) -> Result<(), CalendarStateError> {
         let contents = self
             .0
@@ -65,7 +68,16 @@ impl SyncedEventIds {
             .collect::<Vec<_>>()
             .join("\n");
 
-        std::fs::write(path, contents)?;
+        let parent = path.parent().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "synced ids path has no parent directory",
+            )
+        })?;
+
+        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
+        std::io::Write::write_all(&mut tmp, contents.as_bytes())?;
+        tmp.persist(path).map_err(|e| e.error)?;
 
         Ok(())
     }
@@ -120,6 +132,19 @@ mod tests {
         let loaded = SyncedEventIds::load(&path).unwrap();
 
         assert_eq!(loaded.0, sample_ids());
+    }
+
+    #[test]
+    fn write_replaces_existing_file_contents() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("known_event_ids");
+        std::fs::write(&path, "stale-id@example.com").unwrap();
+
+        SyncedEventIds(sample_ids()).write(&path).unwrap();
+
+        let got = std::fs::read_to_string(&path).unwrap();
+        assert!(!got.contains("stale-id@example.com"));
+        assert!(got.contains("t81pd0rkq8ujaughbrjhh87svo@hooli.com"));
     }
 
     #[test]
