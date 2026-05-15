@@ -1,3 +1,16 @@
+/// We need this to distinguish between:
+///
+/// Scenario A.
+///   1. Local event was created + pushed
+///   2. Local is deleted
+///   3. Sync should now delete remote!
+///
+/// Scenario B:
+///   1. Remote event was created.
+///   2. Sync should now create local!
+///
+/// In both cases, we only see that remote has events that local doesn't.
+/// The `known_event_ids` file helps us see if it's a brand new event, or a previously known one.
 use super::{CalendarStateError, instance_id_codec};
 use crate::event::EventInstanceId;
 use std::{collections::HashSet, path::Path};

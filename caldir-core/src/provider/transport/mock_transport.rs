@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -5,12 +6,13 @@ use async_trait::async_trait;
 
 use super::{ProviderTransport, ProviderTransportError};
 
-/// Records the request and timeout, then returns a canned response. One-shot:
-/// a second call to `exchange` will panic.
+/// Records each request/timeout and replays canned responses from a FIFO
+/// queue. Stub one or more responses via `set_response` / `set_error`;
+/// `exchange` panics if it runs out, so a missing stub surfaces loudly.
 pub(crate) struct MockTransport {
-    response: Mutex<Option<Result<String, ProviderTransportError>>>,
-    captured_request: Mutex<Option<String>>,
-    captured_timeout: Mutex<Option<Duration>>,
+    responses: Mutex<VecDeque<Result<String, ProviderTransportError>>>,
+    captured_requests: Mutex<Vec<String>>,
+    captured_timeouts: Mutex<Vec<Duration>>,
 }
 
 impl std::fmt::Debug for MockTransport {
@@ -20,32 +22,43 @@ impl std::fmt::Debug for MockTransport {
 }
 
 impl MockTransport {
-    pub(crate) fn with_response(response: impl Into<String>) -> Self {
+    pub(crate) fn empty() -> Self {
         Self {
-            response: Mutex::new(Some(Ok(response.into()))),
-            captured_request: Mutex::new(None),
-            captured_timeout: Mutex::new(None),
+            responses: Mutex::new(VecDeque::new()),
+            captured_requests: Mutex::new(Vec::new()),
+            captured_timeouts: Mutex::new(Vec::new()),
         }
+    }
+
+    pub(crate) fn with_response(response: impl Into<String>) -> Self {
+        let this = Self::empty();
+        this.set_response(response);
+        this
     }
 
     pub(crate) fn with_error(error: ProviderTransportError) -> Self {
-        Self {
-            response: Mutex::new(Some(Err(error))),
-            captured_request: Mutex::new(None),
-            captured_timeout: Mutex::new(None),
-        }
+        let this = Self::empty();
+        this.set_error(error);
+        this
     }
 
     pub(crate) fn set_response(&self, response: impl Into<String>) {
-        *self.response.lock().unwrap() = Some(Ok(response.into()));
+        self.responses
+            .lock()
+            .unwrap()
+            .push_back(Ok(response.into()));
+    }
+
+    pub(crate) fn set_error(&self, error: ProviderTransportError) {
+        self.responses.lock().unwrap().push_back(Err(error));
     }
 
     pub(crate) fn captured_request(&self) -> Option<String> {
-        self.captured_request.lock().unwrap().clone()
+        self.captured_requests.lock().unwrap().last().cloned()
     }
 
     pub(crate) fn captured_timeout(&self) -> Option<Duration> {
-        *self.captured_timeout.lock().unwrap()
+        self.captured_timeouts.lock().unwrap().last().copied()
     }
 }
 
@@ -56,13 +69,16 @@ impl ProviderTransport for MockTransport {
         request: &str,
         timeout_dur: Duration,
     ) -> Result<String, ProviderTransportError> {
-        *self.captured_request.lock().unwrap() = Some(request.to_string());
-        *self.captured_timeout.lock().unwrap() = Some(timeout_dur);
-
-        self.response
+        self.captured_requests
             .lock()
             .unwrap()
-            .take()
-            .expect("MockTransport::exchange called more than once")
+            .push(request.to_string());
+        self.captured_timeouts.lock().unwrap().push(timeout_dur);
+
+        self.responses
+            .lock()
+            .unwrap()
+            .pop_front()
+            .expect("MockTransport::exchange called with no queued response")
     }
 }

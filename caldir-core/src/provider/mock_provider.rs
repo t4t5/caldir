@@ -1,4 +1,5 @@
 use super::transport::ProviderTransport;
+use super::transport::ProviderTransportError;
 use super::transport::mock_transport::MockTransport;
 use super::{Provider, ProviderSlug};
 use crate::rpc::{Request, Rpc};
@@ -15,7 +16,7 @@ impl MockProvider {
     pub(crate) fn new(slug: impl Into<ProviderSlug>) -> Self {
         Self {
             slug: slug.into(),
-            transport: Arc::new(MockTransport::with_response("")),
+            transport: Arc::new(MockTransport::empty()),
         }
     }
 
@@ -26,6 +27,11 @@ impl MockProvider {
             "data": response,
         });
         self.transport.set_response(envelope.to_string());
+    }
+
+    /// Stub the next RPC call to fail with a transport-level error.
+    pub(crate) fn reply_error(&self, error: ProviderTransportError) {
+        self.transport.set_error(error);
     }
 
     pub(crate) fn provider(&self) -> Provider {

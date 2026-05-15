@@ -94,7 +94,7 @@ impl Connection {
         Ok(())
     }
 
-    // pull
+    // push
     pub async fn apply_outgoing_diff(
         &mut self,
         diff: &CalendarDiff,
@@ -108,40 +108,23 @@ impl Connection {
 
         let mut synced_ids = Vec::new();
 
-        for change in diff.outgoing() {
-            match change {
-                EventChange::Create(event) => {
-                    let remote_event = self.remote.create_event(event.clone()).await?;
-                    let canonical = remote_event.event();
-                    if let Some(cal_event) =
-                        events_by_instance_id.get_mut(&event.event_instance_id())
-                    {
-                        cal_event
-                            .update(canonical.clone())
-                            .map_err(CalendarError::from)?;
-                    }
-                    synced_ids.push(canonical.event_instance_id());
-                }
-                EventChange::Update { from, to } => {
-                    let merged = to.clone().with_x_properties_merged_from(from);
-                    let remote_event = self.remote.update_event(merged).await?;
-                    let canonical = remote_event.event();
-                    if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id())
-                    {
-                        cal_event
-                            .update(canonical.clone())
-                            .map_err(CalendarError::from)?;
-                    }
-                    synced_ids.push(canonical.event_instance_id());
-                }
-                EventChange::Delete(event) => {
-                    self.remote.delete_event(event.clone()).await?;
-                }
-            }
-        }
+        // Run the loop, then persist whatever we accumulated regardless of
+        // outcome. If a mid-loop error short-circuited the `?`, dropping
+        // those ids would mean later local deletes of already-pushed events
+        // get silently reverted by the next pull (diff sees them as new on
+        // the remote, not as deletes).
+        let loop_result = push_outgoing_changes(
+            &self.remote,
+            diff,
+            &mut events_by_instance_id,
+            &mut synced_ids,
+        )
+        .await;
 
-        self.local.record_synced_ids(synced_ids)?;
+        let record_result = self.local.record_synced_ids(synced_ids);
 
+        loop_result?;
+        record_result?;
         Ok(())
     }
 
@@ -184,6 +167,48 @@ impl Connection {
     fn synced_event_ids(&self) -> &SyncedEventIds {
         self.local().state().synced_event_ids()
     }
+}
+
+async fn push_outgoing_changes(
+    remote: &Remote,
+    diff: &CalendarDiff,
+    events_by_instance_id: &mut HashMap<EventInstanceId, CalendarEvent>,
+    synced_ids: &mut Vec<EventInstanceId>,
+) -> Result<(), ConnectionError> {
+    for change in diff.outgoing() {
+        match change {
+            EventChange::Create(event) => {
+                let remote_event = remote.create_event(event.clone()).await?;
+                let returned_event = remote_event.event();
+
+                if let Some(cal_event) = events_by_instance_id.get_mut(&event.event_instance_id()) {
+                    cal_event
+                        .update(returned_event.clone())
+                        .map_err(CalendarError::from)?;
+                }
+
+                synced_ids.push(returned_event.event_instance_id());
+            }
+            EventChange::Update { from, to } => {
+                let merged_event = to.clone().with_x_properties_merged_from(from);
+                let remote_event = remote.update_event(merged_event).await?;
+                let returned_event = remote_event.event();
+
+                if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id()) {
+                    cal_event
+                        .update(returned_event.clone())
+                        .map_err(CalendarError::from)?;
+                }
+
+                synced_ids.push(returned_event.event_instance_id());
+            }
+            EventChange::Delete(event) => {
+                remote.delete_event(event.clone()).await?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -437,6 +462,45 @@ mod tests {
             .unwrap();
 
         assert!(connection.local().state().synced_event_ids().contains(&id));
+    }
+
+    #[tokio::test]
+    async fn apply_outgoing_diff_persists_synced_ids_on_partial_success() {
+        use crate::provider::transport::ProviderTransportError;
+        use std::time::Duration;
+
+        let (_tmp, mock, mut connection) = writable_connection();
+
+        let event_a = test_event();
+        let event_b = test_event();
+        let id_a = event_a.event_instance_id();
+        connection.local().create_event(event_a.clone()).unwrap();
+        connection.local().create_event(event_b.clone()).unwrap();
+
+        // First Create succeeds!
+        // Second errors mid-loop!
+        mock.reply::<rpc::CreateEvent>(event_a.clone());
+        mock.reply_error(ProviderTransportError::Timeout(Duration::from_secs(1)));
+
+        let diff = CalendarDiff::from_changes(
+            vec![EventChange::Create(event_a), EventChange::Create(event_b)],
+            vec![],
+        );
+
+        let result = connection.apply_outgoing_diff(&diff).await;
+
+        assert!(
+            result.is_err(),
+            "expected the second create to propagate an error",
+        );
+
+        let reloaded = Calendar::load(connection.local().path()).unwrap();
+
+        // We should still have saved the instance ID for the event that was pushed!
+        assert!(
+            reloaded.state().synced_event_ids().contains(&id_a),
+            "known_event_ids on disk should contain event A's id after a partial-success push",
+        );
     }
 
     #[tokio::test]
