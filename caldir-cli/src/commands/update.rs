@@ -6,9 +6,6 @@ use std::path::PathBuf;
 const REPO: &str = "t4t5/caldir";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// All binaries included in a caldir release.
-const RELEASE_BINARIES: &[&str] = &["caldir", "caldir-provider-google", "caldir-provider-icloud"];
-
 pub async fn run() -> Result<()> {
     let spinner = crate::utils::tui::create_spinner("Checking for updates...".to_string());
 
@@ -26,31 +23,6 @@ pub async fn run() -> Result<()> {
     }
 
     let install_dir = get_install_dir()?;
-
-    // Find which release binaries are currently installed
-    let installed: Vec<&str> = RELEASE_BINARIES
-        .iter()
-        .filter(|bin| install_dir.join(bin).exists())
-        .copied()
-        .collect();
-
-    println!(
-        "  {} {} → {}",
-        "caldir".bold(),
-        format!("v{}", CURRENT_VERSION).dimmed(),
-        format!("v{}", latest_version).green(),
-    );
-
-    for bin in &installed {
-        if *bin != "caldir" {
-            println!(
-                "  {} {}",
-                bin.bold(),
-                format!("v{}", latest_version).green(),
-            );
-        }
-    }
-    println!();
 
     let target = detect_target()?;
     let tarball_name = format!("caldir-{}.tar.gz", target);
@@ -79,29 +51,56 @@ pub async fn run() -> Result<()> {
     let mut archive = tar::Archive::new(decoder);
     archive.unpack(tmp_dir.path())?;
 
-    // Replace each installed binary
-    for bin in &installed {
+    // Discover binaries from the tarball — the release is the source of truth
+    // for what ships. Only update binaries that are also installed locally,
+    // so users keep whichever providers they originally installed.
+    let mut to_update: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(tmp_dir.path())? {
+        let entry = entry?;
+        let Some(name) = entry.file_name().to_str().map(|s| s.to_string()) else {
+            continue;
+        };
+        if install_dir.join(&name).exists() {
+            to_update.push(name);
+        }
+    }
+    to_update.sort();
+
+    println!(
+        "  {} {} → {}",
+        "caldir".bold(),
+        format!("v{}", CURRENT_VERSION).dimmed(),
+        format!("v{}", latest_version).green(),
+    );
+    for bin in &to_update {
+        if bin != "caldir" {
+            println!(
+                "  {} {}",
+                bin.bold(),
+                format!("v{}", latest_version).green(),
+            );
+        }
+    }
+    println!();
+
+    for bin in &to_update {
         let src = tmp_dir.path().join(bin);
         let dst = install_dir.join(bin);
 
-        if src.exists() {
-            // Remove first to avoid ETXTBSY on Linux (can't write to a running executable,
-            // but unlinking is fine — the kernel keeps the old inode mapped until the process exits)
-            if dst.exists() {
-                std::fs::remove_file(&dst).map_err(|e| {
-                    anyhow::anyhow!(
-                        "Failed to update {} (permission denied?). Try:\n  sudo caldir update\n\nError: {}",
-                        dst.display(),
-                        e
-                    )
-                })?;
-            }
-            std::fs::copy(&src, &dst)?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o755))?;
-            }
+        // Remove first to avoid ETXTBSY on Linux (can't write to a running executable,
+        // but unlinking is fine — the kernel keeps the old inode mapped until the process exits)
+        std::fs::remove_file(&dst).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to update {} (permission denied?). Try:\n  sudo caldir update\n\nError: {}",
+                dst.display(),
+                e
+            )
+        })?;
+        std::fs::copy(&src, &dst)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o755))?;
         }
     }
 

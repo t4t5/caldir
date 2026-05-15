@@ -368,11 +368,10 @@ If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed e
 When adding a new provider to the default set shipped with caldir, update these files:
 
 1. **`Cargo.toml`** (workspace) — add crate to `members`
-2. **`.github/workflows/release.yml`** — add binary to the packaging loop and `publish` step
-3. **`website/public/install.sh`** — add binary to the install loop
-4. **`website/src/content/docs/providers.md`** — add row to provider table and a new section
-5. **`website/src/content/docs/getting-started.md`** — add to "install from source" and "connect a calendar"
-6. **`.claude/skills/bump/SKILL.md`** — add to crates table and directory prefix mapping
+2. **`.github/workflows/release.yml`** — add binary to the packaging loop and `publish` step. This is the single source of truth for what ships in a release; `install.sh` and `caldir update` both discover binaries from the resulting tarball.
+3. **`website/src/content/docs/providers.md`** — add row to provider table and a new section
+4. **`website/src/content/docs/getting-started.md`** — add to "install from source" and "connect a calendar"
+5. **`.claude/skills/bump/SKILL.md`** — add to crates table and directory prefix mapping
 
 ## Development
 
