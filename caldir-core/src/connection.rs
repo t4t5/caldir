@@ -60,37 +60,22 @@ impl Connection {
             .map(|e| (e.event().event_instance_id(), e))
             .collect();
 
-        for change in diff.incoming() {
-            match change {
-                EventChange::Create(event) => {
-                    let cal_event = self.local.create_event(event.clone())?;
-                    events_by_instance_id.insert(cal_event.event().event_instance_id(), cal_event);
-                }
-                EventChange::Update { to, .. } => {
-                    if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id())
-                    {
-                        cal_event.update(to.clone()).map_err(CalendarError::from)?;
-                    }
-                }
-                EventChange::Delete(event) => {
-                    if let Some(cal_event) =
-                        events_by_instance_id.remove(&event.event_instance_id())
-                    {
-                        cal_event.delete().map_err(CalendarError::from)?;
-                    }
-                }
-            }
-        }
+        let mut synced_ids = Vec::new();
 
-        let synced_ids = diff.incoming().iter().filter_map(|change| match change {
-            EventChange::Create(event) | EventChange::Update { to: event, .. } => {
-                Some(event.event_instance_id())
-            }
-            EventChange::Delete(_) => None,
-        });
+        // Same partial-failure flush pattern as `apply_outgoing_diff`: a
+        // local-fs error mid-loop must not drop the ids of changes we've
+        // already applied to disk.
+        let loop_result = pull_incoming_changes(
+            &self.local,
+            diff,
+            &mut events_by_instance_id,
+            &mut synced_ids,
+        );
 
-        self.local.record_synced_ids(synced_ids)?;
+        let record_result = self.local.record_synced_ids(synced_ids);
 
+        loop_result?;
+        record_result?;
         Ok(())
     }
 
@@ -167,6 +152,37 @@ impl Connection {
     fn synced_event_ids(&self) -> &SyncedEventIds {
         self.local().state().synced_event_ids()
     }
+}
+
+fn pull_incoming_changes(
+    local: &Calendar,
+    diff: &CalendarDiff,
+    events_by_instance_id: &mut HashMap<EventInstanceId, CalendarEvent>,
+    synced_ids: &mut Vec<EventInstanceId>,
+) -> Result<(), ConnectionError> {
+    for change in diff.incoming() {
+        match change {
+            EventChange::Create(event) => {
+                let cal_event = local.create_event(event.clone())?;
+                let id = cal_event.event().event_instance_id();
+                events_by_instance_id.insert(id.clone(), cal_event);
+                synced_ids.push(id);
+            }
+            EventChange::Update { to, .. } => {
+                if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id()) {
+                    cal_event.update(to.clone()).map_err(CalendarError::from)?;
+                }
+                synced_ids.push(to.event_instance_id());
+            }
+            EventChange::Delete(event) => {
+                if let Some(cal_event) = events_by_instance_id.remove(&event.event_instance_id()) {
+                    cal_event.delete().map_err(CalendarError::from)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 async fn push_outgoing_changes(
