@@ -1,7 +1,7 @@
 use crate::event::EventTime;
 use icalendar::{Component, DatePerhapsTime, Property};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct Recurrence {
     /// RRULE value (after "RRULE:"), e.g. "FREQ=WEEKLY;BYDAY=MO".
     ///
@@ -24,6 +24,23 @@ pub struct Recurrence {
     /// in RDATE, but those are not modeled here — only date and date-time
     /// values are parsed. PERIOD-valued RDATEs will be silently dropped.
     pub rdates: Vec<EventTime>,
+}
+
+// EXDATE/RDATE are sets per RFC 5545, so equality must ignore order.
+// Otherwise a provider re-emitting the same dates in a different order
+// produces a spurious "modified" diff and a no-op push/pull.
+impl PartialEq for Recurrence {
+    fn eq(&self, other: &Self) -> bool {
+        self.rrule == other.rrule
+            && sorted_by_utc(&self.exdates) == sorted_by_utc(&other.exdates)
+            && sorted_by_utc(&self.rdates) == sorted_by_utc(&other.rdates)
+    }
+}
+
+fn sorted_by_utc(times: &[EventTime]) -> Vec<EventTime> {
+    let mut v = times.to_vec();
+    v.sort_by_key(|t| t.to_utc());
+    v
 }
 
 impl Recurrence {
@@ -286,6 +303,47 @@ mod tests {
         assert_eq!(rdates.len(), 2);
         assert_eq!(rdates[0].value(), "20260201");
         assert_eq!(rdates[1].value(), "20260215");
+    }
+
+    #[test]
+    fn equality_ignores_exdate_and_rdate_order() {
+        let d1 = EventTime::Date(NaiveDate::from_ymd_opt(2026, 1, 5).unwrap());
+        let d2 = EventTime::Date(NaiveDate::from_ymd_opt(2026, 1, 12).unwrap());
+        let d3 = EventTime::Date(NaiveDate::from_ymd_opt(2026, 2, 1).unwrap());
+        let d4 = EventTime::Date(NaiveDate::from_ymd_opt(2026, 2, 15).unwrap());
+
+        let a = Recurrence {
+            rrule: "FREQ=WEEKLY".to_string(),
+            exdates: vec![d1.clone(), d2.clone()],
+            rdates: vec![d3.clone(), d4.clone()],
+        };
+        let b = Recurrence {
+            rrule: "FREQ=WEEKLY".to_string(),
+            exdates: vec![d2, d1],
+            rdates: vec![d4, d3],
+        };
+
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn equality_detects_different_exdates() {
+        let a = Recurrence {
+            rrule: "FREQ=WEEKLY".to_string(),
+            exdates: vec![EventTime::Date(
+                NaiveDate::from_ymd_opt(2026, 1, 5).unwrap(),
+            )],
+            rdates: vec![],
+        };
+        let b = Recurrence {
+            rrule: "FREQ=WEEKLY".to_string(),
+            exdates: vec![EventTime::Date(
+                NaiveDate::from_ymd_opt(2026, 1, 6).unwrap(),
+            )],
+            rdates: vec![],
+        };
+
+        assert_ne!(a, b);
     }
 
     #[test]
