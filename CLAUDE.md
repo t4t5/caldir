@@ -47,7 +47,15 @@ Across every provider, an event is `(uid, recurrence_id)` per RFC 5545. Provider
 
 Timezone is data, not just display. Events created locally use the system IANA zone (so filenames show local time). All inbound TZIDs are normalized to IANA at the parse boundary — Microsoft providers convert back to Windows names only at the outbound edge.
 
-## Adding a default provider
+## Providers
+
+A provider (`caldir-provider-xxx`) is a binary that speaks caldir's JSON RPC over stdin/stdout. Implement [`ProviderHandler`](caldir-core/src/rpc/handler.rs) and let `run_provider` handle the protocol.
+
+### Storage directory
+
+Providers that need on-disk state (OAuth tokens, app passwords, sync cursors) write to the path in `CALDIR_PROVIDER_STORAGE_DIR`, falling back to `~/.config/caldir/providers/{name}/` if unset.
+
+### Adding a default provider
 
 When shipping a new default provider with caldir, update:
 
