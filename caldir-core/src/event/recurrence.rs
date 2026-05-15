@@ -83,11 +83,33 @@ fn parse_event_time_list(event: &icalendar::Event, name: &str) -> Vec<EventTime>
         .map(|props| {
             props
                 .iter()
-                .filter_map(DatePerhapsTime::from_property)
+                .flat_map(split_property_values)
+                .filter_map(|p| DatePerhapsTime::from_property(&p))
                 .map(EventTime::from)
                 .collect()
         })
         .unwrap_or_default()
+}
+
+// RFC 5545 allows EXDATE/RDATE to carry multiple comma-separated values on a
+// single line. `DatePerhapsTime::from_property` parses the whole value as one
+// date(-time), so it returns None for comma-packed properties and every entry
+// is silently dropped. Split the value here and rebuild a property per entry,
+// preserving parameters (TZID, VALUE) so downstream parsing still sees them.
+fn split_property_values(prop: &Property) -> Vec<Property> {
+    let key = prop.key();
+    prop.value()
+        .split(',')
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| {
+            let mut split = Property::new(key, v);
+            for (param_key, param) in prop.params() {
+                split.add_parameter(param_key, param.value());
+            }
+            split
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -125,6 +147,24 @@ mod tests {
             .append_property(Property::new("RRULE", "FREQ=DAILY"))
             .append_multi_property(Property::new("EXDATE", "20260105").done())
             .append_multi_property(Property::new("EXDATE", "20260108").done())
+            .done();
+
+        let recurrence = Recurrence::from_ical_event(&event).unwrap();
+
+        assert_eq!(
+            recurrence.exdates,
+            vec![
+                EventTime::Date(NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()),
+                EventTime::Date(NaiveDate::from_ymd_opt(2026, 1, 8).unwrap()),
+            ]
+        );
+    }
+
+    #[test]
+    fn from_ical_event_parses_comma_separated_exdates() {
+        let event = test_icalendar_event()
+            .append_property(Property::new("RRULE", "FREQ=DAILY"))
+            .append_multi_property(Property::new("EXDATE", "20260105,20260108").done())
             .done();
 
         let recurrence = Recurrence::from_ical_event(&event).unwrap();
