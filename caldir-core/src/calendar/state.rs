@@ -1,4 +1,5 @@
 mod error;
+mod instance_id_codec;
 mod synced_event_ids;
 
 use crate::event::EventInstanceId;

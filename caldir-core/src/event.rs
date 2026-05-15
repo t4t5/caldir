@@ -16,7 +16,7 @@ mod x_property;
 pub use attendee::{Attendee, ParticipationStatus};
 use chrono::{DateTime, Utc};
 pub use error::EventError;
-pub use instance_id::{EventInstanceId, EventInstanceIdError, EventUid, RecurrenceId};
+pub use instance_id::{EventInstanceId, EventUid, RecurrenceId};
 pub use occurrences::expand_in_range;
 pub use organizer::Organizer;
 pub use recurrence::Recurrence;

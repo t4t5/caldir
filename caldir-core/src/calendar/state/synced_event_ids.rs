@@ -1,4 +1,4 @@
-use super::CalendarStateError;
+use super::{CalendarStateError, instance_id_codec};
 use crate::event::EventInstanceId;
 use std::{collections::HashSet, path::Path};
 
@@ -35,8 +35,8 @@ impl SyncedEventIds {
                 .lines()
                 .map(|line| line.trim())
                 .filter(|line| !line.is_empty())
-                .map(EventInstanceId::from_str)
-                .collect::<Result<HashSet<_>, _>>()?;
+                .map(instance_id_codec::decode)
+                .collect::<HashSet<_>>();
 
             Ok(Self(ids))
         } else {
@@ -48,7 +48,7 @@ impl SyncedEventIds {
         let contents = self
             .0
             .iter()
-            .map(|id| id.to_str())
+            .map(instance_id_codec::encode)
             .collect::<Vec<_>>()
             .join("\n");
 
