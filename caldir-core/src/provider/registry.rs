@@ -34,6 +34,11 @@ impl ProviderRegistry {
         self.0.insert(provider.slug().clone(), provider);
     }
 
+    /// Slugs of all registered providers. Order is not stable.
+    pub fn slugs(&self) -> Vec<&ProviderSlug> {
+        self.0.keys().collect()
+    }
+
     fn from_dirs<I>(dirs: I) -> Self
     where
         I: IntoIterator,

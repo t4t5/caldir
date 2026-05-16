@@ -100,6 +100,10 @@ impl Caldir {
         connections
     }
 
+    pub fn providers(&self) -> &ProviderRegistry {
+        &self.providers
+    }
+
     pub fn provider(&self, provider_slug: &ProviderSlug) -> Result<&Provider, CaldirError> {
         self.providers
             .get(provider_slug)

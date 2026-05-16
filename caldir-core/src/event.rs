@@ -176,6 +176,19 @@ impl Event {
             .find(|a| a.email.eq_ignore_ascii_case(email))
     }
 
+    pub fn is_pending_invite_for(&self, email: &str) -> bool {
+        self.is_invite_for(email)
+            && self.attendee_status(email) == Some(ParticipationStatus::NeedsAction)
+    }
+
+    /// Return a clone of this event with a fresh UID.
+    pub fn with_new_uid(&self) -> Self {
+        Event {
+            uid: new_uid(),
+            ..self.clone()
+        }
+    }
+
     /// Find the first x-property value matching the given name.
     pub fn x_property(&self, name: &str) -> Option<&str> {
         self.x_properties
@@ -688,6 +701,83 @@ END:VCALENDAR
         event.attendees = vec![Attendee::new("bob@example.com")];
 
         assert_eq!(event.attendee_status("bob@example.com"), None);
+    }
+
+    #[test]
+    fn with_new_uid_changes_the_uid() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.uid = EventUid::new("original@caldir");
+
+        let cloned = event.with_new_uid();
+
+        assert_ne!(cloned.uid, event.uid);
+    }
+
+    #[test]
+    fn with_new_uid_preserves_other_fields() {
+        let mut event = Event::new(
+            "Annual review",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.description = Some("notes".to_string());
+        event.location = Some("HQ".to_string());
+
+        let cloned = event.with_new_uid();
+
+        assert_eq!(cloned.summary, event.summary);
+        assert_eq!(cloned.description, event.description);
+        assert_eq!(cloned.location, event.location);
+        assert_eq!(cloned.start, event.start);
+    }
+
+    #[test]
+    fn is_pending_invite_for_true_when_attendee_needs_action() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee {
+            email: "bob@example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::NeedsAction),
+        }];
+
+        assert!(event.is_pending_invite_for("bob@example.com"));
+    }
+
+    #[test]
+    fn is_pending_invite_for_false_when_already_accepted() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee {
+            email: "bob@example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::Accepted),
+        }];
+
+        assert!(!event.is_pending_invite_for("bob@example.com"));
+    }
+
+    #[test]
+    fn is_pending_invite_for_false_when_email_is_organizer() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee {
+            email: "alice@example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::NeedsAction),
+        }];
+
+        assert!(!event.is_pending_invite_for("alice@example.com"));
     }
 
     #[test]

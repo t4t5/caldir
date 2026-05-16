@@ -11,7 +11,7 @@
 ///
 /// In both cases, we only see that remote has events that local doesn't.
 /// The `known_event_ids` file helps us see if it's a brand new event, or a previously known one.
-use super::{CalendarStateError, instance_id_codec};
+use super::CalendarStateError;
 use crate::event::EventInstanceId;
 use std::{collections::HashSet, path::Path};
 
@@ -48,7 +48,7 @@ impl SyncedEventIds {
                 .lines()
                 .map(|line| line.trim())
                 .filter(|line| !line.is_empty())
-                .map(instance_id_codec::decode)
+                .map(EventInstanceId::from)
                 .collect::<HashSet<_>>();
 
             Ok(Self(ids))
@@ -64,7 +64,7 @@ impl SyncedEventIds {
         let contents = self
             .0
             .iter()
-            .map(instance_id_codec::encode)
+            .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join("\n");
 

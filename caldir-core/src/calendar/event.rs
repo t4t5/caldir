@@ -1,6 +1,6 @@
 mod error;
 
-use crate::{Calendar, Event};
+use crate::{Calendar, Event, ParticipationStatus};
 use std::fs::OpenOptions;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
@@ -100,6 +100,35 @@ impl CalendarEvent {
             .and_then(|m| m.modified().ok())
             .map(DateTime::<Utc>::from)
     }
+
+    pub fn update_attendee_status(
+        &mut self,
+        email: &str,
+        status: ParticipationStatus,
+    ) -> Result<(), CalendarEventError> {
+        let mut event = self.event.clone();
+        let mut found = false;
+
+        // Update PARTSTAT
+        for attendee in &mut event.attendees {
+            if attendee.email.eq_ignore_ascii_case(email) {
+                attendee.status = Some(status);
+                found = true;
+            }
+        }
+
+        if !found {
+            return Err(CalendarEventError::AttendeeNotFound {
+                email: email.to_string(),
+            });
+        }
+
+        event.sequence += 1;
+        event.last_modified = Some(Utc::now());
+
+        // Save file
+        self.update(event)
+    }
 }
 
 // Pin the file mtime to the event's LAST-MODIFIED so direction detection
@@ -160,11 +189,20 @@ fn write_best_event_file(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Attendee;
     use crate::test_utils::test_calendar;
     use crate::test_utils::test_calendar_event;
     use crate::test_utils::test_event;
     use chrono::TimeZone;
     use std::fs;
+
+    fn cal_event_with_attendees(attendees: Vec<Attendee>) -> (tempfile::TempDir, CalendarEvent) {
+        let (tmp, calendar) = test_calendar();
+        let mut event = test_event();
+        event.attendees = attendees;
+        let cal_event = CalendarEvent::create(&calendar, event).unwrap();
+        (tmp, cal_event)
+    }
 
     #[test]
     fn create_saves_event_to_file() {
@@ -330,6 +368,75 @@ mod tests {
         cal_event.update(event).unwrap();
 
         assert_eq!(cal_event.modified_at(), Some(when));
+    }
+
+    #[test]
+    fn update_attendee_status_sets_partstat_and_persists() {
+        let (_tmp, mut cal_event) =
+            cal_event_with_attendees(vec![Attendee::new("bob@example.com")]);
+
+        cal_event
+            .update_attendee_status("bob@example.com", ParticipationStatus::Accepted)
+            .unwrap();
+
+        assert_eq!(
+            cal_event.event().attendees[0].status,
+            Some(ParticipationStatus::Accepted)
+        );
+
+        let contents = fs::read_to_string(cal_event.path()).unwrap();
+        assert!(contents.contains("PARTSTAT=ACCEPTED"));
+    }
+
+    #[test]
+    fn update_attendee_status_bumps_sequence_and_sets_last_modified() {
+        let (_tmp, mut cal_event) =
+            cal_event_with_attendees(vec![Attendee::new("bob@example.com")]);
+        let sequence_before = cal_event.event().sequence;
+
+        let before = Utc::now();
+        cal_event
+            .update_attendee_status("bob@example.com", ParticipationStatus::Declined)
+            .unwrap();
+        let after = Utc::now();
+
+        assert_eq!(cal_event.event().sequence, sequence_before + 1);
+        let last_modified = cal_event
+            .event()
+            .last_modified
+            .expect("last_modified should be set");
+        assert!(last_modified >= before);
+        assert!(last_modified <= after);
+    }
+
+    #[test]
+    fn update_attendee_status_matches_email_case_insensitively() {
+        let (_tmp, mut cal_event) =
+            cal_event_with_attendees(vec![Attendee::new("Bob@Example.com")]);
+
+        cal_event
+            .update_attendee_status("BOB@example.com", ParticipationStatus::Tentative)
+            .unwrap();
+
+        assert_eq!(
+            cal_event.event().attendees[0].status,
+            Some(ParticipationStatus::Tentative)
+        );
+    }
+
+    #[test]
+    fn update_attendee_status_errors_on_unknown_email() {
+        let (_tmp, mut cal_event) =
+            cal_event_with_attendees(vec![Attendee::new("bob@example.com")]);
+
+        let err = cal_event
+            .update_attendee_status("carol@example.com", ParticipationStatus::Accepted)
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            CalendarEventError::AttendeeNotFound { email } if email == "carol@example.com"
+        ));
     }
 
     #[test]

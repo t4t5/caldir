@@ -94,6 +94,18 @@ impl CaldirConfig {
         self.default_reminders.clone()
     }
 
+    pub fn set_data_dir(&mut self, path: std::path::PathBuf) {
+        self.data_dir = path;
+    }
+
+    pub fn set_time_format(&mut self, time_format: TimeFormat) {
+        self.time_format = time_format;
+    }
+
+    pub fn set_default_reminders(&mut self, reminders: Option<Vec<Reminder>>) {
+        self.default_reminders = reminders;
+    }
+
     pub fn write(&self, path: &Path) -> Result<(), CaldirConfigError> {
         let contents = self.to_toml().map_err(CaldirConfigError::InvalidConfig)?;
 

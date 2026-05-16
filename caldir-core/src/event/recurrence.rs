@@ -65,6 +65,39 @@ impl Recurrence {
         })
     }
 
+    /// Return a copy truncated to end strictly before `before`.
+    ///
+    /// The returned recurrence:
+    /// - Has any existing `UNTIL=` and `COUNT=` fragments stripped from its RRULE
+    ///   and replaced with a fresh `UNTIL=<just before `before`>`.
+    /// - Has any EXDATEs at or after `before` removed (they are no longer
+    ///   meaningful once the series ends earlier).
+    ///
+    /// `dtstart` is the master event's start time; it determines the format of
+    /// the emitted UNTIL value (per RFC 5545 / the rrule crate's matching rule).
+    ///
+    /// Used to implement "split a recurring series at this instance" — a primitive
+    /// that any caldir client can use to translate a "this and future" edit into
+    /// two separate events on disk.
+    pub fn truncate_before(&self, dtstart: &EventTime, before: &EventTime) -> Recurrence {
+        let until_value = format_until_value(dtstart, before);
+        let truncated_rrule = with_until(&self.rrule, &until_value);
+
+        let before_utc = before.to_utc();
+        let kept_exdates: Vec<EventTime> = self
+            .exdates
+            .iter()
+            .filter(|ex| ex.to_utc() < before_utc)
+            .cloned()
+            .collect();
+
+        Recurrence {
+            rrule: truncated_rrule,
+            exdates: kept_exdates,
+            rdates: self.rdates.clone(),
+        }
+    }
+
     pub(crate) fn apply_to(&self, event: &mut icalendar::Event) {
         event.append_property(Property::new("RRULE", &self.rrule));
         for exdate in &self.exdates {
@@ -74,6 +107,51 @@ impl Recurrence {
             event.append_multi_property(DatePerhapsTime::from(rdate).to_property("RDATE"));
         }
     }
+}
+
+/// Format an RRULE UNTIL value for a series with `dtstart`, set "just before"
+/// `before`. Format matches the rrule crate's expectations for the dtstart
+/// variant (see RFC 5545).
+fn format_until_value(dtstart: &EventTime, before: &EventTime) -> String {
+    use chrono::Duration;
+
+    match dtstart {
+        EventTime::Date(_) => {
+            let before_date = match before {
+                EventTime::Date(d) => *d,
+                _ => before.to_utc().date_naive(),
+            };
+            (before_date - Duration::days(1))
+                .format("%Y%m%d")
+                .to_string()
+        }
+        EventTime::DateTimeUtc(_) | EventTime::DateTimeZoned { .. } => {
+            let before_utc = before.to_utc();
+            (before_utc - Duration::seconds(1))
+                .format("%Y%m%dT%H%M%SZ")
+                .to_string()
+        }
+        EventTime::DateTimeFloating(_) => {
+            let before_naive = before.to_utc().naive_utc();
+            (before_naive - Duration::seconds(1))
+                .format("%Y%m%dT%H%M%S")
+                .to_string()
+        }
+    }
+}
+
+/// Return a copy of `rrule` with any existing `UNTIL=` and `COUNT=` fragments
+/// removed and a new `UNTIL=<until_value>` appended. Order of other fragments
+/// is preserved.
+fn with_until(rrule: &str, until_value: &str) -> String {
+    let mut parts: Vec<String> = rrule
+        .split(';')
+        .filter(|p| !p.is_empty())
+        .filter(|p| !p.starts_with("UNTIL=") && !p.starts_with("COUNT="))
+        .map(|p| p.to_string())
+        .collect();
+    parts.push(format!("UNTIL={}", until_value));
+    parts.join(";")
 }
 
 fn parse_event_time_list(event: &icalendar::Event, name: &str) -> Vec<EventTime> {
@@ -116,7 +194,7 @@ fn split_property_values(prop: &Property) -> Vec<Property> {
 mod tests {
     use super::*;
     use crate::test_utils::test_icalendar_event;
-    use chrono::NaiveDate;
+    use chrono::{NaiveDate, TimeZone};
     use pretty_assertions::assert_eq;
 
     #[test]
@@ -384,6 +462,99 @@ mod tests {
         };
 
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn truncate_before_adds_until_for_utc_dtstart() {
+        let rec = Recurrence::new("FREQ=DAILY");
+        let dtstart =
+            EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 1, 10, 0, 0).unwrap());
+        let before =
+            EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 5, 10, 0, 0).unwrap());
+
+        let truncated = rec.truncate_before(&dtstart, &before);
+
+        assert_eq!(truncated.rrule, "FREQ=DAILY;UNTIL=20260405T095959Z");
+    }
+
+    #[test]
+    fn truncate_before_adds_until_for_date_dtstart() {
+        let rec = Recurrence::new("FREQ=DAILY");
+        let dtstart = EventTime::Date(NaiveDate::from_ymd_opt(2026, 4, 1).unwrap());
+        let before = EventTime::Date(NaiveDate::from_ymd_opt(2026, 4, 5).unwrap());
+
+        let truncated = rec.truncate_before(&dtstart, &before);
+
+        assert_eq!(truncated.rrule, "FREQ=DAILY;UNTIL=20260404");
+    }
+
+    #[test]
+    fn truncate_before_replaces_existing_until() {
+        let rec = Recurrence::new("FREQ=DAILY;UNTIL=20271231T235959Z");
+        let dtstart =
+            EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 1, 10, 0, 0).unwrap());
+        let before =
+            EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 5, 10, 0, 0).unwrap());
+
+        let truncated = rec.truncate_before(&dtstart, &before);
+
+        assert_eq!(truncated.rrule, "FREQ=DAILY;UNTIL=20260405T095959Z");
+    }
+
+    #[test]
+    fn truncate_before_replaces_existing_count() {
+        let rec = Recurrence::new("FREQ=DAILY;COUNT=100");
+        let dtstart =
+            EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 1, 10, 0, 0).unwrap());
+        let before =
+            EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 5, 10, 0, 0).unwrap());
+
+        let truncated = rec.truncate_before(&dtstart, &before);
+
+        assert_eq!(truncated.rrule, "FREQ=DAILY;UNTIL=20260405T095959Z");
+        assert!(!truncated.rrule.contains("COUNT="));
+    }
+
+    #[test]
+    fn truncate_before_drops_exdates_at_or_after_before() {
+        let kept =
+            EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 3, 10, 0, 0).unwrap());
+        let dropped_at =
+            EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 5, 10, 0, 0).unwrap());
+        let dropped_after =
+            EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 6, 10, 0, 0).unwrap());
+
+        let rec = Recurrence {
+            rrule: "FREQ=DAILY".to_string(),
+            exdates: vec![kept.clone(), dropped_at, dropped_after],
+            rdates: vec![],
+        };
+
+        let truncated = rec.truncate_before(
+            &EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 1, 10, 0, 0).unwrap()),
+            &EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 5, 10, 0, 0).unwrap()),
+        );
+
+        assert_eq!(truncated.exdates, vec![kept]);
+    }
+
+    #[test]
+    fn truncate_before_keeps_rdates() {
+        // RDATEs aren't pruned by truncation — they're explicit additions.
+        let rdate =
+            EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 10, 10, 0, 0).unwrap());
+        let rec = Recurrence {
+            rrule: "FREQ=DAILY".to_string(),
+            exdates: vec![],
+            rdates: vec![rdate.clone()],
+        };
+
+        let truncated = rec.truncate_before(
+            &EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 1, 10, 0, 0).unwrap()),
+            &EventTime::DateTimeUtc(chrono::Utc.with_ymd_and_hms(2026, 4, 5, 10, 0, 0).unwrap()),
+        );
+
+        assert_eq!(truncated.rdates, vec![rdate]);
     }
 
     #[test]

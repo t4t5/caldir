@@ -15,4 +15,7 @@ pub enum CalendarEventError {
 
     #[error("event file not found: {0}")]
     NotFound(PathBuf),
+
+    #[error("attendee not found: {email}")]
+    AttendeeNotFound { email: String },
 }

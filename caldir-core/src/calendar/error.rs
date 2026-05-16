@@ -23,4 +23,10 @@ pub enum CalendarError {
 
     #[error("calendar event error: {0}")]
     Event(#[from] CalendarEventError),
+
+    #[error("master event not found: {0}")]
+    MasterNotFound(String),
+
+    #[error("event {0} is not recurring")]
+    NotRecurring(String),
 }

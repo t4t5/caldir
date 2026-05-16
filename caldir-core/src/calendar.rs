@@ -3,7 +3,7 @@ mod error;
 mod event;
 mod state;
 
-use crate::event::{EventInstanceId, expand_in_range};
+use crate::event::{EventInstanceId, EventTime, Recurrence, expand_in_range};
 use crate::utils::slugify;
 use crate::{Event, RemoteConfig};
 use std::path::{Path, PathBuf};
@@ -128,6 +128,122 @@ impl Calendar {
         let event_path = self.path().join(format!("{}.ics", event_slug));
         let calendar_event = CalendarEvent::load(event_path)?;
         Ok(calendar_event)
+    }
+
+    pub fn event_by_instance_id(
+        &self,
+        id: &EventInstanceId,
+    ) -> Result<Option<CalendarEvent>, CalendarError> {
+        let found = self
+            .events()?
+            .into_iter()
+            .find(|ce| ce.event().event_instance_id() == *id);
+        Ok(found)
+    }
+
+    /// Find the master event of a recurring series given its uid.
+    /// i.e. a master event is one whose `recurrence` field is set.
+    /// Instance overrides (with `recurrence_id` set) are not considered masters.
+    pub fn master_event_for(&self, uid: &str) -> Result<Option<Event>, CalendarError> {
+        let master = self
+            .events()?
+            .into_iter()
+            .find(|ce| ce.event().uid.as_str() == uid && ce.event().recurrence.is_some())
+            .map(|ce| ce.event().clone());
+        Ok(master)
+    }
+
+    pub fn is_read_only(&self) -> bool {
+        self.config
+            .as_ref()
+            .and_then(|c| c.read_only())
+            .unwrap_or(false)
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.config.as_ref().and_then(|c| c.name())
+    }
+
+    pub fn color(&self) -> Option<&str> {
+        self.config.as_ref().and_then(|c| c.color())
+    }
+
+    pub fn read_only_setting(&self) -> Option<bool> {
+        self.config.as_ref().and_then(|c| c.read_only())
+    }
+
+    /// Split a recurring series at `split_start`.
+    ///
+    /// The original master's RRULE is truncated to end strictly before
+    /// `split_start`, any EXDATEs at or after `split_start` are dropped, and
+    /// any override files at or after `split_start` are deleted (they're
+    /// either being replaced by the new series or are now orphaned).
+    ///
+    /// A new master is created starting at `split_start` (with `split_end`
+    /// and `new_recurrence`), inheriting all other metadata (summary,
+    /// description, location, reminders, attendees, etc.) from the original
+    /// master. The new master gets a fresh UID and a reset SEQUENCE.
+    ///
+    /// Returns the new master event. Errors if no master with `master_uid`
+    /// exists or if the master is not recurring.
+    pub fn split_recurring_series_at(
+        &self,
+        master_uid: &str,
+        split_start: EventTime,
+        split_end: EventTime,
+        new_recurrence: Option<Recurrence>,
+    ) -> Result<Event, CalendarError> {
+        let mut all_events = self.events()?;
+
+        let master_idx = all_events
+            .iter()
+            .position(|ce| ce.event().uid.as_str() == master_uid && ce.event().recurrence.is_some())
+            .ok_or_else(|| CalendarError::MasterNotFound(master_uid.to_string()))?;
+
+        let mut master_ce = all_events.swap_remove(master_idx);
+        let master_event = master_ce.event().clone();
+        let master_recurrence = master_event
+            .recurrence
+            .as_ref()
+            .ok_or_else(|| CalendarError::NotRecurring(master_uid.to_string()))?;
+
+        let truncated_recurrence =
+            master_recurrence.truncate_before(&master_event.start, &split_start);
+
+        let truncated_master = Event {
+            recurrence: Some(truncated_recurrence),
+            last_modified: Some(Utc::now()),
+            sequence: master_event.sequence + 1,
+            ..master_event.clone()
+        };
+        master_ce.update(truncated_master)?;
+
+        let new_master = Event {
+            start: split_start.clone(),
+            end: Some(split_end),
+            recurrence: new_recurrence,
+            recurrence_id: None,
+            last_modified: Some(Utc::now()),
+            sequence: 0,
+            ..master_event.with_new_uid()
+        };
+        let new_master_ce = self.create_event(new_master)?;
+        let new_master_event = new_master_ce.event().clone();
+
+        let split_start_utc = split_start.to_utc();
+        for ce in all_events.into_iter() {
+            if ce.event().uid.as_str() != master_uid {
+                continue;
+            }
+            let Some(rid) = ce.event().recurrence_id.as_ref() else {
+                continue;
+            };
+            if rid.as_event_time().to_utc() >= split_start_utc {
+                ce.delete()?;
+            }
+        }
+
+        Ok(new_master_event)
     }
 
     /// List all events occurring within time range
@@ -325,5 +441,357 @@ mod tests {
             .unwrap();
 
         assert!(!path.exists());
+    }
+
+    use crate::event::RecurrenceId;
+    use chrono::{NaiveDate, TimeZone};
+
+    fn make_master(uid: &str, start: DateTime<Utc>, rrule: &str) -> Event {
+        let mut event = Event::new("Daily standup", EventTime::DateTimeUtc(start));
+        event.uid = crate::event::EventUid::new(uid);
+        event.description = Some("Notes".to_string());
+        event.location = Some("Office".to_string());
+        event.set_end(EventTime::DateTimeUtc(start + chrono::Duration::hours(1)));
+        event.set_recurrence(Recurrence::new(rrule));
+        event
+    }
+
+    fn make_override(uid: &str, instance: DateTime<Utc>, summary: &str) -> Event {
+        let mut event = Event::new(summary, EventTime::DateTimeUtc(instance));
+        event.uid = crate::event::EventUid::new(uid);
+        event.recurrence_id = Some(RecurrenceId::from_event_time(EventTime::DateTimeUtc(
+            instance,
+        )));
+        event
+    }
+
+    fn loaded_master(cal: &Calendar, uid: &str) -> Event {
+        cal.master_event_for(uid)
+            .unwrap()
+            .unwrap_or_else(|| panic!("master {uid} should exist"))
+    }
+
+    fn loaded_overrides(cal: &Calendar, uid: &str) -> Vec<Event> {
+        cal.events()
+            .unwrap()
+            .into_iter()
+            .map(|ce| ce.event().clone())
+            .filter(|e| e.uid.as_str() == uid && e.recurrence_id.is_some())
+            .collect()
+    }
+
+    fn t(year: i32, month: u32, day: u32, hour: u32, min: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(year, month, day, hour, min, 0)
+            .unwrap()
+    }
+
+    #[test]
+    fn master_event_for_returns_master_when_present() {
+        let (_tmp, calendar) = test_calendar();
+        calendar
+            .create_event(make_master(
+                "series@caldir",
+                t(2026, 4, 1, 10, 0),
+                "FREQ=DAILY",
+            ))
+            .unwrap();
+
+        let master = calendar.master_event_for("series@caldir").unwrap();
+
+        assert!(master.is_some());
+        assert_eq!(master.unwrap().uid.as_str(), "series@caldir");
+    }
+
+    #[test]
+    fn master_event_for_returns_none_when_missing() {
+        let (_tmp, calendar) = test_calendar();
+
+        let master = calendar.master_event_for("nonexistent").unwrap();
+
+        assert!(master.is_none());
+    }
+
+    #[test]
+    fn master_event_for_ignores_non_recurring_events_with_same_uid() {
+        let (_tmp, calendar) = test_calendar();
+
+        let mut event = test_event();
+        event.uid = crate::event::EventUid::new("series@caldir");
+        calendar.create_event(event).unwrap();
+
+        // Same uid, but no recurrence → not a master.
+        let master = calendar.master_event_for("series@caldir").unwrap();
+
+        assert!(master.is_none());
+    }
+
+    #[test]
+    fn event_by_instance_id_finds_non_recurring_event() {
+        let (_tmp, calendar) = test_calendar();
+        let cal_event = calendar.create_event(test_event()).unwrap();
+        let id = cal_event.event().event_instance_id();
+
+        let found = calendar.event_by_instance_id(&id).unwrap();
+
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().path(), cal_event.path());
+    }
+
+    #[test]
+    fn event_by_instance_id_finds_recurring_instance_override() {
+        let (_tmp, calendar) = test_calendar();
+        calendar
+            .create_event(make_master(
+                "series@caldir",
+                t(2026, 4, 1, 10, 0),
+                "FREQ=DAILY",
+            ))
+            .unwrap();
+        let override_event =
+            make_override("series@caldir", t(2026, 4, 3, 10, 0), "Special standup");
+        let override_id = override_event.event_instance_id();
+        calendar.create_event(override_event).unwrap();
+
+        let found = calendar.event_by_instance_id(&override_id).unwrap();
+
+        assert!(found.is_some());
+        assert_eq!(
+            found.unwrap().event().summary.as_deref(),
+            Some("Special standup")
+        );
+    }
+
+    #[test]
+    fn event_by_instance_id_returns_none_when_missing() {
+        let (_tmp, calendar) = test_calendar();
+        let id = test_event().event_instance_id();
+
+        let found = calendar.event_by_instance_id(&id).unwrap();
+
+        assert!(found.is_none());
+    }
+
+    #[test]
+    fn is_read_only_false_when_no_config() {
+        let (_tmp, calendar) = test_calendar();
+
+        assert!(!calendar.is_read_only());
+    }
+
+    #[test]
+    fn is_read_only_false_when_config_has_no_read_only_field() {
+        let (_tmp, caldir) = test_caldir();
+        let config = CalendarConfig::new(Some("Test".to_string()), None, None, None);
+        let calendar = caldir.create_calendar("test", Some(config)).unwrap();
+
+        assert!(!calendar.is_read_only());
+    }
+
+    #[test]
+    fn is_read_only_true_when_config_says_true() {
+        let (_tmp, caldir) = test_caldir();
+        let config = CalendarConfig::new(Some("Test".to_string()), None, Some(true), None);
+        let calendar = caldir.create_calendar("test", Some(config)).unwrap();
+
+        assert!(calendar.is_read_only());
+    }
+
+    #[test]
+    fn is_read_only_false_when_config_says_false() {
+        let (_tmp, caldir) = test_caldir();
+        let config = CalendarConfig::new(Some("Test".to_string()), None, Some(false), None);
+        let calendar = caldir.create_calendar("test", Some(config)).unwrap();
+
+        assert!(!calendar.is_read_only());
+    }
+
+    #[test]
+    fn split_truncates_master_rrule_before_split() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "master@test";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        let split_start = EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0));
+        let split_end = EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0));
+        cal.split_recurring_series_at(uid, split_start, split_end, None)
+            .unwrap();
+
+        let master = loaded_master(&cal, uid);
+        let rrule = &master.recurrence.as_ref().unwrap().rrule;
+        // UNTIL is one second before split_start, in UTC form.
+        assert_eq!(rrule, "FREQ=DAILY;UNTIL=20260405T095959Z");
+    }
+
+    #[test]
+    fn split_creates_new_master_with_fresh_uid_and_inherited_metadata() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "master@test";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        let new_recurrence = Some(Recurrence::new("FREQ=WEEKLY"));
+        let new_master = cal
+            .split_recurring_series_at(
+                uid,
+                EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+                EventTime::DateTimeUtc(t(2026, 4, 5, 11, 30)),
+                new_recurrence,
+            )
+            .unwrap();
+
+        // Fresh UID, not the master's.
+        assert_ne!(new_master.uid.as_str(), uid);
+        // Inherits metadata.
+        assert_eq!(new_master.summary.as_deref(), Some("Daily standup"));
+        assert_eq!(new_master.description.as_deref(), Some("Notes"));
+        assert_eq!(new_master.location.as_deref(), Some("Office"));
+        // Uses the new start/end and recurrence.
+        assert_eq!(
+            new_master.start,
+            EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0))
+        );
+        assert_eq!(
+            new_master.end,
+            Some(EventTime::DateTimeUtc(t(2026, 4, 5, 11, 30)))
+        );
+        assert_eq!(new_master.recurrence.as_ref().unwrap().rrule, "FREQ=WEEKLY");
+        assert!(new_master.recurrence_id.is_none());
+    }
+
+    #[test]
+    fn split_bumps_master_sequence() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "master@test";
+        let mut master = make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY");
+        master.sequence = 3;
+        cal.create_event(master).unwrap();
+
+        cal.split_recurring_series_at(
+            uid,
+            EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+            EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(loaded_master(&cal, uid).sequence, 4);
+    }
+
+    #[test]
+    fn split_drops_overrides_at_or_after_split_keeps_earlier_ones() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "master@test";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        cal.create_event(make_override(uid, t(2026, 4, 3, 10, 0), "before"))
+            .unwrap();
+        cal.create_event(make_override(uid, t(2026, 4, 5, 10, 0), "at-split"))
+            .unwrap();
+        cal.create_event(make_override(uid, t(2026, 4, 7, 10, 0), "after"))
+            .unwrap();
+
+        cal.split_recurring_series_at(
+            uid,
+            EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+            EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+            None,
+        )
+        .unwrap();
+
+        let overrides = loaded_overrides(&cal, uid);
+        assert_eq!(
+            overrides.len(),
+            1,
+            "only the pre-split override should remain"
+        );
+        assert_eq!(overrides[0].summary.as_deref(), Some("before"));
+    }
+
+    #[test]
+    fn split_drops_exdates_at_or_after_split() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "master@test";
+        let mut master = make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY");
+        let kept = EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0));
+        let dropped_at = EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0));
+        let dropped_after = EventTime::DateTimeUtc(t(2026, 4, 6, 10, 0));
+        master.recurrence = Some(Recurrence {
+            rrule: "FREQ=DAILY".into(),
+            exdates: vec![kept.clone(), dropped_at, dropped_after],
+            rdates: vec![],
+        });
+        cal.create_event(master).unwrap();
+
+        cal.split_recurring_series_at(
+            uid,
+            EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+            EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            loaded_master(&cal, uid).recurrence.unwrap().exdates,
+            vec![kept]
+        );
+    }
+
+    #[test]
+    fn split_with_no_new_recurrence_creates_single_event() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "master@test";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        let new_master = cal
+            .split_recurring_series_at(
+                uid,
+                EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+                EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+                None,
+            )
+            .unwrap();
+
+        assert!(new_master.recurrence.is_none());
+    }
+
+    #[test]
+    fn split_errors_when_master_not_found() {
+        let (_tmp, cal) = test_calendar();
+
+        let err = cal
+            .split_recurring_series_at(
+                "nonexistent",
+                EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+                EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+                None,
+            )
+            .unwrap_err();
+
+        assert!(matches!(err, CalendarError::MasterNotFound(_)));
+    }
+
+    #[test]
+    fn split_errors_when_event_is_not_recurring() {
+        let (_tmp, cal) = test_calendar();
+        // Non-recurring event with the target uid. Since master_event_for filters
+        // by recurrence.is_some(), this looks like the master "isn't there" —
+        // surface as MasterNotFound, which is the right user-facing message.
+        let mut single = test_event();
+        single.uid = crate::event::EventUid::new("solo@test");
+        cal.create_event(single).unwrap();
+
+        let err = cal
+            .split_recurring_series_at(
+                "solo@test",
+                EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
+                EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
+                None,
+            )
+            .unwrap_err();
+
+        assert!(matches!(err, CalendarError::MasterNotFound(_)));
     }
 }

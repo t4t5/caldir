@@ -17,8 +17,9 @@ pub use calendar::{Calendar, CalendarConfig, CalendarEvent};
 pub use connection::Connection;
 pub use diff::{CalendarDiff, EventChange};
 pub use event::{
-    Attendee, Availability, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
-    RecurrenceId, Reminder, Status, Visibility, XProperty, expand_in_range, windows_tz,
+    Attendee, Availability, Event, EventInstanceId, EventTime, EventUid, Organizer,
+    ParticipationStatus, Recurrence, RecurrenceId, Reminder, Status, Visibility, XProperty,
+    expand_in_range, windows_tz,
 };
 pub use provider::{Provider, ProviderRegistry, ProviderSlug};
 pub use remote::{Remote, RemoteConfig, RemoteConfigParams, RemoteEvent};
