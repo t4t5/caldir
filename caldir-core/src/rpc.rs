@@ -49,7 +49,7 @@ pub enum Method {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Request {
-    #[serde(rename = "command")] // TODO: update providers so we can remove this
+    #[serde(rename = "command")]
     pub method: Method,
     #[serde(default)]
     pub params: serde_json::Value,
