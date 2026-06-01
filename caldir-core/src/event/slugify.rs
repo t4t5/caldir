@@ -20,7 +20,9 @@ impl Event {
                     .filter(|c| c.is_alphanumeric() || c.is_whitespace())
                     .collect();
 
-                let slug = slug::slugify(cleaned);
+                // Delegate to the shared slugifier so the length cap that keeps
+                // filenames under the filesystem limit lives in one place.
+                let slug = crate::utils::slugify(&cleaned);
 
                 if slug.is_empty() {
                     EMPTY_SUMMARY_SLUG.to_string()
@@ -73,6 +75,18 @@ mod tests {
         );
 
         assert_eq!(event.summary_slug(), "untitled");
+    }
+
+    #[test]
+    fn caps_long_summary_slug_to_avoid_filename_too_long() {
+        // A pathologically long title must not produce a filename that exceeds
+        // the filesystem's per-component limit (otherwise: ENAMETOOLONG on write).
+        let event = Event::new(
+            "a ".repeat(200),
+            EventTime::Date(NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()),
+        );
+
+        assert_eq!(event.summary_slug().chars().count(), 50);
     }
 
     #[test]
