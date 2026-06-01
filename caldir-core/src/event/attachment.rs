@@ -14,6 +14,16 @@ impl Attachment {
         }
     }
 
+    /// The human-readable `FILENAME` parameter, if present. CalDAV managed
+    /// attachments and Google Drive attachments both carry the file's name
+    /// here; bare `ATTACH:<uri>` references don't.
+    pub fn filename(&self) -> Option<&str> {
+        self.params
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("FILENAME"))
+            .map(|(_, v)| v.as_str())
+    }
+
     /// Parse an `ATTACH` property, keeping it ONLY when it's a URI reference (default behaviour
     /// for Google Drive attachments and iCloud attachments)
     /// Returns `None` for inline binary attachments (we don't want to store long blobs)
@@ -88,6 +98,23 @@ mod tests {
                 .params
                 .contains(&("FILENAME".to_string(), "agenda.pdf".to_string()))
         );
+    }
+
+    #[test]
+    fn filename_reads_param_case_insensitively() {
+        let mut prop = Property::new("ATTACH", "https://p01.icloud.com/att/abc");
+        prop.add_parameter("filename", "agenda.pdf");
+
+        let attachment = Attachment::from_property(&prop.done()).unwrap();
+
+        assert_eq!(attachment.filename(), Some("agenda.pdf"));
+    }
+
+    #[test]
+    fn filename_is_none_without_param() {
+        let attachment = Attachment::new("https://drive.google.com/file/d/abc");
+
+        assert_eq!(attachment.filename(), None);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use crate::render::time::format_datetime;
 use caldir_core::{
-    Attendee, Caldir, Calendar, CalendarDiff, EventChange, Recurrence, Reminder, TimeFormat,
-    XProperty,
+    Attachment, Attendee, Caldir, Calendar, CalendarDiff, EventChange, Recurrence, Reminder,
+    TimeFormat, XProperty,
 };
 use owo_colors::OwoColorize;
 use std::collections::{HashMap, HashSet};
@@ -318,6 +318,13 @@ fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
         if old.url != new.url {
             lines.push(render_optional_diff("url", &old.url, &new.url));
         }
+        if old.attachments != new.attachments {
+            let attachment_lines = render_attachment_diffs(&old.attachments, &new.attachments);
+            if !attachment_lines.is_empty() {
+                lines.push(format!("{}:", "attachments".dimmed()));
+                lines.extend(attachment_lines.into_iter().map(|l| format!("  {}", l)));
+            }
+        }
         let xprop_lines = render_x_property_diffs(&old.x_properties, &new.x_properties);
         if !xprop_lines.is_empty() {
             lines.push(format!("{}:", "x-properties".dimmed()));
@@ -545,6 +552,37 @@ fn attendee_label(att: &Attendee) -> String {
     match &att.name {
         Some(name) if !name.is_empty() => format!("{} ({})", name, att.email),
         _ => att.email.clone(),
+    }
+}
+
+/// Render attachment changes as add/remove lines, keyed by URI (the
+/// attachment's identity), like reminder/attendee diffs.
+fn render_attachment_diffs(old: &[Attachment], new: &[Attachment]) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    let old_uris: HashSet<&str> = old.iter().map(|a| a.uri.as_str()).collect();
+    let new_uris: HashSet<&str> = new.iter().map(|a| a.uri.as_str()).collect();
+
+    for added in new.iter().filter(|a| !old_uris.contains(a.uri.as_str())) {
+        lines.push(format!(
+            "{} {}",
+            "+".green(),
+            attachment_label(added).green()
+        ));
+    }
+
+    for removed in old.iter().filter(|a| !new_uris.contains(a.uri.as_str())) {
+        lines.push(format!("{} {}", "-".red(), attachment_label(removed).red()));
+    }
+
+    lines
+}
+
+/// Label an attachment by its filename, falling back to its URI.
+fn attachment_label(att: &Attachment) -> String {
+    match att.filename() {
+        Some(name) if !name.is_empty() => name.to_string(),
+        _ => att.uri.clone(),
     }
 }
 

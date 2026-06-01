@@ -17,7 +17,7 @@ pub use calendar::{Calendar, CalendarConfig, CalendarEvent};
 pub use connection::Connection;
 pub use diff::{CalendarDiff, EventChange};
 pub use event::{
-    Attendee, Availability, Event, EventInstanceId, EventTime, EventUid, Organizer,
+    Attachment, Attendee, Availability, Event, EventInstanceId, EventTime, EventUid, Organizer,
     ParticipationStatus, Recurrence, RecurrenceId, Reminder, Status, Visibility, XProperty,
     expand_in_range, windows_tz,
 };
