@@ -60,11 +60,6 @@ impl CaldirConfig {
         }
     }
 
-    pub fn from_system_config() -> Result<Self, CaldirConfigError> {
-        let config_path = Self::default_system_config_path()?;
-        Self::load_or_default(&config_path)
-    }
-
     pub fn load_or_default(path: &Path) -> Result<Self, CaldirConfigError> {
         if path.is_file() {
             let config = Self::load(path)?;
@@ -116,12 +111,6 @@ impl CaldirConfig {
         std::fs::write(path, contents)?;
 
         Ok(())
-    }
-
-    /// Persist to the user's system config file (e.g. `~/.config/caldir/config.toml`).
-    /// Tests should call [`Self::write`] with an explicit path instead.
-    pub fn save(&self) -> Result<(), CaldirConfigError> {
-        self.write(&Self::default_system_config_path()?)
     }
 
     /// Caldir config directory:

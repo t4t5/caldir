@@ -12,19 +12,30 @@ pub use error::CaldirError;
 
 pub struct Caldir {
     config: CaldirConfig,
+    config_path: Option<PathBuf>,
     providers: ProviderRegistry,
 }
 
 impl Caldir {
+    #[cfg(test)]
     pub(crate) fn new(config: CaldirConfig, providers: ProviderRegistry) -> Self {
-        Caldir { config, providers }
+        Caldir {
+            config,
+            config_path: None,
+            providers,
+        }
     }
 
     pub fn load() -> Result<Self, CaldirError> {
-        let config = CaldirConfig::from_system_config()?;
+        let config_path = CaldirConfig::default_system_config_path()?;
+        let config = CaldirConfig::load_or_default(&config_path)?;
         let providers = ProviderRegistry::from_system_path();
 
-        Ok(Self::new(config, providers))
+        Ok(Self {
+            config,
+            config_path: Some(config_path),
+            providers,
+        })
     }
 
     pub fn data_dir(&self) -> PathBuf {
@@ -118,8 +129,12 @@ impl Caldir {
     /// Either both sides commit or neither — on write failure the in-memory
     /// config is left untouched.
     pub fn save_config(&mut self, new_config: CaldirConfig) -> Result<(), CaldirError> {
-        new_config.save()?;
+        if let Some(path) = &self.config_path {
+            new_config.write(path)?;
+        }
+
         self.config = new_config;
+
         Ok(())
     }
 
