@@ -134,6 +134,7 @@ impl FromGoogle for Event {
             // Also mirrored in X-GOOGLE-CONFERENCE — kept here so local files
             // round-trip stably (Google's API has no writable URL field).
             url: conference_url,
+            attachments: Vec::new(),
             x_properties,
         })
     }

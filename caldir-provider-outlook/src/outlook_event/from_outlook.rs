@@ -196,6 +196,7 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         attendees,
         reminders,
         url: None,
+        attachments: Vec::new(),
         x_properties,
         last_modified,
         sequence: 0,

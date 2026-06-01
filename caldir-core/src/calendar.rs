@@ -444,7 +444,7 @@ mod tests {
     }
 
     use crate::event::RecurrenceId;
-    use chrono::{NaiveDate, TimeZone};
+    use chrono::TimeZone;
 
     fn make_master(uid: &str, start: DateTime<Utc>, rrule: &str) -> Event {
         let mut event = Event::new("Daily standup", EventTime::DateTimeUtc(start));

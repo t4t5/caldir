@@ -412,6 +412,7 @@ mod tests {
             attendees: vec![],
             reminders: vec![],
             url: None,
+            attachments: vec![],
             x_properties: vec![],
             last_modified: None,
             sequence: 0,

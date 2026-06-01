@@ -1,6 +1,6 @@
 use crate::event::{
-    Attendee, Availability, Event, EventError, EventTime, EventUid, Organizer, Recurrence,
-    RecurrenceId, Reminder, Status, Visibility, XProperty,
+    Attachment, Attendee, Availability, Event, EventError, EventTime, EventUid, Organizer,
+    Recurrence, RecurrenceId, Reminder, Status, Visibility, XProperty,
 };
 use icalendar::{Component, EventLike};
 
@@ -49,6 +49,14 @@ impl TryFrom<&icalendar::Event> for Event {
 
         let reminders = Reminder::from_ical_event(value);
 
+        // ATTACH is a multi-property (RFC 5545); URI links are kept, inline
+        // binary blobs are dropped — see `Attachment::from_property`.
+        let attachments = value
+            .multi_properties()
+            .get("ATTACH")
+            .map(|props| props.iter().filter_map(Attachment::from_property).collect())
+            .unwrap_or_default();
+
         let x_properties = value
             .properties()
             .iter()
@@ -79,6 +87,7 @@ impl TryFrom<&icalendar::Event> for Event {
             attendees,
             reminders,
             url: value.property_value("URL").map(ToString::to_string),
+            attachments,
             x_properties,
         })
     }
@@ -496,6 +505,59 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert_eq!(event.url, None);
+    }
+
+    #[test]
+    fn converts_attachments() {
+        let ical_event = test_icalendar_event()
+            .append_multi_property(icalendar::Property::new(
+                "ATTACH",
+                "https://drive.google.com/file/d/abc",
+            ))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(
+            event.attachments,
+            vec![Attachment::new("https://drive.google.com/file/d/abc")]
+        );
+    }
+
+    #[test]
+    fn attachments_is_empty_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert!(event.attachments.is_empty());
+    }
+
+    #[test]
+    fn parses_uri_attachment_from_ics_string() {
+        // Exercises the real string-parse path (not the builder): confirms a
+        // URI ATTACH is routed into multi_properties and captured, with params.
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:test@caldir\r\nDTSTART:20260101T120000Z\r\nATTACH;FMTTYPE=application/pdf;FILENAME=agenda.pdf:https://example.com/agenda.pdf\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        let event = crate::event::Event::parse_single_ics(ics);
+
+        assert_eq!(event.attachments.len(), 1);
+        assert_eq!(event.attachments[0].uri, "https://example.com/agenda.pdf");
+        assert!(
+            event.attachments[0]
+                .params
+                .contains(&("FILENAME".to_string(), "agenda.pdf".to_string()))
+        );
+    }
+
+    #[test]
+    fn drops_inline_binary_attachments() {
+        // Binary blobs are filtered out at parse — caldir links, never embeds.
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:test@caldir\r\nDTSTART:20260101T120000Z\r\nATTACH;ENCODING=BASE64;VALUE=BINARY:VGhlIHF1aWNr\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n";
+
+        let event = crate::event::Event::parse_single_ics(ics);
+
+        assert!(event.attachments.is_empty());
     }
 
     #[test]

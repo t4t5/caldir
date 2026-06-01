@@ -144,6 +144,7 @@ fn cancellation_to_event(
         attendees: Vec::new(),
         reminders: Vec::new(),
         url: None,
+        attachments: Vec::new(),
         x_properties: vec![XProperty::new(PROVIDER_EVENT_ID_PROPERTY, &ge.id)],
     })
 }

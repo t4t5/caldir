@@ -1,3 +1,4 @@
+mod attachment;
 mod attendee;
 mod availability;
 mod error;
@@ -15,6 +16,7 @@ mod visibility;
 pub mod windows_tz;
 mod x_property;
 
+pub use attachment::Attachment;
 pub use attendee::{Attendee, ParticipationStatus};
 pub use availability::Availability;
 use chrono::{DateTime, Utc};
@@ -53,6 +55,9 @@ pub struct Event {
     pub reminders: Vec<Reminder>,
     pub url: Option<String>,
 
+    #[educe(PartialEq(method(attachments_eq)))]
+    pub attachments: Vec<Attachment>,
+
     #[educe(PartialEq(method(x_properties_eq)))]
     pub x_properties: Vec<XProperty>,
 
@@ -83,6 +88,7 @@ impl Event {
             attendees: Vec::new(),
             reminders: Vec::new(),
             url: None,
+            attachments: Vec::new(),
             x_properties: Vec::new(),
         }
     }
@@ -286,6 +292,13 @@ fn new_uid() -> EventUid {
 // order, but providers (e.g. Google) build x_properties in insertion order.
 fn x_properties_eq(a: &[XProperty], b: &[XProperty]) -> bool {
     a.len() == b.len() && a.iter().all(|x| b.contains(x))
+}
+
+// The URI is the attachment's identity. Compare on it alone (order-independent)
+// so adding/removing/changing an attachment registers as a content change,
+// while volatile params (SIZE, MANAGED-ID) drifting doesn't cause sync churn.
+fn attachments_eq(a: &[Attachment], b: &[Attachment]) -> bool {
+    a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| y.uri == x.uri))
 }
 
 #[cfg(test)]

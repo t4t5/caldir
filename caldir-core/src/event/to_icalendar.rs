@@ -86,6 +86,10 @@ impl From<&Event> for icalendar::Event {
             event.append_property(icalendar::Property::new("URL", url));
         }
 
+        for attachment in &value.attachments {
+            event.append_multi_property(icalendar::Property::from(attachment));
+        }
+
         for x in &value.x_properties {
             event.append_property(icalendar::Property::from(x));
         }
@@ -448,6 +452,39 @@ mod tests {
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.property_value("URL"), None);
+    }
+
+    #[test]
+    fn converts_attachments() {
+        let mut event = test_event();
+        event.attachments = vec![
+            crate::event::Attachment::new("https://drive.google.com/file/d/abc"),
+            crate::event::Attachment::new("https://example.com/report.doc"),
+        ];
+
+        let ical_event: icalendar::Event = event.into();
+
+        let attachments = ical_event
+            .multi_properties()
+            .get("ATTACH")
+            .expect("ATTACH multi-property should be present");
+        assert_eq!(
+            attachments.iter().map(|p| p.value()).collect::<Vec<_>>(),
+            vec![
+                "https://drive.google.com/file/d/abc",
+                "https://example.com/report.doc"
+            ]
+        );
+    }
+
+    #[test]
+    fn omits_attachments_when_empty() {
+        let mut event = test_event();
+        event.attachments = vec![];
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert!(ical_event.multi_properties().get("ATTACH").is_none());
     }
 
     #[test]

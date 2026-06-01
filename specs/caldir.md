@@ -174,6 +174,13 @@ END:VALARM
 **What:** Google-specific extension for conference links.
 **How caldir uses it:** Preserved in `custom_properties` when pulled from Google, enabling round-trip sync. We don't actively generate this field—only `URL` is set from the conference URL.
 
+### Attachments
+
+#### `ATTACH`
+**What:** File attachments. Across the providers we target these are always *links*, not embedded bytes: Google Drive files, Apple/CalDAV managed attachments ([RFC 8607](https://datatracker.ietf.org/doc/html/rfc8607), referenced by `MANAGED-ID`), and plain webcal/CalDAV URLs.
+**How caldir uses it:** URI-valued `ATTACH` properties are preserved on round-trip (parameters like `FMTTYPE`, `FILENAME`, `SIZE`, `MANAGED-ID` are kept verbatim). caldir doesn't *originate* attachments — creating one requires a provider-specific upload step (Drive, or an RFC 8607 `POST`) that can't be expressed in plaintext — but it won't drop one it read. This matters because under RFC 8607 a `PUT` that omits a previously-present `ATTACH` tells the server to delete the attachment.
+**Skipped:** Inline binary attachments (`VALUE=BINARY` / `ENCODING=BASE64`) are dropped on parse — embedding base64 blobs would bloat the plaintext files and defeat grep.
+
 ---
 
 ## Deterministic Generation
@@ -214,7 +221,6 @@ These are valid iCalendar fields we intentionally don't use:
 | `PRIORITY` | 0-9 priority level—almost never used |
 | `CATEGORIES` | Tags/labels—few apps support them |
 | `GEO` | Lat/long—apps prefer the LOCATION string |
-| `ATTACH` | File attachments—better to link than embed |
 | `RESOURCES` | Room/equipment booking—very niche |
 | `RDATE` | Extra recurrence dates—RRULE+EXDATE covers 99% of cases |
 | `CONTACT` | Contact info—ORGANIZER is sufficient |
