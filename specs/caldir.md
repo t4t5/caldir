@@ -31,9 +31,9 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 
 #### `DTSTAMP`
 **What:** Timestamp of when the ICS was created/modified.
-**How caldir uses it:** We use the event's `updated` timestamp from the provider. If unavailable (e.g., birthday events), we fall back to current time.
+**How caldir uses it:** Not stored on the event. The icalendar crate auto-stamps it with the current time every time we serialize, so DTSTAMP changes on every write. The provider's "last changed" timestamp lives in `LAST-MODIFIED` instead.
 **Why:** Required by RFC 5545. Some calendar apps validate this.
-**Sync note:** Since the fallback uses current time, DTSTAMP can vary between ICS generations for events without an `updated` timestamp. Our sync comparison logic filters out DTSTAMP lines to avoid false positives—only actual content changes trigger updates.
+**Sync note:** Because DTSTAMP isn't an `Event` field, content comparison never sees it—a fresh write-time DTSTAMP can't trigger a false sync.
 
 #### `DTSTART`
 **What:** When the event starts.
@@ -67,7 +67,7 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 #### `LOCATION`
 **What:** Where the event takes place.
 **How caldir uses it:** Optional. Direct passthrough as plain text.
-**Tradeoff:** Some providers (Apple) use `X-APPLE-STRUCTURED-LOCATION` for rich location data with coordinates. We don't preserve this yet—just the plain text location.
+**Tradeoff:** Some providers (Apple) use `X-APPLE-STRUCTURED-LOCATION` for rich location data with coordinates. caldir preserves that property verbatim on round-trip (like any `X-` property) but doesn't parse its coordinates—the plain-text `LOCATION` is what we use.
 
 #### `STATUS`
 **What:** Event status.
@@ -79,6 +79,11 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 **Values:** `OPAQUE` (busy) or `TRANSPARENT` (free)
 **How caldir uses it:** Maps from Google's transparency field. Only emitted when TRANSPARENT—OPAQUE is the RFC 5545 default and is omitted.
 **Why it matters:** Affects free/busy scheduling. Birthday events are typically TRANSPARENT.
+
+#### `CLASS`
+**What:** Visibility/access classification.
+**Values:** `PUBLIC`, `PRIVATE`, `CONFIDENTIAL`
+**How caldir uses it:** Maps to the event's `visibility` field. Unlike STATUS/TRANSP, it has no suppressed default—an absent `CLASS` stays unspecified (distinct from an explicit `CLASS:PUBLIC`), and whatever is set (including `PUBLIC`) is written back, so the public-vs-unspecified distinction round-trips. Unrecognized values are treated as unspecified.
 
 ---
 
@@ -107,7 +112,7 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 
 #### `LAST-MODIFIED`
 **What:** When the event was last changed.
-**How caldir uses it:** Parsed from ICS into the `Event.updated` field. Compared against local file mtime to determine sync direction (push vs pull). If absent from the remote response, local is assumed newer.
+**How caldir uses it:** Parsed from ICS into the `Event.last_modified` field. Compared against local file mtime to determine sync direction (push vs pull). If absent from the remote response, local is assumed newer.
 **Why it matters:** Determines which version wins when content differs between local and remote.
 
 #### `SEQUENCE`
@@ -168,11 +173,11 @@ END:VALARM
 
 #### `X-GOOGLE-EVENT-ID`
 **What:** Google-specific extension storing Google's internal event ID.
-**How caldir uses it:** Stored in `custom_properties` when pulled from Google. Used for API calls (updates, deletes) since Google's API requires its own event ID, not the RFC 5545 UID.
+**How caldir uses it:** Stored in `x_properties` when pulled from Google. Used for API calls (updates, deletes) since Google's API requires its own event ID, not the RFC 5545 UID.
 
 #### `X-GOOGLE-CONFERENCE`
 **What:** Google-specific extension for conference links.
-**How caldir uses it:** Preserved in `custom_properties` when pulled from Google, enabling round-trip sync. We don't actively generate this field—only `URL` is set from the conference URL.
+**How caldir uses it:** Preserved in `x_properties` when pulled from Google, enabling round-trip sync. We don't actively generate this field—only `URL` is set from the conference URL.
 
 ### Attachments
 
@@ -198,15 +203,15 @@ The icalendar crate can introduce non-determinism by auto-generating fields:
 
 **At generation time:**
 - Event UID: Set from provider's event ID (deterministic)
-- Event DTSTAMP: Set from provider's `updated` timestamp when available
+- Event DTSTAMP: Left to the crate's write-time `Utc::now()` (not stored on the event); harmless because comparison ignores it (see below)
 
 **Post-processing:**
 - Strip CALSCALE:GREGORIAN (it's the default, no need to emit)
 - Strip UID and DTSTAMP from VALARM components (not required by RFC 5545)
 
 **At comparison time:**
-- Sync uses file mtime (local) vs `updated` field from API (remote)
-- Event content comparison uses our custom PartialEq which excludes `updated`, `sequence`, and `custom_properties`
+- Sync uses file mtime (local) vs the `LAST-MODIFIED` field from the provider (remote)
+- Event content comparison uses our custom `PartialEq`, which *ignores* `last_modified` and `sequence`; `x_properties` and `attachments` are compared order-independently (by value / URI), not excluded. DTSTAMP isn't an `Event` field, so it never participates.
 
 ---
 
@@ -217,7 +222,6 @@ These are valid iCalendar fields we intentionally don't use:
 | Field | Why we skip it |
 |-------|----------------|
 | `CREATED` | Informational only, doesn't affect behavior |
-| `CLASS` | PUBLIC/PRIVATE/CONFIDENTIAL—most apps ignore it |
 | `PRIORITY` | 0-9 priority level—almost never used |
 | `CATEGORIES` | Tags/labels—few apps support them |
 | `GEO` | Lat/long—apps prefer the LOCATION string |
@@ -253,28 +257,29 @@ caldir uses semantic filenames instead of UUIDs:
 
 ## Account Identifier Convention
 
-Providers that have an account concept (e.g., Google, iCloud) should include a `{provider}_account` field in their remote config. This allows caldir consumers (like GUI apps) to group calendars by account for display purposes.
+Providers backed by an account include a `{provider}_account` field in their remote config. This lets caldir consumers (like GUI apps) group calendars by account for display. Webcal feeds, which are just public URLs, have no account.
 
 ```toml
-# Google calendar — has an account
+# Google calendar
 [remote]
 provider = "google"
 google_account = "me@gmail.com"
 google_calendar_id = "primary"
 
-# iCloud calendar — has an account
+# iCloud calendar
 [remote]
 provider = "icloud"
 icloud_account = "me@icloud.com"
 icloud_calendar_url = "https://caldav.icloud.com/..."
 
-# Plain CalDAV — no account
+# Plain CalDAV
 [remote]
 provider = "caldav"
-caldav_url = "https://example.com/dav/calendar"
+caldav_account = "me@example.com"
+caldav_calendar_url = "https://example.com/dav/calendar"
 ```
 
-The `Remote::account_identifier()` method in caldir-core extracts this by looking up `{provider}_account` in the config. Returns `None` for providers without accounts.
+The `RemoteConfig::account_identifier()` method in caldir-core extracts this by looking up `{provider}_account` in the config. Returns `None` for providers without accounts (e.g. webcal).
 
 ---
 
@@ -289,12 +294,20 @@ The `Remote::account_identifier()` method in caldir-core extracts this by lookin
 ### Apple/iCloud (CalDAV)
 - Uses standard CalDAV protocol with app-specific passwords
 - The ICS `UID` is used directly for CalDAV API calls (no separate provider ID needed)
-- May need to preserve `X-APPLE-STRUCTURED-LOCATION` for rich location data
-- `X-APPLE-TRAVEL-ADVISORY-BEHAVIOR` controls travel time calculations
+- `X-APPLE-STRUCTURED-LOCATION` and `X-APPLE-TRAVEL-ADVISORY-BEHAVIOR` aren't interpreted, but round-trip verbatim like any `X-` property
 
-### Future: Outlook
-- `X-MICROSOFT-CDO-BUSYSTATUS` maps to TRANSP (FREE→TRANSPARENT, BUSY→OPAQUE)
-- Most `X-MICROSOFT-CDO-*` fields are compatibility cruft and can be ignored
+### CalDAV (generic)
+- Plain RFC 4791 with HTTP basic auth; works with Fastmail, Nextcloud, Radicale, etc.
+- Writability is detected per-calendar via a `DAV:current-user-privilege-set` PROPFIND (RFC 3744); calendars without write/bind privileges sync read-only
+- Shares its core CalDAV ops with the iCloud provider
+
+### Outlook / Microsoft 365
+- Microsoft Graph API; pulls from `/events` (not `/calendarView`) so recurring series stay as masters rather than expanded instances
+- Graph speaks Windows timezone names; `windows_tz` normalizes inbound to IANA and converts back on the outbound edge
+- Exception instances carry `originalStart`, which becomes the `RECURRENCE-ID`
+
+### Webcal
+- Read-only `.ics` feed subscriptions (e.g. holiday calendars); no account, never pushed
 
 ---
 
