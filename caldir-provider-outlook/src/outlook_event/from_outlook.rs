@@ -40,14 +40,13 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         _ => Availability::Busy,
     };
 
-    // Graph has four sensitivity values; RFC 5545's CLASS has three. `personal`
-    // (Outlook's "marked as personal" affordance) collapses to PRIVATE so we
-    // err on the side of not leaking content when round-tripping through
-    // systems that only understand CLASS.
+    // Graph has four sensitivity values; CLASS has three. `personal` collapses
+    // to PRIVATE (don't leak content). "normal"/unknown is Graph's default →
+    // None; Graph has no "public", so Some(Public) never arises here.
     let visibility = match event.sensitivity.as_str() {
-        "private" | "personal" => Visibility::Private,
-        "confidential" => Visibility::Confidential,
-        _ => Visibility::Public,
+        "private" | "personal" => Some(Visibility::Private),
+        "confidential" => Some(Visibility::Confidential),
+        _ => None,
     };
 
     let recurrence = event
@@ -569,7 +568,7 @@ mod tests {
 
         let event = from_outlook(ge, "me@example.com").unwrap();
 
-        assert_eq!(event.visibility, Visibility::Private);
+        assert_eq!(event.visibility, Some(Visibility::Private));
     }
 
     #[test]
@@ -579,7 +578,7 @@ mod tests {
 
         let event = from_outlook(ge, "me@example.com").unwrap();
 
-        assert_eq!(event.visibility, Visibility::Confidential);
+        assert_eq!(event.visibility, Some(Visibility::Confidential));
     }
 
     // Graph's `personal` has no RFC 5545 equivalent; collapse to PRIVATE
@@ -592,25 +591,27 @@ mod tests {
 
         let event = from_outlook(ge, "me@example.com").unwrap();
 
-        assert_eq!(event.visibility, Visibility::Private);
+        assert_eq!(event.visibility, Some(Visibility::Private));
     }
 
     #[test]
-    fn normal_sensitivity_maps_to_public() {
+    fn normal_sensitivity_maps_to_none() {
+        // "normal" is Graph's default — keep it unspecified rather than pinning
+        // an explicit PUBLIC.
         let mut ge = minimal_graph_event();
         ge.sensitivity = "normal".into();
 
         let event = from_outlook(ge, "me@example.com").unwrap();
 
-        assert_eq!(event.visibility, Visibility::Public);
+        assert_eq!(event.visibility, None);
     }
 
     #[test]
-    fn empty_sensitivity_maps_to_public() {
-        // Graph omits `sensitivity` when normal — treat absence as PUBLIC.
+    fn empty_sensitivity_maps_to_none() {
+        // Graph omits `sensitivity` when normal — treat absence as unspecified.
         let event = from_outlook(minimal_graph_event(), "me@example.com").unwrap();
 
-        assert_eq!(event.visibility, Visibility::Public);
+        assert_eq!(event.visibility, None);
     }
 
     #[test]

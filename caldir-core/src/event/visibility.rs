@@ -1,9 +1,8 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Visibility {
-    // PUBLIC is the RFC 5545 default
-    #[default]
+    // RFC 5545 CLASS values. Absent CLASS maps to `None`, so no Default here.
     Public,
     Private,
     Confidential,

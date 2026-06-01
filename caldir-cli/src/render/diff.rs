@@ -295,7 +295,7 @@ fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
             ));
         }
         if old.visibility != new.visibility {
-            lines.push(render_display(
+            lines.push(render_optional_display(
                 "visibility",
                 &old.visibility,
                 &new.visibility,

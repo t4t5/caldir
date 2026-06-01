@@ -29,13 +29,12 @@ impl ToGoogle for Event {
             Availability::Free => "transparent".to_string(),
         };
 
-        // Send "default" rather than "public" when the event is unrestricted,
-        // so it inherits the calendar's visibility setting on Google's side
-        // instead of being explicitly pinned.
+        // None → "default" (inherit calendar visibility); Some(Public) → "public".
         let visibility = match self.visibility {
-            Visibility::Public => "default".to_string(),
-            Visibility::Private => "private".to_string(),
-            Visibility::Confidential => "confidential".to_string(),
+            None => "default".to_string(),
+            Some(Visibility::Public) => "public".to_string(),
+            Some(Visibility::Private) => "private".to_string(),
+            Some(Visibility::Confidential) => "confidential".to_string(),
         };
 
         let valid_reminders: Vec<_> = self
@@ -290,7 +289,7 @@ mod tests {
     #[test]
     fn private_visibility_serializes_as_private() {
         let mut event = sample_event();
-        event.visibility = Visibility::Private;
+        event.visibility = Some(Visibility::Private);
 
         let google = event.to_google();
 
@@ -300,23 +299,35 @@ mod tests {
     #[test]
     fn confidential_visibility_serializes_as_confidential() {
         let mut event = sample_event();
-        event.visibility = Visibility::Confidential;
+        event.visibility = Some(Visibility::Confidential);
 
         let google = event.to_google();
 
         assert_eq!(google.visibility, "confidential");
     }
 
-    // PUBLIC is the RFC 5545 default, and Google's "default" means "inherit
-    // calendar visibility" — sending "default" avoids pinning the event to
-    // PUBLIC when the calendar itself has a different default.
+    // Unspecified visibility maps to Google's "default" ("inherit calendar
+    // visibility"), avoiding pinning the event when the calendar itself has a
+    // different default.
     #[test]
-    fn public_visibility_serializes_as_default() {
+    fn unspecified_visibility_serializes_as_default() {
         let mut event = sample_event();
-        event.visibility = Visibility::Public;
+        event.visibility = None;
 
         let google = event.to_google();
 
         assert_eq!(google.visibility, "default");
+    }
+
+    // An explicit Some(Public) is distinct from unspecified and is pinned as
+    // "public" so the distinction round-trips.
+    #[test]
+    fn public_visibility_serializes_as_public() {
+        let mut event = sample_event();
+        event.visibility = Some(Visibility::Public);
+
+        let google = event.to_google();
+
+        assert_eq!(google.visibility, "public");
     }
 }

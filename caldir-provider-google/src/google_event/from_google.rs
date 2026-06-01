@@ -53,13 +53,13 @@ impl FromGoogle for Event {
             Availability::Busy
         };
 
-        // Google omits `visibility` (or sends "default") when the event
-        // inherits the calendar's default visibility — treat that as PUBLIC
-        // per RFC 5545, matching the ICS-side default.
+        // "default"/omitted = inherit calendar visibility → None (unspecified),
+        // distinct from an explicit "public".
         let visibility = match event.visibility.as_str() {
-            "private" => Visibility::Private,
-            "confidential" => Visibility::Confidential,
-            _ => Visibility::Public,
+            "public" => Some(Visibility::Public),
+            "private" => Some(Visibility::Private),
+            "confidential" => Some(Visibility::Confidential),
+            _ => None,
         };
 
         let organizer = event.organizer.as_ref().map(|o| Organizer {
@@ -362,7 +362,7 @@ mod tests {
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.visibility, Visibility::Private);
+        assert_eq!(event.visibility, Some(Visibility::Private));
     }
 
     #[test]
@@ -372,29 +372,30 @@ mod tests {
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.visibility, Visibility::Confidential);
+        assert_eq!(event.visibility, Some(Visibility::Confidential));
     }
 
     #[test]
-    fn default_visibility_maps_to_public() {
-        // "default" means "inherit from calendar"; treat as PUBLIC per RFC 5545.
+    fn default_visibility_maps_to_none() {
+        // "default" means "inherit from calendar" — keep it unspecified rather
+        // than pinning an explicit PUBLIC.
         let mut ge = minimal_event();
         ge.visibility = "default".into();
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.visibility, Visibility::Public);
+        assert_eq!(event.visibility, None);
     }
 
     #[test]
-    fn empty_visibility_maps_to_public() {
+    fn empty_visibility_maps_to_none() {
         // Google omits `visibility` for events using the calendar default.
         let mut ge = minimal_event();
         ge.visibility = String::new();
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.visibility, Visibility::Public);
+        assert_eq!(event.visibility, None);
     }
 
     #[test]

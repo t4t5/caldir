@@ -1,4 +1,4 @@
-use crate::event::{Availability, Event, Status, Visibility};
+use crate::event::{Availability, Event, Status};
 use icalendar::{Component, EventLike};
 
 impl From<&Event> for icalendar::Event {
@@ -11,9 +11,10 @@ impl From<&Event> for icalendar::Event {
             event.ends(icalendar::DatePerhapsTime::from(end));
         }
 
-        // Omit STATUS / TRANSP / CLASS when they hold their RFC 5545 defaults
-        // so files round-trip cleanly (a parsed-then-written event yields the
-        // same bytes it came from, even if the original had no STATUS line).
+        // Omit STATUS / TRANSP when they hold their RFC 5545 defaults so files
+        // round-trip cleanly (a parsed-then-written event yields the same bytes
+        // it came from, even if the original had no STATUS line). CLASS is
+        // handled separately — it's optional, not defaulted.
         if value.status != Status::default() {
             event.append_property(icalendar::Property::new(
                 "STATUS",
@@ -28,11 +29,9 @@ impl From<&Event> for icalendar::Event {
             ));
         }
 
-        if value.visibility != Visibility::default() {
-            event.append_property(icalendar::Property::new(
-                "CLASS",
-                value.visibility.as_ics_str(),
-            ));
+        // Write CLASS whenever set (incl. PUBLIC); omit only when unspecified.
+        if let Some(visibility) = value.visibility {
+            event.append_property(icalendar::Property::new("CLASS", visibility.as_ics_str()));
         }
 
         if let Some(recurrence) = &value.recurrence {
@@ -105,7 +104,7 @@ impl From<Event> for icalendar::Event {
 mod tests {
     use super::*;
     use crate::EventTime;
-    use crate::event::{EventUid, RecurrenceId};
+    use crate::event::{EventUid, RecurrenceId, Visibility};
     use crate::test_utils::test_event;
 
     #[test]
@@ -233,7 +232,7 @@ mod tests {
     #[test]
     fn converts_visibility() {
         let mut event = test_event();
-        event.visibility = Visibility::Private;
+        event.visibility = Some(Visibility::Private);
 
         let ical_event: icalendar::Event = event.into();
 
@@ -241,13 +240,25 @@ mod tests {
     }
 
     #[test]
-    fn omits_visibility_when_default() {
+    fn omits_visibility_when_unspecified() {
         let mut event = test_event();
-        event.visibility = Visibility::Public;
+        event.visibility = None;
 
         let ical_event: icalendar::Event = event.into();
 
         assert_eq!(ical_event.property_value("CLASS"), None);
+    }
+
+    #[test]
+    fn writes_explicit_public_visibility() {
+        // An explicit Some(Public) is distinct from unspecified and must be
+        // written, so the "default vs public" distinction round-trips.
+        let mut event = test_event();
+        event.visibility = Some(Visibility::Public);
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("CLASS"), Some("PUBLIC"));
     }
 
     #[test]

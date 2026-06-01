@@ -29,9 +29,8 @@ impl TryFrom<&icalendar::Event> for Event {
             .map(|props| props.iter().map(Attendee::from).collect())
             .unwrap_or_default();
 
-        // STATUS, TRANSP and CLASS default to CONFIRMED / OPAQUE / PUBLIC per
-        // RFC 5545, so a missing line is treated as the default value rather
-        // than an independent "unset" state.
+        // STATUS and TRANSP default to CONFIRMED / OPAQUE per RFC 5545, so a
+        // missing line is treated as that default rather than an "unset" state.
         let status = value
             .property_value("STATUS")
             .and_then(Status::from_ics_str)
@@ -42,10 +41,11 @@ impl TryFrom<&icalendar::Event> for Event {
             .and_then(Availability::from_ics_str)
             .unwrap_or_default();
 
+        // Optional: absent (or unrecognized) CLASS stays None, distinct from
+        // an explicit CLASS:PUBLIC.
         let visibility = value
             .property_value("CLASS")
-            .and_then(Visibility::from_ics_str)
-            .unwrap_or_default();
+            .and_then(Visibility::from_ics_str);
 
         let reminders = Reminder::from_ical_event(value);
 
@@ -285,16 +285,16 @@ mod tests {
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.visibility, Visibility::Private);
+        assert_eq!(event.visibility, Some(Visibility::Private));
     }
 
     #[test]
-    fn visibility_defaults_to_public_when_missing() {
+    fn visibility_is_none_when_missing() {
         let ical_event = test_icalendar_event().done();
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(event.visibility, Visibility::Public);
+        assert_eq!(event.visibility, None);
     }
 
     #[test]

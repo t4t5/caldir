@@ -23,13 +23,13 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
     }
     .to_string();
 
-    // Empty string lets Graph keep its default ("normal") and skips
-    // overwriting any "personal" sensitivity already set on Outlook's side
-    // (CLASS:PUBLIC can't disambiguate "explicitly normal" from "untouched").
+    // None → empty (Graph keeps its current sensitivity, e.g. "personal").
+    // Some(Public) → "normal", Graph's nearest equivalent (no "public" value).
     let sensitivity = match event.visibility {
-        Visibility::Public => String::new(),
-        Visibility::Private => "private".to_string(),
-        Visibility::Confidential => "confidential".to_string(),
+        None => String::new(),
+        Some(Visibility::Public) => "normal".to_string(),
+        Some(Visibility::Private) => "private".to_string(),
+        Some(Visibility::Confidential) => "confidential".to_string(),
     };
 
     let (reminder_minutes, is_reminder_on) = match event.reminders.first() {
@@ -556,7 +556,7 @@ mod tests {
     #[test]
     fn private_visibility_sends_sensitivity_private() {
         let mut event = make_event(start_on(2026, 1, 1), None);
-        event.visibility = Visibility::Private;
+        event.visibility = Some(Visibility::Private);
 
         let graph = to_outlook(&event);
 
@@ -566,27 +566,38 @@ mod tests {
     #[test]
     fn confidential_visibility_sends_sensitivity_confidential() {
         let mut event = make_event(start_on(2026, 1, 1), None);
-        event.visibility = Visibility::Confidential;
+        event.visibility = Some(Visibility::Confidential);
 
         let graph = to_outlook(&event);
 
         assert_eq!(graph.sensitivity, "confidential");
     }
 
-    // PUBLIC is the RFC 5545 default. Emitting an empty sensitivity (which
-    // `skip_serializing_if` strips from the JSON) lets Graph keep whatever
-    // it already had — important because CLASS can't distinguish "this is
-    // a normal event" from "I never touched the sensitivity field".
+    // Unspecified → empty sensitivity (which `skip_serializing_if` strips from
+    // the JSON), so Graph keeps whatever it already had — important because we
+    // can't distinguish "normal event" from "never touched the field".
     #[test]
-    fn public_visibility_omits_sensitivity_from_payload() {
+    fn unspecified_visibility_omits_sensitivity_from_payload() {
         let mut event = make_event(start_on(2026, 1, 1), None);
-        event.visibility = Visibility::Public;
+        event.visibility = None;
 
         let graph = to_outlook(&event);
 
         assert!(graph.sensitivity.is_empty());
         let json = serde_json::to_value(&graph).unwrap();
         assert!(json.get("sensitivity").is_none());
+    }
+
+    // An explicit Some(Public) is sent as "normal" — Graph's nearest equivalent,
+    // distinct from the untouched (unspecified) case above.
+    #[test]
+    fn public_visibility_sends_sensitivity_normal() {
+        let mut event = make_event(start_on(2026, 1, 1), None);
+        event.visibility = Some(Visibility::Public);
+
+        let graph = to_outlook(&event);
+
+        assert_eq!(graph.sensitivity, "normal");
     }
 
     #[test]

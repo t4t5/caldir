@@ -47,10 +47,16 @@ impl CalendarDiff {
                     continue;
                 }
 
-                if local_is_newer(local_event, remote_event) {
+                // Never push an unspecified (None) visibility — inherit the remote's.
+                let mut to_push = event.clone();
+                if to_push.visibility.is_none() {
+                    to_push.visibility = remote_event.event().visibility;
+                }
+
+                if &to_push != remote_event.event() && local_is_newer(local_event, remote_event) {
                     outgoing.push(EventChange::Update {
                         from: remote_event.event().clone(),
-                        to: event.clone(),
+                        to: to_push,
                     });
                 } else {
                     incoming.push(EventChange::Update {
@@ -418,7 +424,7 @@ mod tests {
         let calendar_event = calendar.create_event(local_event.clone()).unwrap();
 
         let mut remote_event = local_event.clone();
-        remote_event.visibility = crate::event::Visibility::Private;
+        remote_event.visibility = Some(crate::event::Visibility::Private);
 
         let mut synced_ids = SyncedEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
@@ -438,6 +444,81 @@ mod tests {
                 to: remote_event,
             }]
         );
+    }
+
+    #[test]
+    fn unspecified_local_visibility_resolves_to_pull_even_when_local_mtime_is_newer() {
+        // Regression: a local file predating CLASS support has visibility: None.
+        // Even when its mtime is newer than the remote LAST-MODIFIED (e.g. after
+        // a bulk re-serialization bumped every file's mtime), an unspecified
+        // visibility must not originate a push that overwrites the remote's real
+        // value — it resolves to a pull instead.
+        let (_tmp, calendar) = test_calendar();
+
+        let mut local_event = test_event();
+        local_event.last_modified = Some(Utc.with_ymd_and_hms(2026, 3, 5, 8, 45, 16).unwrap());
+        assert_eq!(local_event.visibility, None);
+        let calendar_event = calendar.create_event(local_event.clone()).unwrap();
+
+        let mut remote_event = local_event.clone();
+        remote_event.visibility = Some(crate::event::Visibility::Private);
+        remote_event.last_modified = Some(Utc.with_ymd_and_hms(2025, 6, 9, 10, 42, 20).unwrap());
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(local_event.event_instance_id());
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote_event.clone())],
+            &synced_ids,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(
+            diff.incoming,
+            vec![EventChange::Update {
+                from: local_event,
+                to: remote_event,
+            }]
+        );
+    }
+
+    #[test]
+    fn outgoing_update_keeps_remote_visibility_when_local_is_unspecified() {
+        // A genuine local edit (summary) still pushes, but it must not drag an
+        // unspecified visibility along: the pushed event keeps the remote's
+        // visibility rather than dropping it to the default.
+        let (_tmp, calendar) = test_calendar();
+
+        let mut local_event = test_event();
+        local_event.summary = Some("Edited locally".to_string());
+        local_event.last_modified = Some(Utc.with_ymd_and_hms(2026, 3, 5, 8, 45, 16).unwrap());
+        let calendar_event = calendar.create_event(local_event.clone()).unwrap();
+
+        let mut remote_event = local_event.clone();
+        remote_event.summary = Some("Test Event".to_string());
+        remote_event.visibility = Some(crate::event::Visibility::Private);
+        remote_event.last_modified = Some(Utc.with_ymd_and_hms(2025, 6, 9, 10, 42, 20).unwrap());
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(local_event.event_instance_id());
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote_event)],
+            &synced_ids,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.incoming, vec![]);
+        match diff.outgoing.as_slice() {
+            [EventChange::Update { to, .. }] => {
+                assert_eq!(to.summary.as_deref(), Some("Edited locally"));
+                assert_eq!(to.visibility, Some(crate::event::Visibility::Private));
+            }
+            other => panic!("expected one outgoing Update, got {other:?}"),
+        }
     }
 
     #[test]
