@@ -612,6 +612,41 @@ mod tests {
     }
 
     #[test]
+    fn all_day_exdate_removes_specific_instance() {
+        // Regression: an all-day series emits `EXDATE;VALUE=DATE:...`, which
+        // rrule 0.14 reinterprets as a DATE-TIME (logging a WARN). This asserts
+        // the excluded all-day instance is actually dropped despite that fallback.
+        let mut master = Event::new(
+            "Holiday",
+            EventTime::Date(NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()),
+        );
+        master.recurrence = Some(Recurrence {
+            rrule: "FREQ=WEEKLY;COUNT=3".to_string(),
+            exdates: vec![EventTime::Date(
+                NaiveDate::from_ymd_opt(2026, 1, 12).unwrap(),
+            )],
+            rdates: vec![],
+        });
+
+        let result = expand_in_range(vec![master], utc(2026, 1, 1, 0, 0), utc(2026, 2, 1, 0, 0));
+
+        let dates: Vec<_> = result
+            .iter()
+            .filter_map(|e| match e.start {
+                EventTime::Date(d) => Some(d),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            dates,
+            vec![
+                NaiveDate::from_ymd_opt(2026, 1, 5).unwrap(),
+                NaiveDate::from_ymd_opt(2026, 1, 19).unwrap(),
+            ]
+        );
+    }
+
+    #[test]
     fn master_without_rrule_treated_as_single() {
         // Defensive: shouldn't happen in practice, but if we get a master with
         // an empty Recurrence we shouldn't crash — it just yields no instances.
