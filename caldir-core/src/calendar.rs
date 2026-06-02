@@ -173,20 +173,17 @@ impl Calendar {
         self.config.as_ref().and_then(|c| c.read_only())
     }
 
-    /// Split a recurring series at `split_start`.
+    /// Split a recurring series at `split_start`:
     ///
-    /// The original master's RRULE is truncated to end strictly before
-    /// `split_start`, any EXDATEs at or after `split_start` are dropped, and
-    /// any override files at or after `split_start` are deleted (they're
-    /// either being replaced by the new series or are now orphaned).
+    /// Original master:
+    /// 1. RRULE is truncated to end strictly before `split_start`
+    /// 2. Any EXDATEs at or after `split_start` are dropped
+    /// 3. Any override files at or after `split_start` are deleted
     ///
-    /// A new master is created starting at `split_start` (with `split_end`
-    /// and `new_recurrence`), inheriting all other metadata (summary,
-    /// description, location, reminders, attendees, etc.) from the original
-    /// master. The new master gets a fresh UID and a reset SEQUENCE.
-    ///
-    /// Returns the new master event. Errors if no master with `master_uid`
-    /// exists or if the master is not recurring.
+    /// New master:
+    /// 1. Starts at `split_start`
+    /// 2. Inherit all other metadata (summary, description, location etc) from original
+    /// 3. Gets a fresh UID and a reset SEQUENCE
     pub fn split_recurring_series_at(
         &self,
         master_uid: &EventUid,
