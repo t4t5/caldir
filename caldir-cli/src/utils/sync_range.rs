@@ -18,6 +18,10 @@ fn resolve_sync_range_at<Tz: TimeZone>(
     today: NaiveDate,
     tz: Tz,
 ) -> Result<DateRange> {
+    if from.is_none() && to.is_none() {
+        return Ok(DateRange::sync_window_at(today, tz));
+    }
+
     let from_utc = match from.as_deref() {
         Some("start") => None,
         Some(s) => Some(start_of_day_utc(
