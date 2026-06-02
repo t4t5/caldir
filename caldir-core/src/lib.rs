@@ -1,13 +1,26 @@
-pub mod caldir;
-pub mod caldir_config;
-pub mod calendar;
-pub mod constants;
-pub mod date_range;
-pub mod diff;
-pub mod error;
-pub mod event;
-pub mod event_time;
-pub mod ics;
-pub mod recurrence;
-pub mod remote;
-pub mod utils;
+mod caldir;
+mod calendar;
+mod connection;
+mod diff;
+mod event;
+pub mod provider;
+mod remote;
+pub mod rpc;
+mod utils;
+
+#[cfg(test)]
+mod test_utils;
+
+// Public API:
+pub use caldir::{Caldir, CaldirConfig, CaldirError, TimeFormat};
+pub use calendar::{Calendar, CalendarConfig, CalendarEvent};
+pub use connection::Connection;
+pub use diff::{CalendarDiff, EventChange};
+pub use event::{
+    Attachment, Attendee, Availability, Event, EventInstanceId, EventTime, EventUid, Organizer,
+    ParticipationStatus, Recurrence, RecurrenceId, Reminder, Status, Visibility, XProperty,
+    expand_in_range, windows_tz,
+};
+pub use provider::{Provider, ProviderRegistry, ProviderSlug};
+pub use remote::{Remote, RemoteConfig, RemoteConfigParams, RemoteEvent};
+pub use utils::{DateBounds, DateRange};

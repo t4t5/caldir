@@ -1,19 +1,28 @@
 use anyhow::{Context, Result, anyhow};
-use caldir_core::event::{Event, EventTime};
-use caldir_core::remote::protocol::CreateEvent;
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::CreateEvent;
+use caldir_core::{Event, EventTime};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 
-use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
+use crate::app_config::AppConfigStore;
+use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::graph_api::client::GraphClient;
 use crate::graph_api::types::{GraphEvent, GraphResponse};
 use crate::outlook_event::from_outlook::from_outlook;
 use crate::outlook_event::to_outlook::to_outlook;
 use crate::remote_config::OutlookRemoteConfig;
-use crate::session::Session;
+use crate::session::SessionStore;
 
 pub async fn handle(cmd: CreateEvent) -> Result<Event> {
-    let config = OutlookRemoteConfig::try_from(&cmd.remote_config)?;
-    let session = Session::load_valid(&config.outlook_account).await?;
+    let config = OutlookRemoteConfig::try_from(&cmd.remote)?;
+
+    let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
+    let session_store = SessionStore::new(storage.clone());
+    let app_config_store = AppConfigStore::new(storage);
+
+    let session = session_store
+        .load_valid(&config.outlook_account, &app_config_store)
+        .await?;
     let graph = GraphClient::new(session.access_token());
 
     // Recurring instance overrides share the master's iCalUId, so POSTing one
@@ -24,7 +33,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     if let Some(rid) = cmd.event.recurrence_id.as_ref() {
         let master_id = cmd
             .event
-            .custom_property(PROVIDER_EVENT_ID_PROPERTY)
+            .x_property(PROVIDER_EVENT_ID_PROPERTY)
             .ok_or_else(|| {
                 anyhow!(
                     "Cannot create recurring instance override without master's \
@@ -32,12 +41,16 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
                 )
             })?;
 
-        let instance_id = find_instance_id(&graph, master_id, rid).await?;
+        let rid_time = rid.as_event_time();
+        let instance_id = find_instance_id(&graph, master_id, rid_time).await?;
 
         let body = to_outlook(&cmd.event);
         let path = format!("/me/events/{}", instance_id);
         let response = graph.patch(&path, &body).await.with_context(|| {
-            format!("Failed to patch recurring instance: {}", cmd.event.summary)
+            format!(
+                "Failed to patch recurring instance: {}",
+                cmd.event.summary.as_deref().unwrap_or("")
+            )
         })?;
 
         let updated: GraphEvent = response
@@ -59,10 +72,12 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     let body = to_outlook(&cmd.event);
 
     let path = format!("/me/calendars/{}/events", config.outlook_calendar_id);
-    let response = graph
-        .post(&path, &body)
-        .await
-        .with_context(|| format!("Failed to create event: {}", cmd.event.summary))?;
+    let response = graph.post(&path, &body).await.with_context(|| {
+        format!(
+            "Failed to create event: {}",
+            cmd.event.summary.as_deref().unwrap_or("")
+        )
+    })?;
 
     let created: GraphEvent = response
         .json()
@@ -80,12 +95,7 @@ async fn find_instance_id(
     master_id: &str,
     recurrence_id: &EventTime,
 ) -> Result<String> {
-    let rid_utc = recurrence_id.to_utc().ok_or_else(|| {
-        anyhow!(
-            "Cannot resolve recurrence_id {} to a UTC instant",
-            recurrence_id.to_iso_string()
-        )
-    })?;
+    let rid_utc = recurrence_id.to_utc();
 
     let start = (rid_utc - Duration::days(1)).format("%Y-%m-%dT%H:%M:%SZ");
     let end = (rid_utc + Duration::days(1)).format("%Y-%m-%dT%H:%M:%SZ");
@@ -107,8 +117,8 @@ async fn find_instance_id(
     match find_matching_instance(&body.value, recurrence_id) {
         Some(instance) => Ok(instance.id.clone()),
         None => Err(anyhow!(
-            "No Outlook instance found for recurrence_id={} on master={}",
-            recurrence_id.to_iso_string(),
+            "No Outlook instance found for recurrence_id={:?} on master={}",
+            recurrence_id,
             master_id
         )),
     }
@@ -121,7 +131,7 @@ fn find_matching_instance<'a>(
     instances: &'a [GraphEvent],
     recurrence_id: &EventTime,
 ) -> Option<&'a GraphEvent> {
-    let target = recurrence_id.to_utc()?;
+    let target = recurrence_id.to_utc();
     instances
         .iter()
         .find(|inst| instance_original_start_utc(inst) == Some(target))
@@ -182,6 +192,7 @@ mod tests {
             reminder_minutes_before_start: 0,
             is_reminder_on: false,
             show_as: String::new(),
+            sensitivity: String::new(),
             last_modified_date_time: None,
             online_meeting: None,
             original_start: original_start.map(|s| s.to_string()),

@@ -1,111 +1,105 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
-use std::str::FromStr;
 
 use anyhow::{Context, Result};
-use caldir_core::caldir::Caldir;
-use caldir_core::calendar::Calendar;
-use caldir_core::event::ParticipationStatus;
-
-use crate::render::format_event_line;
-use crate::utils::date::format_date_only;
-use crate::utils::date::start_of_today;
-use caldir_core::ics::parse_event;
-use chrono::Duration;
+use caldir_core::{Caldir, CalendarEvent, DateBounds, Event, ParticipationStatus};
+use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
 
-pub fn run(path: Option<String>, response: Option<String>) -> Result<()> {
+use crate::render::event::format_event_line;
+use crate::render::time::format_date_only;
+use crate::utils::require_calendars;
+
+pub fn run(caldir: &Caldir, path: Option<String>, response: Option<String>) -> Result<()> {
+    require_calendars(caldir)?;
+
     match (path, response) {
-        (Some(path), Some(response)) => run_direct(&path, &response),
-        (Some(path), None) => {
-            anyhow::bail!(
-                "Missing response. Usage: caldir rsvp {} accept|decline|maybe",
-                path
-            );
-        }
-        _ => run_interactive(),
+        (Some(path), Some(response)) => run_direct(caldir, &path, &response),
+        (Some(path), None) => anyhow::bail!(
+            "Missing response. Usage: caldir rsvp {} accept|decline|maybe",
+            path
+        ),
+        _ => run_interactive(caldir),
     }
 }
 
-fn run_direct(path_str: &str, response_str: &str) -> Result<()> {
+fn run_direct(caldir: &Caldir, path_str: &str, response_str: &str) -> Result<()> {
     let path = PathBuf::from(path_str);
     if !path.exists() {
         anyhow::bail!("File not found: {}", path.display());
     }
 
-    let content = std::fs::read_to_string(&path).context("Failed to read ICS file")?;
-    let event = parse_event(&content).context("Failed to parse ICS file")?;
-
-    // Determine calendar slug from parent directory
-    let cal_dir = path
+    let cal_slug = path
         .parent()
-        .context("Cannot determine calendar directory")?;
-    let cal_slug = cal_dir
-        .file_name()
+        .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
-        .context("Cannot determine calendar slug")?;
+        .context("Cannot determine calendar from path")?;
 
-    let caldir = Caldir::load()?;
     let calendar = caldir
         .calendar(cal_slug)
-        .context(format!("Failed to load calendar '{}'", cal_slug))?;
+        .with_context(|| format!("Failed to load calendar '{}'", cal_slug))?;
 
     let email = calendar
-        .account_email()
+        .remote_email()
         .context("No account email configured for this calendar")?;
+
+    let mut cal_event = CalendarEvent::load(&path).context("Failed to load event")?;
+    let event = cal_event.event();
 
     if !event.is_invite_for(email) {
         anyhow::bail!("This event is not an invite for {}", email);
     }
 
-    let status = ParticipationStatus::from_str(response_str).map_err(|e| anyhow::anyhow!(e))?;
+    let status = parse_response(response_str)?;
+    let summary = event.summary.clone().unwrap_or("(Untitled)".to_string());
+    let updated = apply_response(event, email, status)?;
+    cal_event.update(updated)?;
 
-    let updated_event = event
-        .with_response(email, status)
-        .context("Failed to update event response")?;
-
-    calendar.update_event(
-        &updated_event.uid,
-        updated_event.recurrence_id.as_ref(),
-        &updated_event,
-    )?;
-
-    println!("{} {} → {}", "✓".green(), event.summary, status);
+    println!("{} {} → {}", "✓".green(), summary, status);
     println!();
     println!("{}", "Remember to run: caldir push".dimmed());
 
     Ok(())
 }
 
-fn run_interactive() -> Result<()> {
-    let caldir = Caldir::load()?;
-    let calendars = caldir.calendars();
+fn run_interactive(caldir: &Caldir) -> Result<()> {
+    let tz: chrono_tz::Tz = iana_time_zone::get_timezone()?.parse()?;
+    let today = Utc::now().with_timezone(&tz).date_naive();
+    let from = today
+        .start_of_date()
+        .and_local_timezone(tz)
+        .earliest()
+        .unwrap()
+        .with_timezone(&Utc);
+    let to = (today + Duration::days(30))
+        .end_of_date()
+        .and_local_timezone(tz)
+        .latest()
+        .unwrap()
+        .with_timezone(&Utc);
 
-    let today = start_of_today();
-    let from = today;
-    let to = today + Duration::days(30);
+    // (cal_slug, email, CalendarEvent) — own the CalendarEvent so we can mutate.
+    let mut invites: Vec<(String, String, CalendarEvent)> = Vec::new();
 
-    // Collect pending invites: (calendar, event, email, path)
-    let mut invites: Vec<(Calendar, caldir_core::event::Event, String, PathBuf)> = Vec::new();
-
-    for cal in &calendars {
-        let Some(email) = cal.account_email() else {
+    for cal in caldir.calendars().into_iter().filter_map(Result::ok) {
+        let Some(email) = cal.remote_email() else {
             continue;
         };
-        let cal_events = cal.events()?;
-        for ce in cal_events {
-            let in_range = ce
-                .event
-                .start
-                .to_utc()
-                .is_some_and(|s| s >= from && s <= to);
-            if in_range && ce.event.is_pending_invite_for(email) {
-                invites.push((cal.clone(), ce.event, email.to_string(), ce.path));
+        let email = email.to_string();
+        let cal_slug = cal.slug().unwrap_or("(Unknown calendar)").to_string();
+
+        for ce in cal.events()? {
+            let event = ce.event();
+            let in_range = event.occurs_in_range(from, to);
+            let is_pending = event.is_invite_for(&email)
+                && event.attendee_status(&email) == Some(ParticipationStatus::NeedsAction);
+            if in_range && is_pending {
+                invites.push((cal_slug.clone(), email.clone(), ce));
             }
         }
     }
 
-    invites.sort_by_key(|a| a.1.start.to_utc());
+    invites.sort_by_key(|(_, _, ce)| ce.event().start.to_utc());
 
     if invites.is_empty() {
         println!("{}", "No pending invites.".dimmed());
@@ -125,7 +119,8 @@ fn run_interactive() -> Result<()> {
     let mut responded = 0;
     let mut current_date: Option<String> = None;
 
-    for (calendar, event, email, _path) in &invites {
+    for (cal_slug, email, mut ce) in invites {
+        let event = ce.event().clone();
         let date_label = format_date_only(&event.start);
         if current_date.as_ref() != Some(&date_label) {
             if current_date.is_some() {
@@ -141,7 +136,7 @@ fn run_interactive() -> Result<()> {
             .map(|o| o.name.as_deref().unwrap_or(&o.email).to_string())
             .unwrap_or_else(|| "(unknown)".to_string());
 
-        println!("{}", format_event_line(event, &calendar.slug, ""));
+        println!("{}", format_event_line(&event, &cal_slug, "", caldir));
         println!("       {} {}", "from:".dimmed(), organizer.dimmed());
         print!("  [a]ccept  [d]ecline  [m]aybe  [s]kip: ");
         io::stdout().flush()?;
@@ -162,10 +157,8 @@ fn run_interactive() -> Result<()> {
         };
 
         if let Some(status) = status {
-            let updated = event
-                .with_response(email, status)
-                .context("Failed to update response")?;
-            calendar.update_event(&updated.uid, updated.recurrence_id.as_ref(), &updated)?;
+            let updated = apply_response(&event, &email, status)?;
+            ce.update(updated)?;
             println!("  {} → {}", "✓".green(), status);
             responded += 1;
         } else {
@@ -186,4 +179,32 @@ fn run_interactive() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn parse_response(input: &str) -> Result<ParticipationStatus> {
+    match input.to_lowercase().as_str() {
+        "a" | "accept" | "accepted" | "yes" | "y" => Ok(ParticipationStatus::Accepted),
+        "d" | "decline" | "declined" | "no" | "n" => Ok(ParticipationStatus::Declined),
+        "m" | "maybe" | "tentative" => Ok(ParticipationStatus::Tentative),
+        other => anyhow::bail!(
+            "Unknown response '{}'. Use one of: accept, decline, maybe.",
+            other
+        ),
+    }
+}
+
+fn apply_response(event: &Event, email: &str, status: ParticipationStatus) -> Result<Event> {
+    let mut updated = event.clone();
+
+    let attendee = updated
+        .attendees
+        .iter_mut()
+        .find(|a| a.email.eq_ignore_ascii_case(email))
+        .with_context(|| format!("Not an attendee: {}", email))?;
+
+    attendee.status = Some(status);
+    updated.sequence = event.sequence + 1;
+    updated.last_modified = Some(Utc::now());
+
+    Ok(updated)
 }

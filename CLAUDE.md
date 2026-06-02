@@ -1,450 +1,76 @@
-# caldir-cli
+# caldir
 
-A CLI for interacting with your local caldir directory and syncing with external calendar providers (Google, Apple, etc.).
+Caldir is a tool for storing your calendar as a directory of ICS files. It syncs with cloud providers (Google Calendar, iCloud, Outlook, CalDAV…) using git-like pull/push actions.
 
 ## Philosophy
 
-**Plaintext is the ultimate LLM interface.**
+Calendars today are often hidden behind APIs and proprietary sync layers, limiting what you can do.
 
-Modern AI assistants are surprisingly good at understanding your computer — your dotfiles, your config directories, your shell scripts — because it's all just text files in directories with meaningful names.
+By turning them into plaintext files, you can use tools like grep to search them, or set up advanced workflows using scripts and agents.
 
-Calendars should work the same way. Instead of living behind APIs and OAuth flows, your calendar should be something you can `ls`, `grep`, and reason about locally.
+It also makes it really easy to migrate your data from one provider to another.
 
-**caldir** is a convention: your calendar is a directory of `.ics` files, one event per file, with human-readable filenames. Each calendar is a subdirectory:
+## Architecture
 
-```
-~/caldir/
-  personal/
-    2025-03-20T1500__client-call.ics
-    2025-03-21__offsite.ics
-  work/
-    2025-03-25T0900__dentist.ics
-    2025-03-26T1400__sprint-planning.ics
-```
+- **`caldir-core`** — pure library. All business logic: event types, calendar discovery, bidirectional sync, ICS round-tripping, the provider subprocess protocol. CLIs and GUIs consume this directly.
+- **`caldir-cli`** — thin CLI shell to interact with your caldir. Should never carry sync logic of its own.
+- **`caldir-provider-*`** — independent binaries discovered on `PATH` as `caldir-provider-{name}`. Each speaks JSON over stdin/stdout to core, manages its own credentials and tokens under `~/.config/caldir/providers/{name}/`, and ships separately. Adding a provider needs no core change — like git remote helpers.
 
-**caldir-cli** is the command-line tool for working with caldir directories — syncing with cloud providers, viewing events, and managing your calendar locally.
+The `Caldir` struct is the runtime context object. Every CLI command receives a `&Caldir` and threads it down. Production loads it from disk; tests inject in-memory state via the builder.
 
-## Why caldir over vdir/pimsync?
+## The data model in one paragraph
 
-**vdir** is the existing standard for local calendar directories (used by vdirsyncer, pimsync). It specifies:
-- Subdirectories = collections (calendars)
-- Filenames should be URL-safe and NOT parsed for metadata
-- One `.ics` file per event with UID
+A *calendar* is any non-hidden subdirectory of `calendar_dir`. The directory itself is the source of truth — even an empty directory full of hand-authored `.ics` files is a valid local-only calendar.
 
-caldir takes a different approach to filenames:
+If a calendar is connected to a remote, it gets a `.caldir/` (analogous to `.git/`) holding `config.toml` (provider settings) and `state/known_event_ids` (append-only sync state for delete detection).
 
-```
-# vdir filenames (opaque IDs)
-5a3c9b7e-1234-5678-abcd-ef1234567890.ics
+Calendars come in three flavors: 
+- **local-only** (no remote)
+- **read-only** (remote, but provider can't push — webcal feeds, view-only shares)
+- **writable** (full bidirectional sync with Google Calendar, Outlook etc)
 
-# caldir filenames (human/LLM readable)
-2025-03-20T1500__meeting-with-alice.ics
-```
+## Sync model
 
-**Why human-readable filenames matter:**
+Bidirectional, last-write-wins, no merge: calendar events are atomic.
 
-1. **`ls` shows your schedule** — No need for a special viewer to see what's on your calendar
-2. **grep works** — `ls ~/caldir/work/ | grep 2025-03` shows March events
-3. **LLM-friendly** — AI assistants can read your calendar directory and understand it immediately
-4. **Sorting works** — Files sort chronologically by default
-5. **Tab completion** — Start typing the date to find events
+Direction is decided by comparing local file mtime against the remote `LAST-MODIFIED`.
 
-### Bidirectional Sync
+Deletes are detected by comparing the live file set against `known_event_ids`. This file records event identities that have ever synced; IDs are retained after deletes so caldir can keep distinguishing a user delete from a never-seen remote event.
 
-The tool supports bidirectional sync between cloud and local:
-- `pull` — Download changes from cloud to local
-- `push` — Upload local changes to cloud (creates, updates, and deletes)
-- `status` — Shows pending changes in both directions
-
-**Sync direction detection** uses timestamp comparison and sync state:
-- If local file mtime > remote `updated` (LAST-MODIFIED) → push candidate (local was modified)
-- If remote `updated` > local file mtime → pull candidate (remote was modified)
-- If remote has no `updated` timestamp and content differs → push candidate (local assumed newer, since identical content wouldn't trigger a comparison)
-- Local-only events not in sync state → new events to push
-- Remote-only events not in sync state → new events to pull
-- Events in sync state but missing locally → deleted locally, delete from remote on push
-- Events in sync state but missing remotely → deleted remotely, delete locally on pull
-
-**Conflict resolution**: Last-write-wins. If an event is modified on both sides, the newer timestamp determines the direction (push or pull), and the older version is overwritten. There's no merge — calendar events are atomic, so you generally just want the latest state.
-
-**Sync time window**: Only events within ±365 days of today are synced. Events outside this window are left untouched locally (not flagged for deletion just because they weren't fetched from the remote).
-
-**Delete sync**: When you delete a local `.ics` file and run `push`, the event is also deleted from the remote. This is tracked via the sync state file (see below).
-
-### Calendar discovery
-
-Every non-hidden subdirectory of `calendar_dir` is a calendar — the directory itself is the source of truth, and the directory name is the slug. `.caldir/` is optional and only carries metadata + remote sync settings. A directory containing only `.ics` files (no `.caldir/`) is a valid local-only calendar; `caldir week`, `caldir new`, etc. work against it. Remote-touching commands (`push`, `pull`, `sync`, `status`) display local-only calendars with a dim `(local only)` note instead of attempting to sync.
-
-### Local State (`.caldir/` directory)
-
-When a calendar is connected to a remote, it gets a `.caldir/` directory (similar to `.git/`) for local state and configuration:
-
-```
-~/caldir/personal/
-  .caldir/
-    config.toml    # remote provider configuration
-    state/
-      known_event_ids  # plaintext, one event ID per line
-  2025-03-20T1500__meeting.ics
-  ...
-```
-
-**config.toml** — Remote provider configuration for this calendar:
-```toml
-[remote]
-provider = "google"
-google_account = "me@gmail.com"
-google_calendar_id = "primary"
-```
-
-This is created automatically by `caldir connect google`. Like `.git/config`, it contains the "remote" settings for syncing. The config fields (except `provider`) are returned by the provider's `list_calendars` command, so the CLI remains provider-agnostic.
-
-**known_event_ids** — Tracks which events have been synced using their RFC 5545 identity: `{uid}` for non-recurring events, or `{uid}__{recurrence_id}` for recurring event instances. This is used for **delete detection**: if an event ID is in `known_event_ids` but has no corresponding local file, the event was deleted locally and should be deleted from the remote on the next `push`.
-
-The sync state is updated automatically after each `pull` or `push` operation. If deleted, the next `pull` will re-download all events and recreate it.
-
-**Safety feature**: If you accidentally delete all local files (empty calendar) and run `push`, caldir-cli will refuse to delete all remote events. Run `caldir pull` to restore them.
-
-### Provider Plugin Architecture
-
-Providers are separate binaries that communicate with caldir-cli via JSON over stdin/stdout, similar to git's remote helpers (`git-remote-*`). This enables:
-
-- **Permissionless ecosystem** — Anyone can create a new provider
-- **Language-agnostic** — Providers can be written in any language
-- **Independent versioning** — Providers update separately from core
-- **Smaller core binary** — Provider-specific deps stay in provider crates
-- **Full autonomy** — Providers manage their own credentials, tokens, and refresh logic
-
-**Discovery**: caldir-cli looks for executables named `caldir-provider-{name}` in PATH.
-
-**Provider autonomy**: Each provider manages its own state in `~/.config/caldir/providers/{name}/`. For example, the Google provider stores:
-- `app_config.toml` — OAuth client_id/secret (only for self-hosted auth via `--hosted=false`)
-- `session/{account}.toml` — Access/refresh tokens per authenticated account (includes `auth_mode` field: `"hosted"` or `"local"`)
-
-The core CLI is completely provider-agnostic — it just passes provider-prefixed config fields (like `google_account`) to the provider binary.
-
-**Current providers**:
-- `caldir-provider-google` — Google Calendar (OAuth + REST API)
-- `caldir-provider-icloud` — iCloud (CalDAV + app-specific passwords)
-- `caldir-provider-caldav` — Generic CalDAV servers
-- `caldir-provider-outlook` — Outlook Calendar (OAuth + Microsoft Graph API)
-
-## Module Architecture
-
-```
-caldir-core/                   # Core library (used by CLI and future GUI apps)
-  src/
-    lib.rs              - Module declarations (no re-exports, use full paths)
-    error.rs            - CalDirError enum, CalDirResult type alias
-    constants.rs        - DEFAULT_SYNC_DAYS
-    event.rs            - Provider-neutral event types (Event, Attendee, Reminder, etc.)
-    protocol.rs         - CLI-provider communication protocol (Command enum, Request/Response, connect types)
-    provider.rs         - Provider subprocess protocol (JSON over stdin/stdout)
-    provider_account.rs - ProviderAccount (provider + account identifier for listing calendars)
-    remote.rs           - Remote, RemoteConfig (remote calendar operations)
-    calendar.rs         - Calendar struct, event CRUD, sync state
-    caldir.rs           - Caldir root directory, calendar discovery
-    config/
-      mod.rs
-      global_config.rs   - GlobalConfig (~/.config/caldir/config.toml)
-      calendar_config.rs - CalendarConfig (name, color, remote in .caldir/config.toml)
-    local/
-      mod.rs
-      state.rs        - LocalState (.caldir/state/known_event_ids)
-      event.rs        - LocalEvent (event + file metadata)
-    ics/
-      mod.rs
-      generate.rs     - ICS file generation (RFC 5545)
-      parse.rs        - ICS file parsing
-    sync/
-      mod.rs
-      diff_kind.rs    - DiffKind enum (Create, Update, Delete)
-      event_diff.rs   - EventDiff struct
-      calendar_diff.rs - CalendarDiff (diff computation + apply)
-      batch_diff.rs   - BatchDiff (multiple calendars)
-
-caldir-cli/                    # Thin CLI layer (TUI rendering only)
-  src/
-    main.rs      - CLI parsing and command dispatch
-    render.rs    - Render trait for colored terminal output
-    commands/
-      mod.rs
-      connect.rs - Connect to remote provider
-      pull.rs    - Pull remote → local
-      push.rs    - Push local → remote
-      status.rs  - Show pending changes
-      new.rs     - Create local events
-      invites.rs - List pending invites
-      rsvp.rs    - Respond to invites (direct + interactive)
-    utils/       - Spinners and TUI helpers
-
-caldir-provider-google/        # Google Calendar provider (separate crate)
-  src/
-    main.rs        - JSON protocol handler (reads stdin, writes stdout)
-    app_config.rs  - OAuth credentials (~/.config/caldir/providers/google/app_config.toml)
-    session.rs     - Token storage and refresh (~/.config/caldir/providers/google/session/)
-    commands/      - Command handlers (connect, list_calendars, list_events, etc.)
-    google_event/  - Conversion between Google API types and caldir_core types
-
-caldir-provider-outlook/       # Outlook provider (separate crate)
-  src/
-    main.rs          - JSON protocol handler (reads stdin, writes stdout)
-    app_config.rs    - Azure AD OAuth credentials (~/.config/caldir/providers/outlook/app_config.toml)
-    session.rs       - Token storage and refresh (~/.config/caldir/providers/outlook/session/)
-    graph_client.rs  - Lightweight Microsoft Graph API client (reqwest wrapper)
-    graph_types.rs   - Serde types for Graph API responses
-    remote_config.rs - OutlookRemoteConfig (outlook_account, outlook_calendar_id)
-    commands/        - Command handlers (connect, list_calendars, list_events, etc.)
-    outlook_event/   - Conversion between Graph API types and caldir_core types
-```
-
-### Key Abstractions
-
-**caldir-core** — The main library containing all business logic for calendar sync. Includes provider-neutral event types (`Event`, `Attendee`, `Reminder`, etc.), calendar management (`Calendar`, `Caldir`), bidirectional sync (`CalendarDiff`, `EventDiff`), ICS file handling, and provider protocol. Both the CLI and providers depend on this crate. Future GUI apps (like MagiCal) can use caldir-core directly without any TUI dependencies. Import types using full module paths (e.g., `caldir_core::diff::CalendarDiff`).
-
-**caldir-cli** — Thin CLI layer that provides TUI rendering via the `Render` trait. All business logic lives in caldir-core; the CLI just handles command dispatch and colored terminal output.
+The default sync window in the CLI is ±365 days from today; events outside the window are left alone, never deleted just for falling outside the fetched range.
 
-**Calendar** — Represents a single calendar directory (`caldir_core::calendar::Calendar`). Loaded via `Calendar::load(slug)` which reads the local config from `.caldir/config.toml` if present, otherwise falls back to `CalendarConfig::default()`. Provides methods for event CRUD operations and sync state management. The `remote()` method returns `Option<Remote>` — calendars without a configured remote are local-only.
+## Universal event identity
 
-**CalendarDiff** — Bidirectional diff for a single calendar (`caldir_core::diff::CalendarDiff`). Created via `CalendarDiff::from_calendar(&cal).await`. Contains `to_push` and `to_pull` vectors of `EventDiff`. Call `apply_push().await` or `apply_pull()` to sync changes.
+Across every provider, an event is `(uid, recurrence_id)` per RFC 5545. Provider-specific IDs (e.g., Google's internal event ID) live in `X-*` custom properties so they round-trip but don't leak into core's identity model.
 
-**Provider** — Provider subprocess protocol (`caldir_core::remote::provider::remote::provider`). Spawns provider binaries, sends JSON requests to stdin, reads JSON responses from stdout. The protocol is simple: `{command, params}` where params are the provider-prefixed fields from config. Commands: `connect`, `list_calendars`, `list_events`, `create_event`, `update_event`, `delete_event`.
+## Timezones
 
-The `connect` command drives a multi-step state machine. The CLI calls `connect` in a loop — each call returns either `NeedsInput` (with a step kind: `OAuthRedirect`, `HostedOAuth`, `Credentials`, or `NeedsSetup`) or `Done` with the account identifier. The CLI handles UI for each step (opening browser, prompting for credentials, etc.) and sends the gathered data back in the next `connect` call. This decouples auth UI from the provider while keeping the protocol simple — one command, called repeatedly until complete.
+Timezone is data, not just display. Events created locally use the system IANA zone (so filenames show local time). All inbound TZIDs are normalized to IANA at the parse boundary — Microsoft providers convert back to Windows names only at the outbound edge.
 
-**ProviderAccount** — Combines a Provider with an account identifier (`caldir_core::remote::provider_account::remote::providerAccount`). Used to list all calendars for a specific authenticated account via `list_calendars()`.
+## Providers
 
-**CalendarConfig/CalendarState** — Per-calendar state stored in `.caldir/` directory:
-- `CalendarConfig` (`caldir_core::config::calendar_config::CalendarConfig`) — Configuration stored in `.caldir/config.toml` (name, color, optional Remote for syncing)
-- `CalendarState` (`caldir_core::calendar::state::CalendarState`) — Sync state stored in `.caldir/state/known_event_ids` (tracks synced event IDs for delete detection)
+A provider (`caldir-provider-xxx`) is a binary that speaks caldir's JSON RPC over stdin/stdout. Implement [`ProviderHandler`](caldir-core/src/rpc/handler.rs) and let `run_provider` handle the protocol.
 
-**ics/** — Pure ICS format (RFC 5545) in `caldir_core::ics`. Generates compliant `.ics` files from `Event` structs, parses properties from existing files. Provider-neutral.
+### Storage directory
 
-## Timezone Handling
+Providers that need on-disk state (OAuth tokens, app passwords, sync cursors) write to the path in `CALDIR_PROVIDER_STORAGE_DIR`, falling back to `~/.config/caldir/providers/{name}/` if unset.
 
-**Timezone is data, not just display.** Events store their timezone so that filenames and `ls` output show local time, and recurring events survive DST transitions correctly.
+### Adding a default provider
 
-- **`caldir new`** creates events with `DateTimeZoned` using the system timezone (detected via `iana-time-zone`). So `caldir new "Meeting" --start "tomorrow 10am"` in Stockholm creates `DTSTART;TZID=Europe/Stockholm:...T100000`.
-- **Providers** that work with APIs (Google, Outlook) convert between UTC and zoned times using `chrono-tz`. When receiving events from the API, they preserve the timezone from the response as `DateTimeZoned`. When sending events, they convert zoned local time to the correct UTC instant.
-- **CalDAV/iCloud providers** work with raw ICS files, so timezone info is preserved natively by the ICS format.
-- **`DateTimeFloating`** (no timezone) is used for ICS events that intentionally have no timezone — "10am wherever you are." `caldir new` never creates these.
+When shipping a new default provider with caldir, update:
 
-## Event Properties
+1. workspace `Cargo.toml` — add the crate to `members`
+2. `.github/workflows/release.yml` — single source of truth for what ships in tarballs (`install.sh` and `caldir update` discover from there)
+3. `website/src/content/docs/providers.md` and `getting-started.md`
+4. `.claude/skills/bump/SKILL.md`
 
-See `specs/caldir.md` for the full ICS format specification with field-by-field documentation.
+## Specs
 
-Events include these properties (when available from the provider):
-
-- **Core**: summary, description, location, start/end time
-- **Recurrence**: RRULE, EXDATE, RECURRENCE-ID for recurring events
-- **Attendees**: organizer and participants with response status
-- **Reminders**: VALARM components with trigger times
-- **Availability**: TRANSP (opaque/transparent for busy/free)
-- **Meeting data**: conference/video call URLs
-- **Sync metadata**: LAST-MODIFIED, SEQUENCE, DTSTAMP
-- **Custom properties**: provider-specific fields (e.g., X-GOOGLE-EVENT-ID, X-GOOGLE-CONFERENCE) preserved for round-tripping
-
-### Invites and RSVP
-
-Events synced from others include ATTENDEE/ORGANIZER properties. caldir detects invites using the account email from each calendar's remote config (`{provider}_account` field).
-
-**Invite detection** (`Event` methods in `caldir-core/src/event.rs`):
-- `is_invite_for(email)` — true if the email is an attendee but NOT the organizer
-- `is_pending_invite_for(email)` — true if additionally the PARTSTAT is NEEDS-ACTION
-- `my_status(email)` — returns the user's `ParticipationStatus`
-- `with_response(email, status)` — returns a new `Event` with updated PARTSTAT, bumped SEQUENCE, and fresh LAST-MODIFIED
-
-**`caldir events`** shows colored invite status indicators after the calendar tag: (pending) in yellow, (accepted) in green, (declined) in red, (tentative) in yellow. Only shown for invites, not own events. The `render_participation_status()` function in `caldir-cli/src/render.rs` is the shared renderer for this.
-
-**`caldir rsvp`** updates the local ICS file — run `caldir push` afterward to sync the response to the server.
-
-`ParticipationStatus` implements `FromStr` with aliases: "accept"/"yes"/"y", "decline"/"no"/"n", "tentative"/"maybe"/"m".
-
-### Push Flow for New Events
-
-When `push` creates a new event on Google Calendar:
-
-1. Parse local `.ics` file to get the Event
-2. Call Google Calendar API to create the event
-3. Google returns the created event with:
-   - Google-assigned event ID (stored as `X-GOOGLE-EVENT-ID` in custom properties)
-   - Google-added fields (organizer, default reminders, etc.)
-4. Write the Google-returned event back to local file:
-   - Filename based on event date/time and title (with collision suffix if needed)
-   - All Google-added fields preserved (ORGANIZER, VALARM, X-GOOGLE-EVENT-ID, etc.)
-5. Update sync state with the event's RFC 5545 identity (uid + recurrence_id)
-
-This ensures the local file exactly matches the remote state after push, preventing false "modified" status on subsequent syncs.
-
-### Universal Event Identity
-
-Events are identified by their RFC 5545 identity: `(uid, recurrence_id)`. This works across all providers:
-
-- **UID**: The RFC 5545 UID property (e.g., `abc123@google.com`)
-- **recurrence_id**: For recurring event instance overrides, identifies which occurrence (e.g., `20250317T100000Z`)
-
-Provider-specific IDs are stored in custom properties:
-- **Google**: `X-GOOGLE-EVENT-ID` — Google's internal event ID, used for API calls
-- **CalDAV (iCloud)**: Uses the UID directly for API calls
-
-The sync state file tracks `{uid}` or `{uid}__{recurrence_id}` for delete detection.
-
-## Filename Convention
-
-**Timed events:** `YYYY-MM-DDTHHMM__slug.ics`
-- Example: `2025-03-20T1500__client-call.ics`
-- The time in the filename is **local time** (from the event's timezone), not UTC
-
-**All-day events:** `YYYY-MM-DD__slug.ics`
-- Example: `2025-03-21__offsite.ics`
-
-The slug is derived from the event title: lowercased, spaces replaced with hyphens, special characters removed. If multiple events have the same date/time and title, a numeric suffix is added (`-2`, `-3`, etc.) to ensure uniqueness.
-
-## Configuration
-
-### Global Config
-
-Global settings live at `~/.config/caldir/config.toml`:
-
-```toml
-# Where calendar subdirectories live
-calendar_dir = "~/caldir"
-
-# Default calendar for new events (used when --calendar not specified)
-default_calendar = "personal"
-```
-
-### Per-Calendar Config
-
-Each calendar stores its configuration in `.caldir/config.toml` (similar to `.git/config`):
-
-```toml
-# ~/caldir/personal/.caldir/config.toml
-name = "Personal"
-color = "#4285f4"
-
-[remote]
-provider = "google"
-google_account = "me@gmail.com"
-google_calendar_id = "primary"
-
-# ~/caldir/work/.caldir/config.toml
-name = "Work"
-color = "#0b8043"
-
-[remote]
-provider = "google"
-google_account = "me@gmail.com"
-google_calendar_id = "work@group.calendar.google.com"
-```
-
-These files are created automatically by `caldir connect google`. The provider returns the config fields to save (name, color, remote settings), so the CLI doesn't need to know about provider-specific field names. Calendars without `.caldir/config.toml` (or without a `[remote]` block in it) are treated as local-only — they're still discovered and listed, but `push`/`pull`/`sync`/`status` skip them with a `(local only)` note.
-
-**Account identifier convention**: Providers with an account concept include a `{provider}_account` field in their remote config (e.g., `google_account`, `icloud_account`). `Remote::account_identifier()` extracts this for grouping calendars by account. Providers without accounts (e.g., plain CalDAV) simply omit the field.
-
-### Provider Credentials
-
-Provider credentials and tokens are managed by each provider in its own directory:
-
-```
-~/.config/caldir/providers/google/
-  app_config.toml              # OAuth client_id/secret (only for --hosted=false)
-  session/
-    me@gmail.com.toml          # Access/refresh tokens (auto-refreshed)
-```
-
-**Hosted auth (default):** Just run `caldir connect google`. OAuth is handled via caldir.org — no setup needed. Tokens are refreshed through caldir.org when they expire.
-
-**Self-hosted auth:** For users who want to use their own Google Cloud credentials, run `caldir connect google --hosted=false`. This will prompt you to create OAuth credentials in Google Cloud Console and save them as `app_config.toml`. Tokens are refreshed directly with Google.
-
-Both modes will:
-1. Open a browser for OAuth
-2. Fetch all calendars from your account
-3. Create a directory for each calendar with `.caldir/config.toml`
-
-Supports multiple accounts — run connect multiple times with different Google accounts.
-
-## Commands
-
-```bash
-# Connect to Google Calendar (hosted OAuth via caldir.org)
-caldir connect google
-
-# Connect with your own Google Cloud credentials
-caldir connect google --hosted=false
-
-# Connect to Outlook Calendar (Azure AD app credentials)
-caldir connect outlook
-
-# Create a new local event (uses default_calendar from config)
-caldir new "Meeting with Alice" --start 2025-03-20T15:00
-caldir new "Team standup" --start 2025-03-20T09:00 --duration 30m
-caldir new "Vacation" --start 2025-03-25 --end 2025-03-28  # all-day event
-
-# Create event in a specific calendar
-caldir new "Sprint planning" --start 2025-03-22T10:00 --calendar work
-
-# Pull events from all configured calendars
-caldir pull
-
-# Pull events from a specific date range
-caldir pull --from 2024-01-01 --to 2024-12-31
-
-# Pull all past events (from the beginning of time)
-caldir pull --from start
-
-# Pull with verbose output (show all events instead of compact counts)
-caldir pull --verbose
-
-# Push local changes to cloud (including deletions)
-caldir push
-
-# Push with verbose output
-caldir push --verbose
-
-# List pending invites (next 30 days)
-caldir invites
-
-# Include already-responded invites
-caldir invites --all
-
-# Filter invites to one calendar
-caldir invites -c work
-
-# Respond to an invite directly
-caldir rsvp ~/caldir/work/2026-03-15T1000__standup.ics accept
-caldir rsvp ~/caldir/work/2026-03-15T1000__standup.ics decline
-caldir rsvp ~/caldir/work/2026-03-15T1000__standup.ics maybe
-
-# Respond to invites interactively (walks through each pending invite)
-caldir rsvp
-
-# Show pending changes per calendar (like git status)
-caldir status
-
-# Show status for a specific date range
-caldir status --from 2024-01-01 --to 2024-12-31
-
-# Show all events (instead of compact counts when >5 events)
-caldir status --verbose
-```
-
-If neither `--end` nor `--duration` is specified, defaults to 1 hour for timed events or 1 day for all-day events.
-
-## Adding a New Default Provider
-
-When adding a new provider to the default set shipped with caldir, update these files:
-
-1. **`Cargo.toml`** (workspace) — add crate to `members`
-2. **`.github/workflows/release.yml`** — add binary to the packaging loop and `publish` step
-3. **`website/public/install.sh`** — add binary to the install loop
-4. **`website/src/content/docs/providers.md`** — add row to provider table and a new section
-5. **`website/src/content/docs/getting-started.md`** — add to "install from source" and "connect a calendar"
-6. **`.claude/skills/bump/SKILL.md`** — add to crates table and directory prefix mapping
+`specs/caldir.md` is the canonical ICS-format spec. `specs/rfc5545.txt` is the RFC. `specs/vdir.md` is an alternative convention caldir diverges from.
 
 ## Development
 
 ```bash
-# Check for errors
-just check
+just check   # cargo check + clippy across the workspace
+just test    # full test suite
 ```

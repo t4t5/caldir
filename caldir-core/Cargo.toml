@@ -2,7 +2,7 @@
 name = "caldir-core"
 version = "0.10.1"
 edition = "2024"
-description = "Shared types for caldir ecosystem (Event, protocol types)"
+description = "Core library for caldir calendar storage, sync, and provider protocol"
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
@@ -10,23 +10,26 @@ keywords = ["calendar", "ics", "caldav", "sync"]
 categories = ["data-structures"]
 
 [dependencies]
+async-trait = "0.1"
+chrono = "0.4.42"
+chrono-tz = "0.10.4"
+dirs = "6.0.0"
+educe = { version = "0.6.0", default-features = false, features = ["PartialEq"] }
+filetime = "0.2"
+home = "0.5.12"
+humantime = "2.3.0"
+icalendar = "0.17.10"
+rrule = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-chrono = { version = "0.4", features = ["serde"] }
-chrono-tz = "0.10"
-uuid = { version = "1", features = ["v4"] }
-thiserror = "2"
-toml = "0.9"
-dirs = "6"
-icalendar = "0.17"
-iso8601 = "0.6"
-tokio = { version = "1", features = ["process", "io-util", "time"] }
-which = "8"
-config = "0.15"
-shellexpand = "3"
-slug = "0.1"
-rrule = "0.14"
-humantime = "2"
+slug = "0.1.6"
+tempfile = "3"
+thiserror = "2.0.18"
+tokio = { version = "1", features = ["process", "io-util", "time", "macros", "rt"] }
+toml = "1.1.2"
+uuid = { version = "1.23.1", features = ["v4"] }
+windows-timezones = { version = "0.5", default-features = false, features = ["std", "chrono-tz"] }
 
 [dev-dependencies]
-tempfile = "3"
+pretty_assertions = "1"
+serial_test = "3"

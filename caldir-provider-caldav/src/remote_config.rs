@@ -1,9 +1,8 @@
 //! CalDAV-specific remote configuration.
 
 use anyhow::Result;
-use caldir_core::remote::RemoteConfig;
+use caldir_core::RemoteConfigParams;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Strongly-typed remote configuration for generic CalDAV.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,34 +18,32 @@ impl CaldavRemoteConfig {
             caldav_calendar_url: calendar_url.into(),
         }
     }
-}
 
-impl From<CaldavRemoteConfig> for RemoteConfig {
-    fn from(config: CaldavRemoteConfig) -> Self {
-        let mut map = HashMap::new();
-        map.insert(
+    pub fn into_remote_config_params(self) -> RemoteConfigParams {
+        let mut params = RemoteConfigParams::new();
+        params.insert(
             "caldav_account".to_string(),
-            toml::Value::String(config.caldav_account),
+            toml::Value::String(self.caldav_account),
         );
-        map.insert(
+        params.insert(
             "caldav_calendar_url".to_string(),
-            toml::Value::String(config.caldav_calendar_url),
+            toml::Value::String(self.caldav_calendar_url),
         );
-        RemoteConfig(map)
+        params
     }
 }
 
-impl TryFrom<&serde_json::Map<String, serde_json::Value>> for CaldavRemoteConfig {
+impl TryFrom<&RemoteConfigParams> for CaldavRemoteConfig {
     type Error = anyhow::Error;
 
-    fn try_from(map: &serde_json::Map<String, serde_json::Value>) -> Result<Self> {
-        let caldav_account = map
+    fn try_from(params: &RemoteConfigParams) -> Result<Self> {
+        let caldav_account = params
             .get("caldav_account")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required field: caldav_account"))?
             .to_string();
 
-        let caldav_calendar_url = map
+        let caldav_calendar_url = params
             .get("caldav_calendar_url")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required field: caldav_calendar_url"))?
@@ -56,5 +53,46 @@ impl TryFrom<&serde_json::Map<String, serde_json::Value>> for CaldavRemoteConfig
             caldav_account,
             caldav_calendar_url,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn into_remote_config_params_round_trips() {
+        let original =
+            CaldavRemoteConfig::new("me@fastmail.com", "https://caldav.fastmail.com/dav/cal/1/");
+        let params = original.clone().into_remote_config_params();
+
+        let restored = CaldavRemoteConfig::try_from(&params).unwrap();
+
+        assert_eq!(restored.caldav_account, original.caldav_account);
+        assert_eq!(restored.caldav_calendar_url, original.caldav_calendar_url);
+    }
+
+    #[test]
+    fn try_from_missing_account_errors() {
+        let mut params = RemoteConfigParams::new();
+        params.insert(
+            "caldav_calendar_url".to_string(),
+            toml::Value::String("https://example/cal/".to_string()),
+        );
+
+        let err = CaldavRemoteConfig::try_from(&params).unwrap_err();
+        assert!(err.to_string().contains("caldav_account"));
+    }
+
+    #[test]
+    fn try_from_missing_url_errors() {
+        let mut params = RemoteConfigParams::new();
+        params.insert(
+            "caldav_account".to_string(),
+            toml::Value::String("me@example".to_string()),
+        );
+
+        let err = CaldavRemoteConfig::try_from(&params).unwrap_err();
+        assert!(err.to_string().contains("caldav_calendar_url"));
     }
 }

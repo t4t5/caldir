@@ -1,9 +1,8 @@
 //! Webcal-specific remote configuration.
 
 use anyhow::Result;
-use caldir_core::remote::RemoteConfig;
+use caldir_core::RemoteConfigParams;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Strongly-typed remote configuration for webcal subscriptions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,24 +16,22 @@ impl WebcalRemoteConfig {
             webcal_url: url.into(),
         }
     }
-}
 
-impl From<WebcalRemoteConfig> for RemoteConfig {
-    fn from(config: WebcalRemoteConfig) -> Self {
-        let mut map = HashMap::new();
-        map.insert(
+    pub fn into_remote_config_params(self) -> RemoteConfigParams {
+        let mut params = RemoteConfigParams::new();
+        params.insert(
             "webcal_url".to_string(),
-            toml::Value::String(config.webcal_url),
+            toml::Value::String(self.webcal_url),
         );
-        RemoteConfig(map)
+        params
     }
 }
 
-impl TryFrom<&serde_json::Map<String, serde_json::Value>> for WebcalRemoteConfig {
+impl TryFrom<&RemoteConfigParams> for WebcalRemoteConfig {
     type Error = anyhow::Error;
 
-    fn try_from(map: &serde_json::Map<String, serde_json::Value>) -> Result<Self> {
-        let webcal_url = map
+    fn try_from(params: &RemoteConfigParams) -> Result<Self> {
+        let webcal_url = params
             .get("webcal_url")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required field: webcal_url"))?

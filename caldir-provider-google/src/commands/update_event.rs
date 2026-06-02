@@ -1,25 +1,33 @@
 use anyhow::Result;
-use caldir_core::event::Event;
-use caldir_core::remote::protocol::UpdateEvent;
+use caldir_core::Event;
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::UpdateEvent;
 use google_calendar::types::SendUpdates;
 
-use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
+use crate::app_config::AppConfigStore;
+use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::google_event::to_google::participation_status_to_google;
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
-use crate::session::Session;
+use crate::session::{Session, SessionStore};
 
 pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
-    let config = GoogleRemoteConfig::try_from(&cmd.remote_config)?;
+    let config = GoogleRemoteConfig::try_from(&cmd.remote)?;
     let account_email = &config.google_account;
     let calendar_id = &config.google_calendar_id;
 
-    let session = Session::load_valid(account_email).await?;
+    let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
+    let session_store = SessionStore::new(storage.clone());
+    let app_config_store = AppConfigStore::new(storage);
+
+    let session = session_store
+        .load_valid(account_email, &app_config_store)
+        .await?;
 
     // Get Google's event ID from custom properties
     let google_event_id = cmd
         .event
-        .custom_property(PROVIDER_EVENT_ID_PROPERTY)
+        .x_property(PROVIDER_EVENT_ID_PROPERTY)
         .ok_or_else(|| {
             anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}")
         })?;
@@ -37,7 +45,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
         Ok(Event::from_google(google_event)?)
     } else {
         // Organizer or own event: full PUT update
-        let client = session.client()?;
+        let client = session_store.client(&session, &app_config_store)?;
         let google_event = cmd.event.to_google();
 
         let response = client
@@ -71,7 +79,7 @@ async fn update_invite_status(
 ) -> Result<google_calendar::types::Event> {
     let attendee = event.find_attendee(account_email).unwrap();
     let response_status = attendee
-        .response_status
+        .status
         .map(participation_status_to_google)
         .unwrap_or("needsAction");
 

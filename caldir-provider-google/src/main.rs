@@ -1,5 +1,4 @@
-//! This binary implements the caldir provider protocol, communicating
-//! with caldir-cli via JSON over stdin/stdout.
+//! Google Calendar provider for caldir.
 
 mod app_config;
 mod commands;
@@ -8,83 +7,42 @@ mod google_event;
 mod remote_config;
 mod session;
 
-use anyhow::Result;
-use caldir_core::remote::protocol::{
-    Command, Connect, CreateEvent, DeleteEvent, ListCalendars, ListEvents, ProviderCommand,
-    Request, Response, UpdateEvent,
+use async_trait::async_trait;
+use caldir_core::rpc::{
+    Connect, ConnectResponse, CreateEvent, DeleteEvent, ListCalendars, ListEvents, UpdateEvent,
 };
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-use std::future::Future;
-use std::io::{self, BufRead, Write};
+use caldir_core::{CalendarConfig, Event, provider};
+
+struct GoogleProvider;
+
+#[async_trait]
+impl provider::Handler for GoogleProvider {
+    async fn connect(&self, cmd: Connect) -> provider::Result<ConnectResponse> {
+        Ok(commands::connect::handle(cmd).await?)
+    }
+
+    async fn list_calendars(&self, cmd: ListCalendars) -> provider::Result<Vec<CalendarConfig>> {
+        Ok(commands::list_calendars::handle(cmd).await?)
+    }
+
+    async fn list_events(&self, cmd: ListEvents) -> provider::Result<Vec<Event>> {
+        Ok(commands::list_events::handle(cmd).await?)
+    }
+
+    async fn create_event(&self, cmd: CreateEvent) -> provider::Result<Event> {
+        Ok(commands::create_event::handle(cmd).await?)
+    }
+
+    async fn update_event(&self, cmd: UpdateEvent) -> provider::Result<Event> {
+        Ok(commands::update_event::handle(cmd).await?)
+    }
+
+    async fn delete_event(&self, cmd: DeleteEvent) -> provider::Result<()> {
+        Ok(commands::delete_event::handle(cmd).await?)
+    }
+}
 
 #[tokio::main]
 async fn main() {
-    let input = io::stdin().lock();
-    let mut output = io::stdout();
-
-    for line in input.lines() {
-        let Ok(line) = line else { break };
-
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        let response = process_request(&line).await;
-
-        if writeln!(output, "{}", response).is_err() || output.flush().is_err() {
-            break;
-        }
-    }
-}
-
-async fn process_request(line: &str) -> String {
-    let request: Request = match serde_json::from_str(line) {
-        Ok(r) => r,
-        Err(e) => return Response::error(&format!("Failed to parse request: {e}")),
-    };
-
-    match handle_request(request).await {
-        Ok(data) => Response::success(data),
-        Err(e) => Response::error(&format!("Error handling request: {e:#}")),
-    }
-}
-
-/// Dispatch a command to its handler with compile-time type safety.
-///
-/// This ensures the handler returns the correct type as specified by
-/// the command's `ProviderCommand::Response` associated type.
-async fn dispatch<C, F, Fut>(params: serde_json::Value, handler: F) -> Result<serde_json::Value>
-where
-    C: ProviderCommand + DeserializeOwned,
-    C::Response: Serialize,
-    F: FnOnce(C) -> Fut,
-    Fut: Future<Output = Result<C::Response>>,
-{
-    let cmd: C = serde_json::from_value(params)?;
-    let response = handler(cmd).await?;
-    Ok(serde_json::to_value(response)?)
-}
-
-async fn handle_request(request: Request) -> Result<serde_json::Value> {
-    match request.command {
-        Command::Connect => {
-            dispatch::<Connect, _, _>(request.params, commands::connect::handle).await
-        }
-        Command::ListCalendars => {
-            dispatch::<ListCalendars, _, _>(request.params, commands::list_calendars::handle).await
-        }
-        Command::ListEvents => {
-            dispatch::<ListEvents, _, _>(request.params, commands::list_events::handle).await
-        }
-        Command::CreateEvent => {
-            dispatch::<CreateEvent, _, _>(request.params, commands::create_event::handle).await
-        }
-        Command::UpdateEvent => {
-            dispatch::<UpdateEvent, _, _>(request.params, commands::update_event::handle).await
-        }
-        Command::DeleteEvent => {
-            dispatch::<DeleteEvent, _, _>(request.params, commands::delete_event::handle).await
-        }
-    }
+    provider::run_provider(GoogleProvider).await
 }

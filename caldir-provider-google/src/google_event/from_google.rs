@@ -1,7 +1,7 @@
 use anyhow::Result;
-use caldir_core::event::{
-    Attendee, CustomProperty, Event, EventStatus, EventTime, ParticipationStatus, Recurrence,
-    Reminder, Reminders, Transparency,
+use caldir_core::{
+    Attendee, Availability, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
+    RecurrenceId, Reminder, Status, Visibility, XProperty,
 };
 
 use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
@@ -22,51 +22,66 @@ impl FromGoogle for Event {
             .ok_or_else(|| anyhow::anyhow!("Event has no end time ({})", describe_event(&event)))?;
 
         let status = match event.status.as_str() {
-            "tentative" => EventStatus::Tentative,
-            "cancelled" => EventStatus::Cancelled,
-            _ => EventStatus::Confirmed,
+            "tentative" => Status::Tentative,
+            "cancelled" => Status::Cancelled,
+            _ => Status::Confirmed,
         };
 
         let recurrence = parse_google_recurrence(&event.recurrence);
 
-        let recurrence_id = google_dt_to_event_time(event.original_start_time.as_ref());
+        let recurrence_id = google_dt_to_event_time(event.original_start_time.as_ref())
+            .map(RecurrenceId::from_event_time);
 
-        let reminders = if let Some(ref rem) = event.reminders {
+        // Note: when `reminders.useDefault: true` and overrides is empty, we
+        // intentionally leave reminders empty here — the local file has no
+        // VALARM, and `to_google` reads "no VALARM" as "inherit Google's
+        // calendar default reminders" on push.
+        let reminders: Vec<Reminder> = if let Some(ref rem) = event.reminders {
             rem.overrides
                 .iter()
-                .map(|r| Reminder { minutes: r.minutes })
+                .map(|r| Reminder {
+                    minutes_before_start: r.minutes,
+                })
                 .collect()
         } else {
-            Reminders(vec![])
+            Vec::new()
         };
 
-        let transparency = if event.transparency == "transparent" {
-            Transparency::Transparent
+        let availability = if event.transparency == "transparent" {
+            Availability::Free
         } else {
-            Transparency::Opaque
+            Availability::Busy
         };
 
-        let organizer = event.organizer.as_ref().map(|o| Attendee {
+        // "default"/omitted = inherit calendar visibility → None (unspecified),
+        // distinct from an explicit "public".
+        let visibility = match event.visibility.as_str() {
+            "public" => Some(Visibility::Public),
+            "private" => Some(Visibility::Private),
+            "confidential" => Some(Visibility::Confidential),
+            _ => None,
+        };
+
+        let organizer = event.organizer.as_ref().map(|o| Organizer {
+            email: o.email.clone(),
             name: if o.display_name.is_empty() {
                 None
             } else {
                 Some(o.display_name.clone())
             },
-            email: o.email.clone(),
-            response_status: None,
         });
 
         let attendees: Vec<Attendee> = event
             .attendees
             .iter()
             .map(|a| Attendee {
+                email: a.email.clone(),
                 name: if a.display_name.is_empty() {
                     None
                 } else {
                     Some(a.display_name.clone())
                 },
-                email: a.email.clone(),
-                response_status: google_to_participation_status(&a.response_status),
+                status: google_to_participation_status(&a.response_status),
             })
             .collect();
 
@@ -77,22 +92,23 @@ impl FromGoogle for Event {
                 .map(|ep| ep.uri.clone())
         });
 
-        let mut custom_properties = Vec::new();
+        let mut x_properties = Vec::new();
         // Store Google's event ID for API calls (updates, deletes)
-        custom_properties.push(CustomProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id));
+        x_properties.push(XProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id));
         if let Some(ref url) = conference_url {
-            custom_properties.push(CustomProperty::new("X-GOOGLE-CONFERENCE", url));
+            x_properties.push(XProperty::new("X-GOOGLE-CONFERENCE", url));
         }
         if !event.color_id.is_empty() {
-            custom_properties.push(CustomProperty::new(
-                PROVIDER_COLOR_ID_PROPERTY,
-                event.color_id,
-            ));
+            x_properties.push(XProperty::new(PROVIDER_COLOR_ID_PROPERTY, event.color_id));
         }
 
         Ok(Event {
-            uid: event.i_cal_uid,
-            summary: event.summary,
+            uid: EventUid::new(event.i_cal_uid),
+            summary: if event.summary.is_empty() {
+                None
+            } else {
+                Some(event.summary)
+            },
             description: if event.description.is_empty() {
                 None
             } else {
@@ -104,22 +120,22 @@ impl FromGoogle for Event {
                 Some(event.location)
             },
             start,
-            end,
+            end: Some(end),
             status,
+            availability,
+            visibility,
             recurrence,
             recurrence_id,
-            reminders,
-            transparency,
+            last_modified: event.updated,
+            sequence: event.sequence as i32,
             organizer,
             attendees,
-            conference_url,
-            updated: event.updated,
-            sequence: if event.sequence > 0 {
-                Some(event.sequence)
-            } else {
-                None
-            },
-            custom_properties,
+            reminders,
+            // Also mirrored in X-GOOGLE-CONFERENCE — kept here so local files
+            // round-trip stably (Google's API has no writable URL field).
+            url: conference_url,
+            attachments: Vec::new(),
+            x_properties,
         })
     }
 }
@@ -161,7 +177,11 @@ fn parse_google_recurrence(entries: &[String]) -> Option<Recurrence> {
         .flatten()
         .collect();
 
-    Some(Recurrence { rrule, exdates })
+    Some(Recurrence {
+        rrule,
+        exdates,
+        rdates: Vec::new(),
+    })
 }
 
 /// Parse a single EXDATE value string into an EventTime.
@@ -228,5 +248,223 @@ fn google_to_participation_status(google_status: &str) -> Option<ParticipationSt
         "tentative" => Some(ParticipationStatus::Tentative),
         "needsAction" => Some(ParticipationStatus::NeedsAction),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use google_calendar::types as g;
+
+    fn empty_event() -> g::Event {
+        serde_json::from_value(serde_json::json!({})).unwrap()
+    }
+
+    fn empty_dt() -> g::EventDateTime {
+        serde_json::from_value(serde_json::json!({})).unwrap()
+    }
+
+    fn minimal_event() -> g::Event {
+        g::Event {
+            id: "id1".into(),
+            i_cal_uid: "uid1@google.com".into(),
+            start: Some(g::EventDateTime {
+                date_time: Some("2026-01-16T15:00:00Z".parse().unwrap()),
+                time_zone: "Europe/Oslo".into(),
+                ..empty_dt()
+            }),
+            end: Some(g::EventDateTime {
+                date_time: Some("2026-01-16T15:45:00Z".parse().unwrap()),
+                time_zone: "Europe/Oslo".into(),
+                ..empty_dt()
+            }),
+            ..empty_event()
+        }
+    }
+
+    #[test]
+    fn confirmed_status_maps_to_confirmed() {
+        let mut ge = minimal_event();
+        ge.status = "confirmed".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.status, Status::Confirmed);
+    }
+
+    #[test]
+    fn empty_status_maps_to_confirmed() {
+        // Google omits `status` for events that haven't been explicitly set;
+        // RFC 5545 says CONFIRMED is the default in that case.
+        let mut ge = minimal_event();
+        ge.status = String::new();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.status, Status::Confirmed);
+    }
+
+    #[test]
+    fn tentative_status_maps_to_tentative() {
+        let mut ge = minimal_event();
+        ge.status = "tentative".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.status, Status::Tentative);
+    }
+
+    #[test]
+    fn cancelled_status_maps_to_cancelled() {
+        let mut ge = minimal_event();
+        ge.status = "cancelled".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.status, Status::Cancelled);
+    }
+
+    #[test]
+    fn opaque_transparency_maps_to_busy() {
+        let mut ge = minimal_event();
+        ge.transparency = "opaque".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.availability, Availability::Busy);
+    }
+
+    #[test]
+    fn empty_transparency_maps_to_busy() {
+        // Google omits `transparency` for events using the default availability;
+        // RFC 5545 says OPAQUE is the default in that case.
+        let mut ge = minimal_event();
+        ge.transparency = String::new();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.availability, Availability::Busy);
+    }
+
+    #[test]
+    fn transparent_transparency_maps_to_free() {
+        let mut ge = minimal_event();
+        ge.transparency = "transparent".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.availability, Availability::Free);
+    }
+
+    #[test]
+    fn private_visibility_maps_to_private() {
+        let mut ge = minimal_event();
+        ge.visibility = "private".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.visibility, Some(Visibility::Private));
+    }
+
+    #[test]
+    fn confidential_visibility_maps_to_confidential() {
+        let mut ge = minimal_event();
+        ge.visibility = "confidential".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.visibility, Some(Visibility::Confidential));
+    }
+
+    #[test]
+    fn default_visibility_maps_to_none() {
+        // "default" means "inherit from calendar" — keep it unspecified rather
+        // than pinning an explicit PUBLIC.
+        let mut ge = minimal_event();
+        ge.visibility = "default".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.visibility, None);
+    }
+
+    #[test]
+    fn empty_visibility_maps_to_none() {
+        // Google omits `visibility` for events using the calendar default.
+        let mut ge = minimal_event();
+        ge.visibility = String::new();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.visibility, None);
+    }
+
+    #[test]
+    fn conference_url_populates_url_and_x_google_conference() {
+        // Google has no writable URL field, so we mirror the conference URL
+        // into Event.url for round-trip stability with legacy local files.
+        let mut ge = minimal_event();
+        ge.conference_data = Some(
+            serde_json::from_value(serde_json::json!({
+                "entryPoints": [
+                    {"entryPointType": "video", "uri": "https://meet.google.com/abc-def-ghi"}
+                ]
+            }))
+            .unwrap(),
+        );
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(
+            event.url.as_deref(),
+            Some("https://meet.google.com/abc-def-ghi")
+        );
+        assert_eq!(
+            event.x_property("X-GOOGLE-CONFERENCE"),
+            Some("https://meet.google.com/abc-def-ghi")
+        );
+    }
+
+    #[test]
+    fn no_conference_data_leaves_url_none() {
+        let event = Event::from_google(minimal_event()).unwrap();
+
+        assert_eq!(event.url, None);
+    }
+
+    // `useDefault: true` means "inherit the calendar's default reminders". We
+    // deliberately don't expand those into explicit VALARMs locally: round-
+    // tripping back via `to_google` would then send them as overrides and
+    // pin the event to today's defaults, even if the calendar default later
+    // changes. The empty-reminders state on disk is what makes the next push
+    // emit `useDefault: true` again.
+    #[test]
+    fn use_default_reminders_produces_empty_reminders() {
+        let mut ge = minimal_event();
+        ge.reminders = Some(g::Reminders {
+            use_default: true,
+            overrides: vec![],
+        });
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert!(event.reminders.is_empty());
+    }
+
+    #[test]
+    fn explicit_overrides_become_reminders() {
+        let mut ge = minimal_event();
+        ge.reminders = Some(g::Reminders {
+            use_default: false,
+            overrides: vec![g::EventReminder {
+                method: "popup".into(),
+                minutes: 10,
+            }],
+        });
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.reminders.len(), 1);
+        assert_eq!(event.reminders[0].minutes_before_start, 10);
     }
 }

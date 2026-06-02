@@ -1,12 +1,8 @@
 //! iCloud-specific remote configuration.
-//!
-//! This provides type safety for iCloud Calendar remote config while
-//! caldir-core remains provider-agnostic with its generic RemoteConfig.
 
 use anyhow::Result;
-use caldir_core::remote::RemoteConfig;
+use caldir_core::RemoteConfigParams;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Strongly-typed remote configuration for iCloud Calendar.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,34 +18,32 @@ impl ICloudRemoteConfig {
             icloud_calendar_url: calendar_url.into(),
         }
     }
-}
 
-impl From<ICloudRemoteConfig> for RemoteConfig {
-    fn from(config: ICloudRemoteConfig) -> Self {
-        let mut map = HashMap::new();
-        map.insert(
+    pub fn into_remote_config_params(self) -> RemoteConfigParams {
+        let mut params = RemoteConfigParams::new();
+        params.insert(
             "icloud_account".to_string(),
-            toml::Value::String(config.icloud_account),
+            toml::Value::String(self.icloud_account),
         );
-        map.insert(
+        params.insert(
             "icloud_calendar_url".to_string(),
-            toml::Value::String(config.icloud_calendar_url),
+            toml::Value::String(self.icloud_calendar_url),
         );
-        RemoteConfig(map)
+        params
     }
 }
 
-impl TryFrom<&serde_json::Map<String, serde_json::Value>> for ICloudRemoteConfig {
+impl TryFrom<&RemoteConfigParams> for ICloudRemoteConfig {
     type Error = anyhow::Error;
 
-    fn try_from(map: &serde_json::Map<String, serde_json::Value>) -> Result<Self> {
-        let icloud_account = map
+    fn try_from(params: &RemoteConfigParams) -> Result<Self> {
+        let icloud_account = params
             .get("icloud_account")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required field: icloud_account"))?
             .to_string();
 
-        let icloud_calendar_url = map
+        let icloud_calendar_url = params
             .get("icloud_calendar_url")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required field: icloud_calendar_url"))?
@@ -59,5 +53,48 @@ impl TryFrom<&serde_json::Map<String, serde_json::Value>> for ICloudRemoteConfig
             icloud_account,
             icloud_calendar_url,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn into_remote_config_params_round_trips() {
+        let original = ICloudRemoteConfig::new(
+            "me@icloud.com",
+            "https://p01-caldav.icloud.com/123/calendars/home/",
+        );
+        let params = original.clone().into_remote_config_params();
+
+        let restored = ICloudRemoteConfig::try_from(&params).unwrap();
+
+        assert_eq!(restored.icloud_account, original.icloud_account);
+        assert_eq!(restored.icloud_calendar_url, original.icloud_calendar_url);
+    }
+
+    #[test]
+    fn try_from_missing_account_errors() {
+        let mut params = RemoteConfigParams::new();
+        params.insert(
+            "icloud_calendar_url".to_string(),
+            toml::Value::String("https://example/cal/".to_string()),
+        );
+
+        let err = ICloudRemoteConfig::try_from(&params).unwrap_err();
+        assert!(err.to_string().contains("icloud_account"));
+    }
+
+    #[test]
+    fn try_from_missing_url_errors() {
+        let mut params = RemoteConfigParams::new();
+        params.insert(
+            "icloud_account".to_string(),
+            toml::Value::String("me@icloud.com".to_string()),
+        );
+
+        let err = ICloudRemoteConfig::try_from(&params).unwrap_err();
+        assert!(err.to_string().contains("icloud_calendar_url"));
     }
 }

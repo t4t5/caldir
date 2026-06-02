@@ -1,15 +1,14 @@
 use anyhow::{Context, Result};
-use caldir_core::caldir::Caldir;
-use caldir_core::calendar::Calendar;
-use caldir_core::event::{Event, EventTime, Reminder};
+use caldir_core::{Caldir, Calendar, Event, EventTime, Reminder};
 use chrono::Duration;
 use dialoguer::{Input, Select};
 use owo_colors::OwoColorize;
 
-use crate::utils::path::PathExt;
+use crate::utils::{PathExt, require_calendars};
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
+    caldir: &Caldir,
     title: Option<String>,
     start: Option<String>,
     end: Option<String>,
@@ -18,8 +17,9 @@ pub fn run(
     calendar_slug: Option<String>,
     reminder_args: Vec<String>,
     no_reminders: bool,
-    calendars: Vec<Calendar>,
 ) -> Result<()> {
+    require_calendars(caldir)?;
+
     let interactive = title.is_none() || start.is_none();
 
     // --- Title ---
@@ -76,25 +76,37 @@ pub fn run(
             .map(|r| parse_reminder(r))
             .collect::<Result<_>>()?
     } else {
-        let caldir = Caldir::load()?;
-        caldir
-            .config()
-            .parse_default_reminders()
-            .map_err(|e| anyhow::anyhow!("{}", e))?
-            .unwrap_or_default()
+        caldir.config().default_reminders().unwrap_or(vec![])
     };
 
     // --- Calendar ---
-    let calendar = resolve_calendar(calendar_slug, &calendars, interactive)?;
+    let calendars: Vec<Calendar> = caldir
+        .calendars()
+        .into_iter()
+        .filter_map(Result::ok)
+        .collect();
 
-    let event = Event::new(title, start_time, end_time, None, location, None, reminders);
+    let calendar = resolve_calendar(caldir, calendar_slug, &calendars, interactive)?;
 
-    let path = calendar.create_event(&event)?;
+    let mut event = Event::new(title, start_time);
+    event.end = Some(end_time);
+    if let Some(loc) = location {
+        event.location = Some(loc);
+    }
+    if !reminders.is_empty() {
+        event.reminders = reminders;
+    }
+
+    let calendar_event = calendar.create_event(event)?;
 
     if interactive {
         println!();
     }
-    println!("{}", format!("  Created: {}", path.tilde()).green());
+
+    println!(
+        "{}",
+        format!("  Created: {}", calendar_event.path().tilde()).green()
+    );
 
     Ok(())
 }
@@ -318,24 +330,29 @@ fn default_end(start: &EventTime) -> EventTime {
 
 /// Parse a reminder string like "10m", "1h", "2 days" into a Reminder.
 fn parse_reminder(input: &str) -> Result<Reminder> {
-    Reminder::from_duration_str(input).map_err(|e| anyhow::anyhow!("{}", e))
+    Reminder::from_human(input).map_err(|e| anyhow::anyhow!("{}", e))
 }
 
 /// Resolve which calendar to use.
-fn resolve_calendar(
+fn resolve_calendar<'a>(
+    caldir: &Caldir,
     slug: Option<String>,
-    calendars: &[Calendar],
+    calendars: &'a [Calendar],
     interactive: bool,
-) -> Result<&Calendar> {
+) -> Result<&'a Calendar> {
     if let Some(slug) = slug {
-        return calendars.iter().find(|c| c.slug == slug).ok_or_else(|| {
-            let available: Vec<_> = calendars.iter().map(|c| c.slug.as_str()).collect();
-            anyhow::anyhow!(
-                "Calendar '{}' not found. Available: {}",
-                slug,
-                available.join(", ")
-            )
-        });
+        return calendars
+            .iter()
+            .find(|c| c.slug() == Some(&slug))
+            .ok_or_else(|| {
+                let available: Vec<_> = calendars.iter().filter_map(|c| c.slug()).collect();
+
+                anyhow::anyhow!(
+                    "Calendar '{}' not found. Available: {}",
+                    slug,
+                    available.join(", ")
+                )
+            });
     }
 
     // If only one calendar, use it
@@ -344,25 +361,26 @@ fn resolve_calendar(
     }
 
     // Try the default calendar
-    let caldir = Caldir::load()?;
-    if let Some(default) = caldir.default_calendar()
-        && let Some(cal) = calendars.iter().find(|c| c.slug == default.slug)
+    if let Ok(default) = caldir.default_calendar()
+        && let Some(slug) = default.slug()
+        && let Some(cal) = calendars.iter().find(|c| c.slug() == Some(slug))
     {
         return Ok(cal);
     }
 
     // Multiple calendars, no default — ask if interactive
     if interactive {
-        let items: Vec<&str> = calendars.iter().map(|c| c.slug.as_str()).collect();
+        let items: Vec<&str> = calendars.iter().map(|c| c.slug().unwrap_or("?")).collect();
         let selection = Select::new()
             .with_prompt("  Calendar")
             .items(&items)
             .default(0)
             .interact()?;
+
         Ok(&calendars[selection])
     } else {
         // Non-interactive with multiple calendars and no default
-        let available: Vec<_> = calendars.iter().map(|c| c.slug.as_str()).collect();
+        let available: Vec<_> = calendars.iter().filter_map(|c| c.slug()).collect();
         anyhow::bail!(
             "Multiple calendars found ({}). Use --calendar to specify one.",
             available.join(", ")

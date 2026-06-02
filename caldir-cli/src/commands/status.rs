@@ -1,32 +1,70 @@
 use anyhow::Result;
-use caldir_core::calendar::Calendar;
-use caldir_core::date_range::DateRange;
-use caldir_core::diff::CalendarDiff;
+use caldir_core::{Caldir, CaldirError, Connection, DateRange};
 use owo_colors::OwoColorize;
 
-use crate::render::{CalendarDiffRender, Render};
+use crate::render::diff::{CalendarDiffRender, Render};
 use crate::utils::tui;
+use crate::utils::{require_calendars, resolve_sync_range};
 
-pub async fn run(calendars: Vec<Calendar>, range: DateRange, verbose: bool) -> Result<()> {
-    for (i, cal) in calendars.iter().enumerate() {
-        if cal.remote().is_none() {
-            println!("{}", cal.render());
-            println!("   {}", "(local only)".dimmed());
-        } else {
-            let spinner = tui::create_spinner(cal.render());
-            let result = CalendarDiff::from_calendar(cal, &range).await;
-            spinner.finish_and_clear();
+pub async fn run(
+    caldir: &Caldir,
+    calendar: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+    verbose: bool,
+) -> Result<()> {
+    require_calendars(caldir)?;
 
-            println!("{}", cal.render());
+    let all_connections = caldir.connections();
 
-            match result {
-                Ok(diff) => println!("{}", diff.render(verbose)),
-                Err(e) => println!("   {}", e.to_string().red()),
+    let connections = match calendar {
+        Some(cal) => all_connections
+            .into_iter()
+            .filter(|conn| conn.as_ref().ok().and_then(|c| c.local().slug()) == Some(cal.as_str()))
+            .collect(),
+        None => all_connections,
+    };
+
+    let range = resolve_sync_range(from, to)?;
+
+    run_parsed(caldir, connections, range, verbose).await
+}
+
+async fn run_parsed(
+    caldir: &Caldir,
+    connections: Vec<Result<Connection, CaldirError>>,
+    range: DateRange,
+    verbose: bool,
+) -> Result<()> {
+    let total = connections.len();
+
+    for (i, connection) in connections.into_iter().enumerate() {
+        match connection {
+            Ok(connection) => {
+                let cal = connection.local();
+                let header = if connection.read_only() {
+                    format!("{} {}", cal.render(caldir), "(read-only)".dimmed())
+                } else {
+                    cal.render(caldir)
+                };
+                let spinner = tui::create_spinner(header.clone());
+                let result = connection.diff(&range).await;
+                spinner.finish_and_clear();
+
+                println!("{}", header);
+
+                match result {
+                    Ok(diff) => println!("{}", diff.render(verbose, caldir)),
+                    Err(e) => println!("   {}", e.to_string().red()),
+                }
+            }
+            Err(e) => {
+                println!("   {}", e.to_string().red());
             }
         }
 
         // Add spacing between calendars (but not after the last one)
-        if i < calendars.len() - 1 {
+        if i < total - 1 {
             println!();
         }
     }

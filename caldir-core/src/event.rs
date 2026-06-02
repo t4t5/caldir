@@ -1,192 +1,154 @@
-//! Provider-neutral event types.
-//!
-//! These types represent calendar events in a provider-agnostic way.
-//! Providers convert their API responses into these types, and caldir-cli
-//! works exclusively with them for sync, diff, and ICS generation.
+mod attachment;
+mod attendee;
+mod availability;
+mod error;
+mod from_icalendar;
+mod instance_id;
+mod occurrences;
+mod organizer;
+mod recurrence;
+mod reminder;
+mod slugify;
+mod status;
+mod time;
+mod to_icalendar;
+mod visibility;
+pub mod windows_tz;
+mod x_property;
 
-use chrono::{DateTime, TimeZone, Utc};
-use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::str::FromStr;
+pub use attachment::Attachment;
+pub use attendee::{Attendee, ParticipationStatus};
+pub use availability::Availability;
+use chrono::{DateTime, Utc};
+pub use error::EventError;
+pub use instance_id::{EventInstanceId, EventUid, RecurrenceId};
+pub use occurrences::expand_in_range;
+pub use organizer::Organizer;
+pub use recurrence::Recurrence;
+pub use reminder::Reminder;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+pub use status::Status;
+pub use time::EventTime;
+pub use visibility::Visibility;
+pub use x_property::XProperty;
 
-pub use crate::event_time::EventTime;
+const ICS_PRODID: &str = "CALDIR";
+const ICS_VERSION: &str = "2.0";
+const ICS_UID_DOMAIN: &str = "caldir";
 
-/// Typed recurrence data for a master event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Recurrence {
-    /// RRULE value (after "RRULE:"), e.g. "FREQ=WEEKLY;BYDAY=MO"
-    pub rrule: String,
-    /// Exception dates (EXDATE)
-    pub exdates: Vec<EventTime>,
-}
-
-impl PartialEq for Recurrence {
-    fn eq(&self, other: &Self) -> bool {
-        if self.rrule != other.rrule {
-            return false;
-        }
-        let mut a = self.exdates.clone();
-        let mut b = other.exdates.clone();
-        a.sort_by_key(|x| x.to_utc());
-        b.sort_by_key(|x| x.to_utc());
-        a == b
-    }
-}
-
-/// A calendar event (provider-neutral)
-///
-/// `PartialEq` compares content fields only, ignoring sync metadata
-/// (`updated`, `sequence`, `custom_properties`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, educe::Educe)]
+#[educe(PartialEq)]
 pub struct Event {
-    /// RFC 5545 UID - unique identifier shared across recurring event instances.
-    /// Always present. For recurring events, the master and all instance overrides
-    /// share the same uid, linked via recurrence_id.
-    pub uid: String,
-    pub summary: String,
+    pub uid: EventUid,
+    pub summary: Option<String>,
     pub description: Option<String>,
     pub location: Option<String>,
     pub start: EventTime,
-    pub end: EventTime,
-    pub status: EventStatus,
-
-    // Recurrence fields
-    /// Typed recurrence data (RRULE + EXDATEs) for master events
+    pub end: Option<EventTime>,
+    pub status: Status,
+    pub availability: Availability,
+    pub visibility: Option<Visibility>,
     pub recurrence: Option<Recurrence>,
-    /// RECURRENCE-ID: Original start time for this instance.
-    /// Present on instance overrides to identify which occurrence is modified.
-    /// The shared uid links this override back to its master event.
-    pub recurrence_id: Option<EventTime>,
-
-    // Alarms & Availability
-    pub reminders: Reminders,
-    /// Whether event blocks time (OPAQUE) or is free (TRANSPARENT)
-    pub transparency: Transparency,
-
-    // Meeting Data
-    pub organizer: Option<Attendee>,
+    pub recurrence_id: Option<RecurrenceId>,
+    pub organizer: Option<Organizer>,
     pub attendees: Vec<Attendee>,
-    pub conference_url: Option<String>,
+    pub reminders: Vec<Reminder>,
+    pub url: Option<String>,
 
-    // Sync Infrastructure (excluded from PartialEq)
-    /// Last modification timestamp (LAST-MODIFIED)
-    pub updated: Option<DateTime<Utc>>,
-    /// Revision sequence number (SEQUENCE)
-    pub sequence: Option<i64>,
+    #[educe(PartialEq(method(attachments_eq)))]
+    pub attachments: Vec<Attachment>,
 
-    // Provider-specific (excluded from PartialEq)
-    /// Non-standard X-properties carried through sync round-trips
-    /// (e.g. `X-GOOGLE-EVENT-ID`, `X-ALT-DESC`).
-    pub custom_properties: Vec<CustomProperty>,
-}
+    #[educe(PartialEq(method(x_properties_eq)))]
+    pub x_properties: Vec<XProperty>,
 
-/// A non-standard X-property, e.g:
-/// `X-GOOGLE-EVENT-ID`
-/// X-ALT-DESC` with `FMTTYPE=x/html` param
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CustomProperty {
-    pub name: String,
-    pub value: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub params: Vec<(String, String)>,
-}
+    #[educe(PartialEq(ignore))]
+    pub last_modified: Option<DateTime<Utc>>,
 
-impl CustomProperty {
-    pub fn new(name: impl Into<String>, value: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            value: value.into(),
-            params: Vec::new(),
-        }
-    }
-
-    pub fn with_param(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.params.push((key.into(), value.into()));
-        self
-    }
-}
-
-impl PartialEq for Event {
-    fn eq(&self, other: &Self) -> bool {
-        self.uid == other.uid
-            && self.summary == other.summary
-            && self.description == other.description
-            && self.location == other.location
-            && self.start == other.start
-            && self.end == other.end
-            && self.status == other.status
-            && self.recurrence == other.recurrence
-            && self.recurrence_id == other.recurrence_id
-            && self.reminders == other.reminders
-            && self.transparency == other.transparency
-            && self.organizer == other.organizer
-            && self.attendees == other.attendees
-            && self.conference_url == other.conference_url
-    }
-}
-
-impl fmt::Display for Event {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.summary.is_empty() {
-            write!(f, "(Unknown Event)")
-        } else {
-            write!(f, "{}", self.summary)
-        }
-    }
+    #[educe(PartialEq(ignore))]
+    pub sequence: i32,
 }
 
 impl Event {
-    fn generate_uid() -> String {
-        format!("{}@caldir", uuid::Uuid::new_v4())
-    }
-
-    pub fn new(
-        summary: String,
-        start: EventTime,
-        end: EventTime,
-        description: Option<String>,
-        location: Option<String>,
-        recurrence: Option<Recurrence>,
-        reminders: Vec<Reminder>,
-    ) -> Self {
-        let uid = Self::generate_uid();
-
+    pub fn new(summary: impl Into<String>, start: EventTime) -> Self {
         Event {
-            uid,
-            summary,
-            description,
-            location,
+            uid: new_uid(),
+            summary: Some(summary.into()),
+            description: None,
+            location: None,
             start,
-            end,
-            status: EventStatus::Confirmed,
-            recurrence,
+            end: None,
+            status: Status::default(),
+            availability: Availability::default(),
+            visibility: None,
+            recurrence: None,
             recurrence_id: None,
-            reminders: Reminders(reminders),
-            transparency: Transparency::Opaque,
+            last_modified: None,
+            sequence: 0,
             organizer: None,
             attendees: Vec::new(),
-            conference_url: None,
-            updated: None,
-            sequence: None,
-            custom_properties: Vec::new(),
+            reminders: Vec::new(),
+            url: None,
+            attachments: Vec::new(),
+            x_properties: Vec::new(),
         }
     }
 
-    /// Return a clone of this event with a fresh UID.
-    pub fn with_new_uid(&self) -> Self {
-        Event {
-            uid: Self::generate_uid(),
-            ..self.clone()
+    /// Parse ICS document to list of events
+    pub fn from_ics_str(contents: &str) -> Result<Vec<Result<Self, EventError>>, EventError> {
+        let icalendar: icalendar::Calendar = contents
+            .parse()
+            .map_err(|err| EventError::InvalidIcs(contents.to_string(), err))?;
+
+        Ok(icalendar.events().map(Event::try_from).collect())
+    }
+
+    pub fn to_ics_string(&self) -> String {
+        let ical_event: icalendar::Event = self.into();
+
+        let ics = icalendar::Calendar::empty()
+            .append_property(icalendar::Property::new("VERSION", ICS_VERSION))
+            .append_property(icalendar::Property::new("PRODID", ICS_PRODID))
+            .push(ical_event)
+            .done()
+            .to_string();
+
+        self.splice_valarms_into_vevent(ics)
+    }
+
+    pub fn occurs_in_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> bool {
+        let event_start = self.start.to_utc();
+        let event_end = self.end.as_ref().unwrap_or(&self.start).to_utc();
+
+        // Check if event overlaps with the range [from, to]
+        event_start < to && event_end > from
+    }
+
+    /// Like occurs_in_range(), but expands the RRULE for recurring events
+    /// so a master with `UNTIL` in the past correctly reports no overlap.
+    pub fn has_occurrence_in_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> bool {
+        if self.recurrence.is_some() {
+            !occurrences::expand_master(self, from, to, &std::collections::HashMap::new())
+                .is_empty()
+        } else {
+            self.occurs_in_range(from, to)
         }
     }
 
-    /// Returns the unique identifier for this event based on RFC 5545 identity.
-    /// Format: `{uid}` for non-recurring events, `{uid}__{recurrence_id}` for instances.
-    pub fn unique_id(&self) -> String {
-        match &self.recurrence_id {
-            Some(rid) => format!("{}__{}", self.uid, rid.to_ics_string()),
-            None => self.uid.clone(),
-        }
+    /// True if email is an attendee but NOT the organizer
+    pub fn is_invite_for(&self, email: &str) -> bool {
+        let is_attendee = self.find_attendee(email).is_some();
+
+        let is_organizer = self
+            .organizer
+            .as_ref()
+            .is_some_and(|o| o.email.eq_ignore_ascii_case(email));
+
+        is_attendee && !is_organizer
+    }
+
+    /// Get the user's participation status for this event
+    pub fn attendee_status(&self, email: &str) -> Option<ParticipationStatus> {
+        self.find_attendee(email)?.status
     }
 
     /// Find the attendee matching the given email (case-insensitive)
@@ -196,384 +158,878 @@ impl Event {
             .find(|a| a.email.eq_ignore_ascii_case(email))
     }
 
-    /// True if email is an attendee but NOT the organizer
-    pub fn is_invite_for(&self, email: &str) -> bool {
-        let is_attendee = self.find_attendee(email).is_some();
-        let is_organizer = self
-            .organizer
-            .as_ref()
-            .is_some_and(|o| o.email.eq_ignore_ascii_case(email));
-        is_attendee && !is_organizer
-    }
-
-    /// Get the user's participation status for this event
-    pub fn my_status(&self, email: &str) -> Option<ParticipationStatus> {
-        self.find_attendee(email)?.response_status
-    }
-
-    /// True if this is a pending invite (NEEDS-ACTION) for the given email
     pub fn is_pending_invite_for(&self, email: &str) -> bool {
-        self.is_invite_for(email) && self.my_status(email) == Some(ParticipationStatus::NeedsAction)
+        self.is_invite_for(email)
+            && self.attendee_status(email) == Some(ParticipationStatus::NeedsAction)
     }
 
-    /// Return a new Event with the attendee's PARTSTAT updated, sequence bumped, and updated timestamp set
-    pub fn with_response(&self, email: &str, status: ParticipationStatus) -> Option<Event> {
-        // Verify the email is an attendee
-        self.find_attendee(email)?;
+    /// Return a clone of this event with a fresh UID.
+    pub fn with_new_uid(&self) -> Self {
+        Event {
+            uid: new_uid(),
+            ..self.clone()
+        }
+    }
 
-        let mut updated = self.clone();
-        for attendee in &mut updated.attendees {
-            if attendee.email.eq_ignore_ascii_case(email) {
-                attendee.response_status = Some(status);
+    /// Find the first x-property value matching the given name.
+    pub fn x_property(&self, name: &str) -> Option<&str> {
+        self.x_properties
+            .iter()
+            .find(|x| x.name == name)
+            .map(|x| x.value.as_str())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn add_x_property(
+        mut self,
+        name: impl Into<String>,
+        value: impl Into<String>,
+    ) -> Self {
+        self.x_properties
+            .push(XProperty::new(name.into(), value.into()));
+
+        self
+    }
+
+    /// Parse an ICS document expected to contain exactly one valid event.
+    /// Panics on any deviation — for use in tests with known-good fixtures.
+    #[cfg(test)]
+    pub(crate) fn parse_single_ics(contents: &str) -> Event {
+        let mut events = Self::from_ics_str(contents).expect("VCALENDAR should parse");
+        assert_eq!(events.len(), 1, "expected exactly one event in ICS");
+        events.pop().unwrap().expect("event should parse")
+    }
+
+    // icalendar library adds UID to every VALARM
+    // we don't want that, so we construct them with `Reminder::ics_block` instead:
+    fn splice_valarms_into_vevent(&self, ics: String) -> String {
+        if self.reminders.is_empty() {
+            return ics;
+        }
+
+        let valarms: String = self.reminders.iter().map(Reminder::ics_block).collect();
+
+        ics.replacen("END:VEVENT\r\n", &format!("{valarms}END:VEVENT\r\n"), 1)
+    }
+
+    pub fn event_instance_id(&self) -> EventInstanceId {
+        EventInstanceId::new(self.uid.clone(), self.recurrence_id.clone())
+    }
+
+    /// Make sure local copy doesn't strip provider-managed metadata from remote
+    pub fn with_x_properties_merged_from(mut self, base: &Event) -> Self {
+        for local in &mut self.x_properties {
+            if let Some(base_prop) = base.x_properties.iter().find(|p| p.name == local.name) {
+                for (k, v) in &base_prop.params {
+                    if !local.params.iter().any(|(lk, _)| lk == k) {
+                        local.params.push((k.clone(), v.clone()));
+                    }
+                }
             }
         }
-        updated.sequence = Some(self.sequence.unwrap_or(0) + 1);
-        updated.updated = Some(Utc::now());
-        Some(updated)
-    }
-
-    /// Look up a custom (X-) property's value by name.
-    pub fn custom_property(&self, name: &str) -> Option<&str> {
-        self.custom_properties
-            .iter()
-            .find(|p| p.name == name)
-            .map(|p| p.value.as_str())
-    }
-
-    /// Whether this event's start falls inside `[from, to]`, interpreting
-    /// floating/all-day starts in `host_tz`. Cancelled events never match.
-    pub fn starts_in_range<Tz: TimeZone>(
-        &self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
-        host_tz: &Tz,
-    ) -> bool {
-        if self.status == EventStatus::Cancelled {
-            return false;
+        for base_prop in &base.x_properties {
+            if !self.x_properties.iter().any(|p| p.name == base_prop.name) {
+                self.x_properties.push(base_prop.clone());
+            }
         }
-        let Some(instant) = self.start.resolve_instant_in_zone(host_tz) else {
-            return false;
-        };
-        instant >= from && instant <= to
+        self
     }
 }
 
-/// An event attendee (also used for organizer)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Attendee {
-    pub name: Option<String>,
-    pub email: String,
-    /// Participation status (RFC 5545 PARTSTAT)
-    pub response_status: Option<ParticipationStatus>,
-}
-
-/// Participation status for an attendee (RFC 5545 PARTSTAT)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING-KEBAB-CASE")]
-pub enum ParticipationStatus {
-    Accepted,
-    Declined,
-    Tentative,
-    NeedsAction,
-}
-
-impl ParticipationStatus {
-    /// Convert to ICS PARTSTAT string (RFC 5545)
-    pub fn as_ics_str(&self) -> &'static str {
-        match self {
-            Self::Accepted => "ACCEPTED",
-            Self::Declined => "DECLINED",
-            Self::Tentative => "TENTATIVE",
-            Self::NeedsAction => "NEEDS-ACTION",
-        }
+// Wire format for events is ICS, not JSON
+impl Serialize for Event {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_ics_string())
     }
+}
 
-    /// Parse from ICS PARTSTAT string
-    pub fn from_ics_str(s: &str) -> Option<Self> {
-        match s {
-            "ACCEPTED" => Some(Self::Accepted),
-            "DECLINED" => Some(Self::Declined),
-            "TENTATIVE" => Some(Self::Tentative),
-            "NEEDS-ACTION" => Some(Self::NeedsAction),
-            _ => None,
+// Each ICS document should have exactly one event:
+impl<'de> Deserialize<'de> for Event {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let ics = String::deserialize(deserializer)?;
+        let events = Event::from_ics_str(&ics).map_err(serde::de::Error::custom)?;
+
+        match <[Result<Event, EventError>; 1]>::try_from(events) {
+            Ok([result]) => result.map_err(serde::de::Error::custom),
+            Err(events) => Err(serde::de::Error::custom(format!(
+                "expected exactly one event in ICS, found {}",
+                events.len()
+            ))),
         }
     }
 }
 
-impl fmt::Display for ParticipationStatus {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            Self::Accepted => "accepted",
-            Self::Declined => "declined",
-            Self::Tentative => "maybe",
-            Self::NeedsAction => "pending",
-        };
-        write!(f, "{}", s)
-    }
+fn new_uid() -> EventUid {
+    let uid = format!("{}@{}", uuid::Uuid::new_v4(), ICS_UID_DOMAIN);
+    EventUid::new(uid)
 }
 
-impl FromStr for ParticipationStatus {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "accepted" | "accept" | "yes" | "y" => Ok(Self::Accepted),
-            "declined" | "decline" | "no" | "n" => Ok(Self::Declined),
-            "tentative" | "maybe" | "m" => Ok(Self::Tentative),
-            "needs-action" | "needs_action" | "pending" => Ok(Self::NeedsAction),
-            _ => Err(format!("Unknown participation status: '{}'", s)),
-        }
-    }
+// Order-independent compare: BTreeMap-parsed ICS files give alphabetical
+// order, but providers (e.g. Google) build x_properties in insertion order.
+fn x_properties_eq(a: &[XProperty], b: &[XProperty]) -> bool {
+    a.len() == b.len() && a.iter().all(|x| b.contains(x))
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Reminder {
-    /// Minutes before the event to trigger
-    pub minutes: i64,
-}
-
-impl Reminder {
-    /// Parse a human-readable duration string like "10m", "1h", "2 days" into a Reminder.
-    pub fn from_duration_str(input: &str) -> Result<Self, String> {
-        let dur = humantime::parse_duration(input)
-            .map_err(|_| format!("Could not parse reminder: \"{}\"", input))?;
-        let minutes = (dur.as_secs() / 60) as i64;
-        Ok(Reminder { minutes })
-    }
-}
-
-/// A collection of reminders with order-independent equality.
-///
-/// Reminder order is not meaningful — `[10, 30]` and `[30, 10]` are equal.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Reminders(pub Vec<Reminder>);
-
-impl PartialEq for Reminders {
-    fn eq(&self, other: &Self) -> bool {
-        let mut a = self.0.clone();
-        let mut b = other.0.clone();
-        a.sort_by_key(|r| r.minutes);
-        b.sort_by_key(|r| r.minutes);
-        a == b
-    }
-}
-
-impl std::ops::Deref for Reminders {
-    type Target = Vec<Reminder>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for Reminders {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-impl FromIterator<Reminder> for Reminders {
-    fn from_iter<I: IntoIterator<Item = Reminder>>(iter: I) -> Self {
-        Reminders(iter.into_iter().collect())
-    }
-}
-
-impl<'a> IntoIterator for &'a Reminders {
-    type Item = &'a Reminder;
-    type IntoIter = std::slice::Iter<'a, Reminder>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
-}
-
-/// Event transparency (busy/free status)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Transparency {
-    /// Event blocks time on calendar (default)
-    Opaque,
-    /// Event does not block time (shows as free)
-    Transparent,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum EventStatus {
-    Confirmed,
-    Tentative,
-    Cancelled,
+// The URI is the attachment's identity. Compare on it alone (order-independent)
+// so adding/removing/changing an attachment registers as a content change,
+// while volatile params (SIZE, MANAGED-ID) drifting doesn't cause sync churn.
+fn attachments_eq(a: &[Attachment], b: &[Attachment]) -> bool {
+    a.len() == b.len() && a.iter().all(|x| b.iter().any(|y| y.uri == x.uri))
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::event_time::EventTime;
-
     use super::*;
-    use chrono::NaiveDate;
+    use chrono::TimeZone;
+    use pretty_assertions::assert_eq;
 
-    fn make_event_with_attendees() -> Event {
-        let start = EventTime::Date(NaiveDate::from_ymd_opt(2026, 3, 15).unwrap());
-        let end = EventTime::Date(NaiveDate::from_ymd_opt(2026, 3, 15).unwrap());
-        let mut event = Event::new("Team standup".into(), start, end, None, None, None, vec![]);
-        event.organizer = Some(Attendee {
-            name: Some("Alice".into()),
-            email: "alice@example.com".into(),
-            response_status: Some(ParticipationStatus::Accepted),
-        });
-        event.attendees = vec![
-            Attendee {
-                name: Some("Alice".into()),
-                email: "alice@example.com".into(),
-                response_status: Some(ParticipationStatus::Accepted),
-            },
-            Attendee {
-                name: Some("Bob".into()),
-                email: "bob@example.com".into(),
-                response_status: Some(ParticipationStatus::NeedsAction),
-            },
-            Attendee {
-                name: Some("Carol".into()),
-                email: "carol@example.com".into(),
-                response_status: Some(ParticipationStatus::Tentative),
-            },
-        ];
-        event
+    #[test]
+    fn new_generates_uid_with_caldir_domain() {
+        let event = Event::new(
+            "Test",
+            time::EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+
+        assert!(event.uid.as_str().ends_with("@caldir"));
+        let prefix = event.uid.as_str().trim_end_matches("@caldir");
+        assert!(uuid::Uuid::parse_str(prefix).is_ok());
     }
 
     #[test]
-    fn find_attendee_case_insensitive() {
-        let event = make_event_with_attendees();
-        assert!(event.find_attendee("bob@example.com").is_some());
-        assert!(event.find_attendee("BOB@EXAMPLE.COM").is_some());
-        assert!(event.find_attendee("unknown@example.com").is_none());
+    fn new_generates_unique_uids() {
+        let start = time::EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap());
+        let a = Event::new("Test", start.clone());
+        let b = Event::new("Test", start);
+
+        assert_ne!(a.uid, b.uid);
     }
 
     #[test]
-    fn is_invite_for_attendee_not_organizer() {
-        let event = make_event_with_attendees();
-        // Bob is attendee but not organizer
+    fn rejects_invalid_ics() {
+        // Missing "END:VCALENDAR"
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:test-uid@caldir
+DTSTART:20240101T120000Z
+SUMMARY:Test Event
+END:VEVENT"
+            .replace('\n', "\r\n");
+
+        let result = Event::from_ics_str(&ics);
+        assert!(matches!(result, Err(EventError::InvalidIcs(_, _))));
+    }
+
+    #[test]
+    fn rejects_event_without_start() {
+        let result = Event::try_from(&icalendar::Event::new().done());
+
+        assert!(matches!(result, Err(EventError::MissingStart)));
+    }
+
+    #[test]
+    fn normalizes_windows_tzid_to_iana_on_parse_and_write() {
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:test-uid@caldir
+DTSTART;TZID=Pacific Standard Time:20240101T120000
+SUMMARY:Test
+END:VEVENT
+END:VCALENDAR"
+            .replace('\n', "\r\n");
+
+        let event = Event::parse_single_ics(&ics);
+
+        assert_eq!(
+            event.start,
+            EventTime::DateTimeZoned {
+                datetime: chrono::NaiveDate::from_ymd_opt(2024, 1, 1)
+                    .unwrap()
+                    .and_hms_opt(12, 0, 0)
+                    .unwrap(),
+                tzid: "America/Los_Angeles".to_string(),
+            }
+        );
+        assert!(
+            event
+                .to_ics_string()
+                .contains("DTSTART;TZID=America/Los_Angeles:20240101T120000")
+        );
+    }
+
+    #[test]
+    fn to_ics_string_sets_calendar_headers() {
+        let event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+
+        let ics = event.to_ics_string();
+
+        assert!(ics.contains("VERSION:2.0"));
+        assert!(ics.contains("PRODID:CALDIR"));
+    }
+
+    #[test]
+    fn to_ics_string_updates_dtstamp() {
+        let original_ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:test@caldir
+DTSTAMP:20200101T000000Z
+DTSTART:20260101
+SUMMARY:Test
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
+
+        let event = Event::parse_single_ics(&original_ics);
+        let serialized = event.to_ics_string();
+
+        assert_ne!(dtstamp_line(&original_ics), dtstamp_line(&serialized));
+    }
+
+    #[test]
+    fn round_trips_advanced_event_without_data_loss() {
+        let original_ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:CALDIR
+BEGIN:VEVENT
+CLASS:CONFIDENTIAL
+DTSTAMP:20260502T173914Z
+DESCRIPTION:https://docs.example.com/document/d/abc123def456ghijklmnopqrstu
+ v/edit?usp=sharing\n
+DTEND;TZID=Europe/Oslo:20260515T164500
+DTSTART;TZID=Europe/Oslo:20260515T160000
+LAST-MODIFIED:20260502T173914Z
+LOCATION:Conference Room A
+ORGANIZER:mailto:alice@example.com
+RECURRENCE-ID;TZID=Europe/Oslo:20260515T160000
+RRULE:FREQ=WEEKLY;BYDAY=FR
+SEQUENCE:1
+SUMMARY:Friday retro
+TRANSP:TRANSPARENT
+UID:event-uid-123@example.com
+URL:https://meet.example.com/abc-defg-hij
+X-HOOLI-CONFERENCE:https://meet.example.com/abc-defg-hij
+X-HOOLI-EVENT-ID:event-uid-123_20260515T140000Z
+ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
+ATTENDEE;PARTSTAT=DECLINED:mailto:alice@example.com
+ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:carol@example.com
+EXDATE;TZID=Europe/Oslo:20260522T160000
+EXDATE;TZID=Europe/Oslo:20260529T160000
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Reminder
+TRIGGER;RELATED=START:-PT1H
+END:VALARM
+BEGIN:VALARM
+ACTION:DISPLAY
+DESCRIPTION:Reminder
+TRIGGER;RELATED=START:-PT30M
+END:VALARM
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
+
+        let event = Event::parse_single_ics(&original_ics);
+        let serialized_ics = event.to_ics_string();
+
+        assert_eq!(strip_dtstamp(&original_ics), strip_dtstamp(&serialized_ics));
+    }
+
+    #[test]
+    fn occurs_in_range_returns_true_for_event_inside_range() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 15, 12, 0, 0).unwrap()),
+        );
+        event.end = Some(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 15, 13, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_returns_false_for_event_before_range() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap()),
+        );
+        event.end = Some(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 14, 13, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(!event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_returns_false_for_event_after_range() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap()),
+        );
+        event.end = Some(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 17, 13, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(!event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_returns_true_for_event_overlapping_range_start() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 14, 23, 0, 0).unwrap()),
+        );
+        event.end = Some(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 15, 1, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_returns_true_for_event_overlapping_range_end() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 15, 23, 0, 0).unwrap()),
+        );
+        event.end = Some(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 16, 1, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_uses_start_as_end_when_end_missing() {
+        let event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 15, 12, 0, 0).unwrap()),
+        );
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_excludes_event_ending_exactly_at_range_start() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 14, 23, 0, 0).unwrap()),
+        );
+        event.end = Some(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(!event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn occurs_in_range_excludes_event_starting_exactly_at_range_end() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap()),
+        );
+        event.end = Some(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 5, 16, 1, 0, 0).unwrap(),
+        ));
+
+        let from = Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap();
+        let to = Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap();
+
+        assert!(!event.occurs_in_range(from, to));
+    }
+
+    #[test]
+    fn is_invite_for_returns_true_when_attendee_and_not_organizer() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee::new("bob@example.com")];
+
         assert!(event.is_invite_for("bob@example.com"));
-        // Alice is both attendee and organizer → not an invite
+    }
+
+    #[test]
+    fn is_invite_for_returns_false_when_email_is_organizer() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee::new("alice@example.com")];
+
         assert!(!event.is_invite_for("alice@example.com"));
-        // Unknown person
-        assert!(!event.is_invite_for("unknown@example.com"));
     }
 
     #[test]
-    fn my_status_returns_correct_status() {
-        let event = make_event_with_attendees();
-        assert_eq!(
-            event.my_status("bob@example.com"),
-            Some(ParticipationStatus::NeedsAction)
+    fn is_invite_for_returns_false_when_email_is_not_an_attendee() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
         );
-        assert_eq!(
-            event.my_status("carol@example.com"),
-            Some(ParticipationStatus::Tentative)
-        );
-        assert_eq!(event.my_status("unknown@example.com"), None);
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee::new("bob@example.com")];
+
+        assert!(!event.is_invite_for("carol@example.com"));
     }
 
     #[test]
-    fn is_pending_invite_for() {
-        let event = make_event_with_attendees();
-        // Bob has NEEDS-ACTION
+    fn is_invite_for_returns_false_when_event_has_no_attendees() {
+        let event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+
+        assert!(!event.is_invite_for("bob@example.com"));
+    }
+
+    #[test]
+    fn is_invite_for_returns_true_when_organizer_is_missing() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee::new("bob@example.com")];
+
+        assert!(event.is_invite_for("bob@example.com"));
+    }
+
+    #[test]
+    fn is_invite_for_matches_email_case_insensitively() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee::new("Bob@Example.com")];
+
+        assert!(event.is_invite_for("bob@example.com"));
+        assert!(event.is_invite_for("BOB@EXAMPLE.COM"));
+    }
+
+    #[test]
+    fn is_invite_for_matches_organizer_email_case_insensitively() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("Alice@Example.com"));
+        event.attendees = vec![Attendee::new("alice@example.com")];
+
+        assert!(!event.is_invite_for("ALICE@example.com"));
+    }
+
+    #[test]
+    fn attendee_status_returns_status_for_matching_attendee() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee {
+            email: "bob@example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::Accepted),
+        }];
+
+        assert_eq!(
+            event.attendee_status("bob@example.com"),
+            Some(ParticipationStatus::Accepted)
+        );
+    }
+
+    #[test]
+    fn attendee_status_returns_none_when_email_is_not_an_attendee() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee {
+            email: "bob@example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::Accepted),
+        }];
+
+        assert_eq!(event.attendee_status("carol@example.com"), None);
+    }
+
+    #[test]
+    fn attendee_status_returns_none_when_attendee_has_no_status() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee::new("bob@example.com")];
+
+        assert_eq!(event.attendee_status("bob@example.com"), None);
+    }
+
+    #[test]
+    fn with_new_uid_changes_the_uid() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.uid = EventUid::new("original@caldir");
+
+        let cloned = event.with_new_uid();
+
+        assert_ne!(cloned.uid, event.uid);
+    }
+
+    #[test]
+    fn with_new_uid_preserves_other_fields() {
+        let mut event = Event::new(
+            "Annual review",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.description = Some("notes".to_string());
+        event.location = Some("HQ".to_string());
+
+        let cloned = event.with_new_uid();
+
+        assert_eq!(cloned.summary, event.summary);
+        assert_eq!(cloned.description, event.description);
+        assert_eq!(cloned.location, event.location);
+        assert_eq!(cloned.start, event.start);
+    }
+
+    #[test]
+    fn is_pending_invite_for_true_when_attendee_needs_action() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee {
+            email: "bob@example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::NeedsAction),
+        }];
+
         assert!(event.is_pending_invite_for("bob@example.com"));
-        // Carol has TENTATIVE, not pending
-        assert!(!event.is_pending_invite_for("carol@example.com"));
-        // Alice is organizer
+    }
+
+    #[test]
+    fn is_pending_invite_for_false_when_already_accepted() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee {
+            email: "bob@example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::Accepted),
+        }];
+
+        assert!(!event.is_pending_invite_for("bob@example.com"));
+    }
+
+    #[test]
+    fn is_pending_invite_for_false_when_email_is_organizer() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee {
+            email: "alice@example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::NeedsAction),
+        }];
+
         assert!(!event.is_pending_invite_for("alice@example.com"));
     }
 
     #[test]
-    fn with_response_updates_status() {
-        let event = make_event_with_attendees();
-        let updated = event
-            .with_response("bob@example.com", ParticipationStatus::Accepted)
-            .unwrap();
+    fn attendee_status_matches_email_case_insensitively() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee {
+            email: "Bob@Example.com".to_string(),
+            name: None,
+            status: Some(ParticipationStatus::Tentative),
+        }];
 
         assert_eq!(
-            updated
-                .find_attendee("bob@example.com")
-                .unwrap()
-                .response_status,
-            Some(ParticipationStatus::Accepted)
-        );
-        // Sequence bumped
-        assert_eq!(updated.sequence, Some(1));
-        // Updated timestamp set
-        assert!(updated.updated.is_some());
-    }
-
-    #[test]
-    fn with_response_returns_none_for_unknown() {
-        let event = make_event_with_attendees();
-        assert!(
-            event
-                .with_response("unknown@example.com", ParticipationStatus::Accepted)
-                .is_none()
+            event.attendee_status("bob@example.com"),
+            Some(ParticipationStatus::Tentative)
         );
     }
 
     #[test]
-    fn with_response_bumps_existing_sequence() {
-        let mut event = make_event_with_attendees();
-        event.sequence = Some(5);
-        let updated = event
-            .with_response("bob@example.com", ParticipationStatus::Declined)
-            .unwrap();
-        assert_eq!(updated.sequence, Some(6));
+    fn with_x_properties_merged_from_preserves_base_only_params() {
+        // Example of local file written by old parser that stripped X-APPLE-STRUCTURED-LOCATION params.
+        // Make sure we don't strip them from the remote
+        let mut local = Event::new(
+            "Flight",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        local.x_properties = vec![XProperty::new(
+            "X-APPLE-STRUCTURED-LOCATION",
+            "geo:51.47,-0.45",
+        )];
+
+        let mut remote = local.clone();
+        remote.x_properties = vec![XProperty {
+            name: "X-APPLE-STRUCTURED-LOCATION".to_string(),
+            value: "geo:51.47,-0.45".to_string(),
+            params: vec![
+                ("VALUE".to_string(), "URI".to_string()),
+                ("X-TITLE".to_string(), "London Heathrow".to_string()),
+            ],
+        }];
+
+        let merged = local.with_x_properties_merged_from(&remote);
+
+        assert_eq!(merged.x_properties.len(), 1);
+        assert_eq!(
+            merged.x_properties[0].params,
+            vec![
+                ("VALUE".to_string(), "URI".to_string()),
+                ("X-TITLE".to_string(), "London Heathrow".to_string()),
+            ]
+        );
     }
 
     #[test]
-    fn participation_status_display() {
-        assert_eq!(ParticipationStatus::Accepted.to_string(), "accepted");
-        assert_eq!(ParticipationStatus::Declined.to_string(), "declined");
-        assert_eq!(ParticipationStatus::Tentative.to_string(), "maybe");
-        assert_eq!(ParticipationStatus::NeedsAction.to_string(), "pending");
+    fn with_x_properties_merged_from_local_params_win_shared_keys() {
+        let mut local = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        local.x_properties = vec![XProperty {
+            name: "X-APPLE-STRUCTURED-LOCATION".to_string(),
+            value: "geo:0,0".to_string(),
+            params: vec![("X-TITLE".to_string(), "New title".to_string())],
+        }];
+
+        let mut remote = local.clone();
+        remote.x_properties = vec![XProperty {
+            name: "X-APPLE-STRUCTURED-LOCATION".to_string(),
+            value: "geo:0,0".to_string(),
+            params: vec![("X-TITLE".to_string(), "Old title".to_string())],
+        }];
+
+        let merged = local.with_x_properties_merged_from(&remote);
+
+        assert_eq!(
+            merged.x_properties[0].params,
+            vec![("X-TITLE".to_string(), "New title".to_string())]
+        );
     }
 
-    /// Floating "9am" on a Pacific host fires at 17:00 UTC, not 09:00 UTC.
     #[test]
-    fn starts_in_range_resolves_floating_in_host_zone() {
-        use chrono::FixedOffset;
-        let pacific = FixedOffset::west_opt(8 * 3600).unwrap();
-        let naive = NaiveDate::from_ymd_opt(2026, 1, 15)
+    fn with_x_properties_merged_from_carries_through_base_only_properties() {
+        // If local is missing the whole property, preserve it from base.
+        let mut local = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        local.x_properties = vec![];
+
+        let mut remote = local.clone();
+        remote.x_properties = vec![XProperty::new("X-GOOGLE-EVENT-ID", "abc123")];
+
+        let merged = local.with_x_properties_merged_from(&remote);
+
+        assert_eq!(merged.x_properties.len(), 1);
+        assert_eq!(merged.x_properties[0].name, "X-GOOGLE-EVENT-ID");
+        assert_eq!(merged.x_properties[0].value, "abc123");
+    }
+
+    #[test]
+    fn from_ics_str_returns_empty_for_calendar_without_events() {
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
+        let events = Event::from_ics_str(&ics).unwrap();
+        assert!(events.is_empty());
+    }
+
+    #[test]
+    fn from_ics_str_parses_single_event() {
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:only@caldir
+DTSTART:20260301T100000Z
+SUMMARY:Only event
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
+
+        let events = Event::from_ics_str(&ics).unwrap();
+
+        assert_eq!(events.len(), 1);
+        let event = events.into_iter().next().unwrap().unwrap();
+        assert_eq!(event.uid.as_str(), "only@caldir");
+        assert_eq!(event.summary.as_deref(), Some("Only event"));
+    }
+
+    #[test]
+    fn from_ics_str_returns_events_in_document_order() {
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:first@caldir
+DTSTART:20260301T100000Z
+SUMMARY:First
+END:VEVENT
+BEGIN:VEVENT
+UID:second@caldir
+DTSTART:20260302T100000Z
+SUMMARY:Second
+END:VEVENT
+BEGIN:VEVENT
+UID:third@caldir
+DTSTART:20260303T100000Z
+SUMMARY:Third
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
+
+        let events: Vec<Event> = Event::from_ics_str(&ics)
             .unwrap()
-            .and_hms_opt(9, 0, 0)
-            .unwrap();
-        let event = Event::new(
-            "Test".into(),
-            EventTime::DateTimeFloating(naive),
-            EventTime::DateTimeFloating(naive),
-            None,
-            None,
-            None,
-            vec![],
-        );
-        let from = Utc.with_ymd_and_hms(2026, 1, 15, 16, 0, 0).unwrap();
-        let to = Utc.with_ymd_and_hms(2026, 1, 15, 18, 0, 0).unwrap();
-        assert!(event.starts_in_range(from, to, &pacific));
+            .into_iter()
+            .map(Result::unwrap)
+            .collect();
+
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].uid.as_str(), "first@caldir");
+        assert_eq!(events[1].uid.as_str(), "second@caldir");
+        assert_eq!(events[2].uid.as_str(), "third@caldir");
     }
 
     #[test]
-    fn participation_status_from_str() {
-        // Primary names
-        assert_eq!("accepted".parse(), Ok(ParticipationStatus::Accepted));
-        assert_eq!("declined".parse(), Ok(ParticipationStatus::Declined));
-        assert_eq!("tentative".parse(), Ok(ParticipationStatus::Tentative));
+    fn from_ics_str_handles_vtimezone_and_tzid_events() {
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VTIMEZONE
+TZID:Europe/Stockholm
+BEGIN:STANDARD
+DTSTART:19701025T030000
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=10
+TZNAME:CET
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:19700329T020000
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0200
+RRULE:FREQ=YEARLY;BYDAY=-1SU;BYMONTH=3
+TZNAME:CEST
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:zoned@caldir
+DTSTART;TZID=Europe/Stockholm:20260615T100000
+SUMMARY:Zoned event
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
 
-        // Aliases
-        assert_eq!("accept".parse(), Ok(ParticipationStatus::Accepted));
-        assert_eq!("yes".parse(), Ok(ParticipationStatus::Accepted));
-        assert_eq!("y".parse(), Ok(ParticipationStatus::Accepted));
-        assert_eq!("decline".parse(), Ok(ParticipationStatus::Declined));
-        assert_eq!("no".parse(), Ok(ParticipationStatus::Declined));
-        assert_eq!("n".parse(), Ok(ParticipationStatus::Declined));
-        assert_eq!("maybe".parse(), Ok(ParticipationStatus::Tentative));
-        assert_eq!("m".parse(), Ok(ParticipationStatus::Tentative));
+        let event = Event::parse_single_ics(&ics);
 
-        // Case insensitive
-        assert_eq!("ACCEPT".parse(), Ok(ParticipationStatus::Accepted));
-        assert_eq!("Yes".parse(), Ok(ParticipationStatus::Accepted));
+        assert!(matches!(
+            event.start,
+            EventTime::DateTimeZoned { ref tzid, .. } if tzid == "Europe/Stockholm"
+        ));
+    }
 
-        // Invalid
-        assert!("invalid".parse::<ParticipationStatus>().is_err());
+    #[test]
+    fn from_ics_str_rejects_malformed_top_level() {
+        // Missing END:VCALENDAR
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:x@caldir
+DTSTART:20260301T100000Z
+END:VEVENT
+"
+        .replace('\n', "\r\n");
+
+        let result = Event::from_ics_str(&ics);
+
+        assert!(matches!(result, Err(EventError::InvalidIcs(_, _))));
+    }
+
+    #[test]
+    fn from_ics_str_surfaces_per_event_parse_errors() {
+        // Second VEVENT is missing UID — surfaces as an inner Err, while the
+        // first event still parses. Callers (e.g. webcal) decide whether to
+        // skip or fail.
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:good@caldir
+DTSTART:20260301T100000Z
+SUMMARY:Good
+END:VEVENT
+BEGIN:VEVENT
+DTSTART:20260302T100000Z
+SUMMARY:Missing UID
+END:VEVENT
+END:VCALENDAR
+"
+        .replace('\n', "\r\n");
+
+        let events = Event::from_ics_str(&ics).unwrap();
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].as_ref().unwrap().uid.as_str(), "good@caldir");
+        assert!(matches!(events[1], Err(EventError::MissingUid)));
+    }
+
+    fn dtstamp_line(ics: &str) -> &str {
+        ics.lines()
+            .find(|line| line.starts_with("DTSTAMP:"))
+            .expect("DTSTAMP line should be present")
+    }
+
+    // DTSTAMP updates every time ICS is written
+    // so we need to ignore it when comparing the original and serialized ICS.
+    fn strip_dtstamp(ics: &str) -> String {
+        ics.lines()
+            .filter(|line| !line.starts_with("DTSTAMP:"))
+            .collect::<Vec<_>>()
+            .join("\r\n")
+            + "\r\n"
     }
 }

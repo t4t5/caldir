@@ -7,7 +7,8 @@
 //! 4. If OAuth credentials are submitted → exchange for tokens, return Done
 
 use anyhow::{Context, Result};
-use caldir_core::remote::protocol::{
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::{
     Connect, ConnectResponse, ConnectStepKind, CredentialField, FieldType, HostedOAuthData,
     OAuthData, SetupData,
 };
@@ -15,8 +16,9 @@ use google_calendar::Client;
 use google_calendar::types::MinAccessRole;
 use url::Url;
 
-use crate::app_config::AppConfig;
-use crate::session::{AuthMode, Session, SessionData};
+use crate::app_config::{AppConfig, AppConfigStore};
+use crate::constants::PROVIDER_NAME;
+use crate::session::{AuthMode, Session, SessionData, SessionStore};
 
 pub const SCOPES: &[&str] = &[
     "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
@@ -24,6 +26,10 @@ pub const SCOPES: &[&str] = &[
 ];
 
 pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
+    let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
+    let session_store = SessionStore::new(storage.clone());
+    let app_config_store = AppConfigStore::new(storage);
+
     let redirect_uri = cmd
         .options
         .get("redirect_uri")
@@ -63,7 +69,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
             client_id,
             client_secret,
         };
-        app_config.save()?;
+        app_config_store.save(&app_config)?;
 
         // Now fall through to generate the OAuth URL
     }
@@ -72,14 +78,16 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
 
     if has_auth_data {
         // Auth submit: exchange credentials for tokens
-        let account_email = complete_auth(&cmd, &redirect_uri).await?;
+        let account_email =
+            complete_auth(&cmd, &redirect_uri, &session_store, &app_config_store).await?;
         return Ok(ConnectResponse::Done {
-            account_identifier: account_email,
+            account_identifier: Some(account_email),
+            calendars: None,
         });
     }
 
     // Init step: determine what auth method to use
-    if !AppConfig::exists()? {
+    if !app_config_store.exists() {
         if hosted {
             let port = Url::parse(&redirect_uri)?
                 .port()
@@ -133,7 +141,7 @@ To connect to Google Calendar, you need to create OAuth credentials:\n\
     }
 
     // Self-hosted path: user has their own OAuth credentials
-    let app_config = AppConfig::load()?;
+    let app_config = app_config_store.load()?;
 
     let client = Client::new(
         app_config.client_id.clone(),
@@ -167,7 +175,12 @@ To connect to Google Calendar, you need to create OAuth credentials:\n\
 }
 
 /// Complete authentication by exchanging credentials for tokens.
-async fn complete_auth(cmd: &Connect, redirect_uri: &str) -> Result<String> {
+async fn complete_auth(
+    cmd: &Connect,
+    redirect_uri: &str,
+    session_store: &SessionStore,
+    app_config_store: &AppConfigStore,
+) -> Result<String> {
     let (session_data, auth_mode, client) =
         if let Some(access_token) = cmd.data.get("access_token").and_then(|v| v.as_str()) {
             // Hosted flow: tokens already exchanged by caldir.org
@@ -216,7 +229,7 @@ async fn complete_auth(cmd: &Connect, redirect_uri: &str) -> Result<String> {
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| anyhow::anyhow!("Missing 'state' in credentials"))?;
 
-            let app_config = AppConfig::load()?;
+            let app_config = app_config_store.load()?;
 
             let mut client = Client::new(
                 app_config.client_id.clone(),
@@ -258,8 +271,8 @@ async fn complete_auth(cmd: &Connect, redirect_uri: &str) -> Result<String> {
         .map(|cal| &cal.summary)
         .ok_or_else(|| anyhow::anyhow!("No primary calendar found"))?;
 
-    let session = Session::new(account_email, &session_data, auth_mode)?;
-    session.save()?;
+    let session = Session::new(account_email, &session_data, auth_mode);
+    session_store.save(&session)?;
 
     Ok(account_email.clone())
 }

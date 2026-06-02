@@ -1,34 +1,12 @@
-## Design Decisions
+# caldir-provider-google
 
-### Provider spec
+Google Calendar provider — OAuth + the Google Calendar REST API.
 
-Providers let the user read and write calendar data on a remote host (e.g. Google Calendar).
+## Auth modes
 
-Providers should be as minimal as possible and implement the following actions:
-- `connect` — Multi-step connection flow (returns `NeedsInput` or `Done`)
-- `list_calendars`
-- `list_events`
-- `create_event`
-- `update_event`
-- `delete_event`
+Two modes, decided per-account at `connect` time:
 
-The `connect` command drives a state machine: the CLI calls it in a loop, each time sending back data gathered from the previous step. This decouples auth UI from the provider, allowing different frontends (CLI, GUI) to control the user experience while supporting different auth mechanisms (OAuth, app passwords, CalDAV credentials).
+- **Hosted (default)**: OAuth flows through `caldir.org`, which holds the client_id/secret. Users get to a working calendar without registering anything in Google Cloud Console.
+- **Self-hosted (`--hosted=false`)**: User registers their own OAuth app and provides client_id/secret in `app_config.toml`. Tokens refresh directly with Google.
 
-There should be *no* stateful side effects from the logic in provider libraries. They should only take JSON data IN and return JSON data out.
-
-### OAuth Authentication Modes
-
-The Google provider supports two authentication modes:
-
-**Hosted auth (default):** When no `app_config.toml` exists, `connect` returns `NeedsInput` with `HostedOAuth` step pointing to `caldir.org/auth/google/start`. The caldir.org relay handles the OAuth flow (holding client_id/secret server-side), exchanges the authorization code for tokens, and redirects them to the local CLI. Token refresh goes through `caldir.org/auth/google/refresh`. Sessions are saved with `auth_mode = "hosted"`.
-
-**Self-hosted auth (`--hosted=false`):** When the user runs `caldir connect google --hosted=false` and no `app_config.toml` exists, `connect` returns `NeedsInput` with `NeedsSetup` step with instructions for creating Google Cloud OAuth credentials. After setup, the next `connect` call returns `OAuthRedirect` with a direct Google authorization URL. The CLI exchanges the code for tokens locally. Sessions are saved with `auth_mode = "local"`.
-
-Both modes store tokens locally in `~/.config/caldir/providers/google/session/`. The `auth_mode` field in the session file determines how tokens are refreshed — hosted sessions refresh via caldir.org, local sessions refresh directly with Google using the user's client_id/secret.
-
-### Timezone Handling
-
-The Google Calendar API works with UTC timestamps + timezone metadata. The provider converts between this and caldir's `EventTime` types using `chrono-tz`:
-
-- **`from_google` (API → caldir):** When Google returns a `date_time` (UTC) with a `time_zone` string, the provider converts to `DateTimeZoned` — translating the UTC instant to wall clock time in that timezone. This ensures filenames show local time. Falls back to `DateTimeUtc` if no timezone is provided or the timezone is unrecognized.
-- **`to_google` (caldir → API):** `DateTimeZoned` is converted to the correct UTC instant using `chrono-tz` (e.g., 10:00 Europe/Stockholm → 09:00Z), with the timezone passed alongside. This correctly handles DST — the same wall clock time maps to different UTC offsets depending on the date.
+The mode is recorded on the session so refresh logic knows which path to take.

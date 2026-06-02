@@ -2,14 +2,12 @@ mod commands;
 mod render;
 mod utils;
 
+#[cfg(test)]
+mod test_utils;
+
 use anyhow::Result;
-use caldir_core::caldir::Caldir;
-use caldir_core::calendar::Calendar;
-use caldir_core::date_range::DateRange;
-use caldir_core::remote::provider::Provider;
-use chrono::{Datelike, Local, Utc};
+use caldir_core::Caldir;
 use clap::{Parser, Subcommand};
-use utils::date::start_of_today;
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
@@ -72,6 +70,14 @@ enum Commands {
         /// Only operate on this calendar (by slug)
         #[arg(short, long)]
         calendar: Option<String>,
+
+        /// Push events from this date (YYYY-MM-DD, or "start" for all past events)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Push events until this date (YYYY-MM-DD)
+        #[arg(long)]
+        to: Option<String>,
 
         /// Show all events (instead of compact view when >5 events)
         #[arg(short, long)]
@@ -168,6 +174,14 @@ enum Commands {
         #[arg(short, long)]
         calendar: Option<String>,
 
+        /// Discard events from this date (YYYY-MM-DD, or "start" for all past events)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Discard events until this date (YYYY-MM-DD)
+        #[arg(long)]
+        to: Option<String>,
+
         /// Show all events (instead of compact view when >5 events)
         #[arg(short, long)]
         verbose: bool,
@@ -186,7 +200,7 @@ enum Commands {
         #[arg(short, long)]
         all: bool,
     },
-    #[command(about = "Respond to a calendar invites")]
+    #[command(about = "Respond to a calendar invite")]
     Rsvp {
         /// Path to the .ics file (omit for interactive mode)
         path: Option<String>,
@@ -204,106 +218,48 @@ enum Commands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // `update` doesn't touch the caldir, so dispatch it before loading anything.
+    if let Commands::Update = cli.command {
+        return commands::update::run().await;
+    }
+
+    let mut caldir = Caldir::load()?;
+
     match cli.command {
         Commands::Connect { provider, hosted } => {
-            let provider = validate_provider(provider)?;
-            commands::connect::run(&provider, hosted).await
+            commands::connect::run(&mut caldir, provider, hosted).await
         }
         Commands::Status {
             calendar,
             from,
             to,
             verbose,
-        } => {
-            require_calendars()?;
-            let calendars = resolve_calendars(calendar.as_deref())?;
-            let range = DateRange::from_args(from.as_deref(), to.as_deref())
-                .map_err(|e| anyhow::anyhow!(e))?;
-            commands::status::run(calendars, range, verbose).await
-        }
+        } => commands::status::run(&caldir, calendar, from, to, verbose).await,
         Commands::Pull {
             calendar,
             from,
             to,
             verbose,
-        } => {
-            require_calendars()?;
-            let calendars = resolve_calendars(calendar.as_deref())?;
-            let range = DateRange::from_args(from.as_deref(), to.as_deref())
-                .map_err(|e| anyhow::anyhow!(e))?;
-            commands::pull::run(calendars, range, verbose).await
-        }
+        } => commands::pull::run(&caldir, calendar.into_iter().collect(), from, to, verbose).await,
         Commands::Push {
             calendar,
+            from,
+            to,
             verbose,
             force,
-        } => {
-            require_calendars()?;
-            let calendars = resolve_calendars(calendar.as_deref())?;
-            commands::push::run(calendars, verbose, force).await
-        }
+        } => commands::push::run(&caldir, calendar, from, to, verbose, force).await,
         Commands::Sync {
             calendar,
             from,
             to,
             verbose,
             force,
-        } => {
-            require_calendars()?;
-            let calendars = resolve_calendars(calendar.as_deref())?;
-            let range = DateRange::from_args(from.as_deref(), to.as_deref())
-                .map_err(|e| anyhow::anyhow!(e))?;
-            commands::sync::run(calendars, range, verbose, force).await
-        }
+        } => commands::sync::run(&caldir, calendar, from, to, verbose, force).await,
         Commands::Events { calendar, from, to } => {
-            require_calendars()?;
-            let calendars = resolve_calendars(calendar.as_deref())?;
-            use caldir_core::date_range::{parse_date_end, parse_date_start};
-            // Only parse dates if explicitly provided; events command has its own defaults
-            let from_dt = from
-                .as_deref()
-                .map(parse_date_start)
-                .transpose()
-                .map_err(|e| anyhow::anyhow!(e))?;
-            let to_dt = to
-                .as_deref()
-                .map(parse_date_end)
-                .transpose()
-                .map_err(|e| anyhow::anyhow!(e))?;
-            commands::events::run(calendars, from_dt, to_dt)
+            commands::events::run(&caldir, calendar, from, to)
         }
-        Commands::Today { calendar } => {
-            require_calendars()?;
-            let calendars = resolve_calendars(calendar.as_deref())?;
-            let today = Local::now().date_naive();
-            let end_of_today = today
-                .and_hms_opt(23, 59, 59)
-                .unwrap()
-                .and_local_timezone(Local)
-                .unwrap()
-                .with_timezone(&Utc);
-            commands::events::run(calendars, Some(start_of_today()), Some(end_of_today))
-        }
-        Commands::Week { calendar } => {
-            require_calendars()?;
-            let calendars = resolve_calendars(calendar.as_deref())?;
-            let today = Local::now().date_naive();
-            // num_days_from_monday(): Mon=0, Tue=1, ..., Sun=6
-            let days_until_sunday = (6 - today.weekday().num_days_from_monday()) % 7;
-            // If today is Sunday, show through next Sunday
-            let days_until_sunday = if days_until_sunday == 0 {
-                7
-            } else {
-                days_until_sunday
-            };
-            let end_of_sunday = (today + chrono::Duration::days(days_until_sunday as i64))
-                .and_hms_opt(23, 59, 59)
-                .unwrap()
-                .and_local_timezone(Local)
-                .unwrap()
-                .with_timezone(&Utc);
-            commands::events::run(calendars, Some(start_of_today()), Some(end_of_sunday))
-        }
+        Commands::Today { calendar } => commands::today::run(&caldir, calendar),
+        Commands::Week { calendar } => commands::week::run(&caldir, calendar),
         Commands::New {
             title,
             start,
@@ -313,128 +269,27 @@ async fn main() -> Result<()> {
             calendar,
             reminder,
             no_reminders,
-        } => {
-            require_calendars()?;
-            let calendars = resolve_calendars(None)?;
-            commands::new::run(
-                title,
-                start,
-                end,
-                duration,
-                location,
-                calendar,
-                reminder,
-                no_reminders,
-                calendars,
-            )
-        }
+        } => commands::new::run(
+            &caldir,
+            title,
+            start,
+            end,
+            duration,
+            location,
+            calendar,
+            reminder,
+            no_reminders,
+        ),
         Commands::Discard {
             calendar,
+            from,
+            to,
             verbose,
             force,
-        } => {
-            require_calendars()?;
-            let calendars = resolve_calendars(calendar.as_deref())?;
-            commands::discard::run(calendars, verbose, force).await
-        }
-        Commands::Invites { calendar, all } => {
-            require_calendars()?;
-            let calendars = resolve_calendars(calendar.as_deref())?;
-            commands::invites::run(calendars, all)
-        }
-        Commands::Rsvp { path, response } => {
-            require_calendars()?;
-            commands::rsvp::run(path, response)
-        }
-        Commands::Config => commands::config::run(),
-        Commands::Update => commands::update::run().await,
-    }
-}
-
-fn validate_provider(provider: Option<String>) -> Result<String> {
-    let name = match provider {
-        Some(name) => name,
-        None => {
-            let installed = Provider::discover_installed();
-            if installed.is_empty() {
-                anyhow::bail!(
-                    "Missing provider argument.\n\n\
-                    Usage: caldir connect <provider>\n\n\
-                    No providers detected. Install one with:\n  \
-                    cargo install caldir-provider-google"
-                );
-            } else {
-                anyhow::bail!(
-                    "Missing provider argument.\n\n\
-                    Usage: caldir connect <provider>\n\n\
-                    Detected providers: {}",
-                    installed
-                        .iter()
-                        .map(|p| format!("\"{}\"", p))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-        }
-    };
-
-    // Check the provider binary exists
-    let installed = Provider::discover_installed();
-    if !installed.contains(&name) {
-        if installed.is_empty() {
-            anyhow::bail!(
-                "Unknown provider \"{name}\".\n\n\
-                No providers detected. Install one with:\n  \
-                cargo install caldir-provider-{name}"
-            );
-        } else {
-            anyhow::bail!(
-                "Unknown provider \"{name}\".\n\n\
-                Detected providers: {}",
-                installed
-                    .iter()
-                    .map(|p| format!("\"{}\"", p))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-    }
-
-    Ok(name)
-}
-
-fn require_calendars() -> Result<()> {
-    let caldir = Caldir::load()?;
-
-    if caldir.calendars().is_empty() {
-        anyhow::bail!(
-            "No calendars found.\n\n\
-            Connect your first calendar with:\n  \
-            caldir connect <provider>\n\n\
-            Example:\n  \
-            caldir connect google"
-        );
-    }
-
-    Ok(())
-}
-
-fn resolve_calendars(calendar_filter: Option<&str>) -> Result<Vec<Calendar>> {
-    let caldir = Caldir::load()?;
-    let all_calendars = caldir.calendars();
-
-    match calendar_filter {
-        Some(slug) => match all_calendars.into_iter().find(|c| c.slug == slug) {
-            Some(cal) => Ok(vec![cal]),
-            None => {
-                let available: Vec<_> = caldir.calendars().iter().map(|c| c.slug.clone()).collect();
-                anyhow::bail!(
-                    "Calendar '{}' not found. Available: {}",
-                    slug,
-                    available.join(", ")
-                );
-            }
-        },
-        None => Ok(all_calendars),
+        } => commands::discard::run(&caldir, calendar, from, to, verbose, force).await,
+        Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
+        Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
+        Commands::Config => commands::config::run(&caldir),
+        Commands::Update => unreachable!("handled above"),
     }
 }

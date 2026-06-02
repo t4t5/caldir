@@ -1,12 +1,11 @@
 //! Google-specific remote configuration.
 //!
 //! This provides type safety for Google Calendar remote config while
-//! caldir-core remains provider-agnostic with its generic RemoteConfig.
+//! caldir-core remains provider-agnostic with its generic RemoteConfigParams.
 
 use anyhow::Result;
-use caldir_core::remote::RemoteConfig;
+use caldir_core::RemoteConfigParams;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Strongly-typed remote configuration for Google Calendar.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,34 +21,32 @@ impl GoogleRemoteConfig {
             google_calendar_id: calendar_id.into(),
         }
     }
-}
 
-impl From<GoogleRemoteConfig> for RemoteConfig {
-    fn from(config: GoogleRemoteConfig) -> Self {
-        let mut map = HashMap::new();
-        map.insert(
+    pub fn into_remote_config_params(self) -> RemoteConfigParams {
+        let mut params = RemoteConfigParams::new();
+        params.insert(
             "google_account".to_string(),
-            toml::Value::String(config.google_account),
+            toml::Value::String(self.google_account),
         );
-        map.insert(
+        params.insert(
             "google_calendar_id".to_string(),
-            toml::Value::String(config.google_calendar_id),
+            toml::Value::String(self.google_calendar_id),
         );
-        RemoteConfig(map)
+        params
     }
 }
 
-impl TryFrom<&serde_json::Map<String, serde_json::Value>> for GoogleRemoteConfig {
+impl TryFrom<&RemoteConfigParams> for GoogleRemoteConfig {
     type Error = anyhow::Error;
 
-    fn try_from(map: &serde_json::Map<String, serde_json::Value>) -> Result<Self> {
-        let google_account = map
+    fn try_from(params: &RemoteConfigParams) -> Result<Self> {
+        let google_account = params
             .get("google_account")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required field: google_account"))?
             .to_string();
 
-        let google_calendar_id = map
+        let google_calendar_id = params
             .get("google_calendar_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing required field: google_calendar_id"))?

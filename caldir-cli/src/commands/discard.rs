@@ -1,59 +1,78 @@
 use anyhow::Result;
-use caldir_core::calendar::Calendar;
-use caldir_core::date_range::DateRange;
-use caldir_core::diff::{BatchDiff, CalendarDiff};
+use caldir_core::{Caldir, CalendarDiff, Connection, EventChange};
 use dialoguer::Confirm;
 use owo_colors::OwoColorize;
 
-use crate::render::{CalendarDiffRender, Render};
-use crate::utils::tui;
+use crate::render::diff::{CalendarDiffRender, Render};
+use crate::utils::{resolve_sync_range, tui};
 
-pub async fn run(calendars: Vec<Calendar>, verbose: bool, force: bool) -> Result<()> {
-    let range = DateRange::default();
+pub async fn run(
+    caldir: &Caldir,
+    calendar: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+    verbose: bool,
+    force: bool,
+) -> Result<()> {
+    let all_connections = caldir.connections();
 
-    let mut diffs = Vec::new();
+    let connections = match calendar {
+        Some(cal) => all_connections
+            .into_iter()
+            .filter(|conn| conn.as_ref().ok().and_then(|c| c.local().slug()) == Some(cal.as_str()))
+            .collect(),
+        None => all_connections,
+    };
 
-    for (i, cal) in calendars.iter().enumerate() {
-        if cal.remote().is_none() {
-            println!("{}", cal.render());
-            println!("   {}", "(local only)".dimmed());
-        } else {
-            let spinner = tui::create_spinner(cal.render());
-            let result = CalendarDiff::from_calendar(cal, &range).await;
-            spinner.finish_and_clear();
-            println!("{}", cal.render());
+    let range = resolve_sync_range(from, to)?;
+    let mut pending: Vec<(Connection, CalendarDiff)> = Vec::new();
+    let total = connections.len();
 
-            match result {
-                Ok(diff) => {
-                    println!("{}", diff.render_discard(verbose));
-                    diffs.push(diff);
-                }
-                Err(e) => {
-                    println!("   {}", e.to_string().red());
+    for (i, connection) in connections.into_iter().enumerate() {
+        match connection {
+            Ok(connection) => {
+                let header = connection.local().render(caldir);
+                let spinner = tui::create_spinner(header.clone());
+                let result = connection.diff(&range).await;
+                spinner.finish_and_clear();
+
+                println!("{}", header);
+
+                match result {
+                    Ok(diff) => {
+                        println!("{}", diff.render_discard(verbose, caldir));
+                        if !diff.outgoing().is_empty() {
+                            pending.push((connection, diff));
+                        }
+                    }
+                    Err(e) => println!("   {}", e.to_string().red()),
                 }
             }
+            Err(e) => println!("   {}", e.to_string().red()),
         }
 
-        if i < calendars.len() - 1 {
+        if i < total - 1 {
             println!();
         }
     }
 
-    let batch = BatchDiff(diffs);
-    let total = batch.push_total();
+    let total_changes: usize = pending.iter().map(|(_, d)| d.outgoing().len()).sum();
 
-    if total == 0 {
+    if total_changes == 0 {
         return Ok(());
     }
 
-    // Confirm unless --force
     if !force {
         println!();
         let confirmed = Confirm::new()
             .with_prompt(format!(
                 "Discard {} {}?",
-                total,
-                if total == 1 { "change" } else { "changes" }
+                total_changes,
+                if total_changes == 1 {
+                    "change"
+                } else {
+                    "changes"
+                }
             ))
             .default(false)
             .interact()?;
@@ -63,17 +82,31 @@ pub async fn run(calendars: Vec<Calendar>, verbose: bool, force: bool) -> Result
         }
     }
 
-    // Apply discard
-    for diff in &batch.0 {
-        if !diff.to_push.is_empty() {
-            diff.apply_discard()?;
-        }
+    for (connection, diff) in &pending {
+        connection.discard_outgoing_diff(diff)?;
     }
 
+    let (created, updated, deleted) = pending.iter().fold((0, 0, 0), |(c, u, d), (_, diff)| {
+        diff.outgoing()
+            .iter()
+            .fold((c, u, d), |(c, u, d), change| match change {
+                EventChange::Create(_) => (c + 1, u, d),
+                EventChange::Update { .. } => (c, u + 1, d),
+                EventChange::Delete(_) => (c, u, d + 1),
+            })
+    });
+
     println!(
-        "\nDiscarded {} {}",
-        total,
-        if total == 1 { "change" } else { "changes" }
+        "\nDiscarded {} {}: {} created, {} updated, {} deleted",
+        total_changes,
+        if total_changes == 1 {
+            "change"
+        } else {
+            "changes"
+        },
+        created,
+        updated,
+        deleted
     );
 
     Ok(())

@@ -1,13 +1,9 @@
 # caldir-provider-webcal
 
-Read-only provider for public ICS calendar feeds (webcal:// URLs).
+Read-only provider for public ICS calendar feeds (`webcal://` URLs).
 
-## Design Decisions
+## Difference from other providers
 
-### No Session Files
+No authentication, no session files. Public feeds carry no state to persist — the URL, display name, and color all live in the calendar's `.caldir/config.toml`. All mutation operations error out: there's nowhere to push to.
 
-Unlike other providers, webcal does **not** store session files. Webcal feeds are public with no authentication, so there's no state to persist. Everything needed (URL, display name, color) lives in the calendar's `.caldir/config.toml`.
-
-### Read-Only
-
-All mutation operations (`create_event`, `update_event`, `delete_event`) return an error. You can't push changes to a public ICS feed.
+The calendar surfaces in caldir with `read_only = true`, so `caldir push` and `caldir sync` skip the outbound half automatically.

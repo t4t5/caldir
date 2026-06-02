@@ -1,24 +1,33 @@
 use anyhow::Result;
-use caldir_core::event::{Event, ParticipationStatus};
-use caldir_core::remote::protocol::UpdateEvent;
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::UpdateEvent;
+use caldir_core::{Event, ParticipationStatus};
 
-use crate::constants::PROVIDER_EVENT_ID_PROPERTY;
+use crate::app_config::AppConfigStore;
+use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::graph_api::client::GraphClient;
 use crate::graph_api::types::GraphEvent;
 use crate::outlook_event::from_outlook::from_outlook;
 use crate::outlook_event::to_outlook::to_outlook;
 use crate::remote_config::OutlookRemoteConfig;
-use crate::session::Session;
+use crate::session::SessionStore;
 
 pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
-    let config = OutlookRemoteConfig::try_from(&cmd.remote_config)?;
+    let config = OutlookRemoteConfig::try_from(&cmd.remote)?;
     let account_email = &config.outlook_account;
-    let session = Session::load_valid(account_email).await?;
+
+    let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
+    let session_store = SessionStore::new(storage.clone());
+    let app_config_store = AppConfigStore::new(storage);
+
+    let session = session_store
+        .load_valid(account_email, &app_config_store)
+        .await?;
     let graph = GraphClient::new(session.access_token());
 
     let outlook_event_id = cmd
         .event
-        .custom_property(PROVIDER_EVENT_ID_PROPERTY)
+        .x_property(PROVIDER_EVENT_ID_PROPERTY)
         .ok_or_else(|| {
             anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}")
         })?;
@@ -45,7 +54,7 @@ async fn respond_to_invite(
     account_email: &str,
 ) -> Result<Event> {
     let status = event
-        .my_status(account_email)
+        .attendee_status(account_email)
         .unwrap_or(ParticipationStatus::NeedsAction);
 
     let action = match status {

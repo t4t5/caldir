@@ -1,15 +1,16 @@
 //! Convert Microsoft Graph event types to caldir Event.
 
 use anyhow::Result;
-use caldir_core::event::{
-    Attendee, CustomProperty, Event, EventStatus, EventTime, ParticipationStatus, Recurrence,
-    Reminder, Reminders, Transparency,
+use caldir_core::{
+    Attendee, Availability, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
+    RecurrenceId, Reminder, Status, Visibility, XProperty, windows_tz,
 };
-use caldir_core::ics::windows_tz;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
 
-use crate::constants::{HTML_DESC_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
+use crate::constants::{
+    HTML_DESC_PROPERTY, PROVIDER_CONFERENCE_PROPERTY, PROVIDER_EVENT_ID_PROPERTY,
+};
 use crate::graph_api::types::{
     GraphEvent, PatternedRecurrence, RecurrencePattern, RecurrenceRange,
 };
@@ -29,14 +30,23 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
     )?;
 
     let status = if event.is_cancelled {
-        EventStatus::Cancelled
+        Status::Cancelled
     } else {
-        EventStatus::Confirmed
+        Status::Confirmed
     };
 
-    let transparency = match event.show_as.as_str() {
-        "free" => Transparency::Transparent,
-        _ => Transparency::Opaque,
+    let availability = match event.show_as.as_str() {
+        "free" => Availability::Free,
+        _ => Availability::Busy,
+    };
+
+    // Graph has four sensitivity values; CLASS has three. `personal` collapses
+    // to PRIVATE (don't leak content). "normal"/unknown is Graph's default →
+    // None; Graph has no "public", so Some(Public) never arises here.
+    let visibility = match event.sensitivity.as_str() {
+        "private" | "personal" => Some(Visibility::Private),
+        "confidential" => Some(Visibility::Confidential),
+        _ => None,
     };
 
     let recurrence = event
@@ -51,24 +61,29 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         .original_start
         .as_deref()
         .map(|s| parse_original_start(s, event.is_all_day))
-        .transpose()?;
+        .transpose()?
+        .map(RecurrenceId::from_event_time);
 
-    let reminders = if event.reminder_minutes_before_start > 0 {
-        Reminders(vec![Reminder {
-            minutes: event.reminder_minutes_before_start,
-        }])
+    // Graph keeps `reminderMinutesBeforeStart` at its last value (typically
+    // the mailbox default of 15) even when the user turns the reminder off,
+    // so the bool is the only reliable signal. A 0-minute reminder with
+    // `isReminderOn: true` ("fire at event start") is also a legitimate state
+    // that must round-trip.
+    let reminders: Vec<Reminder> = if event.is_reminder_on {
+        vec![Reminder {
+            minutes_before_start: event.reminder_minutes_before_start,
+        }]
     } else {
-        Reminders(vec![])
+        Vec::new()
     };
 
-    let organizer = event.organizer.as_ref().map(|o| Attendee {
+    let organizer = event.organizer.as_ref().map(|o| Organizer {
+        email: o.email_address.address.clone(),
         name: if o.email_address.name.is_empty() {
             None
         } else {
             Some(o.email_address.name.clone())
         },
-        email: o.email_address.address.clone(),
-        response_status: None,
     });
 
     // The top-level responseStatus reflects the calendar owner's actual response,
@@ -85,13 +100,13 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         .map(|a| {
             let is_owner = a.email_address.address.eq_ignore_ascii_case(account_email);
             Attendee {
+                email: a.email_address.address.clone(),
                 name: if a.email_address.name.is_empty() {
                     None
                 } else {
                     Some(a.email_address.name.clone())
                 },
-                email: a.email_address.address.clone(),
-                response_status: if is_owner {
+                status: if is_owner {
                     owner_status
                 } else {
                     a.status
@@ -136,43 +151,55 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         }
     });
 
-    let updated = event
+    let last_modified = event
         .last_modified_date_time
         .as_ref()
         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&Utc));
 
-    let mut custom_properties = vec![CustomProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id)];
+    let mut x_properties = vec![XProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id)];
+    if let Some(url) = conference_url {
+        x_properties.push(XProperty::new(PROVIDER_CONFERENCE_PROPERTY, url));
+    }
     if let Some(html) = html_body {
         // FMTTYPE=text/html identifies the alternate description as HTML per
         // the Outlook/IBM convention. VALUE=TEXT routes the value through
         // RFC 5545 text escaping when written to .ics, so embedded `\r\n`
         // and `;` survive line folding without breaking the file.
-        custom_properties.push(
-            CustomProperty::new(HTML_DESC_PROPERTY, html)
-                .with_param("FMTTYPE", "text/html")
-                .with_param("VALUE", "TEXT"),
-        );
+        x_properties.push(XProperty {
+            name: HTML_DESC_PROPERTY.to_string(),
+            value: html,
+            params: vec![
+                ("FMTTYPE".to_string(), "text/html".to_string()),
+                ("VALUE".to_string(), "TEXT".to_string()),
+            ],
+        });
     }
 
     Ok(Event {
-        uid: event.i_cal_uid,
-        summary: event.subject,
+        uid: EventUid::new(event.i_cal_uid),
+        summary: if event.subject.is_empty() {
+            None
+        } else {
+            Some(event.subject)
+        },
         description,
         location,
         start,
-        end,
+        end: Some(end),
         status,
+        availability,
+        visibility,
         recurrence,
         recurrence_id,
-        reminders,
-        transparency,
         organizer,
         attendees,
-        conference_url,
-        updated,
-        sequence: None,
-        custom_properties,
+        reminders,
+        url: None,
+        attachments: Vec::new(),
+        x_properties,
+        last_modified,
+        sequence: 0,
     })
 }
 
@@ -364,7 +391,8 @@ fn recurrence_from_outlook(rec: &PatternedRecurrence) -> Result<Recurrence> {
     let rrule = parts.join(";");
     Ok(Recurrence {
         rrule,
-        exdates: vec![],
+        exdates: Vec::new(),
+        rdates: Vec::new(),
     })
 }
 
@@ -449,6 +477,7 @@ mod tests {
             reminder_minutes_before_start: 0,
             is_reminder_on: false,
             show_as: "busy".to_string(),
+            sensitivity: String::new(),
             last_modified_date_time: None,
             online_meeting: None,
             original_start: None,
@@ -488,12 +517,115 @@ mod tests {
         );
     }
 
+    // Microsoft Graph leaves `reminderMinutesBeforeStart` at its last value
+    // (often the mailbox default of 15) when the user disables the reminder,
+    // so gating on the number alone would create phantom reminders for events
+    // the user explicitly turned reminders off on.
+    #[test]
+    fn reminder_off_with_default_minutes_emits_no_reminder() {
+        let mut ge = minimal_graph_event();
+        ge.is_reminder_on = false;
+        ge.reminder_minutes_before_start = 15;
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert!(
+            event.reminders.is_empty(),
+            "expected no reminder when isReminderOn=false, got {:?}",
+            event.reminders
+        );
+    }
+
+    // "Fire at event start" is a legitimate Outlook setting and must survive
+    // the inbound conversion.
+    #[test]
+    fn reminder_on_with_zero_minutes_emits_zero_minute_reminder() {
+        let mut ge = minimal_graph_event();
+        ge.is_reminder_on = true;
+        ge.reminder_minutes_before_start = 0;
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.reminders.len(), 1);
+        assert_eq!(event.reminders[0].minutes_before_start, 0);
+    }
+
+    #[test]
+    fn reminder_on_with_positive_minutes_round_trips() {
+        let mut ge = minimal_graph_event();
+        ge.is_reminder_on = true;
+        ge.reminder_minutes_before_start = 30;
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.reminders.len(), 1);
+        assert_eq!(event.reminders[0].minutes_before_start, 30);
+    }
+
+    #[test]
+    fn private_sensitivity_maps_to_private() {
+        let mut ge = minimal_graph_event();
+        ge.sensitivity = "private".into();
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.visibility, Some(Visibility::Private));
+    }
+
+    #[test]
+    fn confidential_sensitivity_maps_to_confidential() {
+        let mut ge = minimal_graph_event();
+        ge.sensitivity = "confidential".into();
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.visibility, Some(Visibility::Confidential));
+    }
+
+    // Graph's `personal` has no RFC 5545 equivalent; collapse to PRIVATE
+    // rather than PUBLIC so a "personal" event isn't downgraded to fully
+    // visible when it leaves Outlook.
+    #[test]
+    fn personal_sensitivity_collapses_to_private() {
+        let mut ge = minimal_graph_event();
+        ge.sensitivity = "personal".into();
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.visibility, Some(Visibility::Private));
+    }
+
+    #[test]
+    fn normal_sensitivity_maps_to_none() {
+        // "normal" is Graph's default — keep it unspecified rather than pinning
+        // an explicit PUBLIC.
+        let mut ge = minimal_graph_event();
+        ge.sensitivity = "normal".into();
+
+        let event = from_outlook(ge, "me@example.com").unwrap();
+
+        assert_eq!(event.visibility, None);
+    }
+
+    #[test]
+    fn empty_sensitivity_maps_to_none() {
+        // Graph omits `sensitivity` when normal — treat absence as unspecified.
+        let event = from_outlook(minimal_graph_event(), "me@example.com").unwrap();
+
+        assert_eq!(event.visibility, None);
+    }
+
     #[test]
     fn from_outlook_uses_original_start_as_recurrence_id() {
         let parsed: GraphEvent = serde_json::from_str(RECURRING_INSTANCE_JSON).unwrap();
         let event = from_outlook(parsed, "me@example.com").unwrap();
-        match event.recurrence_id {
-            Some(EventTime::DateTimeUtc(dt)) => {
+        let rid_time = event
+            .recurrence_id
+            .as_ref()
+            .expect("recurrence_id should be set")
+            .as_event_time();
+        match rid_time {
+            EventTime::DateTimeUtc(dt) => {
                 assert_eq!(dt.to_rfc3339(), "2026-05-01T16:00:00+00:00");
             }
             other => panic!("expected DateTimeUtc recurrence_id, got {other:?}"),
@@ -576,7 +708,7 @@ mod tests {
             "DESCRIPTION should be normalized plaintext"
         );
         let alt = result
-            .custom_properties
+            .x_properties
             .iter()
             .find(|p| p.name == "X-ALT-DESC")
             .expect("X-ALT-DESC must be set when body is HTML");
@@ -608,10 +740,7 @@ mod tests {
         let result = from_outlook(event, "me@example.com").unwrap();
         assert!(result.description.is_none());
         assert!(
-            result
-                .custom_properties
-                .iter()
-                .all(|p| p.name != "X-ALT-DESC"),
+            result.x_properties.iter().all(|p| p.name != "X-ALT-DESC"),
             "no X-ALT-DESC should be set when the HTML body is empty"
         );
     }
@@ -627,12 +756,7 @@ mod tests {
 
         let result = from_outlook(event, "me@example.com").unwrap();
         assert_eq!(result.description.as_deref(), Some("just plain text"));
-        assert!(
-            result
-                .custom_properties
-                .iter()
-                .all(|p| p.name != "X-ALT-DESC")
-        );
+        assert!(result.x_properties.iter().all(|p| p.name != "X-ALT-DESC"));
     }
 
     #[test]
@@ -680,7 +804,7 @@ mod tests {
             .iter()
             .find(|a| a.email == "me@example.com")
             .unwrap();
-        assert_eq!(me.response_status, Some(ParticipationStatus::Accepted));
+        assert_eq!(me.status, Some(ParticipationStatus::Accepted));
 
         // Other attendees should still use their per-attendee status
         let organizer_attendee = result
@@ -689,7 +813,7 @@ mod tests {
             .find(|a| a.email == "organizer@example.com")
             .unwrap();
         assert_eq!(
-            organizer_attendee.response_status,
+            organizer_attendee.status,
             Some(ParticipationStatus::NeedsAction)
         );
     }
@@ -726,7 +850,7 @@ mod tests {
             other => panic!("expected DateTimeZoned, got {other:?}"),
         }
         match result.end {
-            EventTime::DateTimeZoned { datetime, tzid } => {
+            Some(EventTime::DateTimeZoned { datetime, tzid }) => {
                 assert_eq!(tzid, "Europe/London");
                 assert_eq!(
                     datetime.format("%Y-%m-%dT%H:%M:%S").to_string(),

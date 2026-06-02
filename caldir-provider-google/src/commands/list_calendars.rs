@@ -1,20 +1,27 @@
 //! List Google Calendars (name + config) for a given account.
-//! The config should contain the minimum data needed to identify each calendar on your local
-//! system.
-//! In this case: google_account + google_calendar_id.
 
 use anyhow::{Context, Result};
-use caldir_core::calendar::config::CalendarConfig;
-use caldir_core::remote::{Remote, protocol::ListCalendars, provider::Provider};
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::ListCalendars;
+use caldir_core::{CalendarConfig, ProviderSlug, RemoteConfig};
 use google_calendar::types::MinAccessRole;
 
+use crate::app_config::AppConfigStore;
+use crate::constants::PROVIDER_NAME;
 use crate::remote_config::GoogleRemoteConfig;
-use crate::session::Session;
+use crate::session::SessionStore;
 
 pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
     let account_email = &cmd.account_identifier;
 
-    let client = Session::load_valid(account_email).await?.client()?;
+    let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
+    let session_store = SessionStore::new(storage.clone());
+    let app_config_store = AppConfigStore::new(storage);
+
+    let session = session_store
+        .load_valid(account_email, &app_config_store)
+        .await?;
+    let client = session_store.client(&session, &app_config_store)?;
 
     let google_calendars = client
         .calendar_list()
@@ -26,16 +33,17 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
     let calendar_configs = google_calendars
         .iter()
         .map(|cal| {
-            let remote_config = GoogleRemoteConfig::new(account_email, &cal.id);
-            let remote = Remote::new(Provider::from_name("google"), remote_config.into());
+            let params =
+                GoogleRemoteConfig::new(account_email, &cal.id).into_remote_config_params();
+            let remote_config = RemoteConfig::new(ProviderSlug::from(PROVIDER_NAME), params);
             let read_only = !matches!(cal.access_role.as_str(), "writer" | "owner");
 
-            CalendarConfig {
-                name: Some(cal.summary.clone()),
-                color: Some(cal.background_color.clone()),
-                read_only: Some(read_only),
-                remote: Some(remote),
-            }
+            CalendarConfig::new(
+                Some(cal.summary.clone()),
+                Some(cal.background_color.clone()),
+                Some(read_only),
+                Some(remote_config),
+            )
         })
         .collect();
 

@@ -1,72 +1,100 @@
-//! Sync state tracking for calendars.
+mod error;
+mod synced_event_ids;
 
-use std::collections::HashSet;
+use crate::event::EventInstanceId;
+pub use error::CalendarStateError;
+use std::path::Path;
+use synced_event_ids::SYNCED_IDS_FILE_NAME;
 
-use crate::event::Event;
-use crate::{calendar::Calendar, error::CalDirResult};
+pub(crate) use synced_event_ids::SyncedEventIds;
 
-const KNOWN_EVENT_IDS_FILE: &str = "known_event_ids";
-
+#[derive(Debug)]
 pub struct CalendarState {
-    calendar: Calendar,
-}
-
-pub struct CalendarStateData {
-    pub known_event_ids: Vec<String>,
+    synced_event_ids: SyncedEventIds,
 }
 
 impl CalendarState {
-    pub fn load(calendar: Calendar) -> CalendarState {
-        CalendarState { calendar }
-    }
-
-    fn path(&self) -> std::path::PathBuf {
-        self.calendar.data_path().join(".caldir/state")
-    }
-
-    // Read .caldir/state/known_event_ids
-    fn known_event_ids(&self) -> Vec<String> {
-        let state_dir = self.path();
-        let path = state_dir.join(KNOWN_EVENT_IDS_FILE);
-
-        if path.exists() {
-            match std::fs::read_to_string(&path) {
-                Ok(content) => content
-                    .lines()
-                    .filter(|l| !l.is_empty())
-                    .map(String::from)
-                    .collect(),
-                Err(_) => vec![],
-            }
-        } else {
-            vec![]
+    pub fn new() -> Self {
+        Self {
+            synced_event_ids: SyncedEventIds::new(),
         }
     }
 
-    pub fn read(&self) -> CalendarStateData {
-        let known_event_ids = self.known_event_ids();
-        CalendarStateData { known_event_ids }
+    pub fn load(state_dir: &Path) -> Result<Self, CalendarStateError> {
+        let synced_ids_path = state_dir.join(SYNCED_IDS_FILE_NAME);
+        let synced_event_ids = SyncedEventIds::load(&synced_ids_path)?;
+
+        Ok(Self { synced_event_ids })
     }
 
-    /// Check if an event has been synced (is in the known_event_ids set).
-    pub fn is_synced(&self, event: &Event) -> bool {
-        self.known_event_ids().contains(&event.unique_id())
-    }
-
-    pub fn save(&self, event_ids: &HashSet<String>) -> CalDirResult<()> {
-        let state_dir = self.path();
-        std::fs::create_dir_all(&state_dir)?;
-
-        let path = state_dir.join(KNOWN_EVENT_IDS_FILE);
-        let temp = state_dir.join(KNOWN_EVENT_IDS_FILE.to_string() + ".tmp");
-
-        // Sort for deterministic output
-        let mut sorted: Vec<_> = event_ids.iter().map(|s| s.as_str()).collect();
-        sorted.sort();
-        let content = sorted.join("\n");
-
-        std::fs::write(&temp, content)?;
-        std::fs::rename(&temp, &path)?;
+    pub fn write(&self, state_dir: &Path) -> Result<(), CalendarStateError> {
+        std::fs::create_dir_all(state_dir)?;
+        let synced_ids_path = state_dir.join(SYNCED_IDS_FILE_NAME);
+        self.synced_event_ids.write(&synced_ids_path)?;
         Ok(())
+    }
+
+    pub(crate) fn synced_event_ids(&self) -> &SyncedEventIds {
+        &self.synced_event_ids
+    }
+
+    pub(crate) fn add_new_synced_ids(
+        &mut self,
+        ids: impl IntoIterator<Item = EventInstanceId>,
+    ) -> &mut Self {
+        for id in ids {
+            self.synced_event_ids.insert(id);
+        }
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn loads_synced_event_ids_from_state_dir() {
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join(SYNCED_IDS_FILE_NAME), "abc@hooli.com").unwrap();
+
+        CalendarState::load(dir.path()).unwrap();
+    }
+
+    #[test]
+    fn load_returns_empty_when_synced_event_ids_file_missing() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let state = CalendarState::load(dir.path()).unwrap();
+
+        let dst = tempfile::TempDir::new().unwrap();
+        state.write(dst.path()).unwrap();
+
+        let written = std::fs::read_to_string(dst.path().join(SYNCED_IDS_FILE_NAME)).unwrap();
+        assert!(written.is_empty());
+    }
+
+    #[test]
+    fn writes_synced_event_ids_to_state_dir() {
+        let src = tempfile::TempDir::new().unwrap();
+        std::fs::write(src.path().join(SYNCED_IDS_FILE_NAME), "abc@hooli.com").unwrap();
+        let state = CalendarState::load(src.path()).unwrap();
+
+        let dst = tempfile::TempDir::new().unwrap();
+        state.write(dst.path()).unwrap();
+
+        let written = std::fs::read_to_string(dst.path().join(SYNCED_IDS_FILE_NAME)).unwrap();
+        assert_eq!(written, "abc@hooli.com");
+    }
+
+    #[test]
+    fn write_creates_state_dir_if_missing() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let state_dir = dir.path().join("does/not/exist");
+        let state = CalendarState::load(dir.path()).unwrap();
+
+        state.write(&state_dir).unwrap();
+
+        assert!(state_dir.join(SYNCED_IDS_FILE_NAME).is_file());
     }
 }

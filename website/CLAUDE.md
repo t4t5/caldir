@@ -1,37 +1,14 @@
 # caldir website
 
-The marketing + docs site for caldir, at caldir.org.
+The marketing + docs site for caldir, at caldir.org. Static Astro 5 with Tailwind v4.
 
-## Stack
+## Conventions
 
-- Astro 5 (static, no SSR).
-- Tailwind CSS v4 — design tokens live in `src/styles/global.css` inside the `@theme` block (`--color-*`, `--font-*`, `--breakpoint-*`). No `tailwind.config.js`.
-- No React. Everything is `.astro` components.
-- Shiki for code highlighting — theme set in `astro.config.mjs` under `markdown.shikiConfig`.
-
-## Breakpoint
-
-`md:` is 880px (not the Tailwind default 768px), set via `--breakpoint-md: 880px` in `global.css`. Anything matching a raw `@media (min-width: 880px)` / `(max-width: 879px)` should stay in sync.
-
-## Docs content
-
-- Docs are an Astro content collection at `src/content/docs/*.md`.
-- Nav order and labels are driven by `src/data/docs-links.ts` — each entry has an explicit `href`.
-- The Overview (`what-is-caldir`) is rendered at `/` by `src/pages/index.astro`. `/docs/what-is-caldir` 301s to `/` and is filtered out of `[...slug].astro`.
-- `Layout.astro` is the shared shell (desktop two-column + mobile hamburger). Pages pass `currentSlug` so the sidebar can highlight the active link.
+- Design tokens (`--color-*`, `--font-*`, `--breakpoint-*`) live in the `@theme` block in `src/styles/global.css`. There is no `tailwind.config.js`.
+- The `md:` breakpoint is **880px**, not Tailwind's default 768px. Anything matching a raw `@media (min-width: 880px)` should stay in sync.
+- Docs are an Astro content collection; nav order and labels come from `src/data/docs-links.ts`.
+- The sidebar's `v{version}` is read at build time from `../caldir-cli/Cargo.toml` — bumping the CLI version updates the site automatically on rebuild.
 
 ## Icons
 
-- Icons live in `src/icons/` as `.astro` components (e.g. `logo.astro`, `github.astro`, `chevron-left.astro`).
-- Use `stroke="currentColor"` / `fill="currentColor"` so the parent's text color drives them. The caller sets color via Tailwind on a wrapping element (e.g. `text-logo`, `text-text-muted hover:text-text-body`).
-- Components accept a `class` prop forwarded to the root `<svg>`. Size comes from the caller (`class="size-6"` etc.), not the component.
-
-## Version label
-
-The sidebar's `v{version}` is read at build time from `../caldir-cli/Cargo.toml` inside `DocsSidebar.astro`. Bumping the CLI version automatically updates the site on rebuild.
-
-## Layout structure
-
-- `Layout.astro` — `<html>`, `<head>`, mobile + desktop shells, prev/next nav, footer. Used by every docs page and the homepage.
-- `DocsSidebar.astro` — desktop-only sticky sidebar (logomark + nav + version + GitHub link).
-- `Footer.astro` — shared footer.
+`.astro` SVG components in `src/icons/`. They use `currentColor` so the parent's text color drives them, and they accept a forwarded `class` prop for sizing — never set size inside the icon component.

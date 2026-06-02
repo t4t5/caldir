@@ -1,53 +1,46 @@
 use anyhow::Result;
-use caldir_core::calendar::Calendar;
-use caldir_core::date_range::DateRange;
-use caldir_core::diff::{BatchDiff, CalendarDiff};
+use caldir_core::{Caldir, CalendarDiff, Connection, DateRange};
 use owo_colors::OwoColorize;
 
-use crate::commands::guards::allow_mass_delete;
-use crate::render::{CalendarDiffRender, Render};
-use crate::utils::tui;
+use crate::render::diff::{CalendarDiffRender, Render};
+use crate::utils::{allow_mass_delete, connections, count_changes, resolve_sync_range, tui};
 
-pub async fn run(calendars: Vec<Calendar>, verbose: bool, force: bool) -> Result<()> {
-    let range = DateRange::default();
+pub async fn run(
+    caldir: &Caldir,
+    calendar: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+    verbose: bool,
+    force: bool,
+) -> Result<()> {
+    let calendar_slugs: Vec<String> = calendar.into_iter().collect();
+    let connections = connections(caldir, &calendar_slugs);
+    let range = resolve_sync_range(from, to)?;
+    let mut applied: Vec<CalendarDiff> = Vec::new();
+    let total = connections.len();
 
-    let mut diffs = Vec::new();
-
-    for (i, cal) in calendars.iter().enumerate() {
-        if cal.remote().is_none() {
-            println!("{}", cal.render());
-            println!("   {}", "(local only)".dimmed());
-        } else if cal.is_read_only() {
-            println!("{}", cal.render());
-            println!("   {}", "(read-only)".dimmed());
-        } else {
-            let spinner = tui::create_spinner(cal.render());
-            let result = CalendarDiff::from_calendar(cal, &range).await;
-            spinner.finish_and_clear();
-
-            println!("{}", cal.render());
-
-            match result {
-                Ok(diff) => {
-                    println!("{}", diff.render_push(verbose));
-                    if !allow_mass_delete(&diff, force) {
-                        continue;
-                    }
-                    diff.apply_push().await?;
-                    diffs.push(diff);
-                }
-                Err(e) => println!("   {}", e.to_string().red()),
+    for (i, connection) in connections.into_iter().enumerate() {
+        match connection {
+            Ok(mut connection) => {
+                push_connection(
+                    caldir,
+                    &mut connection,
+                    &range,
+                    verbose,
+                    force,
+                    &mut applied,
+                )
+                .await;
             }
+            Err(e) => println!("   {}", e.to_string().red()),
         }
 
-        // Add spacing between calendars (but not after the last one)
-        if i < calendars.len() - 1 {
+        if i < total - 1 {
             println!();
         }
     }
 
-    let batch = BatchDiff(diffs);
-    let (created, updated, deleted) = batch.push_counts();
+    let (created, updated, deleted) = count_changes(applied.iter().flat_map(|d| d.outgoing()));
 
     if created > 0 || updated > 0 || deleted > 0 {
         println!(
@@ -57,4 +50,39 @@ pub async fn run(calendars: Vec<Calendar>, verbose: bool, force: bool) -> Result
     }
 
     Ok(())
+}
+
+async fn push_connection(
+    caldir: &Caldir,
+    connection: &mut Connection,
+    range: &DateRange,
+    verbose: bool,
+    force: bool,
+    applied: &mut Vec<CalendarDiff>,
+) {
+    let header = connection.local().render(caldir);
+    let spinner = tui::create_spinner(header.clone());
+    let result = connection.diff(range).await;
+    spinner.finish_and_clear();
+
+    println!("{}", header);
+
+    let diff = match result {
+        Ok(diff) => diff,
+        Err(e) => {
+            println!("   {}", e.to_string().red());
+            return;
+        }
+    };
+
+    println!("{}", diff.render_push(verbose, caldir));
+
+    if !allow_mass_delete(&diff, force) {
+        return;
+    }
+
+    match connection.apply_outgoing_diff(&diff).await {
+        Ok(()) => applied.push(diff),
+        Err(e) => println!("   {}", e.to_string().red()),
+    }
 }

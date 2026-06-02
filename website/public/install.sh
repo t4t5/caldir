@@ -65,11 +65,13 @@ main() {
   # Install binaries
   mkdir -p "$INSTALL_DIR"
 
-  for bin in caldir caldir-provider-google caldir-provider-icloud caldir-provider-caldav caldir-provider-webcal; do
-    if [ -f "${tmp}/${bin}" ]; then
-      install -m 755 "${tmp}/${bin}" "${INSTALL_DIR}/${bin}"
-      echo "  Installed ${bin} to ${INSTALL_DIR}/${bin}"
-    fi
+  # Install everything the release tarball ships — the tarball is the source
+  # of truth for which binaries make up a caldir install.
+  for binary in "${tmp}"/caldir "${tmp}"/caldir-provider-*; do
+    [ -f "$binary" ] || continue
+    name=$(basename "$binary")
+    install -m 755 "$binary" "${INSTALL_DIR}/${name}"
+    echo "  Installed ${name} to ${INSTALL_DIR}/${name}"
   done
 
   echo ""

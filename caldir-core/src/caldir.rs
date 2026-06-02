@@ -1,124 +1,392 @@
-//! Caldir root directory management.
+mod config;
+mod error;
 
+use crate::{
+    Calendar, CalendarConfig, Connection, Provider, ProviderRegistry, ProviderSlug, Remote,
+};
 use std::path::PathBuf;
 
-use crate::caldir_config::CaldirConfig;
-use crate::calendar::Calendar;
-use crate::error::{CalDirError, CalDirResult};
-use config::{Config, File};
+pub use config::CaldirConfig;
+pub use config::TimeFormat;
+pub use error::CaldirError;
 
-#[derive(Clone)]
 pub struct Caldir {
     config: CaldirConfig,
+    config_path: Option<PathBuf>,
+    providers: ProviderRegistry,
 }
 
 impl Caldir {
-    pub fn load() -> CalDirResult<Self> {
-        let config_path = CaldirConfig::config_path()?;
-
-        if !config_path.exists() {
-            CaldirConfig::create_default_config(&config_path)?;
+    #[cfg(test)]
+    pub(crate) fn new(config: CaldirConfig, providers: ProviderRegistry) -> Self {
+        Caldir {
+            config,
+            config_path: None,
+            providers,
         }
-
-        let config: CaldirConfig = Config::builder()
-            .add_source(File::from(config_path).required(false))
-            .build()
-            .map_err(|e| CalDirError::Config(e.to_string()))?
-            .try_deserialize()
-            .map_err(|e| CalDirError::Config(e.to_string()))?;
-
-        Ok(Caldir { config })
     }
 
-    /// Construct a Caldir pointing at an explicit data directory, bypassing
-    /// the global config file. Useful for tests that want to operate on a
-    /// tempdir without touching the user's real `~/.config/caldir/config.toml`.
-    pub fn with_data_path(data_path: PathBuf) -> Self {
-        Caldir {
-            config: CaldirConfig {
-                calendar_dir: data_path,
-                ..CaldirConfig::default()
-            },
+    pub fn load() -> Result<Self, CaldirError> {
+        let config_path = CaldirConfig::default_system_config_path()?;
+        let config = CaldirConfig::load_or_default(&config_path)?;
+        let providers = ProviderRegistry::from_system_path();
+
+        Ok(Self {
+            config,
+            config_path: Some(config_path),
+            providers,
+        })
+    }
+
+    pub fn data_dir(&self) -> PathBuf {
+        self.config.data_dir()
+    }
+
+    pub fn default_calendar(&self) -> Result<Calendar, CaldirError> {
+        let slug = self
+            .config
+            .default_calendar_slug()
+            .ok_or(CaldirError::NoDefaultCalendar)?;
+
+        Ok(Calendar::load(&self.data_dir().join(slug))?)
+    }
+
+    pub fn create_calendar(
+        &self,
+        desired_slug: &str,
+        config: Option<CalendarConfig>,
+    ) -> Result<Calendar, CaldirError> {
+        let unique_slug = self.unique_slug_for(desired_slug);
+        let calendar_path = self.data_dir().join(unique_slug);
+
+        Ok(Calendar::create(&calendar_path, config)?)
+    }
+
+    pub fn calendars(&self) -> Vec<Result<Calendar, CaldirError>> {
+        let mut calendars = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(self.data_dir()) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() && !entry.file_name().to_string_lossy().starts_with('.') {
+                    calendars.push(Calendar::load(&entry.path()).map_err(CaldirError::from));
+                }
+            }
         }
+
+        calendars
+    }
+
+    pub fn calendar(&self, slug: &str) -> Result<Calendar, CaldirError> {
+        Calendar::load(&self.data_dir().join(slug)).map_err(CaldirError::from)
+    }
+
+    pub fn connections(&self) -> Vec<Result<Connection, CaldirError>> {
+        let mut connections = Vec::new();
+
+        for calendar in self.calendars() {
+            let calendar = match calendar {
+                Ok(calendar) => calendar,
+                Err(err) => {
+                    connections.push(Err(err));
+                    continue;
+                }
+            };
+
+            let Some(remote_config) = calendar.remote_config().cloned() else {
+                continue;
+            };
+
+            let connection = self
+                .provider(remote_config.provider_slug())
+                .map(|provider| {
+                    Connection::new(
+                        calendar,
+                        Remote::new(provider.clone(), remote_config.params().clone()),
+                    )
+                });
+
+            connections.push(connection);
+        }
+
+        connections
+    }
+
+    pub fn providers(&self) -> &ProviderRegistry {
+        &self.providers
+    }
+
+    pub fn provider(&self, provider_slug: &ProviderSlug) -> Result<&Provider, CaldirError> {
+        self.providers
+            .get(provider_slug)
+            .map_err(CaldirError::Provider)
     }
 
     pub fn config(&self) -> &CaldirConfig {
         &self.config
     }
 
-    pub fn data_path(&self) -> PathBuf {
-        let full_path_str =
-            shellexpand::tilde(&self.config.calendar_dir.to_string_lossy()).into_owned();
+    /// Persist `new_config` to disk and adopt it as the in-memory config.
+    /// Either both sides commit or neither — on write failure the in-memory
+    /// config is left untouched.
+    pub fn save_config(&mut self, new_config: CaldirConfig) -> Result<(), CaldirError> {
+        if let Some(path) = &self.config_path {
+            new_config.write(path)?;
+        }
 
-        PathBuf::from(full_path_str)
+        self.config = new_config;
+
+        Ok(())
     }
 
-    /// Returns the calendar directory path in display-friendly form,
-    /// keeping `~` instead of expanding to the full home directory.
-    pub fn display_path(&self) -> PathBuf {
-        self.config.calendar_dir.clone()
+    /// Generate a unique slug that doesn't conflict with existing calendar directories.
+    /// If the base slug exists, tries slug-2, slug-3, etc.
+    fn unique_slug_for(&self, desired_slug: &str) -> String {
+        let calendar_dir = self.config.data_dir();
+
+        if !calendar_dir.join(desired_slug).exists() {
+            return desired_slug.to_string();
+        }
+
+        let mut suffix = 2;
+
+        loop {
+            let candidate = format!("{desired_slug}-{suffix}");
+            if !calendar_dir.join(&candidate).exists() {
+                return candidate;
+            }
+            suffix += 1;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::ProviderError;
+    use crate::test_utils::{
+        test_caldir, test_caldir_config, test_calendar_config, test_provider, test_remote_config,
+    };
+
+    #[test]
+    fn create_calendar_creates_directory_with_desired_slug() {
+        let (_tmp, caldir) = test_caldir();
+
+        let calendar = caldir.create_calendar("work", None).unwrap();
+
+        assert_eq!(calendar.path(), caldir.data_dir().join("work"));
+        assert_eq!(calendar.slug().unwrap(), "work");
+        assert!(calendar.path().is_dir());
     }
 
-    /// Load a single calendar by slug, anchored at this caldir's data path.
-    pub fn calendar(&self, slug: &str) -> CalDirResult<Calendar> {
-        Calendar::load(slug, self.data_path())
+    #[test]
+    fn create_appends_suffix_on_slug_collision() {
+        let (_tmp, caldir) = test_caldir();
+
+        let calendar_1 = caldir.create_calendar("work", None).unwrap();
+        assert_eq!(calendar_1.slug().unwrap(), "work");
+
+        let calendar_2 = caldir.create_calendar("work", None).unwrap();
+        assert_eq!(calendar_2.slug().unwrap(), "work-2");
+
+        let calendar_3 = caldir.create_calendar("work", None).unwrap();
+        assert_eq!(calendar_3.slug().unwrap(), "work-3");
     }
 
-    /// Construct an in-memory calendar (not yet on disk) anchored at this
-    /// caldir's data path. Used by the `connect` flow.
-    pub fn new_calendar(
-        &self,
-        slug: &str,
-        config: crate::calendar::config::CalendarConfig,
-    ) -> Calendar {
-        Calendar::new(slug, self.data_path(), config)
+    #[test]
+    fn calendars_returns_empty_if_no_calendars() {
+        let (_tmp, caldir) = test_caldir();
+
+        assert!(caldir.calendars().is_empty());
     }
 
-    /// Generate a slug for a new calendar with the given display name that
-    /// doesn't collide with any existing directory in this caldir.
-    pub fn unique_slug_for(&self, name: Option<&str>) -> CalDirResult<String> {
-        Calendar::unique_slug(name, &self.data_path())
-    }
+    #[test]
+    fn calendars_returns_each_calendar_subdirectory() {
+        let (_tmp, caldir) = test_caldir();
 
-    /// Discover calendars by scanning calendar_dir for subdirectories.
-    /// Every non-hidden directory is a calendar; `.caldir/config.toml`
-    /// is optional and only carries metadata + remote sync settings.
-    pub fn calendars(&self) -> Vec<Calendar> {
-        let data_path = self.data_path();
+        caldir.create_calendar("personal", None).unwrap();
+        caldir.create_calendar("work", None).unwrap();
 
-        let Ok(entries) = std::fs::read_dir(&data_path) else {
-            return Vec::new();
-        };
+        let calendars = caldir.calendars();
 
-        let mut calendars: Vec<Calendar> = entries
-            .filter_map(|entry| entry.ok())
-            .map(|entry| entry.path())
-            .filter(|path| path.is_dir())
-            .filter_map(|path| {
-                path.file_name()
-                    .and_then(|n| n.to_str())
-                    .filter(|name| !name.starts_with('.'))
-                    .and_then(|name| Calendar::load(name, &data_path).ok())
-            })
+        let mut slugs: Vec<String> = calendars
+            .iter()
+            .map(|c| c.as_ref().unwrap().slug().unwrap().to_string())
             .collect();
 
-        calendars.sort_by(|a, b| a.slug.cmp(&b.slug));
-        calendars
+        slugs.sort();
+
+        assert_eq!(slugs, vec!["personal", "work"]);
     }
 
-    pub fn default_calendar(&self) -> Option<Calendar> {
-        let name = self.config.default_calendar.as_ref()?;
-        self.calendars().into_iter().find(|c| &c.slug == name)
+    #[test]
+    fn calendars_ignores_hidden_directories() {
+        let (_tmp, caldir) = test_caldir();
+
+        caldir.create_calendar("work", None).unwrap();
+        std::fs::create_dir_all(caldir.data_dir().join(".hidden")).unwrap();
+        std::fs::create_dir_all(caldir.data_dir().join(".git")).unwrap();
+
+        let calendars = caldir.calendars();
+
+        let slugs: Vec<String> = calendars
+            .iter()
+            .map(|c| c.as_ref().unwrap().slug().unwrap().to_string())
+            .collect();
+
+        assert_eq!(slugs, vec!["work"]);
     }
 
-    /// Set the default calendar if one isn't already configured.
-    /// Returns true if the default was set.
-    pub fn set_default_calendar_if_unset(&mut self, slug: &str) -> CalDirResult<bool> {
-        if self.config.default_calendar.is_some() {
-            return Ok(false);
-        }
-        self.config.default_calendar = Some(slug.to_string());
-        self.config.save()?;
-        Ok(true)
+    #[test]
+    fn connections_is_empty_when_no_calendars_exist() {
+        let (_tmp, caldir) = test_caldir();
+
+        assert!(caldir.connections().is_empty());
+    }
+
+    #[test]
+    fn connections_skips_calendars_without_remote() {
+        let (_tmp, caldir) = test_caldir();
+
+        caldir.create_calendar("local-only", None).unwrap();
+
+        assert!(caldir.connections().is_empty());
+    }
+
+    #[test]
+    fn connections_returns_calendar_with_remote() {
+        let (_tmp_bin, provider) = test_provider("hooli");
+        let mut registry = ProviderRegistry::new();
+        registry.add(provider);
+
+        let (_tmp, config) = test_caldir_config();
+        let caldir = Caldir::new(config, registry);
+
+        let remote_config = test_remote_config("hooli");
+        let mut config = test_calendar_config();
+        config.update_remote(remote_config);
+
+        caldir.create_calendar("work", Some(config)).unwrap();
+        caldir.create_calendar("local-only", None).unwrap();
+
+        let connections = caldir.connections();
+
+        assert_eq!(connections.len(), 1);
+        let connection = connections[0].as_ref().unwrap();
+        assert_eq!(connection.local().slug().unwrap(), "work");
+    }
+
+    #[test]
+    fn connections_returns_err_for_calendar_with_missing_provider() {
+        let (_tmp, caldir) = test_caldir();
+
+        let remote_config = test_remote_config("hooli");
+        let mut config = test_calendar_config();
+        config.update_remote(remote_config);
+
+        caldir.create_calendar("work", Some(config)).unwrap();
+
+        let connections = caldir.connections();
+
+        assert_eq!(connections.len(), 1);
+        assert!(matches!(
+            connections[0],
+            Err(CaldirError::Provider(ProviderError::ProviderNotFound(_)))
+        ));
+    }
+
+    #[test]
+    fn connections_returns_ok_and_err_independently_per_calendar() {
+        let (_tmp_bin, provider) = test_provider("hooli");
+        let mut registry = ProviderRegistry::new();
+        registry.add(provider);
+
+        let (_tmp, config) = test_caldir_config();
+        let caldir = Caldir::new(config, registry);
+
+        let mut work_config = test_calendar_config();
+        work_config.update_remote(test_remote_config("hooli"));
+        caldir.create_calendar("work", Some(work_config)).unwrap();
+
+        let mut other_config = test_calendar_config();
+        other_config.update_remote(test_remote_config("aviato"));
+        caldir.create_calendar("other", Some(other_config)).unwrap();
+
+        let connected = caldir.connections();
+
+        assert_eq!(connected.len(), 2);
+        assert_eq!(connected.iter().filter(|r| r.is_ok()).count(), 1);
+        assert_eq!(connected.iter().filter(|r| r.is_err()).count(), 1);
+    }
+
+    #[test]
+    fn provider_returns_provider_when_present_in_registry() {
+        let (_tmp_bin, provider) = test_provider("hooli");
+        let mut registry = ProviderRegistry::new();
+        registry.add(provider);
+
+        let (_tmp, config) = test_caldir_config();
+        let caldir = Caldir::new(config, registry);
+
+        assert!(caldir.provider(&ProviderSlug::from("hooli")).is_ok());
+    }
+
+    #[test]
+    fn provider_errors_when_not_present_in_registry() {
+        let (_tmp, caldir) = test_caldir();
+
+        let result = caldir.provider(&ProviderSlug::from("hooli"));
+
+        assert!(matches!(
+            result,
+            Err(CaldirError::Provider(ProviderError::ProviderNotFound(_)))
+        ));
+    }
+
+    #[test]
+    fn default_calendar_returns_calendar_matching_configured_slug() {
+        let (_tmp, mut config) = test_caldir_config();
+        config = CaldirConfig::new(
+            config.data_dir(),
+            TimeFormat::default(),
+            Some("personal".to_string()),
+            None,
+        );
+        let caldir = Caldir::new(config, ProviderRegistry::new());
+
+        caldir.create_calendar("personal", None).unwrap();
+        caldir.create_calendar("work", None).unwrap();
+
+        let calendar = caldir.default_calendar().unwrap();
+
+        assert_eq!(calendar.slug().unwrap(), "personal");
+    }
+
+    #[test]
+    fn default_calendar_errors_when_no_default_slug_configured() {
+        let (_tmp, caldir) = test_caldir();
+
+        caldir.create_calendar("personal", None).unwrap();
+
+        assert!(matches!(
+            caldir.default_calendar(),
+            Err(CaldirError::NoDefaultCalendar)
+        ));
+    }
+
+    #[test]
+    fn default_calendar_errors_when_calendar_does_not_exist() {
+        let (_tmp, mut config) = test_caldir_config();
+        config = CaldirConfig::new(
+            config.data_dir(),
+            TimeFormat::default(),
+            Some("missing".to_string()),
+            None,
+        );
+        let caldir = Caldir::new(config, ProviderRegistry::new());
+
+        assert!(matches!(
+            caldir.default_calendar(),
+            Err(CaldirError::Calendar(_))
+        ));
     }
 }

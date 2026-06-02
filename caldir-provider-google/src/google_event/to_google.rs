@@ -1,5 +1,6 @@
-use caldir_core::event::{
-    Attendee, Event, EventStatus, EventTime, ParticipationStatus, Recurrence, Transparency,
+use caldir_core::{
+    Attendee, Availability, Event, EventTime, ParticipationStatus, Recurrence, RecurrenceId,
+    Status, Visibility,
 };
 
 use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
@@ -11,30 +12,48 @@ pub trait ToGoogle {
 impl ToGoogle for Event {
     fn to_google(&self) -> google_calendar::types::Event {
         let start = event_time_to_google(&self.start);
-        let end = event_time_to_google(&self.end);
+        let end = self
+            .end
+            .as_ref()
+            .map(event_time_to_google)
+            .unwrap_or(start.clone());
 
         let status = match self.status {
-            EventStatus::Confirmed => "confirmed".to_string(),
-            EventStatus::Tentative => "tentative".to_string(),
-            EventStatus::Cancelled => "cancelled".to_string(),
+            Status::Confirmed => "confirmed".to_string(),
+            Status::Tentative => "tentative".to_string(),
+            Status::Cancelled => "cancelled".to_string(),
         };
 
-        let transparency = match self.transparency {
-            Transparency::Opaque => "opaque".to_string(),
-            Transparency::Transparent => "transparent".to_string(),
+        let transparency = match self.availability {
+            Availability::Busy => "opaque".to_string(),
+            Availability::Free => "transparent".to_string(),
+        };
+
+        // None → "default" (inherit calendar visibility); Some(Public) → "public".
+        let visibility = match self.visibility {
+            None => "default".to_string(),
+            Some(Visibility::Public) => "public".to_string(),
+            Some(Visibility::Private) => "private".to_string(),
+            Some(Visibility::Confidential) => "confidential".to_string(),
         };
 
         let valid_reminders: Vec<_> = self
             .reminders
             .iter()
-            .filter(|r| r.minutes > 0)
+            .filter(|r| r.minutes_before_start > 0)
             .map(|r| google_calendar::types::EventReminder {
                 method: "popup".to_string(),
-                minutes: r.minutes,
+                minutes: r.minutes_before_start,
             })
             .collect();
+
+        // "No VALARM locally" = "inherit Google's calendar defaults"
+        // Sending `None` here would otherwise clear the calendar-level default
         let reminders = if valid_reminders.is_empty() {
-            None
+            Some(google_calendar::types::Reminders {
+                overrides: vec![],
+                use_default: true,
+            })
         } else {
             Some(google_calendar::types::Reminders {
                 overrides: valid_reminders,
@@ -51,34 +70,38 @@ impl ToGoogle for Event {
             .map(recurrence_to_google)
             .unwrap_or_default();
 
-        let original_start_time = self.recurrence_id.as_ref().map(event_time_to_google);
+        let original_start_time = self
+            .recurrence_id
+            .as_ref()
+            .map(RecurrenceId::as_event_time)
+            .map(event_time_to_google);
 
-        // Get Google's event ID from custom properties (if available)
         let google_event_id = self
-            .custom_property(PROVIDER_EVENT_ID_PROPERTY)
+            .x_property(PROVIDER_EVENT_ID_PROPERTY)
             .unwrap_or_default()
             .to_string();
 
         let color_id = self
-            .custom_property(PROVIDER_COLOR_ID_PROPERTY)
+            .x_property(PROVIDER_COLOR_ID_PROPERTY)
             .unwrap_or_default()
             .to_string();
 
         google_calendar::types::Event {
             id: google_event_id,
-            i_cal_uid: self.uid.clone(),
-            summary: self.summary.clone(),
+            i_cal_uid: self.uid.as_str().to_string(),
+            summary: self.summary.clone().unwrap_or_default(),
             description: self.description.clone().unwrap_or_default(),
             location: self.location.clone().unwrap_or_default(),
             start: Some(start),
             end: Some(end),
             status,
             transparency,
+            visibility,
             reminders,
             attendees,
             recurrence,
             original_start_time,
-            sequence: self.sequence.unwrap_or(0),
+            sequence: self.sequence as i64,
             color_id,
             ..Default::default()
         }
@@ -90,7 +113,7 @@ fn attendee_to_google(attendee: &Attendee) -> google_calendar::types::EventAtten
         email: attendee.email.clone(),
         display_name: attendee.name.clone().unwrap_or_default(),
         response_status: attendee
-            .response_status
+            .status
             .map(participation_status_to_google)
             .unwrap_or("needsAction")
             .to_string(),
@@ -168,5 +191,143 @@ pub(crate) fn participation_status_to_google(status: ParticipationStatus) -> &'s
         ParticipationStatus::Declined => "declined",
         ParticipationStatus::Tentative => "tentative",
         ParticipationStatus::NeedsAction => "needsAction",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caldir_core::{Event, EventTime, Reminder, Visibility};
+    use chrono::NaiveDate;
+
+    fn sample_event() -> Event {
+        Event::new(
+            "Test",
+            EventTime::DateTimeFloating(
+                NaiveDate::from_ymd_opt(2026, 1, 1)
+                    .unwrap()
+                    .and_hms_opt(12, 0, 0)
+                    .unwrap(),
+            ),
+        )
+    }
+
+    // Google's API rejects reminder overrides with `minutes: 0` ("Missing
+    // override reminder minutes"), because the `google-calendar` crate strips
+    // zero-valued integers from the serialized JSON. A reminder that fires at
+    // event start must not be sent as an override.
+    #[test]
+    fn zero_minute_reminder_is_stripped_to_avoid_google_400() {
+        let mut event = sample_event();
+        event.reminders = vec![Reminder {
+            minutes_before_start: 0,
+        }];
+
+        let google = event.to_google();
+        let reminders = google.reminders.expect("reminders always set");
+
+        assert!(
+            reminders.overrides.is_empty(),
+            "expected 0-minute reminder to be filtered out, got {:?}",
+            reminders.overrides
+        );
+        // With no surviving overrides, fall back to the calendar default
+        // rather than sending an empty `overrides` array that would clear it.
+        assert!(reminders.use_default);
+    }
+
+    #[test]
+    fn zero_minute_reminder_is_stripped_but_other_reminders_pass_through() {
+        let mut event = sample_event();
+        event.reminders = vec![
+            Reminder {
+                minutes_before_start: 0,
+            },
+            Reminder {
+                minutes_before_start: 15,
+            },
+        ];
+
+        let google = event.to_google();
+        let reminders = google.reminders.expect("non-empty reminders");
+
+        assert_eq!(reminders.overrides.len(), 1);
+        assert_eq!(reminders.overrides[0].minutes, 15);
+        assert!(!reminders.use_default);
+    }
+
+    #[test]
+    fn nonzero_reminder_is_sent_to_google() {
+        let mut event = sample_event();
+        event.reminders = vec![Reminder {
+            minutes_before_start: 30,
+        }];
+
+        let google = event.to_google();
+        let reminders = google.reminders.expect("non-empty reminders");
+
+        assert_eq!(reminders.overrides.len(), 1);
+        assert_eq!(reminders.overrides[0].minutes, 30);
+        assert_eq!(reminders.overrides[0].method, "popup");
+        assert!(!reminders.use_default);
+    }
+
+    // Local files without VALARMs must push as `useDefault: true` so that
+    // we don't silently strip Google's calendar-level default reminders on push.
+    #[test]
+    fn empty_reminders_sends_use_default_true() {
+        let event = sample_event();
+        assert!(event.reminders.is_empty());
+
+        let google = event.to_google();
+        let reminders = google.reminders.expect("reminders always set");
+
+        assert!(reminders.use_default);
+        assert!(reminders.overrides.is_empty());
+    }
+
+    #[test]
+    fn private_visibility_serializes_as_private() {
+        let mut event = sample_event();
+        event.visibility = Some(Visibility::Private);
+
+        let google = event.to_google();
+
+        assert_eq!(google.visibility, "private");
+    }
+
+    #[test]
+    fn confidential_visibility_serializes_as_confidential() {
+        let mut event = sample_event();
+        event.visibility = Some(Visibility::Confidential);
+
+        let google = event.to_google();
+
+        assert_eq!(google.visibility, "confidential");
+    }
+
+    // Unspecified visibility maps to Google's "default" ("inherit calendar
+    // visibility"), avoiding pinning the event when the calendar itself has a
+    // different default.
+    #[test]
+    fn unspecified_visibility_serializes_as_default() {
+        let mut event = sample_event();
+        event.visibility = None;
+
+        let google = event.to_google();
+
+        assert_eq!(google.visibility, "default");
+    }
+
+    // An explicit Some(Public) is distinct from unspecified and is pinned as
+    // "public" so the distinction round-trips.
+    #[test]
+    fn public_visibility_serializes_as_public() {
+        let mut event = sample_event();
+        event.visibility = Some(Visibility::Public);
+
+        let google = event.to_google();
+
+        assert_eq!(google.visibility, "public");
     }
 }

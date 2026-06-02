@@ -4,12 +4,14 @@
 //! On submit: discovers endpoints, saves session.
 
 use anyhow::Result;
-use caldir_core::remote::protocol::{
+use caldir_core::provider::ProviderStorage;
+use caldir_core::rpc::{
     Connect, ConnectResponse, ConnectStepKind, CredentialField, CredentialsData, FieldType,
 };
-use caldir_provider_caldav::ops;
+use caldir_provider_caldav::caldav::ops;
 
-use crate::session::Session;
+use crate::constants::PROVIDER_NAME;
+use crate::session::{Session, SessionStore};
 
 pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
     // If data contains credentials, this is the submit step.
@@ -43,9 +45,13 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
             &endpoints.principal_url,
             &endpoints.calendar_home_url,
         );
-        session.save()?;
+        let store = SessionStore::new(ProviderStorage::for_provider(PROVIDER_NAME)?);
+        store.save(&session)?;
 
-        return Ok(ConnectResponse::Done { account_identifier });
+        return Ok(ConnectResponse::Done {
+            account_identifier: Some(account_identifier),
+            calendars: None,
+        });
     }
 
     // Init step: return credential field requirements

@@ -2,30 +2,12 @@
 default:
   @just --list
 
-format:
-  cargo fmt --all
-
-# Test app commands:
-
+# Run CLI commands
 cli +args:
   cargo run -p caldir-cli -- {{ args }}
 
-auth +args:
-  @just cli auth {{ args }}
-
-pull:
-  @just cli pull
-
-status:
-  @just cli status
-
-push:
-  @just cli push
-
-new +args:
-  @just cli new {{ args }}
-
-# Dev tools:
+format:
+  cargo fmt --all
 
 check:
   cargo check --workspace
@@ -51,5 +33,5 @@ uninstall:
   rm -f ~/.cargo/bin/caldir ~/.cargo/bin/caldir-provider-*
 
 # Serve website locally
-serve:
+web:
   cd website && npm run dev
