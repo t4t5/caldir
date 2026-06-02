@@ -3,7 +3,7 @@ use caldir_core::{Caldir, Calendar, Event, EventTime};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 use owo_colors::OwoColorize;
 
-use crate::render::event::{format_event_line, render_participation_status};
+use crate::render::event::{format_event_line, is_visible, render_participation_status};
 use crate::render::time::{format_date_label, local_date};
 
 pub fn render_events_in_range(
@@ -27,6 +27,9 @@ pub fn render_events_in_range(
         let remote_email = cal.remote_email();
 
         for event in events {
+            if !is_visible(&event) {
+                continue;
+            }
             for day in display_days(&event, range_start, range_end) {
                 entries.push((day, cal.slug(), remote_email, event.clone()));
             }

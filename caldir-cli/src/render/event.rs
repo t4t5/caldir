@@ -1,7 +1,11 @@
-use caldir_core::{Caldir, Event, ParticipationStatus};
+use caldir_core::{Caldir, Event, ParticipationStatus, Status};
 use owo_colors::OwoColorize;
 
 use crate::render::time::format_time_only;
+
+pub fn is_visible(event: &Event) -> bool {
+    event.status != Status::Cancelled
+}
 
 /// Format a standard event line: "  {time} {summary} [{cal_slug}]{status}"
 pub fn format_event_line(event: &Event, cal_slug: &str, status: &str, caldir: &Caldir) -> String {
@@ -23,5 +27,23 @@ pub fn render_participation_status(status: ParticipationStatus) -> String {
         ParticipationStatus::Tentative | ParticipationStatus::NeedsAction => {
             label.yellow().to_string()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caldir_core::EventTime;
+    use chrono::NaiveDate;
+
+    #[test]
+    fn confirmed_events_are_visible_cancelled_are_not() {
+        let start = EventTime::Date(NaiveDate::from_ymd_opt(2026, 5, 27).unwrap());
+        let confirmed = Event::new("Standup", start.clone());
+        let mut cancelled = Event::new("yolo", start);
+        cancelled.status = Status::Cancelled;
+
+        assert!(is_visible(&confirmed));
+        assert!(!is_visible(&cancelled));
     }
 }
