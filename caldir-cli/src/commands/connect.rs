@@ -20,7 +20,7 @@ fn build_options(hosted: bool, redirect_uri: &str) -> serde_json::Map<String, se
 pub async fn run(caldir: &mut Caldir, provider: Option<String>, hosted: bool) -> Result<()> {
     let provider_slug = provider.context(
         "Missing provider argument.\n\nUsage:
-  caldir connect <provider>",
+  caldir connect <provider> (e.g. \"caldir connect google\")",
     )?;
 
     let provider_slug = ProviderSlug::from(provider_slug);
