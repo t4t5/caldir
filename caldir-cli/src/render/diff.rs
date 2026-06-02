@@ -38,7 +38,9 @@ impl Render for EventChange {
             EventChange::Update { to, .. } => to,
         };
 
-        let summary = colorize_diff(self, event.summary().unwrap_or("(Untitled)"));
+        let summary_text = &event.summary.clone().unwrap_or("(Untitled)".to_string());
+
+        let summary = colorize_diff(self, summary_text);
 
         let time = format_datetime(&event.start, caldir.config().time_format());
 

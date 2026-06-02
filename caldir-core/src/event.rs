@@ -93,30 +93,6 @@ impl Event {
         }
     }
 
-    pub fn summary(&self) -> Option<&str> {
-        self.summary.as_deref()
-    }
-
-    pub fn set_end(&mut self, end: EventTime) {
-        self.end = Some(end);
-    }
-
-    pub fn set_location(&mut self, location: impl Into<String>) {
-        self.location = Some(location.into());
-    }
-
-    pub fn set_description(&mut self, description: impl Into<String>) {
-        self.description = Some(description.into());
-    }
-
-    pub fn set_recurrence(&mut self, recurrence: Recurrence) {
-        self.recurrence = Some(recurrence);
-    }
-
-    pub fn set_reminders(&mut self, reminders: Vec<Reminder>) {
-        self.reminders = reminders;
-    }
-
     /// Parse ICS document to list of events
     pub fn from_ics_str(contents: &str) -> Result<Vec<Result<Self, EventError>>, EventError> {
         let icalendar: icalendar::Calendar = contents
@@ -471,7 +447,7 @@ END:VCALENDAR
             "Test",
             EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 15, 12, 0, 0).unwrap()),
         );
-        event.set_end(EventTime::DateTimeUtc(
+        event.end = Some(EventTime::DateTimeUtc(
             Utc.with_ymd_and_hms(2026, 5, 15, 13, 0, 0).unwrap(),
         ));
 
@@ -487,7 +463,7 @@ END:VCALENDAR
             "Test",
             EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 14, 12, 0, 0).unwrap()),
         );
-        event.set_end(EventTime::DateTimeUtc(
+        event.end = Some(EventTime::DateTimeUtc(
             Utc.with_ymd_and_hms(2026, 5, 14, 13, 0, 0).unwrap(),
         ));
 
@@ -503,7 +479,7 @@ END:VCALENDAR
             "Test",
             EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap()),
         );
-        event.set_end(EventTime::DateTimeUtc(
+        event.end = Some(EventTime::DateTimeUtc(
             Utc.with_ymd_and_hms(2026, 5, 17, 13, 0, 0).unwrap(),
         ));
 
@@ -519,7 +495,7 @@ END:VCALENDAR
             "Test",
             EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 14, 23, 0, 0).unwrap()),
         );
-        event.set_end(EventTime::DateTimeUtc(
+        event.end = Some(EventTime::DateTimeUtc(
             Utc.with_ymd_and_hms(2026, 5, 15, 1, 0, 0).unwrap(),
         ));
 
@@ -535,7 +511,7 @@ END:VCALENDAR
             "Test",
             EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 15, 23, 0, 0).unwrap()),
         );
-        event.set_end(EventTime::DateTimeUtc(
+        event.end = Some(EventTime::DateTimeUtc(
             Utc.with_ymd_and_hms(2026, 5, 16, 1, 0, 0).unwrap(),
         ));
 
@@ -564,7 +540,7 @@ END:VCALENDAR
             "Test",
             EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 14, 23, 0, 0).unwrap()),
         );
-        event.set_end(EventTime::DateTimeUtc(
+        event.end = Some(EventTime::DateTimeUtc(
             Utc.with_ymd_and_hms(2026, 5, 15, 0, 0, 0).unwrap(),
         ));
 
@@ -580,7 +556,7 @@ END:VCALENDAR
             "Test",
             EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 5, 16, 0, 0, 0).unwrap()),
         );
-        event.set_end(EventTime::DateTimeUtc(
+        event.end = Some(EventTime::DateTimeUtc(
             Utc.with_ymd_and_hms(2026, 5, 16, 1, 0, 0).unwrap(),
         ));
 

@@ -252,13 +252,13 @@ mod tests {
 
     fn timed_event(summary: &str, start: DateTime<Utc>) -> Event {
         let mut event = Event::new(summary, EventTime::DateTimeUtc(start));
-        event.set_end(EventTime::DateTimeUtc(start + Duration::hours(1)));
+        event.end = Some(EventTime::DateTimeUtc(start + Duration::hours(1)));
         event
     }
 
     fn recurring(summary: &str, start: DateTime<Utc>, rrule: &str) -> Event {
         let mut event = timed_event(summary, start);
-        event.set_recurrence(Recurrence::new(rrule));
+        event.recurrence = Some(Recurrence::new(rrule));
         event
     }
 
@@ -341,8 +341,8 @@ mod tests {
     #[test]
     fn expanded_instances_preserve_duration() {
         let mut master = Event::new("Workshop", EventTime::DateTimeUtc(utc(2026, 1, 5, 9, 0)));
-        master.set_end(EventTime::DateTimeUtc(utc(2026, 1, 5, 11, 30)));
-        master.set_recurrence(Recurrence::new("FREQ=WEEKLY;COUNT=2"));
+        master.end = Some(EventTime::DateTimeUtc(utc(2026, 1, 5, 11, 30)));
+        master.recurrence = Some(Recurrence::new("FREQ=WEEKLY;COUNT=2"));
 
         let result = expand_in_range(vec![master], utc(2026, 1, 1, 0, 0), utc(2026, 2, 1, 0, 0));
 
@@ -497,7 +497,7 @@ mod tests {
     #[test]
     fn unparseable_rrule_falls_back_to_single_master_in_range() {
         let mut master = timed_event("Broken", utc(2026, 1, 15, 9, 0));
-        master.set_recurrence(Recurrence::new("THIS-IS-NOT-A-VALID-RRULE"));
+        master.recurrence = Some(Recurrence::new("THIS-IS-NOT-A-VALID-RRULE"));
 
         let result = expand_in_range(
             vec![master.clone()],
@@ -511,7 +511,7 @@ mod tests {
     #[test]
     fn unparseable_rrule_returns_nothing_when_master_out_of_range() {
         let mut master = timed_event("Broken", utc(2026, 6, 15, 9, 0));
-        master.set_recurrence(Recurrence::new("garbage"));
+        master.recurrence = Some(Recurrence::new("garbage"));
 
         let result = expand_in_range(vec![master], utc(2026, 1, 1, 0, 0), utc(2026, 2, 1, 0, 0));
 
@@ -555,11 +555,11 @@ mod tests {
                 tzid: "Europe/Stockholm".to_string(),
             },
         );
-        master.set_end(EventTime::DateTimeZoned {
+        master.end = Some(EventTime::DateTimeZoned {
             datetime: datetime + Duration::minutes(30),
             tzid: "Europe/Stockholm".to_string(),
         });
-        master.set_recurrence(Recurrence::new("FREQ=DAILY;COUNT=2"));
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY;COUNT=2"));
 
         let result = expand_in_range(vec![master], utc(2026, 1, 1, 0, 0), utc(2026, 2, 1, 0, 0));
 
@@ -581,7 +581,7 @@ mod tests {
             "Holiday",
             EventTime::Date(NaiveDate::from_ymd_opt(2026, 1, 5).unwrap()),
         );
-        master.set_recurrence(Recurrence::new("FREQ=WEEKLY;COUNT=2"));
+        master.recurrence = Some(Recurrence::new("FREQ=WEEKLY;COUNT=2"));
 
         let result = expand_in_range(vec![master], utc(2026, 1, 1, 0, 0), utc(2026, 2, 1, 0, 0));
 

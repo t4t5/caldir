@@ -89,12 +89,12 @@ pub fn run(
     let calendar = resolve_calendar(caldir, calendar_slug, &calendars, interactive)?;
 
     let mut event = Event::new(title, start_time);
-    event.set_end(end_time);
+    event.end = Some(end_time);
     if let Some(loc) = location {
-        event.set_location(loc);
+        event.location = Some(loc);
     }
     if !reminders.is_empty() {
-        event.set_reminders(reminders);
+        event.reminders = reminders;
     }
 
     let calendar_event = calendar.create_event(event)?;

@@ -51,7 +51,7 @@ fn run_direct(caldir: &Caldir, path_str: &str, response_str: &str) -> Result<()>
     }
 
     let status = parse_response(response_str)?;
-    let summary = event.summary().unwrap_or("(Untitled)").to_string();
+    let summary = event.summary.clone().unwrap_or("(Untitled)".to_string());
     let updated = apply_response(event, email, status)?;
     cal_event.update(updated)?;
 

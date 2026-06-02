@@ -451,8 +451,8 @@ mod tests {
         event.uid = crate::event::EventUid::new(uid);
         event.description = Some("Notes".to_string());
         event.location = Some("Office".to_string());
-        event.set_end(EventTime::DateTimeUtc(start + chrono::Duration::hours(1)));
-        event.set_recurrence(Recurrence::new(rrule));
+        event.end = Some(EventTime::DateTimeUtc(start + chrono::Duration::hours(1)));
+        event.recurrence = Some(Recurrence::new(rrule));
         event
     }
 

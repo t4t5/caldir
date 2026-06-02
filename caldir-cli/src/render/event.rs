@@ -8,13 +8,9 @@ pub fn format_event_line(event: &Event, cal_slug: &str, status: &str, caldir: &C
     let time = format_time_only(&event.start, caldir.config().time_format());
     let cal_tag = format!("[{}]", cal_slug);
 
-    format!(
-        "  {} {} {}{}",
-        time,
-        event.summary().unwrap_or("(Untitled)"),
-        cal_tag.dimmed(),
-        status
-    )
+    let summary_text = &event.summary.clone().unwrap_or("(Untitled)".to_string());
+
+    format!("  {} {} {}{}", time, summary_text, cal_tag.dimmed(), status)
 }
 
 /// Render a participation status as colored text (e.g. "accepted" in green, "pending" in yellow)
