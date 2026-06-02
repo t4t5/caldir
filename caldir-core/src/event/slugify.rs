@@ -6,7 +6,15 @@ const EMPTY_SUMMARY_SLUG: &str = "untitled";
 impl Event {
     /// Generate a slug for an event based on its start time and summary.
     /// The slug is used as the filename for the event's .ics file.
+    ///
+    /// Recurring events happen on many dates, so a single date prefix would be
+    /// misleading. They get a `_recurring__` prefix instead, which also groups
+    /// them together when browsing the directory.
     pub fn base_slug(&self) -> String {
+        if self.recurrence.is_some() {
+            return format!("_recurring__{}", self.summary_slug());
+        }
+
         format!("{}__{}", self.time_slug(), self.summary_slug())
     }
 
@@ -112,6 +120,22 @@ mod tests {
         );
 
         assert_eq!(event.base_slug(), "2024-01-01T1530__test-event");
+    }
+
+    #[test]
+    fn uses_recurring_prefix_instead_of_date_for_recurring_events() {
+        let mut event = Event::new(
+            "Standup",
+            EventTime::DateTimeFloating(
+                NaiveDate::from_ymd_opt(2024, 1, 1)
+                    .unwrap()
+                    .and_hms_opt(9, 0, 0)
+                    .unwrap(),
+            ),
+        );
+        event.recurrence = Some(crate::event::Recurrence::new("FREQ=DAILY"));
+
+        assert_eq!(event.base_slug(), "_recurring__standup");
     }
 
     #[test]
