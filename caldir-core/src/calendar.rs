@@ -138,6 +138,7 @@ impl Calendar {
             .events()?
             .into_iter()
             .find(|ce| ce.event().event_instance_id() == *id);
+
         Ok(found)
     }
 
@@ -264,11 +265,7 @@ impl Calendar {
                 continue;
             }
 
-            let is_override_for_occurrence = ce
-                .event()
-                .recurrence_id
-                .as_ref()
-                .is_some_and(|rid| rid.to_instant() == recurrence_id.to_instant());
+            let is_override_for_occurrence = ce.event().event_instance_id() == *id;
 
             if ce.event().recurrence.is_some() {
                 master = Some(ce);
@@ -292,6 +289,47 @@ impl Calendar {
         }
 
         Ok(())
+    }
+
+    /// Override a single occurrence of a recurring series
+    pub fn update_recurring_instance(
+        &self,
+        id: &EventInstanceId,
+        apply: impl FnOnce(&mut Event),
+    ) -> Result<CalendarEvent, CalendarError> {
+        let Some(recurrence_id) = id.recurrence_id() else {
+            return Err(CalendarError::NotRecurring(id.uid().as_str().to_string()));
+        };
+
+        let existing = self.event_by_instance_id(id)?;
+
+        match existing {
+            // An override file already exists -> edit it in place
+            Some(mut ce) => {
+                let mut event = ce.event().clone();
+                apply(&mut event);
+
+                event.last_modified = Some(Utc::now());
+                event.sequence += 1;
+                ce.update(event)?;
+
+                Ok(ce)
+            }
+            // No override exists yet -> synthesize one from the master
+            None => {
+                let master = self
+                    .master_event_for(id.uid().as_str())?
+                    .ok_or_else(|| CalendarError::MasterNotFound(id.uid().as_str().to_string()))?;
+
+                let mut event = master.occurrence_at(recurrence_id.as_event_time().clone());
+
+                event.sequence = 0;
+                event.last_modified = Some(Utc::now());
+                apply(&mut event);
+
+                self.create_event(event)
+            }
+        }
     }
 
     /// List all events occurring within time range
@@ -980,6 +1018,145 @@ mod tests {
                 "nonexistent",
                 EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)),
             ))
+            .unwrap_err();
+
+        assert!(matches!(err, CalendarError::MasterNotFound(_)));
+    }
+
+    #[test]
+    fn update_recurring_instance_creates_override_from_master() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        let occurrence = EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0));
+        cal.update_recurring_instance(&instance_id(uid, occurrence.clone()), |event| {
+            event.summary = Some("Moved standup".to_string());
+            event.start = EventTime::DateTimeUtc(t(2026, 4, 3, 14, 0));
+            event.end = Some(EventTime::DateTimeUtc(t(2026, 4, 3, 15, 0)));
+        })
+        .unwrap();
+
+        let overrides = loaded_overrides(&cal, uid);
+        assert_eq!(overrides.len(), 1);
+        let override_event = &overrides[0];
+        // Carries the occurrence's recurrence id, not its own RRULE.
+        assert!(override_event.recurrence.is_none());
+        assert_eq!(
+            override_event
+                .recurrence_id
+                .as_ref()
+                .unwrap()
+                .as_event_time(),
+            &occurrence
+        );
+        // Edited fields applied.
+        assert_eq!(override_event.summary.as_deref(), Some("Moved standup"));
+        assert_eq!(
+            override_event.start,
+            EventTime::DateTimeUtc(t(2026, 4, 3, 14, 0))
+        );
+        // Metadata inherited from the master.
+        assert_eq!(override_event.location.as_deref(), Some("Office"));
+        // Master is untouched.
+        assert!(
+            loaded_master(&cal, uid)
+                .recurrence
+                .unwrap()
+                .exdates
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn update_recurring_instance_overrides_only_that_occurrence_in_expansion() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        cal.update_recurring_instance(
+            &instance_id(uid, EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0))),
+            |event| event.summary = Some("Special".to_string()),
+        )
+        .unwrap();
+
+        let summaries: Vec<_> = cal
+            .expanded_events_in_range(t(2026, 4, 1, 0, 0), t(2026, 4, 5, 0, 0))
+            .unwrap()
+            .into_iter()
+            .map(|e| e.summary.unwrap_or_default())
+            .collect();
+        assert_eq!(
+            summaries,
+            vec!["Daily standup", "Daily standup", "Special", "Daily standup"]
+        );
+    }
+
+    #[test]
+    fn update_recurring_instance_edits_existing_override_in_place() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+        cal.create_event(make_override(uid, t(2026, 4, 3, 10, 0), "first edit"))
+            .unwrap();
+
+        cal.update_recurring_instance(
+            &instance_id(uid, EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0))),
+            |event| event.summary = Some("second edit".to_string()),
+        )
+        .unwrap();
+
+        // Still a single override (updated, not duplicated).
+        let overrides = loaded_overrides(&cal, uid);
+        assert_eq!(overrides.len(), 1);
+        assert_eq!(overrides[0].summary.as_deref(), Some("second edit"));
+    }
+
+    #[test]
+    fn update_recurring_instance_bumps_existing_override_sequence() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+        let mut override_event = make_override(uid, t(2026, 4, 3, 10, 0), "edit");
+        override_event.sequence = 2;
+        cal.create_event(override_event).unwrap();
+
+        cal.update_recurring_instance(
+            &instance_id(uid, EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0))),
+            |event| event.summary = Some("re-edit".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(loaded_overrides(&cal, uid)[0].sequence, 3);
+    }
+
+    #[test]
+    fn update_recurring_instance_errors_when_not_recurring() {
+        let (_tmp, cal) = test_calendar();
+
+        let err = cal
+            .update_recurring_instance(
+                &EventInstanceId::new(EventUid::new("solo@test"), None),
+                |_| {},
+            )
+            .unwrap_err();
+
+        assert!(matches!(err, CalendarError::NotRecurring(_)));
+    }
+
+    #[test]
+    fn update_recurring_instance_errors_when_master_missing() {
+        let (_tmp, cal) = test_calendar();
+
+        let err = cal
+            .update_recurring_instance(
+                &instance_id("nonexistent", EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0))),
+                |_| {},
+            )
             .unwrap_err();
 
         assert!(matches!(err, CalendarError::MasterNotFound(_)));

@@ -98,6 +98,16 @@ pub(crate) fn expand_master(
         .collect()
 }
 
+impl Event {
+    /// Synthesize this recurring master's occurrence at `start` (a recurrence
+    /// id) as a concrete, non-recurring event — the same shape `expand_*`
+    /// produces for a non-overridden instance. Inherits the master's metadata
+    /// and shifts the end by the master's duration.
+    pub(crate) fn occurrence_at(&self, start: EventTime) -> Event {
+        synthesize_instance(self, start, master_duration(self))
+    }
+}
+
 fn master_duration(master: &Event) -> Duration {
     let start = master.start.to_utc();
     let end = master.end.as_ref().map(|e| e.to_utc()).unwrap_or(start);
