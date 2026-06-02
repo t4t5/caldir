@@ -18,4 +18,7 @@ pub enum CalendarEventError {
 
     #[error("attendee not found: {email}")]
     AttendeeNotFound { email: String },
+
+    #[error("event {0} is not a recurring master")]
+    NotRecurring(String),
 }

@@ -3,7 +3,7 @@ mod error;
 mod event;
 mod state;
 
-use crate::event::{EventInstanceId, EventTime, Recurrence, expand_in_range};
+use crate::event::{EventInstanceId, EventTime, EventUid, Recurrence, expand_in_range};
 use crate::utils::slugify;
 use crate::{Event, RemoteConfig};
 use std::path::{Path, PathBuf};
@@ -188,7 +188,7 @@ impl Calendar {
     /// exists or if the master is not recurring.
     pub fn split_recurring_series_at(
         &self,
-        master_uid: &str,
+        master_uid: &EventUid,
         split_start: EventTime,
         split_end: EventTime,
         new_recurrence: Option<Recurrence>,
@@ -197,15 +197,15 @@ impl Calendar {
 
         let master_idx = all_events
             .iter()
-            .position(|ce| ce.event().uid.as_str() == master_uid && ce.event().recurrence.is_some())
-            .ok_or_else(|| CalendarError::MasterNotFound(master_uid.to_string()))?;
+            .position(|ce| ce.event().uid == *master_uid && ce.event().recurrence.is_some())
+            .ok_or_else(|| CalendarError::MasterNotFound(master_uid.as_str().to_string()))?;
 
         let mut master_ce = all_events.swap_remove(master_idx);
         let master_event = master_ce.event().clone();
         let master_recurrence = master_event
             .recurrence
             .as_ref()
-            .ok_or_else(|| CalendarError::NotRecurring(master_uid.to_string()))?;
+            .ok_or_else(|| CalendarError::NotRecurring(master_uid.as_str().to_string()))?;
 
         let truncated_recurrence =
             master_recurrence.truncate_before(&master_event.start, &split_start);
@@ -232,7 +232,7 @@ impl Calendar {
 
         let split_start_utc = split_start.to_utc();
         for ce in all_events.into_iter() {
-            if ce.event().uid.as_str() != master_uid {
+            if ce.event().uid != *master_uid {
                 continue;
             }
             let Some(rid) = ce.event().recurrence_id.as_ref() else {
@@ -248,19 +248,19 @@ impl Calendar {
 
     /// Exclude a single occurrence from a recurring series
     /// i.e. "delete this instance only"
-    pub fn exclude_occurrence(
-        &self,
-        uid: &str,
-        recurrence_id: &EventTime,
-    ) -> Result<(), CalendarError> {
-        let rid_utc = recurrence_id.to_utc();
+    pub fn delete_recurring_instance(&self, id: &EventInstanceId) -> Result<(), CalendarError> {
+        let uid = id.uid();
+
+        let Some(recurrence_id) = id.recurrence_id() else {
+            return Err(CalendarError::NotRecurring(uid.as_str().to_string()));
+        };
 
         let mut master = None;
         let mut override_event = None;
 
         // Find master event (+ potential override event)
         for ce in self.events()? {
-            if ce.event().uid.as_str() != uid {
+            if ce.event().uid != *uid {
                 continue;
             }
 
@@ -268,7 +268,7 @@ impl Calendar {
                 .event()
                 .recurrence_id
                 .as_ref()
-                .is_some_and(|rid| rid.as_event_time().to_utc() == rid_utc);
+                .is_some_and(|rid| rid.to_instant() == recurrence_id.to_instant());
 
             if ce.event().recurrence.is_some() {
                 master = Some(ce);
@@ -278,7 +278,7 @@ impl Calendar {
         }
 
         if master.is_none() && override_event.is_none() {
-            return Err(CalendarError::MasterNotFound(uid.to_string()));
+            return Err(CalendarError::MasterNotFound(uid.as_str().to_string()));
         }
 
         // If override exists, delete it:
@@ -286,20 +286,9 @@ impl Calendar {
             ce.delete()?;
         }
 
-        // If master event exists, make sure it has exdate:
+        // If a master exists, record the exclusion as an EXDATE.
         if let Some(mut ce) = master {
-            let mut event = ce.event().clone();
-
-            if let Some(recurrence) = event.recurrence.as_mut() {
-                let already_excluded = recurrence.exdates.iter().any(|ex| ex.to_utc() == rid_utc);
-
-                if !already_excluded {
-                    recurrence.exdates.push(recurrence_id.clone());
-                    event.last_modified = Some(Utc::now());
-                    event.sequence += 1;
-                    ce.update(event)?;
-                }
-            }
+            ce.add_exdate(recurrence_id.as_event_time().clone())?;
         }
 
         Ok(())
@@ -544,6 +533,13 @@ mod tests {
             .unwrap()
     }
 
+    fn instance_id(uid: &str, occurrence: EventTime) -> EventInstanceId {
+        EventInstanceId::new(
+            EventUid::new(uid),
+            Some(RecurrenceId::from_event_time(occurrence)),
+        )
+    }
+
     #[test]
     fn master_event_for_returns_master_when_present() {
         let (_tmp, calendar) = test_calendar();
@@ -673,7 +669,7 @@ mod tests {
 
         let split_start = EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0));
         let split_end = EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0));
-        cal.split_recurring_series_at(uid, split_start, split_end, None)
+        cal.split_recurring_series_at(&EventUid::new(uid), split_start, split_end, None)
             .unwrap();
 
         let master = loaded_master(&cal, uid);
@@ -692,7 +688,7 @@ mod tests {
         let new_recurrence = Some(Recurrence::new("FREQ=WEEKLY"));
         let new_master = cal
             .split_recurring_series_at(
-                uid,
+                &EventUid::new(uid),
                 EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
                 EventTime::DateTimeUtc(t(2026, 4, 5, 11, 30)),
                 new_recurrence,
@@ -727,7 +723,7 @@ mod tests {
         cal.create_event(master).unwrap();
 
         cal.split_recurring_series_at(
-            uid,
+            &EventUid::new(uid),
             EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
             EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
             None,
@@ -752,7 +748,7 @@ mod tests {
             .unwrap();
 
         cal.split_recurring_series_at(
-            uid,
+            &EventUid::new(uid),
             EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
             EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
             None,
@@ -784,7 +780,7 @@ mod tests {
         cal.create_event(master).unwrap();
 
         cal.split_recurring_series_at(
-            uid,
+            &EventUid::new(uid),
             EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
             EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
             None,
@@ -806,7 +802,7 @@ mod tests {
 
         let new_master = cal
             .split_recurring_series_at(
-                uid,
+                &EventUid::new(uid),
                 EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
                 EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
                 None,
@@ -822,7 +818,7 @@ mod tests {
 
         let err = cal
             .split_recurring_series_at(
-                "nonexistent",
+                &EventUid::new("nonexistent"),
                 EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
                 EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
                 None,
@@ -844,7 +840,7 @@ mod tests {
 
         let err = cal
             .split_recurring_series_at(
-                "solo@test",
+                &EventUid::new("solo@test"),
                 EventTime::DateTimeUtc(t(2026, 4, 5, 10, 0)),
                 EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
                 None,
@@ -855,14 +851,15 @@ mod tests {
     }
 
     #[test]
-    fn exclude_occurrence_adds_exdate_to_master() {
+    fn delete_recurring_instance_adds_exdate_to_master() {
         let (_tmp, cal) = test_calendar();
         let uid = "series@caldir";
         cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
             .unwrap();
 
         let occurrence = EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0));
-        cal.exclude_occurrence(uid, &occurrence).unwrap();
+        cal.delete_recurring_instance(&instance_id(uid, occurrence.clone()))
+            .unwrap();
 
         assert_eq!(
             loaded_master(&cal, uid).recurrence.unwrap().exdates,
@@ -871,14 +868,15 @@ mod tests {
     }
 
     #[test]
-    fn exclude_occurrence_removes_it_from_expansion() {
+    fn delete_recurring_instance_removes_it_from_expansion() {
         let (_tmp, cal) = test_calendar();
         let uid = "series@caldir";
         cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
             .unwrap();
 
         let occurrence = EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0));
-        cal.exclude_occurrence(uid, &occurrence).unwrap();
+        cal.delete_recurring_instance(&instance_id(uid, occurrence.clone()))
+            .unwrap();
 
         let starts: Vec<_> = cal
             .expanded_events_in_range(t(2026, 4, 1, 0, 0), t(2026, 4, 5, 0, 0))
@@ -897,7 +895,7 @@ mod tests {
     }
 
     #[test]
-    fn exclude_occurrence_deletes_materialized_override() {
+    fn delete_recurring_instance_deletes_materialized_override() {
         let (_tmp, cal) = test_calendar();
         let uid = "series@caldir";
         cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
@@ -906,8 +904,11 @@ mod tests {
         cal.create_event(make_override(uid, t(2026, 4, 3, 10, 0), "moved standup"))
             .unwrap();
 
-        cal.exclude_occurrence(uid, &EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)))
-            .unwrap();
+        cal.delete_recurring_instance(&instance_id(
+            uid,
+            EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)),
+        ))
+        .unwrap();
 
         // Override file is gone, and the base occurrence is excluded from the master.
         assert!(loaded_overrides(&cal, uid).is_empty());
@@ -918,29 +919,34 @@ mod tests {
     }
 
     #[test]
-    fn exclude_occurrence_bumps_sequence() {
+    fn delete_recurring_instance_bumps_sequence() {
         let (_tmp, cal) = test_calendar();
         let uid = "series@caldir";
         let mut master = make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY");
         master.sequence = 3;
         cal.create_event(master).unwrap();
 
-        cal.exclude_occurrence(uid, &EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)))
-            .unwrap();
+        cal.delete_recurring_instance(&instance_id(
+            uid,
+            EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)),
+        ))
+        .unwrap();
 
         assert_eq!(loaded_master(&cal, uid).sequence, 4);
     }
 
     #[test]
-    fn exclude_occurrence_is_idempotent() {
+    fn delete_recurring_instance_is_idempotent() {
         let (_tmp, cal) = test_calendar();
         let uid = "series@caldir";
         cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
             .unwrap();
 
         let occurrence = EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0));
-        cal.exclude_occurrence(uid, &occurrence).unwrap();
-        cal.exclude_occurrence(uid, &occurrence).unwrap();
+        cal.delete_recurring_instance(&instance_id(uid, occurrence.clone()))
+            .unwrap();
+        cal.delete_recurring_instance(&instance_id(uid, occurrence.clone()))
+            .unwrap();
 
         let master = loaded_master(&cal, uid);
         // No duplicate EXDATE, and the second call didn't bump SEQUENCE again.
@@ -949,25 +955,31 @@ mod tests {
     }
 
     #[test]
-    fn exclude_occurrence_succeeds_for_orphan_override_without_master() {
+    fn delete_recurring_instance_succeeds_for_orphan_override_without_master() {
         let (_tmp, cal) = test_calendar();
         let uid = "series@caldir";
         // Override with no master in the calendar.
         cal.create_event(make_override(uid, t(2026, 4, 3, 10, 0), "orphan"))
             .unwrap();
 
-        cal.exclude_occurrence(uid, &EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)))
-            .unwrap();
+        cal.delete_recurring_instance(&instance_id(
+            uid,
+            EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)),
+        ))
+        .unwrap();
 
         assert!(loaded_overrides(&cal, uid).is_empty());
     }
 
     #[test]
-    fn exclude_occurrence_errors_when_uid_missing() {
+    fn delete_recurring_instance_errors_when_uid_missing() {
         let (_tmp, cal) = test_calendar();
 
         let err = cal
-            .exclude_occurrence("nonexistent", &EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)))
+            .delete_recurring_instance(&instance_id(
+                "nonexistent",
+                EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)),
+            ))
             .unwrap_err();
 
         assert!(matches!(err, CalendarError::MasterNotFound(_)));

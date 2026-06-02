@@ -1,6 +1,6 @@
 mod error;
 
-use crate::{Calendar, Event, ParticipationStatus};
+use crate::{Calendar, Event, EventTime, ParticipationStatus};
 use std::fs::OpenOptions;
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
@@ -127,6 +127,34 @@ impl CalendarEvent {
         event.last_modified = Some(Utc::now());
 
         // Save file
+        self.update(event)
+    }
+
+    /// Add an EXDATE to a recurring master
+    pub(crate) fn add_exdate(&mut self, exdate: EventTime) -> Result<(), CalendarEventError> {
+        let mut event = self.event.clone();
+
+        let Some(recurrence) = event.recurrence.as_mut() else {
+            return Err(CalendarEventError::NotRecurring(
+                self.event.uid.as_str().to_string(),
+            ));
+        };
+
+        let exdate_utc = exdate.to_utc();
+
+        if recurrence
+            .exdates
+            .iter()
+            .any(|ex| ex.to_utc() == exdate_utc)
+        {
+            return Ok(());
+        }
+
+        recurrence.exdates.push(exdate);
+
+        event.last_modified = Some(Utc::now());
+        event.sequence += 1;
+
         self.update(event)
     }
 }
@@ -463,5 +491,57 @@ mod tests {
             cal_event_2.filename(),
             Some("2026-01-01T1200__test-event.ics")
         );
+    }
+
+    fn recurring_cal_event() -> (tempfile::TempDir, CalendarEvent) {
+        let (tmp, calendar) = test_calendar();
+        let mut event = test_event();
+        event.recurrence = Some(crate::Recurrence::new("FREQ=DAILY"));
+        let cal_event = CalendarEvent::create(&calendar, event).unwrap();
+        (tmp, cal_event)
+    }
+
+    #[test]
+    fn add_exdate_records_exclusion_and_bumps_sequence() {
+        let (_tmp, mut cal_event) = recurring_cal_event();
+        let exdate = EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 1, 3, 12, 0, 0).unwrap());
+
+        cal_event.add_exdate(exdate.clone()).unwrap();
+
+        assert_eq!(
+            cal_event.event().recurrence.as_ref().unwrap().exdates,
+            vec![exdate]
+        );
+        assert_eq!(cal_event.event().sequence, 1);
+    }
+
+    #[test]
+    fn add_exdate_is_idempotent() {
+        let (_tmp, mut cal_event) = recurring_cal_event();
+        let exdate = EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 1, 3, 12, 0, 0).unwrap());
+
+        cal_event.add_exdate(exdate.clone()).unwrap();
+        cal_event.add_exdate(exdate.clone()).unwrap();
+
+        // No duplicate EXDATE, and the second call didn't bump SEQUENCE again.
+        assert_eq!(
+            cal_event.event().recurrence.as_ref().unwrap().exdates,
+            vec![exdate]
+        );
+        assert_eq!(cal_event.event().sequence, 1);
+    }
+
+    #[test]
+    fn add_exdate_errors_when_event_is_not_recurring() {
+        let (_tmp, mut cal_event) = test_calendar_event();
+        assert!(cal_event.event().recurrence.is_none());
+
+        let err = cal_event
+            .add_exdate(EventTime::DateTimeUtc(
+                Utc.with_ymd_and_hms(2026, 1, 3, 12, 0, 0).unwrap(),
+            ))
+            .unwrap_err();
+
+        assert!(matches!(err, CalendarEventError::NotRecurring(_)));
     }
 }
