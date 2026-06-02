@@ -315,7 +315,9 @@ The `RemoteConfig::account_identifier()` method in caldir-core extracts this by 
 
 ### `.caldir/state/known_event_ids`
 
-Each calendar directory contains a `.caldir/state/known_event_ids` file that tracks which events have been synced with the remote provider.
+Each calendar directory contains a `.caldir/state/known_event_ids` file that tracks which event identities have ever been synced with the remote provider.
+
+This file is append-only sync history, not a live index of currently present events. Event IDs are retained after deletes so caldir can keep distinguishing a user delete from a never-seen remote event on later syncs.
 
 **Format:** Plaintext file, one event ID per line (sorted alphabetically for deterministic output):
 ```
@@ -339,7 +341,7 @@ Without this state, a local-only event is ambiguous: was it created locally and 
 **Lifecycle:**
 - After `pull`: Event IDs of all fetched events are added to known_event_ids
 - After `push` (create): Newly created event IDs are added to known_event_ids
-- After `pull` (delete): Removed event IDs are deleted from known_event_ids
+- After `pull` or `push` (delete): Event IDs remain in known_event_ids
 
 ---
 

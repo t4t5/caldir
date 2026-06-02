@@ -22,7 +22,7 @@ The `Caldir` struct is the runtime context object. Every CLI command receives a 
 
 A *calendar* is any non-hidden subdirectory of `calendar_dir`. The directory itself is the source of truth — even an empty directory full of hand-authored `.ics` files is a valid local-only calendar.
 
-If a calendar is connected to a remote, it gets a `.caldir/` (analogous to `.git/`) holding `config.toml` (provider settings) and `state/known_event_ids` (sync state for delete detection).
+If a calendar is connected to a remote, it gets a `.caldir/` (analogous to `.git/`) holding `config.toml` (provider settings) and `state/known_event_ids` (append-only sync state for delete detection).
 
 Calendars come in three flavors: 
 - **local-only** (no remote)
@@ -35,7 +35,7 @@ Bidirectional, last-write-wins, no merge: calendar events are atomic.
 
 Direction is decided by comparing local file mtime against the remote `LAST-MODIFIED`.
 
-Deletes are detected by comparing the live file set against `known_event_ids`.
+Deletes are detected by comparing the live file set against `known_event_ids`. This file records event identities that have ever synced; IDs are retained after deletes so caldir can keep distinguishing a user delete from a never-seen remote event.
 
 The default sync window in the CLI is ±365 days from today; events outside the window are left alone, never deleted just for falling outside the fetched range.
 
