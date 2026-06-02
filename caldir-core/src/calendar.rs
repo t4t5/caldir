@@ -246,6 +246,65 @@ impl Calendar {
         Ok(new_master_event)
     }
 
+    /// Exclude a single occurrence from a recurring series
+    /// i.e. "delete this instance only"
+    pub fn exclude_occurrence(
+        &self,
+        uid: &str,
+        recurrence_id: &EventTime,
+    ) -> Result<(), CalendarError> {
+        let rid_utc = recurrence_id.to_utc();
+
+        let mut master = None;
+        let mut override_event = None;
+
+        // Find master event (+ potential override event)
+        for ce in self.events()? {
+            if ce.event().uid.as_str() != uid {
+                continue;
+            }
+
+            let is_override_for_occurrence = ce
+                .event()
+                .recurrence_id
+                .as_ref()
+                .is_some_and(|rid| rid.as_event_time().to_utc() == rid_utc);
+
+            if ce.event().recurrence.is_some() {
+                master = Some(ce);
+            } else if is_override_for_occurrence {
+                override_event = Some(ce);
+            }
+        }
+
+        if master.is_none() && override_event.is_none() {
+            return Err(CalendarError::MasterNotFound(uid.to_string()));
+        }
+
+        // If override exists, delete it:
+        if let Some(ce) = override_event {
+            ce.delete()?;
+        }
+
+        // If master event exists, make sure it has exdate:
+        if let Some(mut ce) = master {
+            let mut event = ce.event().clone();
+
+            if let Some(recurrence) = event.recurrence.as_mut() {
+                let already_excluded = recurrence.exdates.iter().any(|ex| ex.to_utc() == rid_utc);
+
+                if !already_excluded {
+                    recurrence.exdates.push(recurrence_id.clone());
+                    event.last_modified = Some(Utc::now());
+                    event.sequence += 1;
+                    ce.update(event)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// List all events occurring within time range
     pub fn expanded_events_in_range(
         &self,
@@ -790,6 +849,125 @@ mod tests {
                 EventTime::DateTimeUtc(t(2026, 4, 5, 11, 0)),
                 None,
             )
+            .unwrap_err();
+
+        assert!(matches!(err, CalendarError::MasterNotFound(_)));
+    }
+
+    #[test]
+    fn exclude_occurrence_adds_exdate_to_master() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        let occurrence = EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0));
+        cal.exclude_occurrence(uid, &occurrence).unwrap();
+
+        assert_eq!(
+            loaded_master(&cal, uid).recurrence.unwrap().exdates,
+            vec![occurrence]
+        );
+    }
+
+    #[test]
+    fn exclude_occurrence_removes_it_from_expansion() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        let occurrence = EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0));
+        cal.exclude_occurrence(uid, &occurrence).unwrap();
+
+        let starts: Vec<_> = cal
+            .expanded_events_in_range(t(2026, 4, 1, 0, 0), t(2026, 4, 5, 0, 0))
+            .unwrap()
+            .into_iter()
+            .map(|e| e.start.to_utc())
+            .collect();
+        assert_eq!(
+            starts,
+            vec![
+                t(2026, 4, 1, 10, 0),
+                t(2026, 4, 2, 10, 0),
+                t(2026, 4, 4, 10, 0)
+            ]
+        );
+    }
+
+    #[test]
+    fn exclude_occurrence_deletes_materialized_override() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+        // A previously moved/edited instance for 04-03 sits on disk as an override.
+        cal.create_event(make_override(uid, t(2026, 4, 3, 10, 0), "moved standup"))
+            .unwrap();
+
+        cal.exclude_occurrence(uid, &EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)))
+            .unwrap();
+
+        // Override file is gone, and the base occurrence is excluded from the master.
+        assert!(loaded_overrides(&cal, uid).is_empty());
+        assert_eq!(
+            loaded_master(&cal, uid).recurrence.unwrap().exdates,
+            vec![EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0))]
+        );
+    }
+
+    #[test]
+    fn exclude_occurrence_bumps_sequence() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        let mut master = make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY");
+        master.sequence = 3;
+        cal.create_event(master).unwrap();
+
+        cal.exclude_occurrence(uid, &EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)))
+            .unwrap();
+
+        assert_eq!(loaded_master(&cal, uid).sequence, 4);
+    }
+
+    #[test]
+    fn exclude_occurrence_is_idempotent() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        cal.create_event(make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY"))
+            .unwrap();
+
+        let occurrence = EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0));
+        cal.exclude_occurrence(uid, &occurrence).unwrap();
+        cal.exclude_occurrence(uid, &occurrence).unwrap();
+
+        let master = loaded_master(&cal, uid);
+        // No duplicate EXDATE, and the second call didn't bump SEQUENCE again.
+        assert_eq!(master.recurrence.unwrap().exdates, vec![occurrence]);
+        assert_eq!(master.sequence, 1);
+    }
+
+    #[test]
+    fn exclude_occurrence_succeeds_for_orphan_override_without_master() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        // Override with no master in the calendar.
+        cal.create_event(make_override(uid, t(2026, 4, 3, 10, 0), "orphan"))
+            .unwrap();
+
+        cal.exclude_occurrence(uid, &EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)))
+            .unwrap();
+
+        assert!(loaded_overrides(&cal, uid).is_empty());
+    }
+
+    #[test]
+    fn exclude_occurrence_errors_when_uid_missing() {
+        let (_tmp, cal) = test_calendar();
+
+        let err = cal
+            .exclude_occurrence("nonexistent", &EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0)))
             .unwrap_err();
 
         assert!(matches!(err, CalendarError::MasterNotFound(_)));
