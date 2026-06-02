@@ -1,17 +1,20 @@
 use caldir_core::{EventTime, TimeFormat};
-use chrono::{Datelike, NaiveDateTime, Timelike};
+use chrono::{Datelike, NaiveDate, NaiveDateTime, Timelike};
 
-/// Format a date as a human-readable label (e.g. "Today", "Tomorrow", "Wed Feb 25").
-/// The year is appended when the date is not in the current year (e.g. "Wed Feb 25 2023").
-pub fn format_date_only(time: &EventTime) -> String {
-    let today = chrono::Local::now().date_naive();
-
-    let date = match time {
+/// The local calendar date an event time falls on.
+pub fn local_date(time: &EventTime) -> NaiveDate {
+    match time {
         EventTime::Date(d) => *d,
         EventTime::DateTimeUtc(dt) => dt.with_timezone(&chrono::Local).date_naive(),
         EventTime::DateTimeFloating(dt) => dt.date(),
         EventTime::DateTimeZoned { datetime, tzid } => zoned_to_local(datetime, tzid).date(),
-    };
+    }
+}
+
+/// Format a date as a human-readable label (e.g. "Today", "Tomorrow", "Wed Feb 25").
+/// The year is appended when the date is not in the current year (e.g. "Wed Feb 25 2023").
+pub fn format_date_label(date: NaiveDate) -> String {
+    let today = chrono::Local::now().date_naive();
 
     let diff = (date - today).num_days();
     match diff {
@@ -20,6 +23,11 @@ pub fn format_date_only(time: &EventTime) -> String {
         _ if date.year() == today.year() => date.format("%a %b %-d").to_string(),
         _ => date.format("%a %b %-d %Y").to_string(),
     }
+}
+
+/// Format an event time as a human-readable date label.
+pub fn format_date_only(time: &EventTime) -> String {
+    format_date_label(local_date(time))
 }
 
 /// Format the time portion of an event (e.g. "  15:00" or " 3:00pm" or "all-day"), right-padded to 7 chars
