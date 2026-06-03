@@ -49,12 +49,6 @@ This will prompt you to enter your Apple ID and an [app-specific password](https
 
 ## Outlook
 
-Install the Outlook provider first (it's not included in the default `install.sh` bundle):
-
-```bash
-cargo install caldir-provider-outlook
-```
-
 ### Hosted auth (easy)
 
 ```bash
