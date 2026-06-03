@@ -66,7 +66,7 @@ When shipping a new default provider with caldir, update:
 
 ## Specs
 
-`specs/caldir.md` is the canonical ICS-format spec. `specs/rfc5545.txt` is the RFC. `specs/vdir.md` is an alternative convention caldir diverges from.
+`specs/caldir.md` is the canonical ICS-format spec. `specs/rfc5545.txt` is the RFC.
 
 ## Development
 
@@ -74,3 +74,7 @@ When shipping a new default provider with caldir, update:
 just check   # cargo check + clippy across the workspace
 just test    # full test suite
 ```
+
+## Rules
+
+- Keep comments terse. Avoid multi-line explanations unless deemed absolutely necessary

@@ -4,7 +4,7 @@ mod error;
 use crate::{
     Calendar, CalendarConfig, Connection, Provider, ProviderRegistry, ProviderSlug, Remote,
 };
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub use config::CaldirConfig;
 pub use config::TimeFormat;
@@ -36,6 +36,12 @@ impl Caldir {
             config_path: Some(config_path),
             providers,
         })
+    }
+
+    /// Register bundled providers from `dir`, overriding PATH ones on conflict.
+    pub fn with_bundled_providers(mut self, dir: impl AsRef<Path>) -> Self {
+        self.providers.add_from_dir(dir);
+        self
     }
 
     pub fn data_dir(&self) -> PathBuf {

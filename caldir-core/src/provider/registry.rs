@@ -47,21 +47,7 @@ impl ProviderRegistry {
         let mut registry = Self::new();
 
         for dir in dirs {
-            let Ok(entries) = std::fs::read_dir(dir.as_ref()) else {
-                continue;
-            };
-
-            for entry in entries.flatten() {
-                let path = entry.path();
-
-                if !has_provider_prefix(&path) {
-                    continue;
-                }
-
-                let Ok(provider) = Provider::from_binary_path(path) else {
-                    continue;
-                };
-
+            for provider in discover_providers_in(dir.as_ref()) {
                 registry
                     .0
                     .entry(provider.slug().clone())
@@ -71,12 +57,30 @@ impl ProviderRegistry {
 
         registry
     }
+
+    /// Add providers found in `dir`, overriding any with a conflicting slug.
+    pub fn add_from_dir(&mut self, dir: impl AsRef<Path>) {
+        for provider in discover_providers_in(dir.as_ref()) {
+            self.add(provider);
+        }
+    }
 }
 
 fn has_provider_prefix(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.starts_with(PROVIDER_BINARY_PREFIX))
+}
+
+// Find all provider binaries in a directory:
+fn discover_providers_in(dir: &Path) -> impl Iterator<Item = Provider> {
+    let entries = std::fs::read_dir(dir).into_iter().flatten();
+
+    entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| has_provider_prefix(path))
+        .filter_map(|path| Provider::from_binary_path(path).ok())
 }
 
 #[cfg(test)]
@@ -152,6 +156,19 @@ mod tests {
 
         let transport_debug = format!("{:?}", provider.transport());
         assert!(transport_debug.contains(bin_path_1.to_str().unwrap()));
+    }
+
+    #[test]
+    fn add_from_dir_overrides_conflicting_path_providers() {
+        let (path_dir, _) = test_binary("caldir-provider-hooli");
+        let (bundled_dir, bundled_bin) = test_binary("caldir-provider-hooli");
+
+        let mut registry = ProviderRegistry::from_dirs([path_dir.path()]);
+        registry.add_from_dir(bundled_dir.path());
+
+        let provider = registry.get(&ProviderSlug::from("hooli")).unwrap();
+        let debug = format!("{:?}", provider.transport());
+        assert!(debug.contains(bundled_bin.to_str().unwrap()));
     }
 
     #[test]
