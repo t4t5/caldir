@@ -5,11 +5,11 @@ use caldir_core::rpc::UpdateEvent;
 use google_calendar::types::SendUpdates;
 
 use crate::app_config::AppConfigStore;
+use crate::commands::invite::patch_invite_status;
 use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
-use crate::google_event::to_google::participation_status_to_google;
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
-use crate::session::{Session, SessionStore};
+use crate::session::SessionStore;
 
 pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
     let config = GoogleRemoteConfig::try_from(&cmd.remote)?;
@@ -34,7 +34,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
 
     if cmd.event.is_invite_for(account_email) {
         // Only update our own attendee status:
-        let google_event = update_invite_status(
+        let google_event = patch_invite_status(
             &session,
             calendar_id,
             google_event_id,
@@ -42,10 +42,12 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
             account_email,
         )
         .await?;
+
         Ok(Event::from_google(google_event)?)
     } else {
         // Organizer or own event: full PUT update
         let client = session_store.client(&session, &app_config_store)?;
+
         let google_event = cmd.event.to_google();
 
         let response = client
@@ -64,49 +66,4 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
 
         Ok(Event::from_google(response.body)?)
     }
-}
-
-/// Non-organizer: only PATCH our own attendee response status.
-/// Uses a raw HTTP PATCH with a minimal JSON body to avoid sending
-/// shared properties (like guestsCanInviteOthers) that the google_calendar
-/// crate's Event struct serializes by default, which triggers 403 from Google.
-async fn update_invite_status(
-    session: &Session,
-    calendar_id: &str,
-    event_id: &str,
-    event: &Event,
-    account_email: &str,
-) -> Result<google_calendar::types::Event> {
-    let attendee = event.find_attendee(account_email).unwrap();
-    let response_status = attendee
-        .status
-        .map(participation_status_to_google)
-        .unwrap_or("needsAction");
-
-    let body = serde_json::json!({
-        "attendees": [{
-            "email": attendee.email,
-            "responseStatus": response_status,
-            "self": true,
-        }]
-    });
-
-    let url = format!(
-        "https://www.googleapis.com/calendar/v3/calendars/{}/events/{}",
-        calendar_id, event_id,
-    );
-
-    let response = reqwest::Client::new()
-        .patch(&url)
-        .bearer_auth(session.access_token())
-        .json(&body)
-        .send()
-        .await?;
-
-    if !response.status().is_success() {
-        let error_text = response.text().await.unwrap_or_default();
-        anyhow::bail!("Error handling request: {}", error_text);
-    }
-
-    Ok(response.json().await?)
 }

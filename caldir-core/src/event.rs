@@ -158,6 +158,27 @@ impl Event {
             .find(|a| a.email.eq_ignore_ascii_case(email))
     }
 
+    pub fn set_attendee_status(
+        &mut self,
+        email: &str,
+        status: ParticipationStatus,
+    ) -> Result<(), EventError> {
+        let maybe_attendee = self
+            .attendees
+            .iter_mut()
+            .find(|a| a.email.eq_ignore_ascii_case(email));
+
+        match maybe_attendee {
+            Some(attendee) => {
+                attendee.status = Some(status);
+                Ok(())
+            }
+            None => Err(EventError::AttendeeNotFound {
+                email: email.to_string(),
+            }),
+        }
+    }
+
     pub fn is_pending_invite_for(&self, email: &str) -> bool {
         self.is_invite_for(email)
             && self.attendee_status(email) == Some(ParticipationStatus::NeedsAction)
@@ -690,6 +711,39 @@ END:VCALENDAR
         event.attendees = vec![Attendee::new("bob@example.com")];
 
         assert_eq!(event.attendee_status("bob@example.com"), None);
+    }
+
+    #[test]
+    fn set_attendee_status_updates_matching_attendee() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee::new("bob@example.com")];
+
+        let result = event.set_attendee_status("BOB@example.com", ParticipationStatus::Accepted);
+
+        assert!(result.is_ok());
+        assert_eq!(
+            event.attendee_status("bob@example.com"),
+            Some(ParticipationStatus::Accepted)
+        );
+    }
+
+    #[test]
+    fn set_attendee_status_errors_when_email_is_not_an_attendee() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.attendees = vec![Attendee::new("bob@example.com")];
+
+        let result = event.set_attendee_status("carol@example.com", ParticipationStatus::Accepted);
+
+        assert!(matches!(
+            result,
+            Err(EventError::AttendeeNotFound { email }) if email == "carol@example.com"
+        ));
     }
 
     #[test]

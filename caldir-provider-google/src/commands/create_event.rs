@@ -5,6 +5,7 @@ use caldir_core::{Event, EventTime};
 use google_calendar::types::SendUpdates;
 
 use crate::app_config::AppConfigStore;
+use crate::commands::invite::patch_invite_status;
 use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
@@ -24,11 +25,10 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
         .await?;
     let client = session_store.client(&session, &app_config_store)?;
 
-    // Recurring instance overrides share the master's iCalUID, so creating
-    // them via events().insert() trips Google's "duplicate identifier" check.
-    // Google's data model treats an override as a modification of an existing
-    // auto-expanded instance: PUT the synthetic instance id `{master_id}_{rid}`
-    // instead.
+    // Recurring instance override:
+    // Shares the master's iCalUID, so creating via events().insert() trips Google's "duplicate identifier" check.
+    // Google's data model treats an override as a modification of an existing auto-expanded instance.
+    // PUT the synthetic instance id `{master_id}_{rid}` instead.
     if let Some(rid) = cmd.event.recurrence_id.as_ref() {
         let master_id = cmd
             .event
@@ -46,32 +46,48 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
             google_instance_suffix(rid.as_event_time())
         );
 
-        let mut google_event = cmd.event.to_google();
-        google_event.id = instance_id.clone();
-        // Overrides never carry their own RRULE in Google's model.
-        google_event.recurrence = Vec::new();
-
-        let response = client
-            .events()
-            .update(
+        // If it's just an RSVP status update, use PATCH instead of PUT:
+        if cmd.event.is_invite_for(account_email) {
+            let google_event = patch_invite_status(
+                &session,
                 calendar_id,
                 &instance_id,
-                0,
-                0,
-                false,
-                SendUpdates::None,
-                false,
-                &google_event,
+                &cmd.event,
+                account_email,
             )
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to update recurring instance: {}",
-                    &google_event.summary
-                )
-            })?;
+            .await?;
 
-        return Event::from_google(response.body);
+            return Event::from_google(google_event);
+        } else {
+            let mut google_event = cmd.event.to_google();
+
+            google_event.id = instance_id.clone();
+
+            // Overrides never carry their own RRULE in Google's model.
+            google_event.recurrence = Vec::new();
+
+            let response = client
+                .events()
+                .update(
+                    calendar_id,
+                    &instance_id,
+                    0,
+                    0,
+                    false,
+                    SendUpdates::None,
+                    false,
+                    &google_event,
+                )
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to update recurring instance: {}",
+                        &google_event.summary
+                    )
+                })?;
+
+            return Event::from_google(response.body);
+        }
     }
 
     // Let google change the ID

@@ -8,4 +8,7 @@ pub enum EventError {
 
     #[error("event is missing a UID")]
     MissingUid,
+
+    #[error("no attendee matching {email}")]
+    AttendeeNotFound { email: String },
 }

@@ -107,21 +107,8 @@ impl CalendarEvent {
         status: ParticipationStatus,
     ) -> Result<(), CalendarEventError> {
         let mut event = self.event.clone();
-        let mut found = false;
 
-        // Update PARTSTAT
-        for attendee in &mut event.attendees {
-            if attendee.email.eq_ignore_ascii_case(email) {
-                attendee.status = Some(status);
-                found = true;
-            }
-        }
-
-        if !found {
-            return Err(CalendarEventError::AttendeeNotFound {
-                email: email.to_string(),
-            });
-        }
+        event.set_attendee_status(email, status)?;
 
         event.sequence += 1;
         event.last_modified = Some(Utc::now());
@@ -218,6 +205,7 @@ fn write_best_event_file(
 mod tests {
     use super::*;
     use crate::Attendee;
+    use crate::event::EventError;
     use crate::test_utils::test_calendar;
     use crate::test_utils::test_calendar_event;
     use crate::test_utils::test_event;
@@ -463,7 +451,8 @@ mod tests {
 
         assert!(matches!(
             err,
-            CalendarEventError::AttendeeNotFound { email } if email == "carol@example.com"
+            CalendarEventError::Event(EventError::AttendeeNotFound { email })
+                if email == "carol@example.com"
         ));
     }
 
