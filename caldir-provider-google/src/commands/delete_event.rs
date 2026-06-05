@@ -31,7 +31,7 @@ pub async fn handle(cmd: DeleteEvent) -> Result<()> {
 
     client
         .events()
-        .delete(calendar_id, google_event_id, false, SendUpdates::None)
+        .delete(calendar_id, google_event_id, false, SendUpdates::All)
         .await
         .context("Failed to delete event")?;
 

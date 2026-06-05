@@ -58,7 +58,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
                 0,
                 0,
                 false,
-                SendUpdates::None,
+                SendUpdates::All,
                 false,
                 &google_event,
             )

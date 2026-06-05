@@ -74,7 +74,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
                     0,
                     0,
                     false,
-                    SendUpdates::None,
+                    SendUpdates::All,
                     false,
                     &google_event,
                 )
@@ -102,7 +102,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
             0,
             0,
             false,
-            SendUpdates::None,
+            SendUpdates::All,
             false,
             &google_event,
         )
