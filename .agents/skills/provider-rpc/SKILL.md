@@ -1,6 +1,11 @@
 ---
 name: provider-rpc
-description: Talk to a caldir provider binary directly via its JSON protocol to debug sync issues. Use when investigating "Provider error" messages, suspected wrong/missing event data from a provider, or when you need to see exactly what a provider returns before it goes through caldir-core. Triggers: "what does the provider return for X", "why is X showing up in status", "is this a parsing bug or a Google/iCloud/Outlook bug", investigating any provider-emitted error.
+description: >-
+  Talk to a caldir provider binary directly via its JSON protocol to debug sync issues.
+  Use when investigating "Provider error" messages, suspected wrong/missing event data from a provider,
+  or when you need to see exactly what a provider returns before it goes through caldir-core.
+  Triggers: "what does the provider return for X", "why is X showing up in status",
+  "is this a parsing bug or a Google/iCloud/Outlook bug", investigating any provider-emitted error.
 user_invocable: false
 ---
 

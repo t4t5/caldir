@@ -52,7 +52,7 @@ For each commit, check which crate directories were modified:
 git diff --name-only <anchor>..HEAD
 ```
 
-Map changed files to crates by directory prefix (`caldir-core/`, `caldir-cli/`, `caldir-provider-google/`, `caldir-provider-icloud/`, `caldir-provider-caldav/`, `caldir-provider-outlook/`, `caldir-provider-webcal/`). Ignore changes outside these directories (root Cargo.toml, .claude/, etc.).
+Map changed files to crates by directory prefix (`caldir-core/`, `caldir-cli/`, `caldir-provider-google/`, `caldir-provider-icloud/`, `caldir-provider-caldav/`, `caldir-provider-outlook/`, `caldir-provider-webcal/`). Ignore changes outside these directories (root Cargo.toml, .agents/, etc.).
 
 ### 4. Classify changes and recommend bumps
 

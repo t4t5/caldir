@@ -1,0 +1,1 @@
+../../.agents/skills/bump/SKILL.md
