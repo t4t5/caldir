@@ -55,7 +55,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
             .update(
                 calendar_id,
                 google_event_id,
-                0,
+                1,
                 0,
                 false,
                 SendUpdates::All,

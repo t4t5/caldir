@@ -95,9 +95,6 @@ impl FromGoogle for Event {
         let mut x_properties = Vec::new();
         // Store Google's event ID for API calls (updates, deletes)
         x_properties.push(XProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id));
-        if let Some(ref url) = conference_url {
-            x_properties.push(XProperty::new("X-GOOGLE-CONFERENCE", url));
-        }
         if !event.color_id.is_empty() {
             x_properties.push(XProperty::new(PROVIDER_COLOR_ID_PROPERTY, event.color_id));
         }
@@ -131,9 +128,8 @@ impl FromGoogle for Event {
             organizer,
             attendees,
             reminders,
-            // Also mirrored in X-GOOGLE-CONFERENCE — kept here so local files
-            // round-trip stably (Google's API has no writable URL field).
-            url: conference_url,
+            conference_url,
+            url: None,
             attachments: Vec::new(),
             x_properties,
         })
@@ -400,9 +396,7 @@ mod tests {
     }
 
     #[test]
-    fn conference_url_populates_url_and_x_google_conference() {
-        // Google has no writable URL field, so we mirror the conference URL
-        // into Event.url for round-trip stability with legacy local files.
+    fn conference_url_populates_conference_url() {
         let mut ge = minimal_event();
         ge.conference_data = Some(
             serde_json::from_value(serde_json::json!({
@@ -416,20 +410,17 @@ mod tests {
         let event = Event::from_google(ge).unwrap();
 
         assert_eq!(
-            event.url.as_deref(),
+            event.conference_url.as_deref(),
             Some("https://meet.google.com/abc-def-ghi")
         );
-        assert_eq!(
-            event.x_property("X-GOOGLE-CONFERENCE"),
-            Some("https://meet.google.com/abc-def-ghi")
-        );
+        assert_eq!(event.url, None);
     }
 
     #[test]
-    fn no_conference_data_leaves_url_none() {
+    fn no_conference_data_leaves_conference_url_none() {
         let event = Event::from_google(minimal_event()).unwrap();
 
-        assert_eq!(event.url, None);
+        assert_eq!(event.conference_url, None);
     }
 
     // `useDefault: true` means "inherit the calendar's default reminders". We

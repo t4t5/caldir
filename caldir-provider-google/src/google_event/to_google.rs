@@ -86,6 +86,8 @@ impl ToGoogle for Event {
             .unwrap_or_default()
             .to_string();
 
+        let conference_url = self.conference_url.as_deref();
+
         google_calendar::types::Event {
             id: google_event_id,
             i_cal_uid: self.uid.as_str().to_string(),
@@ -103,8 +105,38 @@ impl ToGoogle for Event {
             original_start_time,
             sequence: self.sequence as i64,
             color_id,
+            conference_data: conference_url.map(conference_data_from_url),
             ..Default::default()
         }
+    }
+}
+
+fn conference_data_from_url(url: &str) -> google_calendar::types::ConferenceData {
+    google_calendar::types::ConferenceData {
+        conference_id: String::new(),
+        conference_solution: Some(google_calendar::types::ConferenceSolution {
+            icon_uri: String::new(),
+            key: Some(google_calendar::types::ConferenceSolutionKey {
+                type_: "hangoutsMeet".to_string(),
+            }),
+            name: "Google Meet".to_string(),
+        }),
+        create_request: None,
+        entry_points: vec![google_calendar::types::EntryPoint {
+            access_code: String::new(),
+            entry_point_features: Vec::new(),
+            entry_point_type: "video".to_string(),
+            label: url.to_string(),
+            meeting_code: String::new(),
+            passcode: String::new(),
+            password: String::new(),
+            pin: String::new(),
+            region_code: String::new(),
+            uri: url.to_string(),
+        }],
+        notes: String::new(),
+        parameters: None,
+        signature: String::new(),
     }
 }
 

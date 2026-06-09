@@ -53,6 +53,7 @@ pub struct Event {
     pub organizer: Option<Organizer>,
     pub attendees: Vec<Attendee>,
     pub reminders: Vec<Reminder>,
+    pub conference_url: Option<String>,
     pub url: Option<String>,
 
     #[educe(PartialEq(method(attachments_eq)))]
@@ -87,6 +88,7 @@ impl Event {
             organizer: None,
             attendees: Vec::new(),
             reminders: Vec::new(),
+            conference_url: None,
             url: None,
             attachments: Vec::new(),
             x_properties: Vec::new(),
@@ -419,6 +421,7 @@ VERSION:2.0
 PRODID:CALDIR
 BEGIN:VEVENT
 CLASS:CONFIDENTIAL
+CONFERENCE;FEATURE=VIDEO;VALUE=URI:https://meet.example.com/abc-defg-hij
 DTSTAMP:20260502T173914Z
 DESCRIPTION:https://docs.example.com/document/d/abc123def456ghijklmnopqrstu
  v/edit?usp=sharing\n
@@ -434,7 +437,6 @@ SUMMARY:Friday retro
 TRANSP:TRANSPARENT
 UID:event-uid-123@example.com
 URL:https://meet.example.com/abc-defg-hij
-X-HOOLI-CONFERENCE:https://meet.example.com/abc-defg-hij
 X-HOOLI-EVENT-ID:event-uid-123_20260515T140000Z
 ATTENDEE;PARTSTAT=ACCEPTED:mailto:bob@example.com
 ATTENDEE;PARTSTAT=DECLINED:mailto:alice@example.com

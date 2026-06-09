@@ -71,7 +71,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
                 .update(
                     calendar_id,
                     &instance_id,
-                    0,
+                    1,
                     0,
                     false,
                     SendUpdates::All,
@@ -99,7 +99,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
         .events()
         .insert(
             calendar_id,
-            0,
+            1,
             0,
             false,
             SendUpdates::All,

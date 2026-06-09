@@ -82,6 +82,13 @@ impl From<&Event> for icalendar::Event {
         // icalendar's auto-UID injection on VALARM sub-components. See
         // `Reminder::ics_block`.
 
+        if let Some(url) = &value.conference_url {
+            let mut prop = icalendar::Property::new("CONFERENCE", url);
+            prop.add_parameter("VALUE", "URI");
+            prop.add_parameter("FEATURE", "VIDEO");
+            event.append_property(prop.done());
+        }
+
         if let Some(url) = &value.url {
             event.append_property(icalendar::Property::new("URL", url));
         }
@@ -430,6 +437,32 @@ mod tests {
     // Reminders are plumbed via `Event::to_ics_string` rather than
     // `From<&Event> for icalendar::Event`, so the wire-through test for them
     // lives in `event.rs` instead.
+
+    #[test]
+    fn converts_conference_url() {
+        let mut event = test_event();
+        event.conference_url = Some("https://meet.example.com/abc-defg-hij".to_string());
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(
+            ical_event.property_value("CONFERENCE"),
+            Some("https://meet.example.com/abc-defg-hij")
+        );
+        let params = ical_event.properties().get("CONFERENCE").unwrap().params();
+        assert_eq!(params.get("VALUE").map(|p| p.value()), Some("URI"));
+        assert_eq!(params.get("FEATURE").map(|p| p.value()), Some("VIDEO"));
+    }
+
+    #[test]
+    fn omits_conference_url_when_none() {
+        let mut event = test_event();
+        event.conference_url = None;
+
+        let ical_event: icalendar::Event = event.into();
+
+        assert_eq!(ical_event.property_value("CONFERENCE"), None);
+    }
 
     #[test]
     fn converts_url() {

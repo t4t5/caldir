@@ -167,17 +167,18 @@ END:VALARM
 
 ### Conference/Video Calls
 
+#### `CONFERENCE`
+**What:** Standard conference URI field.
+**How caldir uses it:** Canonical video conference URL (Google Meet, Teams, Zoom, etc.). Written as `CONFERENCE;VALUE=URI;FEATURE=VIDEO:<url>` and mapped to provider-native conference data when supported.
+
 #### `URL`
 **What:** Standard URL field.
-**How caldir uses it:** Set to the video conference URL (Google Meet, etc.) if present.
+**How caldir uses it:** Generic event URL, separate from video conference links.
 
 #### `X-GOOGLE-EVENT-ID`
 **What:** Google-specific extension storing Google's internal event ID.
 **How caldir uses it:** Stored in `x_properties` when pulled from Google. Used for API calls (updates, deletes) since Google's API requires its own event ID, not the RFC 5545 UID.
 
-#### `X-GOOGLE-CONFERENCE`
-**What:** Google-specific extension for conference links.
-**How caldir uses it:** Preserved in `x_properties` when pulled from Google, enabling round-trip sync. We don't actively generate this field—only `URL` is set from the conference URL.
 
 ### Attachments
 
@@ -288,7 +289,7 @@ The `RemoteConfig::account_identifier()` method in caldir-core extracts this by 
 ### Google Calendar
 - We use `single_events=false` to get RRULE instead of expanded instances
 - Google's event `id` is stored as `X-GOOGLE-EVENT-ID` for API calls; the ICS `UID` is Google's `iCalUID`
-- Conference data comes from `conferenceData.entryPoints[type=video].uri`
+- Conference data comes from `conferenceData.entryPoints[type=video].uri` and is written locally as `CONFERENCE`
 - Reminders come from `reminders.overrides` (not default reminders)
 
 ### Apple/iCloud (CalDAV)

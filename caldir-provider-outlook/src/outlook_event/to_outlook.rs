@@ -411,6 +411,7 @@ mod tests {
             organizer: None,
             attendees: vec![],
             reminders: vec![],
+            conference_url: None,
             url: None,
             attachments: vec![],
             x_properties: vec![],

@@ -57,12 +57,14 @@ impl TryFrom<&icalendar::Event> for Event {
             .map(|props| props.iter().filter_map(Attachment::from_property).collect())
             .unwrap_or_default();
 
-        let x_properties = value
+        let x_properties: Vec<XProperty> = value
             .properties()
             .iter()
             .filter(|(name, _)| name.starts_with("X-"))
             .map(|(_, prop)| XProperty::from(prop))
             .collect();
+
+        let conference_url = value.property_value("CONFERENCE").map(ToString::to_string);
 
         Ok(Event {
             uid: EventUid::new(uid),
@@ -86,6 +88,7 @@ impl TryFrom<&icalendar::Event> for Event {
             organizer,
             attendees,
             reminders,
+            conference_url,
             url: value.property_value("URL").map(ToString::to_string),
             attachments,
             x_properties,
@@ -479,6 +482,33 @@ mod tests {
         let event = Event::try_from(ical_event).unwrap();
 
         assert!(event.reminders.is_empty());
+    }
+
+    #[test]
+    fn converts_conference_url() {
+        let mut conference =
+            icalendar::Property::new("CONFERENCE", "https://meet.example.com/abc-defg-hij");
+        conference.add_parameter("VALUE", "URI");
+        conference.add_parameter("FEATURE", "VIDEO");
+        let ical_event = test_icalendar_event()
+            .append_property(conference.done())
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(
+            event.conference_url.as_deref(),
+            Some("https://meet.example.com/abc-defg-hij")
+        );
+    }
+
+    #[test]
+    fn conference_url_is_none_when_missing() {
+        let ical_event = test_icalendar_event().done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(event.conference_url, None);
     }
 
     #[test]
