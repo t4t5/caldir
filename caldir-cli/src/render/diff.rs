@@ -317,6 +317,13 @@ fn render_field_diffs(diff: &EventChange, caldir: &Caldir) -> Vec<String> {
                 lines.extend(attendee_lines.into_iter().map(|l| format!("  {}", l)));
             }
         }
+        if old.conference_url != new.conference_url {
+            lines.push(render_optional_diff(
+                "conference",
+                &old.conference_url,
+                &new.conference_url,
+            ));
+        }
         if old.url != new.url {
             lines.push(render_optional_diff("url", &old.url, &new.url));
         }
