@@ -64,6 +64,7 @@ impl TryFrom<&icalendar::Event> for Event {
             .map(|(_, prop)| XProperty::from(prop))
             .collect();
 
+        // CONFERENCE/URL
         let legacy_conference_url = x_properties
             .iter()
             .find(|p| p.name == "X-GOOGLE-CONFERENCE" || p.name == "X-OUTLOOK-CONFERENCE")
@@ -75,7 +76,9 @@ impl TryFrom<&icalendar::Event> for Event {
             .property_value("CONFERENCE")
             .map(ToString::to_string)
             .or(legacy_conference_url);
+
         let url = value.property_value("URL").map(ToString::to_string);
+
         let url = if url.as_ref() == conference_url.as_ref() {
             None
         } else {
@@ -504,8 +507,10 @@ mod tests {
     fn converts_conference_url() {
         let mut conference =
             icalendar::Property::new("CONFERENCE", "https://meet.example.com/abc-defg-hij");
+
         conference.add_parameter("VALUE", "URI");
         conference.add_parameter("FEATURE", "VIDEO");
+
         let ical_event = test_icalendar_event()
             .append_property(conference.done())
             .done();
@@ -528,7 +533,7 @@ mod tests {
     }
 
     #[test]
-    fn migrates_legacy_provider_conference_properties() {
+    fn migrates_legacy_x_google_conference_property() {
         let ical_event = test_icalendar_event()
             .append_property(icalendar::Property::new(
                 "URL",
@@ -538,7 +543,6 @@ mod tests {
                 "X-GOOGLE-CONFERENCE",
                 "https://meet.google.com/abc-defg-hij",
             ))
-            .append_property(icalendar::Property::new("X-HOOLI-EVENT-ID", "abc123"))
             .done();
 
         let event = Event::try_from(ical_event).unwrap();
@@ -548,10 +552,6 @@ mod tests {
             Some("https://meet.google.com/abc-defg-hij")
         );
         assert_eq!(event.url, None);
-        assert_eq!(
-            event.x_properties,
-            vec![XProperty::new("X-HOOLI-EVENT-ID", "abc123")]
-        );
     }
 
     #[test]

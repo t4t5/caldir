@@ -434,13 +434,13 @@ mod tests {
         assert!(ical_event.multi_properties().get("ATTENDEE").is_none());
     }
 
-    // Reminders are plumbed via `Event::to_ics_string` rather than
-    // `From<&Event> for icalendar::Event`, so the wire-through test for them
-    // lives in `event.rs` instead.
+    // Reminders are plumbed via `Event::to_ics_string`
+    // Test for them lives in `event.rs`
 
     #[test]
     fn converts_conference_url() {
         let mut event = test_event();
+
         event.conference_url = Some("https://meet.example.com/abc-defg-hij".to_string());
 
         let ical_event: icalendar::Event = event.into();
@@ -449,7 +449,10 @@ mod tests {
             ical_event.property_value("CONFERENCE"),
             Some("https://meet.example.com/abc-defg-hij")
         );
+
+        // Check params in ICS:
         let params = ical_event.properties().get("CONFERENCE").unwrap().params();
+
         assert_eq!(params.get("VALUE").map(|p| p.value()), Some("URI"));
         assert_eq!(params.get("FEATURE").map(|p| p.value()), Some("VIDEO"));
     }
@@ -457,6 +460,7 @@ mod tests {
     #[test]
     fn omits_conference_url_when_none() {
         let mut event = test_event();
+
         event.conference_url = None;
 
         let ical_event: icalendar::Event = event.into();
