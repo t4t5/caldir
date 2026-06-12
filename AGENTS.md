@@ -78,3 +78,5 @@ just test    # full test suite
 ## Rules
 
 - Keep comments terse. Avoid multi-line explanations unless deemed absolutely necessary
+- `caldir-core` shouldn't contain any custom logic for provider-specific `X-*` properties (handle in
+  providers instead)
