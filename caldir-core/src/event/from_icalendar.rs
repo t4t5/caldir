@@ -57,33 +57,16 @@ impl TryFrom<&icalendar::Event> for Event {
             .map(|props| props.iter().filter_map(Attachment::from_property).collect())
             .unwrap_or_default();
 
-        let mut x_properties: Vec<XProperty> = value
+        let x_properties: Vec<XProperty> = value
             .properties()
             .iter()
             .filter(|(name, _)| name.starts_with("X-"))
             .map(|(_, prop)| XProperty::from(prop))
             .collect();
 
-        // CONFERENCE/URL
-        let legacy_conference_url = x_properties
-            .iter()
-            .find(|p| p.name == "X-GOOGLE-CONFERENCE" || p.name == "X-OUTLOOK-CONFERENCE")
-            .map(|p| p.value.clone());
-        x_properties
-            .retain(|p| p.name != "X-GOOGLE-CONFERENCE" && p.name != "X-OUTLOOK-CONFERENCE");
-
-        let conference_url = value
-            .property_value("CONFERENCE")
-            .map(ToString::to_string)
-            .or(legacy_conference_url);
+        let conference_url = value.property_value("CONFERENCE").map(ToString::to_string);
 
         let url = value.property_value("URL").map(ToString::to_string);
-
-        let url = if url.as_ref() == conference_url.as_ref() {
-            None
-        } else {
-            url
-        };
 
         Ok(Event {
             uid: EventUid::new(uid),
@@ -533,28 +516,6 @@ mod tests {
     }
 
     #[test]
-    fn migrates_legacy_x_google_conference_property() {
-        let ical_event = test_icalendar_event()
-            .append_property(icalendar::Property::new(
-                "URL",
-                "https://meet.google.com/abc-defg-hij",
-            ))
-            .append_property(icalendar::Property::new(
-                "X-GOOGLE-CONFERENCE",
-                "https://meet.google.com/abc-defg-hij",
-            ))
-            .done();
-
-        let event = Event::try_from(ical_event).unwrap();
-
-        assert_eq!(
-            event.conference_url.as_deref(),
-            Some("https://meet.google.com/abc-defg-hij")
-        );
-        assert_eq!(event.url, None);
-    }
-
-    #[test]
     fn converts_url() {
         let ical_event = test_icalendar_event()
             .append_property(icalendar::Property::new(
@@ -565,6 +526,33 @@ mod tests {
 
         let event = Event::try_from(ical_event).unwrap();
 
+        assert_eq!(
+            event.url.as_deref(),
+            Some("https://meet.example.com/abc-defg-hij")
+        );
+    }
+
+    #[test]
+    fn preserves_matching_conference_url_and_url() {
+        let mut conference =
+            icalendar::Property::new("CONFERENCE", "https://meet.example.com/abc-defg-hij");
+        conference.add_parameter("VALUE", "URI");
+        conference.add_parameter("FEATURE", "VIDEO");
+
+        let ical_event = test_icalendar_event()
+            .append_property(conference.done())
+            .append_property(icalendar::Property::new(
+                "URL",
+                "https://meet.example.com/abc-defg-hij",
+            ))
+            .done();
+
+        let event = Event::try_from(ical_event).unwrap();
+
+        assert_eq!(
+            event.conference_url.as_deref(),
+            Some("https://meet.example.com/abc-defg-hij")
+        );
         assert_eq!(
             event.url.as_deref(),
             Some("https://meet.example.com/abc-defg-hij")
@@ -640,14 +628,24 @@ mod tests {
                 "X-HOOLI-EVENT-ID",
                 "abc123@hooli.com",
             ))
+            .append_property(icalendar::Property::new(
+                "X-GOOGLE-CONFERENCE",
+                "https://meet.google.com/abc-defg-hij",
+            ))
             .done();
 
         let event = Event::try_from(ical_event).unwrap();
 
-        assert_eq!(
-            event.x_properties,
-            vec![XProperty::new("X-HOOLI-EVENT-ID", "abc123@hooli.com")]
+        assert_eq!(event.x_properties.len(), 2);
+        assert!(
+            event
+                .x_properties
+                .contains(&XProperty::new("X-HOOLI-EVENT-ID", "abc123@hooli.com"))
         );
+        assert!(event.x_properties.contains(&XProperty::new(
+            "X-GOOGLE-CONFERENCE",
+            "https://meet.google.com/abc-defg-hij"
+        )));
     }
 
     #[test]
