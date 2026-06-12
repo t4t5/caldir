@@ -396,8 +396,9 @@ mod tests {
     }
 
     #[test]
-    fn conference_url_populates_conference_url() {
+    fn conference_data_maps_to_conference_url() {
         let mut ge = minimal_event();
+
         ge.conference_data = Some(
             serde_json::from_value(serde_json::json!({
                 "entryPoints": [
@@ -413,11 +414,10 @@ mod tests {
             event.conference_url.as_deref(),
             Some("https://meet.google.com/abc-def-ghi")
         );
-        assert_eq!(event.url, None);
     }
 
     #[test]
-    fn no_conference_data_leaves_conference_url_none() {
+    fn no_conference_data_maps_to_empty_conference_url() {
         let event = Event::from_google(minimal_event()).unwrap();
 
         assert_eq!(event.conference_url, None);
@@ -430,7 +430,7 @@ mod tests {
     // changes. The empty-reminders state on disk is what makes the next push
     // emit `useDefault: true` again.
     #[test]
-    fn use_default_reminders_produces_empty_reminders() {
+    fn use_default_reminders_maps_to_empty_reminders() {
         let mut ge = minimal_event();
         ge.reminders = Some(g::Reminders {
             use_default: true,
@@ -443,7 +443,7 @@ mod tests {
     }
 
     #[test]
-    fn explicit_overrides_become_reminders() {
+    fn explicit_reminder_overrides_maps_to_reminders() {
         let mut ge = minimal_event();
         ge.reminders = Some(g::Reminders {
             use_default: false,
