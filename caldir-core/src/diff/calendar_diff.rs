@@ -2,18 +2,34 @@ use std::collections::{HashMap, HashSet};
 
 use super::event_change::EventChange;
 use crate::event::Status;
-use crate::{CalendarEvent, DateRange, RemoteEvent, calendar::SyncedEventIds};
+use crate::{
+    CalendarEvent, DateRange, RemoteEvent,
+    calendar::{SyncedEventIds, SyncedSnapshots},
+};
 
 pub struct CalendarDiff {
     outgoing: Vec<EventChange>,
     incoming: Vec<EventChange>,
+    synced_snapshots: Vec<crate::Event>,
 }
 
 impl CalendarDiff {
+    #[cfg(test)]
     pub(crate) fn compute(
         local_events: Vec<CalendarEvent>,
         remote_events: Vec<RemoteEvent>,
         synced_ids: &SyncedEventIds,
+        range: &DateRange,
+    ) -> Self {
+        let snapshots = SyncedSnapshots::new();
+        Self::compute_with_snapshots(local_events, remote_events, synced_ids, &snapshots, range)
+    }
+
+    pub(crate) fn compute_with_snapshots(
+        local_events: Vec<CalendarEvent>,
+        remote_events: Vec<RemoteEvent>,
+        synced_ids: &SyncedEventIds,
+        synced_snapshot_state: &SyncedSnapshots,
         range: &DateRange,
     ) -> Self {
         let local_event_ids: HashSet<_> = local_events
@@ -28,6 +44,7 @@ impl CalendarDiff {
 
         let mut outgoing = Vec::new();
         let mut incoming = Vec::new();
+        let mut snapshots_to_record = Vec::new();
 
         for local_event in &local_events {
             let event = local_event.event();
@@ -36,6 +53,9 @@ impl CalendarDiff {
             // In both local and remote: skip if equal, otherwise update
             if let Some(remote_event) = remote_by_id.get(&id) {
                 if event == remote_event.event() {
+                    if synced_snapshots_needs_refresh(synced_snapshot_state.get(&id), event) {
+                        snapshots_to_record.push(event.clone());
+                    }
                     continue;
                 }
 
@@ -53,7 +73,44 @@ impl CalendarDiff {
                     to_push.visibility = remote_event.event().visibility;
                 }
 
-                if &to_push != remote_event.event() && local_is_newer(local_event, remote_event) {
+                if let Some(base) = synced_snapshot_state.get(&id) {
+                    let local_changed = event != base;
+                    let remote_changed = remote_event.event() != base;
+
+                    match (local_changed, remote_changed) {
+                        (false, false) => continue,
+                        (true, false) if &to_push != remote_event.event() => {
+                            outgoing.push(EventChange::Update {
+                                from: remote_event.event().clone(),
+                                to: to_push,
+                            });
+                        }
+                        (true, false) => continue,
+                        (false, true) => {
+                            incoming.push(EventChange::Update {
+                                from: event.clone(),
+                                to: remote_event.event().clone(),
+                            });
+                        }
+                        (true, true) => {
+                            if &to_push != remote_event.event()
+                                && local_is_newer(local_event, remote_event)
+                            {
+                                outgoing.push(EventChange::Update {
+                                    from: remote_event.event().clone(),
+                                    to: to_push,
+                                });
+                            } else {
+                                incoming.push(EventChange::Update {
+                                    from: event.clone(),
+                                    to: remote_event.event().clone(),
+                                });
+                            }
+                        }
+                    }
+                } else if &to_push != remote_event.event()
+                    && local_is_newer(local_event, remote_event)
+                {
                     outgoing.push(EventChange::Update {
                         from: remote_event.event().clone(),
                         to: to_push,
@@ -108,7 +165,11 @@ impl CalendarDiff {
             }
         }
 
-        CalendarDiff { outgoing, incoming }
+        CalendarDiff {
+            outgoing,
+            incoming,
+            synced_snapshots: snapshots_to_record,
+        }
     }
 
     pub fn incoming(&self) -> &[EventChange] {
@@ -123,6 +184,10 @@ impl CalendarDiff {
         self.outgoing.is_empty() && self.incoming.is_empty()
     }
 
+    pub(crate) fn synced_snapshots(&self) -> &[crate::Event] {
+        &self.synced_snapshots
+    }
+
     /// Drop outgoing changes. Used for read-only calendars where outgoing
     /// could never be applied — surfacing them as pending pushes is misleading.
     pub fn discard_outgoing(&mut self) {
@@ -133,7 +198,11 @@ impl CalendarDiff {
 #[cfg(test)]
 impl CalendarDiff {
     pub(crate) fn from_changes(outgoing: Vec<EventChange>, incoming: Vec<EventChange>) -> Self {
-        Self { outgoing, incoming }
+        Self {
+            outgoing,
+            incoming,
+            synced_snapshots: Vec::new(),
+        }
     }
 }
 
@@ -142,6 +211,10 @@ impl CalendarDiff {
 // (Never if mtime == LAST-MODIFIED!)
 // This helps us augment old events with new potential properties
 // that previously might not have been parsed.
+fn synced_snapshots_needs_refresh(snapshot: Option<&crate::Event>, event: &crate::Event) -> bool {
+    snapshot != Some(event)
+}
+
 fn local_is_newer(local: &CalendarEvent, remote: &RemoteEvent) -> bool {
     match (local.modified_at(), remote.modified_at()) {
         (Some(l), Some(r)) => l > r,
@@ -480,6 +553,79 @@ mod tests {
             vec![EventChange::Update {
                 from: local_event,
                 to: remote_event,
+            }]
+        );
+    }
+
+    #[test]
+    fn snapshot_suppresses_model_drift_even_when_local_mtime_is_newer() {
+        let (_tmp, calendar) = test_calendar();
+
+        let mut local_event = test_event();
+        local_event.last_modified = Some(Utc.with_ymd_and_hms(2026, 3, 5, 8, 45, 16).unwrap());
+        let calendar_event = calendar.create_event(local_event.clone()).unwrap();
+
+        let mut remote_event = local_event.clone();
+        remote_event.url = Some("https://meet.google.com/abc-defg-hij".to_string());
+        remote_event.last_modified = Some(Utc.with_ymd_and_hms(2025, 6, 9, 10, 42, 20).unwrap());
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(local_event.event_instance_id());
+        let mut snapshots = SyncedSnapshots::new();
+        snapshots.upsert(local_event.clone());
+
+        let diff = CalendarDiff::compute_with_snapshots(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote_event.clone())],
+            &synced_ids,
+            &snapshots,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(
+            diff.incoming,
+            vec![EventChange::Update {
+                from: local_event,
+                to: remote_event,
+            }]
+        );
+    }
+
+    #[test]
+    fn snapshot_pushes_local_edit_even_when_remote_timestamp_is_newer() {
+        let (_tmp, calendar) = test_calendar();
+
+        let mut base = test_event();
+        base.last_modified = Some(Utc.with_ymd_and_hms(2026, 3, 5, 8, 45, 16).unwrap());
+
+        let mut local_event = base.clone();
+        local_event.summary = Some("Edited locally".to_string());
+        local_event.last_modified = Some(Utc.with_ymd_and_hms(2025, 6, 9, 10, 42, 20).unwrap());
+        let calendar_event = calendar.create_event(local_event.clone()).unwrap();
+
+        let mut remote_event = base.clone();
+        remote_event.last_modified = Some(Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap());
+
+        let mut synced_ids = SyncedEventIds::new();
+        synced_ids.insert(local_event.event_instance_id());
+        let mut snapshots = SyncedSnapshots::new();
+        snapshots.upsert(base);
+
+        let diff = CalendarDiff::compute_with_snapshots(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote_event.clone())],
+            &synced_ids,
+            &snapshots,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.incoming, vec![]);
+        assert_eq!(
+            diff.outgoing,
+            vec![EventChange::Update {
+                from: remote_event,
+                to: local_event,
             }]
         );
     }

@@ -210,7 +210,8 @@ The icalendar crate can introduce non-determinism by auto-generating fields:
 - Strip UID and DTSTAMP from VALARM components (not required by RFC 5545)
 
 **At comparison time:**
-- Sync uses file mtime (local) vs the `LAST-MODIFIED` field from the provider (remote)
+- If a last-synced snapshot exists, sync compares `snapshot → local` and `snapshot → remote` to decide direction. This suppresses churn from parser/provider model changes that reinterpret existing ICS without a user edit.
+- If no snapshot exists yet, sync falls back to file mtime (local) vs the `LAST-MODIFIED` field from the provider (remote).
 - Event content comparison uses our custom `PartialEq`, which *ignores* `last_modified` and `sequence`; `x_properties` and `attachments` are compared order-independently (by value / URI), not excluded. DTSTAMP isn't an `Event` field, so it never participates.
 
 ---
@@ -315,7 +316,7 @@ The `RemoteConfig::account_identifier()` method in caldir-core extracts this by 
 
 ### `.caldir/state/known_event_ids`
 
-Each calendar directory contains a `.caldir/state/known_event_ids` file that tracks which event identities have ever been synced with the remote provider.
+Each connected calendar directory contains a `.caldir/state/known_event_ids` file that tracks which event identities have ever been synced with the remote provider.
 
 This file is append-only sync history, not a live index of currently present events. Event IDs are retained after deletes so caldir can keep distinguishing a user delete from a never-seen remote event on later syncs.
 
@@ -342,6 +343,23 @@ Without this state, a local-only event is ambiguous: was it created locally and 
 - After `pull`: Event IDs of all fetched events are added to known_event_ids
 - After `push` (create): Newly created event IDs are added to known_event_ids
 - After `pull` or `push` (delete): Event IDs remain in known_event_ids
+
+### `.caldir/state/snapshots/*.ics`
+
+Connected calendars may also contain one plaintext ICS snapshot per synced event. A snapshot is caldir's last successfully synced canonical representation of that event.
+
+**Why:** Enables three-way change detection:
+- `snapshot == local`, `snapshot != remote` → pull remote change
+- `snapshot != local`, `snapshot == remote` → push local change
+- both changed → preserve current last-write-wins fallback using local mtime vs remote `LAST-MODIFIED`
+
+Snapshots are sync metadata, not a second user-facing calendar. The editable `.ics` files in the calendar directory remain the local source of truth.
+
+**Lifecycle:**
+- After successful `pull` create/update: snapshot is set to the pulled event
+- After successful `push` create/update: snapshot is set to the provider-returned canonical event
+- After successful delete: snapshot is removed, while `known_event_ids` retains the ID
+- Existing calendars without snapshots fall back to the mtime model until events successfully sync again
 
 ---
 

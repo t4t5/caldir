@@ -41,8 +41,15 @@ impl Connection {
         let remote_events = self.remote().list_events(range).await?;
 
         let synced_ids = self.synced_event_ids();
+        let synced_snapshots = self.local().state().synced_snapshots();
 
-        let mut diff = CalendarDiff::compute(local_events, remote_events, synced_ids, range);
+        let mut diff = CalendarDiff::compute_with_snapshots(
+            local_events,
+            remote_events,
+            synced_ids,
+            synced_snapshots,
+            range,
+        );
 
         if self.read_only() {
             diff.discard_outgoing();
@@ -61,6 +68,8 @@ impl Connection {
             .collect();
 
         let mut synced_ids = Vec::new();
+        let mut synced_snapshots = diff.synced_snapshots().to_vec();
+        let mut removed_snapshots = Vec::new();
 
         // Same partial-failure flush pattern as `apply_outgoing_diff`: a
         // local-fs error mid-loop must not drop the ids of changes we've
@@ -70,9 +79,13 @@ impl Connection {
             diff,
             &mut events_by_instance_id,
             &mut synced_ids,
+            &mut synced_snapshots,
+            &mut removed_snapshots,
         );
 
-        let record_result = self.local.record_synced_ids(synced_ids);
+        let record_result =
+            self.local
+                .record_sync_state(synced_ids, synced_snapshots, removed_snapshots);
 
         loop_result?;
         record_result?;
@@ -92,6 +105,8 @@ impl Connection {
             .collect();
 
         let mut synced_ids = Vec::new();
+        let mut synced_snapshots = diff.synced_snapshots().to_vec();
+        let mut removed_snapshots = Vec::new();
 
         // Handles mid-loop errors gracefully
         let loop_result = push_outgoing_changes(
@@ -99,10 +114,14 @@ impl Connection {
             diff,
             &mut events_by_instance_id,
             &mut synced_ids,
+            &mut synced_snapshots,
+            &mut removed_snapshots,
         )
         .await;
 
-        let record_result = self.local.record_synced_ids(synced_ids);
+        let record_result =
+            self.local
+                .record_sync_state(synced_ids, synced_snapshots, removed_snapshots);
 
         loop_result?;
         record_result?;
@@ -155,6 +174,8 @@ fn pull_incoming_changes(
     diff: &CalendarDiff,
     events_by_instance_id: &mut HashMap<EventInstanceId, CalendarEvent>,
     synced_ids: &mut Vec<EventInstanceId>,
+    synced_snapshots: &mut Vec<crate::Event>,
+    removed_snapshots: &mut Vec<EventInstanceId>,
 ) -> Result<(), ConnectionError> {
     for change in diff.incoming() {
         match change {
@@ -163,17 +184,20 @@ fn pull_incoming_changes(
                 let id = cal_event.event().event_instance_id();
                 events_by_instance_id.insert(id.clone(), cal_event);
                 synced_ids.push(id);
+                synced_snapshots.push(event.clone());
             }
             EventChange::Update { to, .. } => {
                 if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id()) {
                     cal_event.update(to.clone()).map_err(CalendarError::from)?;
                 }
                 synced_ids.push(to.event_instance_id());
+                synced_snapshots.push(to.clone());
             }
             EventChange::Delete(event) => {
                 if let Some(cal_event) = events_by_instance_id.remove(&event.event_instance_id()) {
                     cal_event.delete().map_err(CalendarError::from)?;
                 }
+                removed_snapshots.push(event.event_instance_id());
             }
         }
     }
@@ -186,6 +210,8 @@ async fn push_outgoing_changes(
     diff: &CalendarDiff,
     events_by_instance_id: &mut HashMap<EventInstanceId, CalendarEvent>,
     synced_ids: &mut Vec<EventInstanceId>,
+    synced_snapshots: &mut Vec<crate::Event>,
+    removed_snapshots: &mut Vec<EventInstanceId>,
 ) -> Result<(), ConnectionError> {
     for change in diff.outgoing() {
         if let Some(remote_event) = remote.apply_change(change).await? {
@@ -204,7 +230,14 @@ async fn push_outgoing_changes(
                     .map_err(CalendarError::from)?;
             }
 
-            synced_ids.push(returned_event.event_instance_id());
+            let returned_event_id = returned_event.event_instance_id();
+            if returned_event_id != original_event_id {
+                removed_snapshots.push(original_event_id);
+            }
+            synced_ids.push(returned_event_id);
+            synced_snapshots.push(returned_event.clone());
+        } else if let EventChange::Delete(event) = change {
+            removed_snapshots.push(event.event_instance_id());
         }
     }
 

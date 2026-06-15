@@ -1,41 +1,57 @@
 mod error;
 mod synced_event_ids;
+mod synced_snapshots;
 
+use crate::Event;
 use crate::event::EventInstanceId;
 pub use error::CalendarStateError;
 use std::path::Path;
 use synced_event_ids::SYNCED_IDS_FILE_NAME;
+use synced_snapshots::SNAPSHOTS_DIR_NAME;
 
 pub(crate) use synced_event_ids::SyncedEventIds;
+pub(crate) use synced_snapshots::SyncedSnapshots;
 
 #[derive(Debug)]
 pub struct CalendarState {
     synced_event_ids: SyncedEventIds,
+    synced_snapshots: SyncedSnapshots,
 }
 
 impl CalendarState {
     pub fn new() -> Self {
         Self {
             synced_event_ids: SyncedEventIds::new(),
+            synced_snapshots: SyncedSnapshots::new(),
         }
     }
 
     pub fn load(state_dir: &Path) -> Result<Self, CalendarStateError> {
         let synced_ids_path = state_dir.join(SYNCED_IDS_FILE_NAME);
         let synced_event_ids = SyncedEventIds::load(&synced_ids_path)?;
+        let synced_snapshots = SyncedSnapshots::load(&state_dir.join(SNAPSHOTS_DIR_NAME))?;
 
-        Ok(Self { synced_event_ids })
+        Ok(Self {
+            synced_event_ids,
+            synced_snapshots,
+        })
     }
 
     pub fn write(&self, state_dir: &Path) -> Result<(), CalendarStateError> {
         std::fs::create_dir_all(state_dir)?;
         let synced_ids_path = state_dir.join(SYNCED_IDS_FILE_NAME);
         self.synced_event_ids.write(&synced_ids_path)?;
+        self.synced_snapshots
+            .write(&state_dir.join(SNAPSHOTS_DIR_NAME))?;
         Ok(())
     }
 
     pub(crate) fn synced_event_ids(&self) -> &SyncedEventIds {
         &self.synced_event_ids
+    }
+
+    pub(crate) fn synced_snapshots(&self) -> &SyncedSnapshots {
+        &self.synced_snapshots
     }
 
     pub(crate) fn add_new_synced_ids(
@@ -44,6 +60,26 @@ impl CalendarState {
     ) -> &mut Self {
         for id in ids {
             self.synced_event_ids.insert(id);
+        }
+        self
+    }
+
+    pub(crate) fn upsert_synced_snapshots(
+        &mut self,
+        events: impl IntoIterator<Item = Event>,
+    ) -> &mut Self {
+        for event in events {
+            self.synced_snapshots.upsert(event);
+        }
+        self
+    }
+
+    pub(crate) fn remove_synced_snapshots(
+        &mut self,
+        ids: impl IntoIterator<Item = EventInstanceId>,
+    ) -> &mut Self {
+        for id in ids {
+            self.synced_snapshots.remove(&id);
         }
         self
     }
