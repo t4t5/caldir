@@ -4,7 +4,7 @@ use caldir_core::{
     RecurrenceId, Reminder, Status, Visibility, XProperty,
 };
 
-use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
+use crate::constants::{GOOGLE_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
 
 pub trait FromGoogle {
     fn from_google(event: google_calendar::types::Event) -> Result<Self>
@@ -96,7 +96,7 @@ impl FromGoogle for Event {
         // Store Google's event ID for API calls (updates, deletes)
         x_properties.push(XProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id));
         if !event.color_id.is_empty() {
-            x_properties.push(XProperty::new(PROVIDER_COLOR_ID_PROPERTY, event.color_id));
+            x_properties.push(XProperty::new(GOOGLE_COLOR_ID_PROPERTY, event.color_id));
         }
 
         Ok(Event {

@@ -3,7 +3,9 @@ use caldir_core::{
     Status, Visibility,
 };
 
-use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
+use crate::constants::{
+    GOOGLE_COLOR_ID_PROPERTY, GOOGLE_CONFERENCE_PROPERTY, PROVIDER_EVENT_ID_PROPERTY,
+};
 
 pub trait ToGoogle {
     fn to_google(&self) -> google_calendar::types::Event;
@@ -82,11 +84,15 @@ impl ToGoogle for Event {
             .to_string();
 
         let color_id = self
-            .x_property(PROVIDER_COLOR_ID_PROPERTY)
+            .x_property(GOOGLE_COLOR_ID_PROPERTY)
             .unwrap_or_default()
             .to_string();
 
-        let conference_url = self.conference_url.as_deref();
+        let conference_url = self
+            .conference_url
+            .as_deref()
+            .or_else(|| self.x_property(GOOGLE_CONFERENCE_PROPERTY))
+            .filter(|url| is_google_meet_url(url));
 
         google_calendar::types::Event {
             id: google_event_id,
@@ -109,6 +115,17 @@ impl ToGoogle for Event {
             ..Default::default()
         }
     }
+}
+
+fn is_google_meet_url(url: &str) -> bool {
+    url::Url::parse(url)
+        .or_else(|_| url::Url::parse(&format!("https://{url}")))
+        .ok()
+        .and_then(|url| {
+            url.host_str()
+                .map(|host| host.eq_ignore_ascii_case("meet.google.com"))
+        })
+        .unwrap_or(false)
 }
 
 fn conference_data_from_url(url: &str) -> google_calendar::types::ConferenceData {
@@ -229,7 +246,7 @@ pub(crate) fn participation_status_to_google(status: ParticipationStatus) -> &'s
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caldir_core::{Event, EventTime, Reminder, Visibility};
+    use caldir_core::{Event, EventTime, Reminder, Visibility, XProperty};
     use chrono::NaiveDate;
 
     fn sample_event() -> Event {
@@ -316,6 +333,67 @@ mod tests {
 
         assert!(reminders.use_default);
         assert!(reminders.overrides.is_empty());
+    }
+
+    #[test]
+    fn conference_url_with_google_meet_becomes_conference_data() {
+        let mut event = sample_event();
+        event.conference_url = Some("https://meet.google.com/abc-defg-hij".to_string());
+
+        let google = event.to_google();
+
+        let conference_data = google.conference_data.expect("conference data");
+        assert_eq!(
+            conference_data.entry_points[0].uri,
+            "https://meet.google.com/abc-defg-hij"
+        );
+    }
+
+    #[test]
+    fn conference_url_with_other_video_provider_becomes_null() {
+        let mut event = sample_event();
+        event.conference_url = Some("https://zoom.us/j/123456789".to_string());
+
+        let google = event.to_google();
+
+        assert!(google.conference_data.is_none());
+    }
+
+    #[test]
+    fn google_x_conference_property_becomes_conference_data() {
+        let mut event = sample_event();
+        event.x_properties.push(XProperty::new(
+            GOOGLE_CONFERENCE_PROPERTY,
+            "https://meet.google.com/abc-defg-hij",
+        ));
+
+        let google = event.to_google();
+
+        let conference_data = google.conference_data.expect("conference data");
+        assert_eq!(
+            conference_data.entry_points[0].uri,
+            "https://meet.google.com/abc-defg-hij"
+        );
+    }
+
+    #[test]
+    fn conference_url_overrides_x_google_conference_property() {
+        let mut event = sample_event();
+
+        event.conference_url = Some("https://meet.google.com/first".to_string());
+
+        event.x_properties.push(XProperty::new(
+            GOOGLE_CONFERENCE_PROPERTY,
+            "https://meet.google.com/second",
+        ));
+
+        let google = event.to_google();
+
+        let conference_data = google.conference_data.expect("conference data");
+        assert_eq!(
+            conference_data.entry_points[0].uri,
+            "https://meet.google.com/first"
+        );
     }
 
     #[test]
