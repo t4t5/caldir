@@ -14,7 +14,7 @@ pub use error::CalendarError;
 pub use event::CalendarEvent;
 pub(crate) use event::CalendarEventError;
 pub use state::CalendarState;
-pub(crate) use state::{SyncedEventIds, SyncedSnapshots};
+pub(crate) use state::{EventBases, SyncedEventIds};
 
 const DOTDIR_NAME: &str = ".caldir";
 
@@ -373,13 +373,13 @@ impl Calendar {
     pub(crate) fn record_sync_state(
         &mut self,
         ids: impl IntoIterator<Item = EventInstanceId>,
-        snapshots: impl IntoIterator<Item = Event>,
-        removed_snapshots: impl IntoIterator<Item = EventInstanceId>,
+        bases: impl IntoIterator<Item = Event>,
+        removed_bases: impl IntoIterator<Item = EventInstanceId>,
     ) -> Result<(), CalendarError> {
         self.state
             .add_new_synced_ids(ids)
-            .upsert_synced_snapshots(snapshots)
-            .remove_synced_snapshots(removed_snapshots)
+            .upsert_event_bases(bases)
+            .remove_event_bases(removed_bases)
             .write(&calendar_state_dir(&self.path))?;
         Ok(())
     }

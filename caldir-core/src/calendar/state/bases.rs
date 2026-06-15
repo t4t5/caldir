@@ -4,12 +4,12 @@ use crate::event::EventInstanceId;
 use std::collections::HashMap;
 use std::path::Path;
 
-pub(crate) const SNAPSHOTS_DIR_NAME: &str = "snapshots";
+pub(crate) const BASES_DIR_NAME: &str = "bases";
 
 #[derive(Debug)]
-pub(crate) struct SyncedSnapshots(HashMap<EventInstanceId, Event>);
+pub(crate) struct EventBases(HashMap<EventInstanceId, Event>);
 
-impl SyncedSnapshots {
+impl EventBases {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
@@ -31,7 +31,7 @@ impl SyncedSnapshots {
             return Ok(Self::new());
         }
 
-        let mut snapshots = HashMap::new();
+        let mut bases = HashMap::new();
         for entry in std::fs::read_dir(path)? {
             let entry = entry?;
             let path = entry.path();
@@ -41,22 +41,22 @@ impl SyncedSnapshots {
 
             let contents = std::fs::read_to_string(&path)?;
             let mut events = Event::from_ics_str(&contents)
-                .map_err(|err| CalendarStateError::InvalidSnapshot(path.clone(), err))?;
+                .map_err(|err| CalendarStateError::InvalidEventBase(path.clone(), err))?;
             let event = match <[Result<Event, _>; 1]>::try_from(std::mem::take(&mut events)) {
                 Ok([result]) => {
-                    result.map_err(|err| CalendarStateError::InvalidSnapshot(path.clone(), err))?
+                    result.map_err(|err| CalendarStateError::InvalidEventBase(path.clone(), err))?
                 }
                 Err(events) => {
-                    return Err(CalendarStateError::InvalidSnapshotCount {
+                    return Err(CalendarStateError::InvalidEventBaseCount {
                         path,
                         found: events.len(),
                     });
                 }
             };
-            snapshots.insert(event.event_instance_id(), event);
+            bases.insert(event.event_instance_id(), event);
         }
 
-        Ok(Self(snapshots))
+        Ok(Self(bases))
     }
 
     pub fn write(&self, path: &Path) -> Result<(), CalendarStateError> {
@@ -72,8 +72,8 @@ impl SyncedSnapshots {
         }
 
         for (id, event) in &self.0 {
-            let snapshot_path = path.join(format!("{}.ics", filename_for_id(id)));
-            write_atomic(&snapshot_path, event.to_ics_string().as_bytes())?;
+            let base_path = path.join(format!("{}.ics", filename_for_id(id)));
+            write_atomic(&base_path, event.to_ics_string().as_bytes())?;
         }
 
         Ok(())
@@ -96,7 +96,7 @@ fn write_atomic(path: &Path, contents: &[u8]) -> Result<(), CalendarStateError> 
     let parent = path.parent().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
-            "snapshot path has no parent directory",
+            "event base path has no parent directory",
         )
     })?;
 
@@ -113,27 +113,27 @@ mod tests {
     use crate::test_utils::test_event;
 
     #[test]
-    fn writes_and_loads_snapshots() {
+    fn writes_and_loads_bases() {
         let tmp = tempfile::TempDir::new().unwrap();
         let event = test_event();
-        let mut snapshots = SyncedSnapshots::new();
-        snapshots.upsert(event.clone());
+        let mut bases = EventBases::new();
+        bases.upsert(event.clone());
 
-        snapshots.write(tmp.path()).unwrap();
-        let loaded = SyncedSnapshots::load(tmp.path()).unwrap();
+        bases.write(tmp.path()).unwrap();
+        let loaded = EventBases::load(tmp.path()).unwrap();
 
         assert_eq!(loaded.get(&event.event_instance_id()), Some(&event));
     }
 
     #[test]
-    fn removes_snapshot() {
+    fn removes_base() {
         let event = test_event();
         let id = event.event_instance_id();
-        let mut snapshots = SyncedSnapshots::new();
-        snapshots.upsert(event);
+        let mut bases = EventBases::new();
+        bases.upsert(event);
 
-        snapshots.remove(&id);
+        bases.remove(&id);
 
-        assert!(snapshots.get(&id).is_none());
+        assert!(bases.get(&id).is_none());
     }
 }

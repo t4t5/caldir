@@ -210,8 +210,8 @@ The icalendar crate can introduce non-determinism by auto-generating fields:
 - Strip UID and DTSTAMP from VALARM components (not required by RFC 5545)
 
 **At comparison time:**
-- If a last-synced snapshot exists, sync compares `snapshot → local` and `snapshot → remote` to decide direction. This suppresses churn from parser/provider model changes that reinterpret existing ICS without a user edit.
-- If no snapshot exists yet, sync falls back to file mtime (local) vs the `LAST-MODIFIED` field from the provider (remote).
+- If an event base exists, sync compares `base → local` and `base → remote` to decide direction. This suppresses churn from parser/provider model changes that reinterpret existing ICS without a user edit.
+- If no event base exists yet, sync falls back to file mtime (local) vs the `LAST-MODIFIED` field from the provider (remote).
 - Event content comparison uses our custom `PartialEq`, which *ignores* `last_modified` and `sequence`; `x_properties` and `attachments` are compared order-independently (by value / URI), not excluded. DTSTAMP isn't an `Event` field, so it never participates.
 
 ---
@@ -344,22 +344,22 @@ Without this state, a local-only event is ambiguous: was it created locally and 
 - After `push` (create): Newly created event IDs are added to known_event_ids
 - After `pull` or `push` (delete): Event IDs remain in known_event_ids
 
-### `.caldir/state/snapshots/*.ics`
+### `.caldir/state/bases/*.ics`
 
-Connected calendars may also contain one plaintext ICS snapshot per synced event. A snapshot is caldir's last successfully synced canonical representation of that event.
+Connected calendars may also contain one plaintext event base per synced event. An event base is caldir's last successfully synced representation of that event: the common ancestor for local and remote.
 
 **Why:** Enables three-way change detection:
-- `snapshot == local`, `snapshot != remote` → pull remote change
-- `snapshot != local`, `snapshot == remote` → push local change
+- `base == local`, `base != remote` → pull remote change
+- `base != local`, `base == remote` → push local change
 - both changed → preserve current last-write-wins fallback using local mtime vs remote `LAST-MODIFIED`
 
-Snapshots are sync metadata, not a second user-facing calendar. The editable `.ics` files in the calendar directory remain the local source of truth.
+Event bases are sync metadata, not a second user-facing calendar. The editable `.ics` files in the calendar directory remain the local source of truth.
 
 **Lifecycle:**
-- After successful `pull` create/update: snapshot is set to the pulled event
-- After successful `push` create/update: snapshot is set to the provider-returned canonical event
-- After successful delete: snapshot is removed, while `known_event_ids` retains the ID
-- Existing calendars without snapshots fall back to the mtime model until events successfully sync again
+- After successful `pull` create/update: base is set to the pulled event
+- After successful `push` create/update: base is set to the provider-returned canonical event
+- After successful delete: base is removed, while `known_event_ids` retains the ID
+- Existing calendars without event bases fall back to the mtime model until events successfully sync again
 
 ---
 

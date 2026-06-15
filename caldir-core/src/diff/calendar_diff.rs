@@ -4,13 +4,13 @@ use super::event_change::EventChange;
 use crate::event::Status;
 use crate::{
     CalendarEvent, DateRange, RemoteEvent,
-    calendar::{SyncedEventIds, SyncedSnapshots},
+    calendar::{EventBases, SyncedEventIds},
 };
 
 pub struct CalendarDiff {
     outgoing: Vec<EventChange>,
     incoming: Vec<EventChange>,
-    synced_snapshots: Vec<crate::Event>,
+    event_bases: Vec<crate::Event>,
 }
 
 impl CalendarDiff {
@@ -21,15 +21,15 @@ impl CalendarDiff {
         synced_ids: &SyncedEventIds,
         range: &DateRange,
     ) -> Self {
-        let snapshots = SyncedSnapshots::new();
-        Self::compute_with_snapshots(local_events, remote_events, synced_ids, &snapshots, range)
+        let bases = EventBases::new();
+        Self::compute_with_event_bases(local_events, remote_events, synced_ids, &bases, range)
     }
 
-    pub(crate) fn compute_with_snapshots(
+    pub(crate) fn compute_with_event_bases(
         local_events: Vec<CalendarEvent>,
         remote_events: Vec<RemoteEvent>,
         synced_ids: &SyncedEventIds,
-        synced_snapshot_state: &SyncedSnapshots,
+        event_base_state: &EventBases,
         range: &DateRange,
     ) -> Self {
         let local_event_ids: HashSet<_> = local_events
@@ -44,7 +44,7 @@ impl CalendarDiff {
 
         let mut outgoing = Vec::new();
         let mut incoming = Vec::new();
-        let mut snapshots_to_record = Vec::new();
+        let mut event_bases_to_record = Vec::new();
 
         for local_event in &local_events {
             let event = local_event.event();
@@ -53,8 +53,8 @@ impl CalendarDiff {
             // In both local and remote: skip if equal, otherwise update
             if let Some(remote_event) = remote_by_id.get(&id) {
                 if event == remote_event.event() {
-                    if synced_snapshots_needs_refresh(synced_snapshot_state.get(&id), event) {
-                        snapshots_to_record.push(event.clone());
+                    if event_base_needs_refresh(event_base_state.get(&id), event) {
+                        event_bases_to_record.push(event.clone());
                     }
                     continue;
                 }
@@ -73,7 +73,7 @@ impl CalendarDiff {
                     to_push.visibility = remote_event.event().visibility;
                 }
 
-                if let Some(base) = synced_snapshot_state.get(&id) {
+                if let Some(base) = event_base_state.get(&id) {
                     let local_changed = event != base;
                     let remote_changed = remote_event.event() != base;
 
@@ -168,7 +168,7 @@ impl CalendarDiff {
         CalendarDiff {
             outgoing,
             incoming,
-            synced_snapshots: snapshots_to_record,
+            event_bases: event_bases_to_record,
         }
     }
 
@@ -184,8 +184,8 @@ impl CalendarDiff {
         self.outgoing.is_empty() && self.incoming.is_empty()
     }
 
-    pub(crate) fn synced_snapshots(&self) -> &[crate::Event] {
-        &self.synced_snapshots
+    pub(crate) fn event_bases(&self) -> &[crate::Event] {
+        &self.event_bases
     }
 
     /// Drop outgoing changes. Used for read-only calendars where outgoing
@@ -201,7 +201,7 @@ impl CalendarDiff {
         Self {
             outgoing,
             incoming,
-            synced_snapshots: Vec::new(),
+            event_bases: Vec::new(),
         }
     }
 }
@@ -211,8 +211,8 @@ impl CalendarDiff {
 // (Never if mtime == LAST-MODIFIED!)
 // This helps us augment old events with new potential properties
 // that previously might not have been parsed.
-fn synced_snapshots_needs_refresh(snapshot: Option<&crate::Event>, event: &crate::Event) -> bool {
-    snapshot != Some(event)
+fn event_base_needs_refresh(base: Option<&crate::Event>, event: &crate::Event) -> bool {
+    base != Some(event)
 }
 
 fn local_is_newer(local: &CalendarEvent, remote: &RemoteEvent) -> bool {
@@ -558,7 +558,7 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_suppresses_model_drift_even_when_local_mtime_is_newer() {
+    fn event_base_suppresses_model_drift_even_when_local_mtime_is_newer() {
         let (_tmp, calendar) = test_calendar();
 
         let mut local_event = test_event();
@@ -571,14 +571,14 @@ mod tests {
 
         let mut synced_ids = SyncedEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
-        let mut snapshots = SyncedSnapshots::new();
-        snapshots.upsert(local_event.clone());
+        let mut bases = EventBases::new();
+        bases.upsert(local_event.clone());
 
-        let diff = CalendarDiff::compute_with_snapshots(
+        let diff = CalendarDiff::compute_with_event_bases(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event.clone())],
             &synced_ids,
-            &snapshots,
+            &bases,
             &DateRange::default(),
         );
 
@@ -593,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_pushes_local_edit_even_when_remote_timestamp_is_newer() {
+    fn event_base_pushes_local_edit_even_when_remote_timestamp_is_newer() {
         let (_tmp, calendar) = test_calendar();
 
         let mut base = test_event();
@@ -609,14 +609,14 @@ mod tests {
 
         let mut synced_ids = SyncedEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
-        let mut snapshots = SyncedSnapshots::new();
-        snapshots.upsert(base);
+        let mut bases = EventBases::new();
+        bases.upsert(base);
 
-        let diff = CalendarDiff::compute_with_snapshots(
+        let diff = CalendarDiff::compute_with_event_bases(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event.clone())],
             &synced_ids,
-            &snapshots,
+            &bases,
             &DateRange::default(),
         );
 

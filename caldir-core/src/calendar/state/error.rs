@@ -7,9 +7,9 @@ pub enum CalendarStateError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("invalid snapshot {0}: {1}")]
-    InvalidSnapshot(PathBuf, EventError),
+    #[error("invalid event base {0}: {1}")]
+    InvalidEventBase(PathBuf, EventError),
 
-    #[error("snapshot {path} should contain exactly one event, found {found}")]
-    InvalidSnapshotCount { path: PathBuf, found: usize },
+    #[error("event base {path} should contain exactly one event, found {found}")]
+    InvalidEventBaseCount { path: PathBuf, found: usize },
 }
