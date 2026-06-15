@@ -11,6 +11,7 @@ pub struct CalendarDiff {
     outgoing: Vec<EventChange>,
     incoming: Vec<EventChange>,
     event_bases: Vec<crate::Event>,
+    removed_event_bases: Vec<crate::event::EventInstanceId>,
 }
 
 impl CalendarDiff {
@@ -32,136 +33,90 @@ impl CalendarDiff {
         event_base_state: &EventBases,
         range: &DateRange,
     ) -> Self {
-        let local_event_ids: HashSet<_> = local_events
+        let local_by_id: HashMap<_, &CalendarEvent> = local_events
             .iter()
-            .map(|e| e.event().event_instance_id())
+            .map(|event| (event.event().event_instance_id(), event))
             .collect();
-
         let remote_by_id: HashMap<_, &RemoteEvent> = remote_events
             .iter()
-            .map(|e| (e.event().event_instance_id(), e))
+            .map(|event| (event.event().event_instance_id(), event))
             .collect();
+        let mut seen_ids = HashSet::new();
+        let mut event_ids = Vec::new();
+        for id in local_by_id
+            .keys()
+            .chain(remote_by_id.keys())
+            .chain(event_base_state.ids())
+        {
+            if seen_ids.insert(id.clone()) {
+                event_ids.push(id.clone());
+            }
+        }
 
         let mut outgoing = Vec::new();
         let mut incoming = Vec::new();
         let mut event_bases_to_record = Vec::new();
+        let mut event_bases_to_remove = Vec::new();
 
-        for local_event in &local_events {
-            let event = local_event.event();
-            let id = event.event_instance_id();
+        for id in event_ids {
+            let base = event_base_state.get(&id);
+            let local_event = local_by_id.get(&id).copied();
+            let remote_event = remote_by_id.get(&id).copied();
 
-            // In both local and remote: skip if equal, otherwise update
-            if let Some(remote_event) = remote_by_id.get(&id) {
-                if event == remote_event.event() {
-                    if event_base_needs_refresh(event_base_state.get(&id), event) {
-                        event_bases_to_record.push(event.clone());
+            match (base, local_event, remote_event) {
+                (None, None, None) => {}
+                (_, Some(local_event), None)
+                    if is_out_of_remote_window(local_event.event(), range) => {}
+                (None, Some(local_event), None) if synced_ids.contains(&id) => {
+                    incoming.push(EventChange::Delete(local_event.event().clone()));
+                }
+                (None, Some(local_event), None) => {
+                    outgoing.push(EventChange::Create(local_event.event().clone()));
+                }
+                (None, None, Some(remote_event))
+                    if remote_event.event().status == Status::Cancelled => {}
+                (None, None, Some(remote_event)) if synced_ids.contains(&id) => {
+                    outgoing.push(EventChange::Delete(remote_event.event().clone()));
+                }
+                (None, None, Some(remote_event)) => {
+                    incoming.push(EventChange::Create(remote_event.event().clone()));
+                }
+                (None, Some(local_event), Some(remote_event)) => diff_without_base(
+                    local_event,
+                    remote_event,
+                    &mut outgoing,
+                    &mut incoming,
+                    &mut event_bases_to_record,
+                ),
+                (Some(_), None, None) => event_bases_to_remove.push(id),
+                (Some(base), Some(local_event), None) if local_event.event() == base => {
+                    incoming.push(EventChange::Delete(local_event.event().clone()));
+                }
+                (Some(_base), Some(local_event), None) => {
+                    // Both changed: local edited while remote disappeared. Preserve
+                    // the existing fallback behavior where remote deletion wins.
+                    incoming.push(EventChange::Delete(local_event.event().clone()));
+                }
+                (Some(base), None, Some(remote_event)) if remote_event.event() == base => {
+                    if remote_event.event().status != Status::Cancelled {
+                        outgoing.push(EventChange::Delete(remote_event.event().clone()));
                     }
-                    continue;
                 }
-
-                // Both cancelled: treat as in-sync regardless of field drift.
-                // Cancelled events are historical; we don't churn syncing them.
-                if event.status == Status::Cancelled
-                    && remote_event.event().status == Status::Cancelled
-                {
-                    continue;
-                }
-
-                // Never push an unspecified (None) visibility — inherit the remote's.
-                let mut to_push = event.clone();
-                if to_push.visibility.is_none() {
-                    to_push.visibility = remote_event.event().visibility;
-                }
-
-                if let Some(base) = event_base_state.get(&id) {
-                    let local_changed = event != base;
-                    let remote_changed = remote_event.event() != base;
-
-                    match (local_changed, remote_changed) {
-                        (false, false) => continue,
-                        (true, false) if &to_push != remote_event.event() => {
-                            outgoing.push(EventChange::Update {
-                                from: remote_event.event().clone(),
-                                to: to_push,
-                            });
-                        }
-                        (true, false) => continue,
-                        (false, true) => {
-                            incoming.push(EventChange::Update {
-                                from: event.clone(),
-                                to: remote_event.event().clone(),
-                            });
-                        }
-                        (true, true) => {
-                            if &to_push != remote_event.event()
-                                && local_is_newer(local_event, remote_event)
-                            {
-                                outgoing.push(EventChange::Update {
-                                    from: remote_event.event().clone(),
-                                    to: to_push,
-                                });
-                            } else {
-                                incoming.push(EventChange::Update {
-                                    from: event.clone(),
-                                    to: remote_event.event().clone(),
-                                });
-                            }
-                        }
+                (Some(_base), None, Some(remote_event)) => {
+                    // Both changed: local disappeared while remote edited. Preserve
+                    // the existing fallback behavior where local deletion wins.
+                    if remote_event.event().status != Status::Cancelled {
+                        outgoing.push(EventChange::Delete(remote_event.event().clone()));
                     }
-                } else if &to_push != remote_event.event()
-                    && local_is_newer(local_event, remote_event)
-                {
-                    outgoing.push(EventChange::Update {
-                        from: remote_event.event().clone(),
-                        to: to_push,
-                    });
-                } else {
-                    incoming.push(EventChange::Update {
-                        from: event.clone(),
-                        to: remote_event.event().clone(),
-                    });
                 }
-                continue;
-            }
-
-            // Out-of-window events aren't in the remote response, so we
-            // can't tell if they're deleted or just out of range. Skip.
-            if let (Some(from), Some(to)) = (range.from, range.to)
-                && !event.has_occurrence_in_range(from, to)
-            {
-                continue;
-            }
-
-            if synced_ids.contains(&id) {
-                incoming.push(EventChange::Delete(event.clone()));
-            } else {
-                outgoing.push(EventChange::Create(event.clone()));
-            }
-        }
-
-        for remote_event in &remote_events {
-            let id = remote_event.event().event_instance_id();
-
-            // Already in local and remote, skip
-            if local_event_ids.contains(&id) {
-                continue;
-            }
-
-            // Missing locally + cancelled on remote: treat as already in sync.
-            // A missing file is semantically equivalent to STATUS:CANCELLED —
-            // both mean "not active". Avoids resurrecting tombstones on pull
-            // and avoids spurious push-deletes for events Google has already
-            // cancelled.
-            if remote_event.event().status == Status::Cancelled {
-                continue;
-            }
-
-            if synced_ids.contains(&id) {
-                // Remote event was in local, gone now. Delete remotely.
-                outgoing.push(EventChange::Delete(remote_event.event().clone()));
-            } else {
-                // Not in local, create it!
-                incoming.push(EventChange::Create(remote_event.event().clone()));
+                (Some(base), Some(local_event), Some(remote_event)) => diff_with_base(
+                    base,
+                    local_event,
+                    remote_event,
+                    &mut outgoing,
+                    &mut incoming,
+                    &mut event_bases_to_record,
+                ),
             }
         }
 
@@ -169,6 +124,7 @@ impl CalendarDiff {
             outgoing,
             incoming,
             event_bases: event_bases_to_record,
+            removed_event_bases: event_bases_to_remove,
         }
     }
 
@@ -188,6 +144,10 @@ impl CalendarDiff {
         &self.event_bases
     }
 
+    pub(crate) fn removed_event_bases(&self) -> &[crate::event::EventInstanceId] {
+        &self.removed_event_bases
+    }
+
     /// Drop outgoing changes. Used for read-only calendars where outgoing
     /// could never be applied — surfacing them as pending pushes is misleading.
     pub fn discard_outgoing(&mut self) {
@@ -202,19 +162,128 @@ impl CalendarDiff {
             outgoing,
             incoming,
             event_bases: Vec::new(),
+            removed_event_bases: Vec::new(),
         }
     }
 }
 
-// After a pull, the local file's mtime equals the remote LAST-MODIFIED (see sync_file_mtime)
-// We only treat a diff as an outgoing change if mtime > LAST-MODIFIED
-// (Never if mtime == LAST-MODIFIED!)
-// This helps us augment old events with new potential properties
-// that previously might not have been parsed.
+fn diff_without_base(
+    local_event: &CalendarEvent,
+    remote_event: &RemoteEvent,
+    outgoing: &mut Vec<EventChange>,
+    incoming: &mut Vec<EventChange>,
+    event_bases_to_record: &mut Vec<crate::Event>,
+) {
+    let event = local_event.event();
+    if event == remote_event.event() {
+        event_bases_to_record.push(event.clone());
+        return;
+    }
+
+    if both_cancelled(event, remote_event.event()) {
+        return;
+    }
+
+    let to_push = event_to_push(event, remote_event.event());
+    if &to_push != remote_event.event() && local_is_newer(local_event, remote_event) {
+        outgoing.push(EventChange::Update {
+            from: remote_event.event().clone(),
+            to: to_push,
+        });
+    } else {
+        incoming.push(EventChange::Update {
+            from: event.clone(),
+            to: remote_event.event().clone(),
+        });
+    }
+}
+
+fn diff_with_base(
+    base: &crate::Event,
+    local_event: &CalendarEvent,
+    remote_event: &RemoteEvent,
+    outgoing: &mut Vec<EventChange>,
+    incoming: &mut Vec<EventChange>,
+    event_bases_to_record: &mut Vec<crate::Event>,
+) {
+    let event = local_event.event();
+    if event == remote_event.event() {
+        if event_base_needs_refresh(Some(base), event) {
+            event_bases_to_record.push(event.clone());
+        }
+        return;
+    }
+
+    if both_cancelled(event, remote_event.event()) {
+        return;
+    }
+
+    let to_push = event_to_push(event, remote_event.event());
+    let local_changed = event != base;
+    let remote_changed = remote_event.event() != base;
+
+    match (local_changed, remote_changed) {
+        (false, false) => {}
+        (true, false) if &to_push != remote_event.event() => {
+            outgoing.push(EventChange::Update {
+                from: remote_event.event().clone(),
+                to: to_push,
+            });
+        }
+        (true, false) => {}
+        (false, true) => {
+            incoming.push(EventChange::Update {
+                from: event.clone(),
+                to: remote_event.event().clone(),
+            });
+        }
+        (true, true)
+            if &to_push != remote_event.event() && local_is_newer(local_event, remote_event) =>
+        {
+            outgoing.push(EventChange::Update {
+                from: remote_event.event().clone(),
+                to: to_push,
+            });
+        }
+        (true, true) => {
+            incoming.push(EventChange::Update {
+                from: event.clone(),
+                to: remote_event.event().clone(),
+            });
+        }
+    }
+}
+
+fn event_to_push(event: &crate::Event, remote_event: &crate::Event) -> crate::Event {
+    let mut to_push = event.clone();
+    // Never push an unspecified (None) visibility — inherit the remote's.
+    if to_push.visibility.is_none() {
+        to_push.visibility = remote_event.visibility;
+    }
+    to_push
+}
+
+fn both_cancelled(local: &crate::Event, remote: &crate::Event) -> bool {
+    // Cancelled events are historical; we don't churn syncing them.
+    local.status == Status::Cancelled && remote.status == Status::Cancelled
+}
+
+fn is_out_of_remote_window(event: &crate::Event, range: &DateRange) -> bool {
+    // Out-of-window events aren't in the remote response, so we can't tell if
+    // they're deleted or just out of range.
+    if let (Some(from), Some(to)) = (range.from, range.to) {
+        !event.has_occurrence_in_range(from, to)
+    } else {
+        false
+    }
+}
+
 fn event_base_needs_refresh(base: Option<&crate::Event>, event: &crate::Event) -> bool {
     base != Some(event)
 }
 
+// After a pull, the local file's mtime equals the remote LAST-MODIFIED (see sync_file_mtime).
+// Only treat a fallback diff as outgoing if mtime > LAST-MODIFIED.
 fn local_is_newer(local: &CalendarEvent, remote: &RemoteEvent) -> bool {
     match (local.modified_at(), remote.modified_at()) {
         (Some(l), Some(r)) => l > r,
@@ -590,6 +659,27 @@ mod tests {
                 to: remote_event,
             }]
         );
+    }
+
+    #[test]
+    fn removed_everywhere_removes_stale_event_base() {
+        let event = test_event();
+        let id = event.event_instance_id();
+        let synced_ids = SyncedEventIds::new();
+        let mut bases = EventBases::new();
+        bases.upsert(event);
+
+        let diff = CalendarDiff::compute_with_event_bases(
+            vec![],
+            vec![],
+            &synced_ids,
+            &bases,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.incoming, vec![]);
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(diff.removed_event_bases(), &[id]);
     }
 
     #[test]

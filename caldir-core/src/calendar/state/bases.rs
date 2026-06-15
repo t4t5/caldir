@@ -18,6 +18,10 @@ impl EventBases {
         self.0.get(id)
     }
 
+    pub fn ids(&self) -> impl Iterator<Item = &EventInstanceId> {
+        self.0.keys()
+    }
+
     pub fn upsert(&mut self, event: Event) {
         self.0.insert(event.event_instance_id(), event);
     }

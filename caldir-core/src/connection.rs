@@ -69,7 +69,7 @@ impl Connection {
 
         let mut synced_ids = Vec::new();
         let mut event_bases = diff.event_bases().to_vec();
-        let mut removed_bases = Vec::new();
+        let mut removed_bases = diff.removed_event_bases().to_vec();
 
         // Same partial-failure flush pattern as `apply_outgoing_diff`: a
         // local-fs error mid-loop must not drop the ids of changes we've
@@ -106,7 +106,7 @@ impl Connection {
 
         let mut synced_ids = Vec::new();
         let mut event_bases = diff.event_bases().to_vec();
-        let mut removed_bases = Vec::new();
+        let mut removed_bases = diff.removed_event_bases().to_vec();
 
         // Handles mid-loop errors gracefully
         let loop_result = push_outgoing_changes(
