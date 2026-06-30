@@ -12,9 +12,9 @@ pub enum EventTime {
     },
 }
 
-/// Timezone-independent key for recurrence identity.
+/// Comparable form of `EventTime`, with resolvable zones converted to UTC.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub(crate) enum EventTimeKey {
+pub(crate) enum NormalizedEventTime {
     Date(NaiveDate),
     Instant(DateTime<Utc>),
     Floating(NaiveDateTime),
@@ -68,17 +68,17 @@ impl EventTime {
         matches!(self, EventTime::Date(_))
     }
 
-    /// See [`EventTimeKey`].
-    pub(crate) fn identity_key(&self) -> EventTimeKey {
+    /// See [`NormalizedEventTime`].
+    pub(crate) fn normalized(&self) -> NormalizedEventTime {
         match self {
-            EventTime::Date(date) => EventTimeKey::Date(*date),
-            EventTime::DateTimeUtc(datetime) => EventTimeKey::Instant(*datetime),
-            EventTime::DateTimeFloating(datetime) => EventTimeKey::Floating(*datetime),
+            EventTime::Date(date) => NormalizedEventTime::Date(*date),
+            EventTime::DateTimeUtc(datetime) => NormalizedEventTime::Instant(*datetime),
+            EventTime::DateTimeFloating(datetime) => NormalizedEventTime::Floating(*datetime),
             EventTime::DateTimeZoned { datetime, tzid } => match parse_tzid(tzid) {
                 Some(tz) => {
-                    EventTimeKey::Instant(resolve_local(*datetime, &tz).with_timezone(&Utc))
+                    NormalizedEventTime::Instant(resolve_local(*datetime, &tz).with_timezone(&Utc))
                 }
-                None => EventTimeKey::Floating(*datetime),
+                None => NormalizedEventTime::Floating(*datetime),
             },
         }
     }

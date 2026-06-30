@@ -1,4 +1,4 @@
-use super::super::time::EventTimeKey;
+use super::super::time::NormalizedEventTime;
 use crate::EventTime;
 use std::hash::{Hash, Hasher};
 
@@ -15,14 +15,14 @@ impl RecurrenceId {
         RecurrenceId(event_time)
     }
 
-    fn key(&self) -> EventTimeKey {
-        self.0.identity_key()
+    fn normalized(&self) -> NormalizedEventTime {
+        self.0.normalized()
     }
 }
 
 impl PartialEq for RecurrenceId {
     fn eq(&self, other: &Self) -> bool {
-        self.key() == other.key()
+        self.normalized() == other.normalized()
     }
 }
 
@@ -30,7 +30,7 @@ impl Eq for RecurrenceId {}
 
 impl Hash for RecurrenceId {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.key().hash(state);
+        self.normalized().hash(state);
     }
 }
 
