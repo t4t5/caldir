@@ -4,14 +4,12 @@ mod recurrence_id;
 pub use event_uid::EventUid;
 pub use recurrence_id::RecurrenceId;
 
-use super::time::EventTimeKey;
 use crate::EventTime;
 use chrono::{NaiveDate, NaiveDateTime};
 use std::fmt;
-use std::hash::{Hash, Hasher};
 
 // UID + RecurrenceId = the actual unique ID per event
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct EventInstanceId((EventUid, Option<RecurrenceId>));
 
 impl EventInstanceId {
@@ -25,30 +23,6 @@ impl EventInstanceId {
 
     pub fn recurrence_id(&self) -> Option<&RecurrenceId> {
         self.0.1.as_ref()
-    }
-
-    // Identity compares by instant, not by timezone representation: a recurrence
-    // id written `TZID=Europe/Stockholm:...19:00` and `TZID=Europe/London:...18:00`
-    // are the same occurrence. Without this, the same instance pulled in two
-    // zones forks into separate identities (duplicate files, spurious creates).
-    fn recurrence_key(&self) -> Option<EventTimeKey> {
-        self.recurrence_id()
-            .map(|rid| rid.as_event_time().identity_key())
-    }
-}
-
-impl PartialEq for EventInstanceId {
-    fn eq(&self, other: &Self) -> bool {
-        self.uid() == other.uid() && self.recurrence_key() == other.recurrence_key()
-    }
-}
-
-impl Eq for EventInstanceId {}
-
-impl Hash for EventInstanceId {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.uid().hash(state);
-        self.recurrence_key().hash(state);
     }
 }
 
@@ -253,93 +227,5 @@ mod tests {
         let id = EventInstanceId::from("abc__TZID=Europe/Stockholm");
         assert_eq!(id.uid().as_str(), "abc__TZID=Europe/Stockholm");
         assert!(id.recurrence_id().is_none());
-    }
-
-    fn zoned_id(tzid: &str, h: u32, m: u32) -> EventInstanceId {
-        let datetime = NaiveDate::from_ymd_opt(2026, 7, 14)
-            .unwrap()
-            .and_hms_opt(h, m, 0)
-            .unwrap();
-        EventInstanceId::new(
-            uid(),
-            Some(RecurrenceId::from_event_time(EventTime::DateTimeZoned {
-                datetime,
-                tzid: tzid.to_string(),
-            })),
-        )
-    }
-
-    fn utc_id(h: u32, m: u32) -> EventInstanceId {
-        EventInstanceId::new(
-            uid(),
-            Some(RecurrenceId::from_event_time(EventTime::DateTimeUtc(
-                chrono::Utc.with_ymd_and_hms(2026, 7, 14, h, m, 0).unwrap(),
-            ))),
-        )
-    }
-
-    fn hash_of(id: &EventInstanceId) -> u64 {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-        let mut hasher = DefaultHasher::new();
-        id.hash(&mut hasher);
-        hasher.finish()
-    }
-
-    #[test]
-    fn same_instant_in_different_zones_is_equal() {
-        // 19:00 Stockholm (CEST, +02) == 18:00 London (BST, +01) == 17:00Z
-        let stockholm = zoned_id("Europe/Stockholm", 19, 0);
-        let london = zoned_id("Europe/London", 18, 0);
-        assert_eq!(stockholm, london);
-        assert_eq!(hash_of(&stockholm), hash_of(&london));
-    }
-
-    #[test]
-    fn zoned_equals_utc_for_same_instant() {
-        let stockholm = zoned_id("Europe/Stockholm", 19, 0);
-        let utc = utc_id(17, 0);
-        assert_eq!(stockholm, utc);
-        assert_eq!(hash_of(&stockholm), hash_of(&utc));
-    }
-
-    #[test]
-    fn different_instants_are_not_equal() {
-        assert_ne!(zoned_id("Europe/Stockholm", 19, 0), utc_id(18, 0));
-    }
-
-    #[test]
-    fn hash_set_lookup_matches_across_zones() {
-        use std::collections::HashSet;
-        let set: HashSet<EventInstanceId> = [zoned_id("Europe/Stockholm", 19, 0)].into();
-        assert!(set.contains(&zoned_id("Europe/London", 18, 0)));
-        assert!(set.contains(&utc_id(17, 0)));
-    }
-
-    #[test]
-    fn floating_does_not_match_zoned_same_wallclock() {
-        // Floating has no unambiguous instant, so it can't be reconciled with a
-        // zoned time even at the same wall clock.
-        let floating = EventInstanceId::new(
-            uid(),
-            Some(RecurrenceId::from_event_time(EventTime::DateTimeFloating(
-                NaiveDate::from_ymd_opt(2026, 7, 14)
-                    .unwrap()
-                    .and_hms_opt(19, 0, 0)
-                    .unwrap(),
-            ))),
-        );
-        assert_ne!(floating, zoned_id("Europe/Stockholm", 19, 0));
-    }
-
-    #[test]
-    fn same_instant_different_uid_is_not_equal() {
-        let other = EventInstanceId::new(
-            EventUid::new("other@hooli.com".to_string()),
-            Some(RecurrenceId::from_event_time(EventTime::DateTimeUtc(
-                chrono::Utc.with_ymd_and_hms(2026, 7, 14, 17, 0, 0).unwrap(),
-            ))),
-        );
-        assert_ne!(utc_id(17, 0), other);
     }
 }

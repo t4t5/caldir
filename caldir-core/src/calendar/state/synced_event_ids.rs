@@ -134,34 +134,6 @@ mod tests {
         assert_eq!(loaded.0, sample_ids());
     }
 
-    fn zoned_instance(tzid: &str, hour: u32) -> EventInstanceId {
-        EventInstanceId::new(
-            EventUid::new("podd@google.com".to_string()),
-            Some(RecurrenceId::from_event_time(EventTime::DateTimeZoned {
-                datetime: NaiveDate::from_ymd_opt(2026, 7, 14)
-                    .unwrap()
-                    .and_hms_opt(hour, 0, 0)
-                    .unwrap(),
-                tzid: tzid.to_string(),
-            })),
-        )
-    }
-
-    #[test]
-    fn contains_matches_same_instant_across_timezones() {
-        // Synced state recorded the instance in one zone; a local override in a
-        // different zone for the same instant must still count as "known".
-        let path = tempfile::TempDir::new().unwrap();
-        let file = path.path().join("known_event_ids");
-        std::fs::write(&file, "podd@google.com__TZID=Europe/London:20260714T180000").unwrap();
-
-        let loaded = SyncedEventIds::load(&file).unwrap();
-
-        // 19:00 Stockholm == 18:00 London == 17:00Z — all the same occurrence.
-        assert!(loaded.contains(&zoned_instance("Europe/Stockholm", 19)));
-        assert!(loaded.contains(&zoned_instance("Europe/London", 18)));
-    }
-
     #[test]
     fn write_replaces_existing_file_contents() {
         let tmp = tempfile::TempDir::new().unwrap();
