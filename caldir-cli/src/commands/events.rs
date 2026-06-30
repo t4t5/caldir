@@ -4,6 +4,7 @@ use caldir_core::DateBounds;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 
 use crate::render::events_in_range::render_text_events_in_range;
+use crate::render::json_events_in_range::render_json_events_in_range;
 use crate::utils::parse_date;
 use crate::utils::{require_calendars, resolve_calendars};
 
@@ -12,6 +13,7 @@ pub fn run(
     calendar: Option<String>,
     from: Option<String>,
     to: Option<String>,
+    json: bool,
 ) -> Result<()> {
     require_calendars(caldir)?;
 
@@ -25,7 +27,11 @@ pub fn run(
         to.as_deref(),
     )?;
 
-    render_text_events_in_range(caldir, calendars, from, to)
+    if json {
+        render_json_events_in_range(calendars, from, to)
+    } else {
+        render_text_events_in_range(caldir, calendars, from, to)
+    }
 }
 
 fn resolve_range<Tz: TimeZone>(

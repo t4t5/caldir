@@ -6,4 +6,6 @@
 pub mod diff;
 pub mod event;
 pub mod events_in_range;
+pub mod json_event;
+pub mod json_events_in_range;
 pub mod time;

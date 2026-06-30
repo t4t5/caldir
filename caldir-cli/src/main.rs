@@ -122,6 +122,10 @@ enum Commands {
         /// Show events until this date (YYYY-MM-DD)
         #[arg(long)]
         to: Option<String>,
+
+        /// Output events as JSON
+        #[arg(long)]
+        json: bool,
     },
     #[command(about = "Show today's events")]
     Today {
@@ -255,9 +259,12 @@ async fn main() -> Result<()> {
             verbose,
             force,
         } => commands::sync::run(&caldir, calendar, from, to, verbose, force).await,
-        Commands::Events { calendar, from, to } => {
-            commands::events::run(&caldir, calendar, from, to)
-        }
+        Commands::Events {
+            calendar,
+            from,
+            to,
+            json,
+        } => commands::events::run(&caldir, calendar, from, to, json),
         Commands::Today { calendar } => commands::today::run(&caldir, calendar),
         Commands::Week { calendar } => commands::week::run(&caldir, calendar),
         Commands::New {

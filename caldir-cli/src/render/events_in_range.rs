@@ -6,15 +6,17 @@ use owo_colors::OwoColorize;
 use crate::render::event::{format_event_line, is_visible, render_participation_status};
 use crate::render::time::{format_date_label, local_date};
 
-struct ListedEvent<'a> {
-    calendar_slug: Option<&'a str>,
-    remote_email: Option<&'a str>,
-    event: Event,
+pub(in crate::render) struct ListedEvent<'a> {
+    pub calendar_slug: Option<&'a str>,
+    pub calendar_name: Option<&'a str>,
+    pub calendar_color: Option<&'a str>,
+    pub remote_email: Option<&'a str>,
+    pub event: Event,
 }
 
-struct DayEvent<'a> {
-    day: NaiveDate,
-    listed: &'a ListedEvent<'a>,
+pub(in crate::render) struct DayEvent<'a> {
+    pub day: NaiveDate,
+    pub listed: &'a ListedEvent<'a>,
 }
 
 pub fn render_text_events_in_range(
@@ -71,7 +73,7 @@ pub fn render_text_events_in_range(
     Ok(())
 }
 
-fn collect_visible_expanded_events<'a>(
+pub(in crate::render) fn collect_visible_expanded_events<'a>(
     calendars: &'a [Calendar],
     from: DateTime<Utc>,
     to: DateTime<Utc>,
@@ -86,6 +88,8 @@ fn collect_visible_expanded_events<'a>(
             if is_visible(&event) {
                 events.push(ListedEvent {
                     calendar_slug: cal.slug(),
+                    calendar_name: cal.name(),
+                    calendar_color: cal.color(),
                     remote_email,
                     event,
                 });
@@ -105,7 +109,7 @@ fn collect_visible_expanded_events<'a>(
     Ok(events)
 }
 
-fn group_events_by_display_day<'a>(
+pub(in crate::render) fn group_events_by_display_day<'a>(
     events: &'a [ListedEvent<'a>],
     range_start: NaiveDate,
     range_end: NaiveDate,
