@@ -200,6 +200,57 @@ mod tests {
     }
 
     #[test]
+    fn recurring_override_reconciles_across_timezones() {
+        // Regression: a series owned in one zone (Stockholm) but pulled into a
+        // calendar whose default is another zone (London) returns the override
+        // in London time, while the local copy is in Stockholm time. Same
+        // instant — must reconcile to an update, never re-create (which on
+        // Google built a double-suffixed instance id → 404).
+        use crate::event::{EventUid, RecurrenceId};
+        use chrono::NaiveDate;
+
+        let uid = EventUid::new("podd@google.com".to_string());
+        let rid = |tzid: &str, hour: u32| {
+            Some(RecurrenceId::from_event_time(EventTime::DateTimeZoned {
+                datetime: NaiveDate::from_ymd_opt(2026, 7, 14)
+                    .unwrap()
+                    .and_hms_opt(hour, 0, 0)
+                    .unwrap(),
+                tzid: tzid.to_string(),
+            }))
+        };
+
+        let (_tmp, calendar) = test_calendar();
+        let mut local = test_event();
+        local.uid = uid.clone();
+        local.recurrence_id = rid("Europe/Stockholm", 19);
+        let local_event = calendar.create_event(local).unwrap();
+
+        let mut remote = test_event();
+        remote.uid = uid.clone();
+        remote.recurrence_id = rid("Europe/London", 18);
+
+        let diff = CalendarDiff::compute(
+            vec![local_event],
+            vec![RemoteEvent::new(remote)],
+            &SyncedEventIds::new(),
+            &DateRange::default(),
+        );
+
+        let any_create = diff
+            .outgoing
+            .iter()
+            .chain(diff.incoming.iter())
+            .any(|c| matches!(c, EventChange::Create(_)));
+        assert!(!any_create, "same-instant override must not be re-created");
+        assert!(matches!(
+            diff.outgoing.as_slice(),
+            [EventChange::Update { .. }]
+        ));
+        assert!(diff.incoming.is_empty());
+    }
+
+    #[test]
     fn deleted_local_event_becomes_outgoing_delete() {
         let remote_event = test_event();
 

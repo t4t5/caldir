@@ -12,6 +12,18 @@ pub enum EventTime {
     },
 }
 
+/// Timezone-independent key for event identity. The same physical instant
+/// compares equal however it's written (zoned vs UTC), so a recurrence id
+/// matches its occurrence across timezone representations. All-day dates key on
+/// the date; floating times — and zoned times with an unresolvable TZID — have
+/// no unambiguous instant, so they key on their wall-clock value.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum EventTimeKey {
+    Date(NaiveDate),
+    Instant(DateTime<Utc>),
+    Floating(NaiveDateTime),
+}
+
 impl EventTime {
     pub fn to_local_tz<Tz: TimeZone>(&self, tz: &Tz) -> DateTime<Tz> {
         match self {
@@ -58,6 +70,22 @@ impl EventTime {
     /// Check if this is an all-day date (not a datetime)
     pub fn is_date(&self) -> bool {
         matches!(self, EventTime::Date(_))
+    }
+
+    /// See [`EventTimeKey`]. Used for event identity so the same instant matches
+    /// across timezone representations.
+    pub(crate) fn identity_key(&self) -> EventTimeKey {
+        match self {
+            EventTime::Date(date) => EventTimeKey::Date(*date),
+            EventTime::DateTimeUtc(datetime) => EventTimeKey::Instant(*datetime),
+            EventTime::DateTimeFloating(datetime) => EventTimeKey::Floating(*datetime),
+            EventTime::DateTimeZoned { datetime, tzid } => match parse_tzid(tzid) {
+                Some(tz) => {
+                    EventTimeKey::Instant(resolve_local(*datetime, &tz).with_timezone(&Utc))
+                }
+                None => EventTimeKey::Floating(*datetime),
+            },
+        }
     }
 }
 
