@@ -1,6 +1,7 @@
 pub mod config;
 pub mod connect;
 pub mod discard;
+pub mod doctor;
 pub mod events;
 pub mod invites;
 pub mod new;
