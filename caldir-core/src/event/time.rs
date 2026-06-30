@@ -12,7 +12,8 @@ pub enum EventTime {
     },
 }
 
-/// Comparable form of `EventTime`, with resolvable zones converted to UTC.
+/// Comparable form of `EventTime`
+/// with resolvable zones converted to UTC.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum NormalizedEventTime {
     Date(NaiveDate),
@@ -68,7 +69,6 @@ impl EventTime {
         matches!(self, EventTime::Date(_))
     }
 
-    /// See [`NormalizedEventTime`].
     pub(crate) fn normalized(&self) -> NormalizedEventTime {
         match self {
             EventTime::Date(date) => NormalizedEventTime::Date(*date),
