@@ -6,7 +6,18 @@ use owo_colors::OwoColorize;
 use crate::render::event::{format_event_line, is_visible, render_participation_status};
 use crate::render::time::{format_date_label, local_date};
 
-pub fn render_events_in_range(
+struct ListedEvent<'a> {
+    calendar_slug: Option<&'a str>,
+    remote_email: Option<&'a str>,
+    event: Event,
+}
+
+struct DayEvent<'a> {
+    day: NaiveDate,
+    listed: &'a ListedEvent<'a>,
+}
+
+pub fn render_text_events_in_range(
     caldir: &Caldir,
     calendars: Vec<Calendar>,
     from: DateTime<Utc>,
@@ -15,33 +26,8 @@ pub fn render_events_in_range(
     let range_start = from.with_timezone(&chrono::Local).date_naive();
     let range_end = to.with_timezone(&chrono::Local).date_naive();
 
-    // One entry per (day, event)
-    // Note: a multi-day all-day event is repeated under every day it spans
-    // (day, cal_slug, account_email, event)
-    let mut entries: Vec<(NaiveDate, Option<&str>, Option<&str>, Event)> = Vec::new();
-
-    for cal in &calendars {
-        let events = cal.expanded_events_in_range(from, to)?;
-
-        // Used to check the user's attendance status:
-        let remote_email = cal.remote_email();
-
-        for event in events {
-            if !is_visible(&event) {
-                continue;
-            }
-            for day in display_days(&event, range_start, range_end) {
-                entries.push((day, cal.slug(), remote_email, event.clone()));
-            }
-        }
-    }
-
-    // Sort by day, then all-day events before timed ones, then by start time.
-    entries.sort_by(|a, b| {
-        a.0.cmp(&b.0)
-            .then_with(|| a.3.start.is_date().cmp(&b.3.start.is_date()).reverse())
-            .then_with(|| a.3.start.to_utc().cmp(&b.3.start.to_utc()))
-    });
+    let events = collect_visible_expanded_events(&calendars, from, to)?;
+    let entries = group_events_by_display_day(&events, range_start, range_end);
 
     if entries.is_empty() {
         println!("{}", "No events found".dimmed());
@@ -51,17 +37,21 @@ pub fn render_events_in_range(
     // Group events by day and print
     let mut current_date: Option<NaiveDate> = None;
 
-    for (day, cal_slug, email, event) in &entries {
-        if current_date != Some(*day) {
+    for entry in &entries {
+        let day = entry.day;
+        let listed = entry.listed;
+        let event = &listed.event;
+
+        if current_date != Some(day) {
             if current_date.is_some() {
                 println!();
             }
-            println!("{}", format_date_label(*day).bold());
-            current_date = Some(*day);
+            println!("{}", format_date_label(day).bold());
+            current_date = Some(day);
         }
 
-        let invite_indicator = email
-            .as_deref()
+        let invite_indicator = listed
+            .remote_email
             .filter(|email| event.is_invite_for(email))
             .and_then(|email| event.attendee_status(email))
             .map(|status| format!(" ({})", render_participation_status(status)))
@@ -71,7 +61,7 @@ pub fn render_events_in_range(
             "{}",
             format_event_line(
                 event,
-                cal_slug.unwrap_or("(Unknown calendar)"),
+                listed.calendar_slug.unwrap_or("(Unknown calendar)"),
                 &invite_indicator,
                 caldir
             )
@@ -79,6 +69,76 @@ pub fn render_events_in_range(
     }
 
     Ok(())
+}
+
+fn collect_visible_expanded_events<'a>(
+    calendars: &'a [Calendar],
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+) -> Result<Vec<ListedEvent<'a>>> {
+    let mut events = Vec::new();
+
+    for cal in calendars {
+        let calendar_events = cal.expanded_events_in_range(from, to)?;
+        let remote_email = cal.remote_email();
+
+        for event in calendar_events {
+            if is_visible(&event) {
+                events.push(ListedEvent {
+                    calendar_slug: cal.slug(),
+                    remote_email,
+                    event,
+                });
+            }
+        }
+    }
+
+    events.sort_by(|a, b| {
+        a.event
+            .start
+            .is_date()
+            .cmp(&b.event.start.is_date())
+            .reverse()
+            .then_with(|| a.event.start.to_utc().cmp(&b.event.start.to_utc()))
+    });
+
+    Ok(events)
+}
+
+fn group_events_by_display_day<'a>(
+    events: &'a [ListedEvent<'a>],
+    range_start: NaiveDate,
+    range_end: NaiveDate,
+) -> Vec<DayEvent<'a>> {
+    let mut entries = Vec::new();
+
+    for event in events {
+        for day in display_days(&event.event, range_start, range_end) {
+            entries.push(DayEvent { day, listed: event });
+        }
+    }
+
+    entries.sort_by(|a, b| {
+        a.day
+            .cmp(&b.day)
+            .then_with(|| {
+                a.listed
+                    .event
+                    .start
+                    .is_date()
+                    .cmp(&b.listed.event.start.is_date())
+                    .reverse()
+            })
+            .then_with(|| {
+                a.listed
+                    .event
+                    .start
+                    .to_utc()
+                    .cmp(&b.listed.event.start.to_utc())
+            })
+    });
+
+    entries
 }
 
 /// The day(s) an event should be listed under, clamped to `[range_start, range_end]`.
