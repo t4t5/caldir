@@ -14,16 +14,14 @@ pub fn expand_in_range(
 ) -> Vec<Event> {
     let mut singles: Vec<Event> = Vec::new();
     let mut masters: Vec<Event> = Vec::new();
-    // uid -> (recurrence_id EventTime -> override Event)
-    let mut overrides: HashMap<String, HashMap<EventTime, Event>> = HashMap::new();
+    let mut overrides: HashMap<String, HashMap<RecurrenceId, Event>> = HashMap::new();
 
     for event in events {
         if event.recurrence.is_some() {
             masters.push(event);
         } else if let Some(rid) = event.recurrence_id.as_ref() {
             let uid = event.uid.as_str().to_string();
-            let key = rid.as_event_time().clone();
-            overrides.entry(uid).or_default().insert(key, event);
+            overrides.entry(uid).or_default().insert(rid.clone(), event);
         } else {
             singles.push(event);
         }
@@ -59,7 +57,7 @@ pub(crate) fn expand_master(
     master: &Event,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
-    overrides: &HashMap<EventTime, Event>,
+    overrides: &HashMap<RecurrenceId, Event>,
 ) -> Vec<Event> {
     let Some(recurrence) = master.recurrence.as_ref() else {
         return Vec::new();
@@ -85,8 +83,9 @@ pub(crate) fn expand_master(
         .into_iter()
         .filter_map(|occ| {
             let occ_time = occurrence_to_event_time(&occ, &master.start);
+            let rid = RecurrenceId::from_event_time(occ_time.clone());
 
-            if let Some(override_event) = overrides.get(&occ_time) {
+            if let Some(override_event) = overrides.get(&rid) {
                 if override_event.status == Status::Cancelled {
                     return None;
                 }
@@ -469,6 +468,54 @@ mod tests {
         assert_eq!(summaries, vec!["Standup", "Standup (moved)", "Standup"]);
         // The overridden instance carries the moved time.
         assert_eq!(starts_at(&result[1]), utc(2026, 1, 6, 14, 0));
+    }
+
+    #[test]
+    fn recurrence_id_override_matches_generated_instance_across_timezones() {
+        let stockholm = NaiveDate::from_ymd_opt(2026, 7, 14)
+            .unwrap()
+            .and_hms_opt(19, 0, 0)
+            .unwrap();
+
+        let london = NaiveDate::from_ymd_opt(2026, 7, 14)
+            .unwrap()
+            .and_hms_opt(18, 0, 0)
+            .unwrap();
+
+        // Master event uses Stockholm timezone:
+        let mut master = Event::new(
+            "Standup",
+            EventTime::DateTimeZoned {
+                datetime: stockholm,
+                tzid: "Europe/Stockholm".to_string(),
+            },
+        );
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY;COUNT=2"));
+
+        // Override uses London timezone:
+        let mut override_event = override_for(
+            &master,
+            EventTime::DateTimeZoned {
+                datetime: london,
+                tzid: "Europe/London".to_string(),
+            },
+        );
+        override_event.summary = Some("Standup (moved)".to_string());
+
+        let result = expand_in_range(
+            vec![master, override_event],
+            utc(2026, 7, 14, 0, 0),
+            utc(2026, 7, 16, 0, 0),
+        );
+
+        let summaries: Vec<_> = result
+            .iter()
+            .map(|e| e.summary.as_deref().unwrap())
+            .collect();
+
+        // "Standup (moved)" get treated as override of "Standup" instance
+        // despite having different timezone
+        assert_eq!(summaries, vec!["Standup (moved)", "Standup"]);
     }
 
     #[test]

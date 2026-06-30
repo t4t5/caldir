@@ -12,6 +12,15 @@ pub enum EventTime {
     },
 }
 
+/// Comparable form of `EventTime`
+/// with resolvable zones converted to UTC.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) enum NormalizedEventTime {
+    Date(NaiveDate),
+    Instant(DateTime<Utc>),
+    Floating(NaiveDateTime),
+}
+
 impl EventTime {
     pub fn to_local_tz<Tz: TimeZone>(&self, tz: &Tz) -> DateTime<Tz> {
         match self {
@@ -58,6 +67,20 @@ impl EventTime {
     /// Check if this is an all-day date (not a datetime)
     pub fn is_date(&self) -> bool {
         matches!(self, EventTime::Date(_))
+    }
+
+    pub(crate) fn normalized(&self) -> NormalizedEventTime {
+        match self {
+            EventTime::Date(date) => NormalizedEventTime::Date(*date),
+            EventTime::DateTimeUtc(datetime) => NormalizedEventTime::Instant(*datetime),
+            EventTime::DateTimeFloating(datetime) => NormalizedEventTime::Floating(*datetime),
+            EventTime::DateTimeZoned { datetime, tzid } => match parse_tzid(tzid) {
+                Some(tz) => {
+                    NormalizedEventTime::Instant(resolve_local(*datetime, &tz).with_timezone(&Utc))
+                }
+                None => NormalizedEventTime::Floating(*datetime),
+            },
+        }
     }
 }
 
