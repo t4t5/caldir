@@ -476,11 +476,13 @@ mod tests {
             .unwrap()
             .and_hms_opt(19, 0, 0)
             .unwrap();
+
         let london = NaiveDate::from_ymd_opt(2026, 7, 14)
             .unwrap()
             .and_hms_opt(18, 0, 0)
             .unwrap();
 
+        // Master event uses Stockholm timezone:
         let mut master = Event::new(
             "Standup",
             EventTime::DateTimeZoned {
@@ -490,6 +492,7 @@ mod tests {
         );
         master.recurrence = Some(Recurrence::new("FREQ=DAILY;COUNT=2"));
 
+        // Override uses London timezone:
         let mut override_event = override_for(
             &master,
             EventTime::DateTimeZoned {
@@ -509,6 +512,9 @@ mod tests {
             .iter()
             .map(|e| e.summary.as_deref().unwrap())
             .collect();
+
+        // "Standup (moved)" get treated as override of "Standup" instance
+        // despite having different timezone
         assert_eq!(summaries, vec!["Standup (moved)", "Standup"]);
     }
 
