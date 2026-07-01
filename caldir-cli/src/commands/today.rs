@@ -3,10 +3,10 @@ use caldir_core::Caldir;
 use caldir_core::DateBounds;
 use chrono::{DateTime, TimeZone, Utc};
 
-use crate::render::events_in_range::render_text_events_in_range;
+use crate::render::events_in_range::AgendaView;
 use crate::utils::{require_calendars, resolve_calendars};
 
-pub fn run(caldir: &Caldir, calendar: Option<String>) -> Result<()> {
+pub fn run(caldir: &Caldir, calendar: Option<String>) -> Result<AgendaView> {
     require_calendars(caldir)?;
 
     let calendars = resolve_calendars(caldir, calendar.as_deref())?;
@@ -15,7 +15,7 @@ pub fn run(caldir: &Caldir, calendar: Option<String>) -> Result<()> {
 
     let (from, to) = day_range(Utc::now().with_timezone(&tz));
 
-    render_text_events_in_range(caldir, calendars, from, to)
+    AgendaView::from_range(caldir, calendars, from, to)
 }
 
 fn day_range<Tz: TimeZone>(now: DateTime<Tz>) -> (DateTime<Utc>, DateTime<Utc>) {

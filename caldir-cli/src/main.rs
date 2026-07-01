@@ -1,4 +1,5 @@
 mod commands;
+mod output;
 mod render;
 mod utils;
 
@@ -8,6 +9,7 @@ mod test_utils;
 use anyhow::Result;
 use caldir_core::Caldir;
 use clap::{Parser, Subcommand};
+use output::OutputFormat;
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
@@ -16,6 +18,10 @@ use clap::{Parser, Subcommand};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Output as JSON
+    #[arg(long, global = true)]
+    json: bool,
 }
 
 #[derive(Subcommand)]
@@ -122,10 +128,6 @@ enum Commands {
         /// Show events until this date (YYYY-MM-DD)
         #[arg(long)]
         to: Option<String>,
-
-        /// Output events as JSON
-        #[arg(long)]
-        json: bool,
     },
     #[command(about = "Show today's events")]
     Today {
@@ -228,6 +230,11 @@ async fn main() -> Result<()> {
     }
 
     let mut caldir = Caldir::load()?;
+    let output_format = if cli.json {
+        OutputFormat::Json
+    } else {
+        OutputFormat::Text
+    };
 
     match cli.command {
         Commands::Connect { provider, hosted } => {
@@ -259,14 +266,18 @@ async fn main() -> Result<()> {
             verbose,
             force,
         } => commands::sync::run(&caldir, calendar, from, to, verbose, force).await,
-        Commands::Events {
-            calendar,
-            from,
-            to,
-            json,
-        } => commands::events::run(&caldir, calendar, from, to, json),
-        Commands::Today { calendar } => commands::today::run(&caldir, calendar),
-        Commands::Week { calendar } => commands::week::run(&caldir, calendar),
+        Commands::Events { calendar, from, to } => {
+            let view = commands::events::run(&caldir, calendar, from, to)?;
+            output::emit(&view, output_format)
+        }
+        Commands::Today { calendar } => {
+            let view = commands::today::run(&caldir, calendar)?;
+            output::emit(&view, output_format)
+        }
+        Commands::Week { calendar } => {
+            let view = commands::week::run(&caldir, calendar)?;
+            output::emit(&view, output_format)
+        }
         Commands::New {
             title,
             start,
