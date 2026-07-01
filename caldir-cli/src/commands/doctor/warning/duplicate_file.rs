@@ -1,21 +1,9 @@
-use super::doctor_warning::DoctorWarning;
+use crate::commands::doctor::warning::DoctorWarning;
+use caldir_core::{CalendarEvent, EventInstanceId};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use caldir_core::{CalendarEvent, EventInstanceId};
-
-type EventCheck = fn(&[CalendarEvent]) -> Vec<DoctorWarning>;
-
-const EVENT_CHECKS: &[EventCheck] = &[duplicate_file_warnings];
-
-pub(crate) fn event_warnings(events: &[CalendarEvent]) -> Vec<DoctorWarning> {
-    EVENT_CHECKS
-        .iter()
-        .flat_map(|check| check(events))
-        .collect()
-}
-
-fn duplicate_file_warnings(events: &[CalendarEvent]) -> Vec<DoctorWarning> {
+pub(crate) fn duplicate_file_warnings(events: &[CalendarEvent]) -> Vec<DoctorWarning> {
     duplicate_file_sets(events)
         .into_iter()
         .map(DoctorWarning::DuplicateFiles)
@@ -45,13 +33,11 @@ fn duplicate_file_sets(events: &[CalendarEvent]) -> Vec<Vec<PathBuf>> {
 
 #[cfg(test)]
 mod tests {
+    use super::duplicate_file_warnings;
+    use crate::commands::doctor::warning::DoctorWarning;
     use caldir_core::{Calendar, Event, EventTime};
     use chrono::NaiveDate;
     use pretty_assertions::assert_eq;
-
-    use crate::commands::doctor::{calendar_report, doctor_warning::DoctorWarning};
-
-    use super::event_warnings;
 
     fn test_calendar() -> (tempfile::TempDir, Calendar) {
         let tmp = tempfile::tempdir().unwrap();
@@ -79,7 +65,7 @@ mod tests {
         calendar.create_event(event.clone()).unwrap();
         calendar.create_event(event).unwrap();
 
-        let warnings = event_warnings(&calendar.events().unwrap());
+        let warnings = duplicate_file_warnings(&calendar.events().unwrap());
 
         assert_eq!(warnings.len(), 1);
         let DoctorWarning::DuplicateFiles(paths) = &warnings[0] else {
@@ -95,26 +81,8 @@ mod tests {
         calendar.create_event(test_event("Standup")).unwrap();
         calendar.create_event(test_event("Standup")).unwrap();
 
-        let warnings = event_warnings(&calendar.events().unwrap());
+        let warnings = duplicate_file_warnings(&calendar.events().unwrap());
 
         assert!(warnings.is_empty());
-    }
-
-    #[test]
-    fn treats_unreadable_events_as_warnings() {
-        let (_tmp, calendar) = test_calendar();
-        std::fs::write(
-            calendar.path().join("bad.ics"),
-            "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR",
-        )
-        .unwrap();
-
-        let report = calendar_report(calendar);
-
-        assert_eq!(report.warnings.len(), 1);
-        assert!(matches!(
-            report.warnings[0],
-            DoctorWarning::UnreadableEvents(_)
-        ));
     }
 }

@@ -1,16 +1,12 @@
-mod doctor_warning;
-mod event_warning;
-
-use std::io::{self, Write};
-
-use anyhow::Result;
-use caldir_core::{Caldir, Calendar};
-use owo_colors::OwoColorize;
+mod warning;
 
 use crate::render::diff::Render;
 use crate::utils::require_calendars;
-use doctor_warning::DoctorWarning;
-use event_warning::event_warnings;
+use anyhow::Result;
+use caldir_core::{Caldir, Calendar};
+use owo_colors::OwoColorize;
+use std::io::{self, Write};
+use warning::{DoctorWarning, doctor_warnings};
 
 /// Checks local caldir for bad calendar data:
 pub fn run(caldir: &Caldir) -> Result<()> {
@@ -57,9 +53,40 @@ fn calendar_reports(caldir: &Caldir) -> Vec<CalendarReport> {
 
 fn calendar_report(calendar: Calendar) -> CalendarReport {
     let warnings = match calendar.events() {
-        Ok(events) => event_warnings(&events),
+        Ok(events) => doctor_warnings(&events),
         Err(err) => vec![DoctorWarning::UnreadableEvents(err.to_string())],
     };
 
     CalendarReport { calendar, warnings }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::calendar_report;
+    use super::warning::DoctorWarning;
+    use caldir_core::Calendar;
+
+    fn test_calendar() -> (tempfile::TempDir, Calendar) {
+        let tmp = tempfile::tempdir().unwrap();
+        let calendar = Calendar::create(&tmp.path().join("work"), None).unwrap();
+        (tmp, calendar)
+    }
+
+    #[test]
+    fn treats_unreadable_events_as_warnings() {
+        let (_tmp, calendar) = test_calendar();
+        std::fs::write(
+            calendar.path().join("bad.ics"),
+            "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR",
+        )
+        .unwrap();
+
+        let report = calendar_report(calendar);
+
+        assert_eq!(report.warnings.len(), 1);
+        assert!(matches!(
+            report.warnings[0],
+            DoctorWarning::UnreadableEvents(_)
+        ));
+    }
 }

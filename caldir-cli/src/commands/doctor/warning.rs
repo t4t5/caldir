@@ -1,4 +1,8 @@
+mod duplicate_file;
+
 use anyhow::Result;
+use caldir_core::CalendarEvent;
+use duplicate_file::duplicate_file_warnings;
 use owo_colors::OwoColorize;
 use std::io::Write;
 use std::path::PathBuf;
@@ -30,4 +34,15 @@ impl DoctorWarning {
 
         Ok(())
     }
+}
+
+type EventCheck = fn(&[CalendarEvent]) -> Vec<DoctorWarning>;
+
+const EVENT_CHECKS: &[EventCheck] = &[duplicate_file_warnings];
+
+pub(crate) fn doctor_warnings(events: &[CalendarEvent]) -> Vec<DoctorWarning> {
+    EVENT_CHECKS
+        .iter()
+        .flat_map(|check| check(events))
+        .collect()
 }
