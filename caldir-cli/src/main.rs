@@ -210,6 +210,8 @@ enum Commands {
     },
     #[command(about = "Show configuration paths and calendar info")]
     Config,
+    #[command(about = "Check your caldir for bad data (e.g. duplicate files)")]
+    Doctor,
     #[command(about = "Update caldir and installed providers to the latest version")]
     Update,
 }
@@ -290,6 +292,7 @@ async fn main() -> Result<()> {
         Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
         Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
         Commands::Config => commands::config::run(&caldir),
+        Commands::Doctor => commands::doctor::run(&caldir),
         Commands::Update => unreachable!("handled above"),
     }
 }
