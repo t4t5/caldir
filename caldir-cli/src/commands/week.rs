@@ -3,7 +3,7 @@ use caldir_core::Caldir;
 use caldir_core::DateBounds;
 use chrono::{DateTime, Datelike, Duration, TimeZone, Utc};
 
-use crate::render::events_in_range::AgendaView;
+use crate::commands::agenda_view::AgendaView;
 use crate::utils::{require_calendars, resolve_calendars};
 
 pub fn run(caldir: &Caldir, calendar: Option<String>) -> Result<AgendaView> {
