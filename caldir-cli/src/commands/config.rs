@@ -34,18 +34,22 @@ mod tests {
     use indoc::indoc;
     use pretty_assertions::assert_eq;
 
-    fn sample_view() -> ConfigView {
+    fn sample_config() -> CaldirConfig {
+        CaldirConfig::new(
+            PathBuf::from("/tmp/calendars"),
+            TimeFormat::H24,
+            Some("my_calendar".to_string()),
+            Some(vec![
+                Reminder::from_minutes(30),
+                Reminder::from_minutes(120),
+            ]),
+        )
+    }
+
+    fn sample_config_view() -> ConfigView {
         ConfigView {
             path: PathBuf::from("/tmp/caldir/config.toml"),
-            config: CaldirConfig::new(
-                PathBuf::from("/tmp/calendars"),
-                TimeFormat::H24,
-                Some("my_calendar".to_string()),
-                Some(vec![
-                    Reminder::from_minutes(30),
-                    Reminder::from_minutes(120),
-                ]),
-            ),
+            config: sample_config(),
         }
     }
 
@@ -59,12 +63,12 @@ mod tests {
             default_calendar = "my_calendar"
             default_reminders = ["30m", "2h"]"#};
 
-        assert_eq!(sample_view().to_text(), expected);
+        assert_eq!(sample_config_view().to_text(), expected);
     }
 
     #[test]
     fn renders_json() {
-        let json = sample_view().to_json();
+        let json = sample_config_view().to_json();
 
         assert_eq!(json["path"], "/tmp/caldir/config.toml");
         assert_eq!(json["config"]["calendar_dir"], "/tmp/calendars");
