@@ -229,7 +229,7 @@ async fn main() -> Result<()> {
 
     let mut caldir = Caldir::load()?;
 
-    let format = if cli.json {
+    let output_format = if cli.json {
         output::Format::Json
     } else {
         output::Format::Text
@@ -301,7 +301,7 @@ async fn main() -> Result<()> {
         Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
         Commands::Config => {
             let view = commands::config::run(&caldir)?;
-            output::emit(&view, format);
+            output::emit(&view, output_format);
             Ok(())
         }
         Commands::Doctor => commands::doctor::run(&caldir),

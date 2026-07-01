@@ -18,16 +18,16 @@ impl<T: Serialize + TextRender> Output for T {
 }
 
 #[derive(Clone, Copy)]
-pub enum Format {
+pub enum OutputFormat {
     Text,
     Json,
 }
 
 /// Render a command result to stdout in the chosen format.
-pub fn emit(output: &dyn Output, format: Format) {
+pub fn emit(output: &dyn Output, format: OutputFormat) {
     match format {
-        Format::Text => println!("{}", output.to_text()),
-        Format::Json => println!(
+        OutputFormat::Text => println!("{}", output.to_text()),
+        OutputFormat::Json => println!(
             "{}",
             serde_json::to_string_pretty(&output.to_json()).unwrap()
         ),
