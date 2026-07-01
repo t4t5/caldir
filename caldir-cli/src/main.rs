@@ -18,10 +18,6 @@ use output::OutputFormat;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-
-    /// Output as JSON
-    #[arg(long, global = true)]
-    json: bool,
 }
 
 #[derive(Subcommand)]
@@ -128,18 +124,30 @@ enum Commands {
         /// Show events until this date (YYYY-MM-DD)
         #[arg(long)]
         to: Option<String>,
+
+        /// Output events as JSON
+        #[arg(long)]
+        json: bool,
     },
     #[command(about = "Show today's events")]
     Today {
         /// Only show events from this calendar (by slug)
         #[arg(short, long)]
         calendar: Option<String>,
+
+        /// Output events as JSON
+        #[arg(long)]
+        json: bool,
     },
     #[command(about = "Show this week's events (through Sunday)")]
     Week {
         /// Only show events from this calendar (by slug)
         #[arg(short, long)]
         calendar: Option<String>,
+
+        /// Output events as JSON
+        #[arg(long)]
+        json: bool,
     },
     #[command(about = "Create a new event in caldir")]
     New {
@@ -230,11 +238,6 @@ async fn main() -> Result<()> {
     }
 
     let mut caldir = Caldir::load()?;
-    let output_format = if cli.json {
-        OutputFormat::Json
-    } else {
-        OutputFormat::Text
-    };
 
     match cli.command {
         Commands::Connect { provider, hosted } => {
@@ -266,17 +269,22 @@ async fn main() -> Result<()> {
             verbose,
             force,
         } => commands::sync::run(&caldir, calendar, from, to, verbose, force).await,
-        Commands::Events { calendar, from, to } => {
+        Commands::Events {
+            calendar,
+            from,
+            to,
+            json,
+        } => {
             let view = commands::events::run(&caldir, calendar, from, to)?;
-            output::emit(&view, output_format)
+            output::emit(&view, output_format(json))
         }
-        Commands::Today { calendar } => {
+        Commands::Today { calendar, json } => {
             let view = commands::today::run(&caldir, calendar)?;
-            output::emit(&view, output_format)
+            output::emit(&view, output_format(json))
         }
-        Commands::Week { calendar } => {
+        Commands::Week { calendar, json } => {
             let view = commands::week::run(&caldir, calendar)?;
-            output::emit(&view, output_format)
+            output::emit(&view, output_format(json))
         }
         Commands::New {
             title,
@@ -309,5 +317,13 @@ async fn main() -> Result<()> {
         Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
         Commands::Config => commands::config::run(&caldir),
         Commands::Update => unreachable!("handled above"),
+    }
+}
+
+fn output_format(json: bool) -> OutputFormat {
+    if json {
+        OutputFormat::Json
+    } else {
+        OutputFormat::Text
     }
 }
