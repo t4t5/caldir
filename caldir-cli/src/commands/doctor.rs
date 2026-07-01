@@ -6,7 +6,7 @@ use anyhow::Result;
 use caldir_core::{Caldir, Calendar};
 use owo_colors::OwoColorize;
 use std::io::{self, Write};
-use warning::{DoctorWarning, doctor_warnings};
+use warning::{DoctorWarning, event_warnings};
 
 /// Checks local caldir for bad calendar data:
 pub fn run(caldir: &Caldir) -> Result<()> {
@@ -53,7 +53,7 @@ fn calendar_reports(caldir: &Caldir) -> Vec<CalendarReport> {
 
 fn calendar_report(calendar: Calendar) -> CalendarReport {
     let warnings = match calendar.events() {
-        Ok(events) => doctor_warnings(&events),
+        Ok(events) => event_warnings(&events),
         Err(err) => vec![DoctorWarning::UnreadableEvents(err.to_string())],
     };
 

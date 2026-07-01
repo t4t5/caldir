@@ -40,7 +40,7 @@ type EventCheck = fn(&[CalendarEvent]) -> Vec<DoctorWarning>;
 
 const EVENT_CHECKS: &[EventCheck] = &[duplicate_file_warnings];
 
-pub(crate) fn doctor_warnings(events: &[CalendarEvent]) -> Vec<DoctorWarning> {
+pub(crate) fn event_warnings(events: &[CalendarEvent]) -> Vec<DoctorWarning> {
     EVENT_CHECKS
         .iter()
         .flat_map(|check| check(events))
