@@ -1,9 +1,7 @@
 mod commands;
+mod output;
 mod render;
 mod utils;
-
-#[cfg(test)]
-mod test_utils;
 
 use anyhow::Result;
 use caldir_core::Caldir;
@@ -16,6 +14,10 @@ use clap::{Parser, Subcommand};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Output as JSON
+    #[arg(long, global = true)]
+    json: bool,
 }
 
 #[derive(Subcommand)]
@@ -227,6 +229,12 @@ async fn main() -> Result<()> {
 
     let mut caldir = Caldir::load()?;
 
+    let format = if cli.json {
+        output::Format::Json
+    } else {
+        output::Format::Text
+    };
+
     match cli.command {
         Commands::Connect { provider, hosted } => {
             commands::connect::run(&mut caldir, provider, hosted).await
@@ -291,7 +299,11 @@ async fn main() -> Result<()> {
         } => commands::discard::run(&caldir, calendar, from, to, verbose, force).await,
         Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
         Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
-        Commands::Config => commands::config::run(&caldir),
+        Commands::Config => {
+            let view = commands::config::run(&caldir)?;
+            output::emit(&view, format);
+            Ok(())
+        }
         Commands::Doctor => commands::doctor::run(&caldir),
         Commands::Update => unreachable!("handled above"),
     }

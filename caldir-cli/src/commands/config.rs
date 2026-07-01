@@ -1,57 +1,76 @@
 use anyhow::Result;
 use caldir_core::{Caldir, CaldirConfig};
-use std::{io::Write, path::Path};
+use serde::Serialize;
+use std::path::PathBuf;
 
-pub fn run(caldir: &Caldir) -> Result<()> {
-    let mut out = std::io::stdout().lock();
+use crate::output::TextRender;
 
-    let config = caldir.config();
-    let config_path = CaldirConfig::default_system_config_path()?;
-
-    render(&mut out, &config_path, config)
+#[derive(Serialize)]
+pub struct ConfigView {
+    pub path: PathBuf,
+    pub config: CaldirConfig,
 }
 
-fn render(out: &mut impl Write, config_path: &Path, config: &CaldirConfig) -> Result<()> {
-    writeln!(out, "Path: {}", config_path.display())?;
-    writeln!(out)?;
-    write!(out, "{}", config)?;
-    Ok(())
+impl TextRender for ConfigView {
+    fn to_text(&self) -> String {
+        format!("Path: {}\n\n{}", self.path.display(), self.config)
+            .trim_end()
+            .to_string()
+    }
+}
+
+pub fn run(caldir: &Caldir) -> Result<ConfigView> {
+    Ok(ConfigView {
+        path: CaldirConfig::default_system_config_path()?,
+        config: caldir.config().clone(),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::capture;
+    use crate::output::Output;
     use caldir_core::{Reminder, TimeFormat};
     use indoc::indoc;
     use pretty_assertions::assert_eq;
-    use std::path::PathBuf;
+
+    fn sample_view() -> ConfigView {
+        ConfigView {
+            path: PathBuf::from("/tmp/caldir/config.toml"),
+            config: CaldirConfig::new(
+                PathBuf::from("/tmp/calendars"),
+                TimeFormat::H24,
+                Some("my_calendar".to_string()),
+                Some(vec![
+                    Reminder::from_minutes(30),
+                    Reminder::from_minutes(120),
+                ]),
+            ),
+        }
+    }
 
     #[test]
-    fn render_writes_expected_output() {
-        let config = CaldirConfig::new(
-            PathBuf::from("/tmp/calendars"),
-            TimeFormat::H24,
-            Some("my_calendar".to_string()),
-            Some(vec![
-                Reminder::from_minutes(30),
-                Reminder::from_minutes(120),
-            ]),
-        );
-
-        let config_path = PathBuf::from("/tmp/caldir/config.toml");
-
-        let output = capture(|out| render(out, &config_path, &config));
-
+    fn renders_text() {
         let expected = indoc! {r#"
             Path: /tmp/caldir/config.toml
 
             calendar_dir = "/tmp/calendars"
             time_format = "24h"
             default_calendar = "my_calendar"
-            default_reminders = ["30m", "2h"]
-        "#};
+            default_reminders = ["30m", "2h"]"#};
 
-        assert_eq!(output, expected);
+        assert_eq!(sample_view().to_text(), expected);
+    }
+
+    #[test]
+    fn renders_json() {
+        let json = sample_view().to_json();
+
+        assert_eq!(json["path"], "/tmp/caldir/config.toml");
+        assert_eq!(json["config"]["calendar_dir"], "/tmp/calendars");
+        assert_eq!(json["config"]["time_format"], "24h");
+        assert_eq!(json["config"]["default_calendar"], "my_calendar");
+        assert_eq!(json["config"]["default_reminders"][0], "30m");
+        assert_eq!(json["config"]["default_reminders"][1], "2h");
     }
 }
