@@ -61,12 +61,10 @@ impl SyncedEventIds {
     /// the file. Truncation would make the next sync treat every known event
     /// as new and re-create them remotely.
     pub fn write(&self, path: &Path) -> Result<(), CalendarStateError> {
-        let contents = self
-            .0
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Sort for deterministic output so the file diffs stay stable across writes.
+        let mut lines = self.0.iter().map(ToString::to_string).collect::<Vec<_>>();
+        lines.sort_unstable();
+        let contents = lines.join("\n");
 
         let parent = path.parent().ok_or_else(|| {
             std::io::Error::new(
@@ -155,18 +153,9 @@ mod tests {
 
         ids.write(&path).unwrap();
 
-        let mut got: Vec<String> = std::fs::read_to_string(&path)
-            .unwrap()
-            .lines()
-            .map(str::to_string)
-            .collect();
+        // Output is sorted, so it must match the (already sorted) sample lines exactly.
+        let got = std::fs::read_to_string(&path).unwrap();
 
-        got.sort();
-
-        let mut expected: Vec<String> = sample_lines().into_iter().map(str::to_string).collect();
-
-        expected.sort();
-
-        assert_eq!(got, expected);
+        assert_eq!(got, sample_lines().join("\n"));
     }
 }
