@@ -1,84 +1,65 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
+mod doctor_warning;
+mod event_warning;
+
+use std::io::{self, Write};
 
 use anyhow::Result;
-use caldir_core::{Caldir, CalendarEvent, EventInstanceId};
+use caldir_core::{Caldir, Calendar};
 use owo_colors::OwoColorize;
 
 use crate::render::diff::Render;
 use crate::utils::require_calendars;
+use doctor_warning::DoctorWarning;
+use event_warning::event_warnings;
 
-/// Check the caldir for bad on-disk data. For now it only looks for duplicate
-/// files — multiple local files that resolve to one event identity (e.g. the
-/// same recurring instance saved in two timezones), which sync can't reconcile.
+/// Checks local caldir for bad calendar data:
 pub fn run(caldir: &Caldir) -> Result<()> {
     require_calendars(caldir)?;
 
-    let mut issue_count = 0;
+    let reports = calendar_reports(caldir);
+    let mut out = io::stdout().lock();
 
-    for calendar in caldir.calendars().into_iter().filter_map(Result::ok) {
-        let groups = match calendar.events() {
-            Ok(events) => duplicate_file_groups(&events),
-            Err(e) => {
-                println!("{}", calendar.render(caldir));
-                println!("   {}", e.to_string().red());
-                continue;
-            }
-        };
+    render(&mut out, caldir, &reports)
+}
 
-        if groups.is_empty() {
-            continue;
+fn render(out: &mut impl Write, caldir: &Caldir, reports: &[CalendarReport]) -> Result<()> {
+    let warning_count: usize = reports.iter().map(|report| report.warnings.len()).sum();
+
+    for report in reports.iter().filter(|report| !report.warnings.is_empty()) {
+        writeln!(out, "{}", report.calendar.render(caldir))?;
+        for warning in &report.warnings {
+            warning.render(out)?;
         }
-
-        println!("{}", calendar.render(caldir));
-        for paths in &groups {
-            issue_count += 1;
-            print_duplicate_group(paths);
-        }
-        println!();
+        writeln!(out)?;
     }
 
-    if issue_count == 0 {
-        println!("{} No problems found.", "✓".green());
-    } else {
-        println!(
-            "{} {} duplicate {} found — delete all but one file in each.",
-            "⚠".yellow(),
-            issue_count,
-            if issue_count == 1 { "group" } else { "groups" }
-        );
+    if warning_count == 0 {
+        writeln!(out, "{} No problems found.", "✓".green())?;
     }
 
     Ok(())
 }
 
-/// Files grouped by event identity, keeping only the groups with more than one
-/// file. Sorted for deterministic output.
-fn duplicate_file_groups(events: &[CalendarEvent]) -> Vec<Vec<PathBuf>> {
-    let mut by_id: HashMap<EventInstanceId, Vec<PathBuf>> = HashMap::new();
-    for ce in events {
-        by_id
-            .entry(ce.event().event_instance_id())
-            .or_default()
-            .push(ce.path().to_path_buf());
-    }
-
-    let mut groups: Vec<Vec<PathBuf>> = by_id
-        .into_values()
-        .filter(|paths| paths.len() > 1)
-        .collect();
-
-    for paths in &mut groups {
-        paths.sort();
-    }
-    groups.sort();
-    groups
+#[derive(Debug)]
+struct CalendarReport {
+    calendar: Calendar,
+    warnings: Vec<DoctorWarning>,
 }
 
-fn print_duplicate_group(paths: &[PathBuf]) {
-    println!("   {} same event saved as multiple files:", "⚠".yellow());
-    for path in paths {
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
-        println!("       {}", name.dimmed());
-    }
+fn calendar_reports(caldir: &Caldir) -> Vec<CalendarReport> {
+    caldir
+        .calendars()
+        .into_iter()
+        .filter_map(Result::ok)
+        .map(calendar_report)
+        .collect()
+}
+
+fn calendar_report(calendar: Calendar) -> CalendarReport {
+    let warnings = match calendar.events() {
+        Ok(events) => event_warnings(&events),
+        Err(err) => vec![DoctorWarning::UnreadableEvents(err.to_string())],
+    };
+
+    CalendarReport { calendar, warnings }
 }
