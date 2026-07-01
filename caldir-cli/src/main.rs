@@ -6,6 +6,7 @@ mod utils;
 use anyhow::Result;
 use caldir_core::Caldir;
 use clap::{Parser, Subcommand};
+use output::OutputFormat;
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
@@ -230,9 +231,9 @@ async fn main() -> Result<()> {
     let mut caldir = Caldir::load()?;
 
     let output_format = if cli.json {
-        output::Format::Json
+        OutputFormat::Json
     } else {
-        output::Format::Text
+        OutputFormat::Text
     };
 
     match cli.command {

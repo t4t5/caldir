@@ -1,12 +1,11 @@
 use serde::Serialize;
 
-/// Human-readable terminal rendering for a command's result.
+/// Human text rendering for a command's result
 pub trait TextRender {
     fn to_text(&self) -> String;
 }
 
-/// A command result renderable as either human text or JSON.
-/// Blanket-implemented for any `Serialize + TextRender`.
+/// A command result renderable as either human text or JSON
 pub trait Output: TextRender {
     fn to_json(&self) -> serde_json::Value;
 }
