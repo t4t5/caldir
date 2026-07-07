@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Result, anyhow, bail};
 use caldir_core::Event;
 use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::UpdateEvent;
@@ -28,9 +28,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
     let google_event_id = cmd
         .event
         .x_property(PROVIDER_EVENT_ID_PROPERTY)
-        .ok_or_else(|| {
-            anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}")
-        })?;
+        .ok_or_else(|| anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}"))?;
 
     if cmd.event.is_invite_for(account_email) {
         // Only update our own attendee status:
@@ -65,8 +63,9 @@ async fn patch_event_without_attendees(
     calendar_id: &str,
     event_id: &str,
     event: &Event,
-) -> anyhow::Result<google_calendar::types::Event> {
+) -> Result<google_calendar::types::Event> {
     let body = patch_body_without_attendees(event)?;
+
     let url = format!(
         "https://www.googleapis.com/calendar/v3/calendars/{}/events/{}?sendUpdates=all",
         calendar_id, event_id,
@@ -81,13 +80,13 @@ async fn patch_event_without_attendees(
 
     if !response.status().is_success() {
         let error_text = response.text().await.unwrap_or_default();
-        anyhow::bail!("Error handling request: {}", error_text);
+        bail!("Error handling request: {}", error_text);
     }
 
     Ok(response.json().await?)
 }
 
-fn patch_body_without_attendees(event: &Event) -> anyhow::Result<Value> {
+fn patch_body_without_attendees(event: &Event) -> Result<Value> {
     let mut body = serde_json::to_value(event.to_google())?;
 
     if let Value::Object(fields) = &mut body {
