@@ -2,7 +2,7 @@ use anyhow::Result;
 use caldir_core::Event;
 use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::UpdateEvent;
-use google_calendar::types::SendUpdates;
+use serde_json::Value;
 
 use crate::app_config::AppConfigStore;
 use crate::commands::invite::patch_invite_status;
@@ -45,25 +45,80 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
 
         Ok(Event::from_google(google_event)?)
     } else {
-        // Organizer or own event: full PUT update
-        let client = session_store.client(&session, &app_config_store)?;
+        // Organizer or own event: PATCH event fields, but never send attendees.
+        // A single EXDATE edit is a master update; sending a full attendee list
+        // here can rewrite invite state across the whole series.
+        let google_event = patch_event_without_attendees(
+            session.access_token(),
+            calendar_id,
+            google_event_id,
+            &cmd.event,
+        )
+        .await?;
 
-        let google_event = cmd.event.to_google();
+        Ok(Event::from_google(google_event)?)
+    }
+}
 
-        let response = client
-            .events()
-            .update(
-                calendar_id,
-                google_event_id,
-                0,
-                0,
-                false,
-                SendUpdates::All,
-                false,
-                &google_event,
-            )
-            .await?;
+async fn patch_event_without_attendees(
+    access_token: &str,
+    calendar_id: &str,
+    event_id: &str,
+    event: &Event,
+) -> anyhow::Result<google_calendar::types::Event> {
+    let body = patch_body_without_attendees(event)?;
+    let url = format!(
+        "https://www.googleapis.com/calendar/v3/calendars/{}/events/{}?sendUpdates=all",
+        calendar_id, event_id,
+    );
 
-        Ok(Event::from_google(response.body)?)
+    let response = reqwest::Client::new()
+        .patch(&url)
+        .bearer_auth(access_token)
+        .json(&body)
+        .send()
+        .await?;
+
+    if !response.status().is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        anyhow::bail!("Error handling request: {}", error_text);
+    }
+
+    Ok(response.json().await?)
+}
+
+fn patch_body_without_attendees(event: &Event) -> anyhow::Result<Value> {
+    let mut body = serde_json::to_value(event.to_google())?;
+
+    if let Value::Object(fields) = &mut body {
+        fields.remove("attendees");
+    }
+
+    Ok(body)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caldir_core::{Attendee, EventTime, Recurrence};
+    use chrono::NaiveDate;
+
+    #[test]
+    fn patch_body_omits_attendees() {
+        let mut event = Event::new(
+            "Weekly sync",
+            EventTime::Date(NaiveDate::from_ymd_opt(2026, 7, 10).unwrap()),
+        );
+        event.recurrence = Some(Recurrence::new("FREQ=WEEKLY"));
+        event.attendees = vec![Attendee::new("alice@example.com")];
+
+        let body = patch_body_without_attendees(&event).unwrap();
+
+        assert!(body.get("attendees").is_none());
+        assert_eq!(
+            body.get("summary").and_then(Value::as_str),
+            Some("Weekly sync")
+        );
+        assert!(body.get("recurrence").is_some());
     }
 }
