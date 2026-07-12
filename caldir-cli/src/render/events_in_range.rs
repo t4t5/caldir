@@ -1,185 +1,135 @@
+#[cfg(test)]
 use anyhow::Result;
-use caldir_core::{Caldir, Calendar, Event, EventTime};
-use chrono::{DateTime, Duration, NaiveDate, Utc};
 use owo_colors::OwoColorize;
+#[cfg(test)]
+use std::io::Write;
 
-use crate::render::event::{format_event_line, is_visible, render_participation_status};
-use crate::render::time::{format_date_label, local_date};
+use crate::commands::agenda_view::{AgendaEvent, AgendaView};
+use crate::output::TextRender;
+use crate::render::time::{format_date_label, format_time_only};
 
-pub fn render_events_in_range(
-    caldir: &Caldir,
-    calendars: Vec<Calendar>,
-    from: DateTime<Utc>,
-    to: DateTime<Utc>,
-) -> Result<()> {
-    let range_start = from.with_timezone(&chrono::Local).date_naive();
-    let range_end = to.with_timezone(&chrono::Local).date_naive();
-
-    // One entry per (day, event)
-    // Note: a multi-day all-day event is repeated under every day it spans
-    // (day, cal_slug, account_email, event)
-    let mut entries: Vec<(NaiveDate, Option<&str>, Option<&str>, Event)> = Vec::new();
-
-    for cal in &calendars {
-        let events = cal.expanded_events_in_range(from, to)?;
-
-        // Used to check the user's attendance status:
-        let remote_email = cal.remote_email();
-
-        for event in events {
-            if !is_visible(&event) {
-                continue;
-            }
-            for day in display_days(&event, range_start, range_end) {
-                entries.push((day, cal.slug(), remote_email, event.clone()));
-            }
-        }
-    }
-
-    // Sort by day, then all-day events before timed ones, then by start time.
-    entries.sort_by(|a, b| {
-        a.0.cmp(&b.0)
-            .then_with(|| a.3.start.is_date().cmp(&b.3.start.is_date()).reverse())
-            .then_with(|| a.3.start.to_utc().cmp(&b.3.start.to_utc()))
-    });
-
-    if entries.is_empty() {
-        println!("{}", "No events found".dimmed());
-        return Ok(());
-    }
-
-    // Group events by day and print
-    let mut current_date: Option<NaiveDate> = None;
-
-    for (day, cal_slug, email, event) in &entries {
-        if current_date != Some(*day) {
-            if current_date.is_some() {
-                println!();
-            }
-            println!("{}", format_date_label(*day).bold());
-            current_date = Some(*day);
+impl TextRender for AgendaView {
+    fn to_text(&self) -> String {
+        if self.days.is_empty() {
+            return "No events found".dimmed().to_string();
         }
 
-        let invite_indicator = email
-            .as_deref()
-            .filter(|email| event.is_invite_for(email))
-            .and_then(|email| event.attendee_status(email))
-            .map(|status| format!(" ({})", render_participation_status(status)))
-            .unwrap_or_default();
+        let mut lines = Vec::new();
 
-        println!(
-            "{}",
-            format_event_line(
-                event,
-                cal_slug.unwrap_or("(Unknown calendar)"),
-                &invite_indicator,
-                caldir
-            )
-        );
+        for (index, day) in self.days.iter().enumerate() {
+            if index > 0 {
+                lines.push(String::new());
+            }
+
+            lines.push(format_date_label(day.date).bold().to_string());
+
+            for event in &day.events {
+                lines.push(format_agenda_event(event, self.time_format));
+            }
+        }
+
+        lines.join("\n")
     }
+}
+
+#[cfg(test)]
+fn write_text(view: &AgendaView, out: &mut impl Write) -> Result<()> {
+    writeln!(out, "{}", view.to_text())?;
 
     Ok(())
 }
 
-/// The day(s) an event should be listed under, clamped to `[range_start, range_end]`.
-/// Most events render once, on their start day.
-/// A multi-day all-day event renders under every day it covers
-fn display_days(event: &Event, range_start: NaiveDate, range_end: NaiveDate) -> Vec<NaiveDate> {
-    if let (EventTime::Date(start), Some(EventTime::Date(end))) = (&event.start, &event.end) {
-        // All-day DTEND is exclusive, so the last day covered is `end - 1`.
-        let last_day = *end - Duration::days(1);
-        if last_day > *start {
-            let first = (*start).max(range_start);
-            let last = last_day.min(range_end);
-            let mut days = Vec::new();
-            let mut day = first;
-            while day <= last {
-                days.push(day);
-                day += Duration::days(1);
-            }
-            return days;
-        }
-    }
+fn format_agenda_event(event: &AgendaEvent, time_format: caldir_core::TimeFormat) -> String {
+    let time = format_time_only(&event.start.to_event_time(), time_format);
+    let calendar_slug = event
+        .calendar_slug
+        .as_deref()
+        .unwrap_or("(Unknown calendar)");
+    let cal_tag = format!("[{}]", calendar_slug);
+    let summary = event.summary.as_deref().unwrap_or("(Untitled)");
+    let status = event
+        .invite_status
+        .as_deref()
+        .map(render_invite_status)
+        .map(|status| format!(" ({status})"))
+        .unwrap_or_default();
 
-    vec![local_date(&event.start)]
+    format!("  {} {} {}{}", time, summary, cal_tag.dimmed(), status)
+}
+
+fn render_invite_status(status: &str) -> String {
+    match status {
+        "accepted" => status.green().to_string(),
+        "declined" => status.red().to_string(),
+        "maybe" | "pending" => status.yellow().to_string(),
+        _ => status.to_string(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use crate::commands::agenda_view::{AgendaDay, AgendaEventTime};
+    use crate::test_utils::capture;
+    use caldir_core::TimeFormat;
+    use chrono::NaiveDate;
+    use pretty_assertions::assert_eq;
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
     }
 
-    fn all_day(start: NaiveDate, end_exclusive: NaiveDate) -> Event {
-        let mut event = Event::new("Trip", EventTime::Date(start));
-        event.end = Some(EventTime::Date(end_exclusive));
-        event
+    fn agenda_event(summary: &str) -> AgendaEvent {
+        AgendaEvent {
+            calendar_slug: Some("work".to_string()),
+            calendar_name: Some("Work".to_string()),
+            calendar_color: Some("#ff0000".to_string()),
+            id: "event-1".to_string(),
+            uid: "uid-1".to_string(),
+            recurrence_id: None,
+            summary: Some(summary.to_string()),
+            description: None,
+            location: None,
+            start: AgendaEventTime::Date {
+                date: "2027-05-27".to_string(),
+            },
+            end: None,
+            status: "confirmed".to_string(),
+            invite_status: None,
+        }
     }
 
     #[test]
-    fn single_day_all_day_event_shows_on_its_start_day() {
-        // Spans one day (DTEND is exclusive): May 27 only.
-        let event = all_day(date(2026, 5, 27), date(2026, 5, 28));
+    fn agenda_view_writes_no_events_output() {
+        let view = AgendaView {
+            days: Vec::new(),
+            time_format: TimeFormat::H24,
+        };
 
-        let days = display_days(&event, date(2026, 5, 25), date(2026, 6, 1));
+        let output = capture(|out| write_text(&view, out));
 
-        assert_eq!(days, vec![date(2026, 5, 27)]);
+        assert_eq!(output, format!("{}\n", "No events found".dimmed()));
     }
 
     #[test]
-    fn multi_day_all_day_event_shows_on_every_spanned_day() {
-        // May 27 through May 29 inclusive (DTEND May 30 exclusive).
-        let event = all_day(date(2026, 5, 27), date(2026, 5, 30));
+    fn agenda_view_writes_grouped_text_output() {
+        let day = date(2027, 5, 27);
+        let view = AgendaView {
+            days: vec![AgendaDay {
+                date: day,
+                events: vec![agenda_event("Trip")],
+            }],
+            time_format: TimeFormat::H24,
+        };
 
-        let days = display_days(&event, date(2026, 5, 25), date(2026, 6, 1));
+        let output = capture(|out| write_text(&view, out));
 
-        assert_eq!(
-            days,
-            vec![date(2026, 5, 27), date(2026, 5, 28), date(2026, 5, 29)]
+        let expected = format!(
+            "{}\n  all-day Trip {}\n",
+            "Thu May 27 2027".bold(),
+            "[work]".dimmed()
         );
-    }
 
-    #[test]
-    fn multi_day_event_starting_before_window_is_clamped_to_window_start() {
-        // The reported bug: trip began May 27 but today is June 2. It should
-        // appear from the window start onward, not under the past start day.
-        let event = all_day(date(2026, 5, 27), date(2026, 6, 5));
-
-        let days = display_days(&event, date(2026, 6, 2), date(2026, 6, 7));
-
-        assert_eq!(
-            days,
-            vec![date(2026, 6, 2), date(2026, 6, 3), date(2026, 6, 4)]
-        );
-    }
-
-    #[test]
-    fn multi_day_event_extending_past_window_is_clamped_to_window_end() {
-        let event = all_day(date(2026, 6, 1), date(2026, 6, 20));
-
-        let days = display_days(&event, date(2026, 6, 1), date(2026, 6, 3));
-
-        assert_eq!(
-            days,
-            vec![date(2026, 6, 1), date(2026, 6, 2), date(2026, 6, 3)]
-        );
-    }
-
-    #[test]
-    fn timed_event_shows_only_on_its_start_day() {
-        let mut event = Event::new(
-            "Meeting",
-            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 6, 2, 14, 0, 0).unwrap()),
-        );
-        event.end = Some(EventTime::DateTimeUtc(
-            Utc.with_ymd_and_hms(2026, 6, 2, 15, 0, 0).unwrap(),
-        ));
-
-        let days = display_days(&event, date(2026, 6, 1), date(2026, 6, 7));
-
-        assert_eq!(days, vec![local_date(&event.start)]);
+        assert_eq!(output, expected);
     }
 }

@@ -1,3 +1,4 @@
+pub mod agenda_view;
 pub mod config;
 pub mod connect;
 pub mod discard;
