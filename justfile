@@ -35,3 +35,8 @@ uninstall:
 # Serve website locally
 web:
   cd website && npm run dev
+
+# Force deploy website
+deploy-web:
+  gh workflow run website.yml --ref main
+  gh run watch

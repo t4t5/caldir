@@ -6,6 +6,7 @@ on:
     paths:
       - website/**
       - caldir-cli/Cargo.toml
+  workflow_dispatch:
 
 jobs:
   deploy:
