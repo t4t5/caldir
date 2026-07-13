@@ -27,15 +27,15 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
         // Normalize webcal:// to https://
         let url = raw_url.replacen("webcal://", "https://", 1);
 
-        let body = http::fetch_feed(&url).await?;
+        let feed = http::fetch_feed(&url).await?;
 
-        if !body.contains("BEGIN:VCALENDAR") {
+        if !feed.body.contains("BEGIN:VCALENDAR") {
             anyhow::bail!(
                 "The URL does not appear to be a valid ICS calendar feed (no BEGIN:VCALENDAR found)"
             );
         }
 
-        let calendar_config = build_calendar_config(&body, &url)?;
+        let calendar_config = build_calendar_config(&feed.body, &url)?;
 
         return Ok(ConnectResponse::Done {
             account_identifier: None,

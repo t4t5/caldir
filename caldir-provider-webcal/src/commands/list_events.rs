@@ -11,9 +11,9 @@ use crate::remote_config::WebcalRemoteConfig;
 pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
     let config = WebcalRemoteConfig::try_from(&cmd.remote)?;
 
-    let body = http::fetch_feed(&config.webcal_url).await?;
+    let feed = http::fetch_feed(&config.webcal_url).await?;
 
-    let all_events: Vec<Event> = Event::from_ics_str(&body)
+    let all_events: Vec<Event> = Event::from_ics_str(&feed.body)
         .map_err(|e| anyhow::anyhow!("Failed to parse webcal feed: {e}"))?
         .into_iter()
         .filter_map(|result| match result {
@@ -22,6 +22,12 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
                 eprintln!("caldir-provider-webcal: skipping malformed event: {err}");
                 None
             }
+        })
+        .map(|mut event| {
+            if event.last_modified.is_none() {
+                event.last_modified = feed.last_modified;
+            }
+            event
         })
         .collect();
 
@@ -63,10 +69,25 @@ mod tests {
 
     /// Apply the in-process filter logic without doing the HTTP fetch.
     fn filter_events(body: &str, from: &str, to: &str) -> Vec<Event> {
+        filter_events_with_feed_last_modified(body, from, to, None)
+    }
+
+    fn filter_events_with_feed_last_modified(
+        body: &str,
+        from: &str,
+        to: &str,
+        feed_last_modified: Option<DateTime<Utc>>,
+    ) -> Vec<Event> {
         let all: Vec<Event> = Event::from_ics_str(body)
             .unwrap()
             .into_iter()
             .map(Result::unwrap)
+            .map(|mut event| {
+                if event.last_modified.is_none() {
+                    event.last_modified = feed_last_modified;
+                }
+                event
+            })
             .collect();
 
         let from_utc = DateTime::parse_from_rfc3339(from)
@@ -171,6 +192,60 @@ END:VEVENT
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].uid.as_str(), "weekly@caldir");
         assert!(events[0].recurrence.is_some());
+    }
+
+    #[test]
+    fn uses_feed_last_modified_when_event_has_none() {
+        let body = ics_with(
+            r"BEGIN:VEVENT
+UID:missing@caldir
+DTSTART:20260615T100000Z
+DTEND:20260615T110000Z
+SUMMARY:Missing
+END:VEVENT
+",
+        );
+        let feed_last_modified = DateTime::parse_from_rfc3339("2026-07-13T06:00:11Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let events = filter_events_with_feed_last_modified(
+            &body,
+            "2026-06-01T00:00:00+00:00",
+            "2026-06-30T23:59:59+00:00",
+            Some(feed_last_modified),
+        );
+
+        assert_eq!(events[0].last_modified, Some(feed_last_modified));
+    }
+
+    #[test]
+    fn keeps_event_last_modified_when_present() {
+        let body = ics_with(
+            r"BEGIN:VEVENT
+UID:present@caldir
+DTSTART:20260615T100000Z
+DTEND:20260615T110000Z
+LAST-MODIFIED:20260701T120000Z
+SUMMARY:Present
+END:VEVENT
+",
+        );
+        let feed_last_modified = DateTime::parse_from_rfc3339("2026-07-13T06:00:11Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let event_last_modified = DateTime::parse_from_rfc3339("2026-07-01T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let events = filter_events_with_feed_last_modified(
+            &body,
+            "2026-06-01T00:00:00+00:00",
+            "2026-06-30T23:59:59+00:00",
+            Some(feed_last_modified),
+        );
+
+        assert_eq!(events[0].last_modified, Some(event_last_modified));
     }
 
     #[test]
