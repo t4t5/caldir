@@ -303,6 +303,7 @@ dependencies = [
  "async-trait",
  "caldir-core",
  "chrono",
+ "httpdate",
  "icalendar",
  "reqwest",
  "serde",
