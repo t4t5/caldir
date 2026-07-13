@@ -3,7 +3,9 @@ name: Deploy website
 on:
   push:
     branches: [main]
-    paths: [website/**]
+    paths:
+      - website/**
+      - caldir-cli/Cargo.toml
 
 jobs:
   deploy:
