@@ -82,7 +82,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
                 .with_context(|| {
                     format!(
                         "Failed to update recurring instance: {}",
-                        &google_event.summary
+                        google_event.summary
                     )
                 })?;
 
@@ -107,7 +107,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
             &google_event,
         )
         .await
-        .with_context(|| format!("Failed to create event: {}", &google_event.summary))?;
+        .with_context(|| format!("Failed to create event: {}", google_event.summary))?;
 
     let created_event = Event::from_google(response.body)?;
 
