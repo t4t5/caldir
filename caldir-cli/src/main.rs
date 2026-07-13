@@ -26,7 +26,7 @@ enum Commands {
         provider: Option<String>,
 
         /// Use hosted OAuth via caldir.org (default: true). Pass --hosted=false to use your own credentials.
-        #[arg(long, default_value_t = true)]
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
         hosted: bool,
     },
     #[command(about = "Check if any events have changed (local and remote)")]
@@ -294,5 +294,27 @@ async fn main() -> Result<()> {
         Commands::Config => commands::config::run(&caldir),
         Commands::Doctor => commands::doctor::run(&caldir),
         Commands::Update => unreachable!("handled above"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    // Regression: `--hosted` must accept an explicit value so `--hosted=false`
+    // selects self-hosted OAuth. A plain boolean flag rejected the value.
+    fn parse_hosted(args: &[&str]) -> bool {
+        match Cli::parse_from(args).command {
+            Commands::Connect { hosted, .. } => hosted,
+            _ => panic!("expected connect command"),
+        }
+    }
+
+    #[test]
+    fn hosted_flag_parses_explicit_values_and_defaults_to_true() {
+        assert!(!parse_hosted(&["caldir", "connect", "--hosted=false", "google"]));
+        assert!(parse_hosted(&["caldir", "connect", "--hosted=true", "google"]));
+        assert!(parse_hosted(&["caldir", "connect", "google"]));
     }
 }
