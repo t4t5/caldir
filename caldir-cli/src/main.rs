@@ -313,8 +313,18 @@ mod tests {
 
     #[test]
     fn hosted_flag_parses_explicit_values_and_defaults_to_true() {
-        assert!(!parse_hosted(&["caldir", "connect", "--hosted=false", "google"]));
-        assert!(parse_hosted(&["caldir", "connect", "--hosted=true", "google"]));
+        assert!(!parse_hosted(&[
+            "caldir",
+            "connect",
+            "--hosted=false",
+            "google"
+        ]));
+        assert!(parse_hosted(&[
+            "caldir",
+            "connect",
+            "--hosted=true",
+            "google"
+        ]));
         assert!(parse_hosted(&["caldir", "connect", "google"]));
     }
 }
