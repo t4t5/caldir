@@ -163,7 +163,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-cli"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "anyhow",
  "caldir-core",
@@ -297,7 +297,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-provider-webcal"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
