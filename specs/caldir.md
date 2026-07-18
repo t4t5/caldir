@@ -117,8 +117,8 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 
 #### `SEQUENCE`
 **What:** Revision number. Increments each time the event is modified.
-**How caldir uses it:** From provider's sequence number.
-**Why it matters:** Another conflict resolution signal. Higher sequence = newer version.
+**How caldir uses it:** When the remote has no `LAST-MODIFIED`, differing sequence numbers are the fallback conflict-resolution signal.
+**Why it matters:** A higher sequence identifies the newer version for providers without modification timestamps.
 
 ---
 
@@ -210,7 +210,8 @@ The icalendar crate can introduce non-determinism by auto-generating fields:
 - Strip UID and DTSTAMP from VALARM components (not required by RFC 5545)
 
 **At comparison time:**
-- Sync uses file mtime (local) vs the `LAST-MODIFIED` field from the provider (remote)
+- If an event base exists, sync compares `base → local` and `base → remote` to decide direction. This suppresses churn from parser/provider model changes that reinterpret existing ICS without a user edit.
+- If no event base exists yet, sync falls back to file mtime (local) vs the `LAST-MODIFIED` field from the provider (remote).
 - Event content comparison uses our custom `PartialEq`, which *ignores* `last_modified` and `sequence`; `x_properties` and `attachments` are compared order-independently (by value / URI), not excluded. DTSTAMP isn't an `Event` field, so it never participates.
 
 ---
@@ -315,7 +316,7 @@ The `RemoteConfig::account_identifier()` method in caldir-core extracts this by 
 
 ### `.caldir/state/known_event_ids`
 
-Each calendar directory contains a `.caldir/state/known_event_ids` file that tracks which event identities have ever been synced with the remote provider.
+Each connected calendar directory contains a `.caldir/state/known_event_ids` file that tracks which event identities have ever been synced with the remote provider.
 
 This file is append-only sync history, not a live index of currently present events. Event IDs are retained after deletes so caldir can keep distinguishing a user delete from a never-seen remote event on later syncs.
 
@@ -342,6 +343,23 @@ Without this state, a local-only event is ambiguous: was it created locally and 
 - After `pull`: Event IDs of all fetched events are added to known_event_ids
 - After `push` (create): Newly created event IDs are added to known_event_ids
 - After `pull` or `push` (delete): Event IDs remain in known_event_ids
+
+### `.caldir/state/bases/*.ics`
+
+Connected calendars may also contain one plaintext event base per synced event. An event base is caldir's last successfully synced representation of that event: the common ancestor for local and remote.
+
+**Why:** Enables three-way change detection:
+- `base == local`, `base != remote` → pull remote change
+- `base != local`, `base == remote` → push local change
+- both changed → preserve current last-write-wins fallback using local mtime vs remote `LAST-MODIFIED`
+
+Event bases are sync metadata, not a second user-facing calendar. The editable `.ics` files in the calendar directory remain the local source of truth.
+
+**Lifecycle:**
+- After successful `pull` create/update: base is set to the pulled event
+- After successful `push` create/update: base is set to the provider-returned canonical event
+- After successful delete: base is removed, while `known_event_ids` retains the ID
+- Existing calendars without event bases fall back to the mtime model until events successfully sync again
 
 ---
 

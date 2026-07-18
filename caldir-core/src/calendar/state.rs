@@ -1,41 +1,56 @@
+mod bases;
 mod error;
 mod synced_event_ids;
 
+use crate::Event;
 use crate::event::EventInstanceId;
+use bases::BASES_DIR_NAME;
 pub use error::CalendarStateError;
 use std::path::Path;
 use synced_event_ids::SYNCED_IDS_FILE_NAME;
 
+pub(crate) use bases::EventBases;
 pub(crate) use synced_event_ids::SyncedEventIds;
 
 #[derive(Debug)]
 pub struct CalendarState {
     synced_event_ids: SyncedEventIds,
+    event_bases: EventBases,
 }
 
 impl CalendarState {
     pub fn new() -> Self {
         Self {
             synced_event_ids: SyncedEventIds::new(),
+            event_bases: EventBases::new(),
         }
     }
 
     pub fn load(state_dir: &Path) -> Result<Self, CalendarStateError> {
         let synced_ids_path = state_dir.join(SYNCED_IDS_FILE_NAME);
         let synced_event_ids = SyncedEventIds::load(&synced_ids_path)?;
+        let event_bases = EventBases::load(&state_dir.join(BASES_DIR_NAME))?;
 
-        Ok(Self { synced_event_ids })
+        Ok(Self {
+            synced_event_ids,
+            event_bases,
+        })
     }
 
     pub fn write(&self, state_dir: &Path) -> Result<(), CalendarStateError> {
         std::fs::create_dir_all(state_dir)?;
         let synced_ids_path = state_dir.join(SYNCED_IDS_FILE_NAME);
         self.synced_event_ids.write(&synced_ids_path)?;
+        self.event_bases.write(&state_dir.join(BASES_DIR_NAME))?;
         Ok(())
     }
 
     pub(crate) fn synced_event_ids(&self) -> &SyncedEventIds {
         &self.synced_event_ids
+    }
+
+    pub(crate) fn event_bases(&self) -> &EventBases {
+        &self.event_bases
     }
 
     pub(crate) fn add_new_synced_ids(
@@ -44,6 +59,26 @@ impl CalendarState {
     ) -> &mut Self {
         for id in ids {
             self.synced_event_ids.insert(id);
+        }
+        self
+    }
+
+    pub(crate) fn upsert_event_bases(
+        &mut self,
+        events: impl IntoIterator<Item = Event>,
+    ) -> &mut Self {
+        for event in events {
+            self.event_bases.upsert(event);
+        }
+        self
+    }
+
+    pub(crate) fn remove_event_bases(
+        &mut self,
+        ids: impl IntoIterator<Item = EventInstanceId>,
+    ) -> &mut Self {
+        for id in ids {
+            self.event_bases.remove(&id);
         }
         self
     }
