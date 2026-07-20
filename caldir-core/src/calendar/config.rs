@@ -6,7 +6,7 @@ use std::path::Path;
 
 pub(crate) use error::CalendarConfigError;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CalendarConfig {
     name: Option<String>,
     color: Option<String>,
@@ -61,8 +61,16 @@ impl CalendarConfig {
         self.name.as_deref()
     }
 
+    pub fn set_name(&mut self, name: Option<String>) {
+        self.name = name;
+    }
+
     pub fn color(&self) -> Option<&str> {
         self.color.as_deref()
+    }
+
+    pub fn set_color(&mut self, color: Option<String>) {
+        self.color = color;
     }
 
     pub fn read_only(&self) -> Option<bool> {
@@ -82,7 +90,7 @@ impl CalendarConfig {
     }
 
     #[cfg(test)]
-    pub(crate) fn update_remote(&mut self, remote_config: RemoteConfig) {
+    pub(crate) fn set_remote(&mut self, remote_config: RemoteConfig) {
         self.remote_config = Some(remote_config);
     }
 }
@@ -92,6 +100,21 @@ mod tests {
     use super::*;
     use crate::test_utils::test_calendar_config;
     use crate::{ProviderSlug, RemoteConfig, RemoteConfigParams};
+
+    #[test]
+    fn set_name_only_updates_name() {
+        let mut config = test_calendar_config();
+        let color = config.color.clone();
+        let read_only = config.read_only;
+        let remote_config = config.remote_config.clone();
+
+        config.set_name(Some("Renamed".to_string()));
+
+        assert_eq!(config.name(), Some("Renamed"));
+        assert_eq!(config.color, color);
+        assert_eq!(config.read_only, read_only);
+        assert_eq!(config.remote_config, remote_config);
+    }
 
     #[test]
     fn write_saves_config_to_file() {
@@ -202,26 +225,26 @@ hooli_calendar_id = "abc@group.calendar.hooli.com"
     }
 
     #[test]
-    fn update_remote_sets_remote_config() {
+    fn set_remote_sets_remote_config() {
         let mut config = test_calendar_config();
         assert!(config.remote_config().is_none());
 
         let remote = RemoteConfig::new(ProviderSlug::from("hooli"), RemoteConfigParams::new());
-        config.update_remote(remote.clone());
+        config.set_remote(remote.clone());
 
         assert_eq!(config.remote_config(), Some(&remote));
     }
 
     #[test]
-    fn update_remote_overwrites_existing_remote_config() {
+    fn set_remote_overwrites_existing_remote_config() {
         let mut config = test_calendar_config();
-        config.update_remote(RemoteConfig::new(
+        config.set_remote(RemoteConfig::new(
             ProviderSlug::from("hooli"),
             RemoteConfigParams::new(),
         ));
 
         let new_remote = RemoteConfig::new(ProviderSlug::from("aviato"), RemoteConfigParams::new());
-        config.update_remote(new_remote.clone());
+        config.set_remote(new_remote.clone());
 
         assert_eq!(config.remote_config(), Some(&new_remote));
     }

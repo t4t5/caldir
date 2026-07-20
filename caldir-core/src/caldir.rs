@@ -269,7 +269,7 @@ mod tests {
 
         let remote_config = test_remote_config("hooli");
         let mut config = test_calendar_config();
-        config.update_remote(remote_config);
+        config.set_remote(remote_config);
 
         caldir.create_calendar("work", Some(config)).unwrap();
         caldir.create_calendar("local-only", None).unwrap();
@@ -287,7 +287,7 @@ mod tests {
 
         let remote_config = test_remote_config("hooli");
         let mut config = test_calendar_config();
-        config.update_remote(remote_config);
+        config.set_remote(remote_config);
 
         caldir.create_calendar("work", Some(config)).unwrap();
 
@@ -310,11 +310,11 @@ mod tests {
         let caldir = Caldir::new(config, registry);
 
         let mut work_config = test_calendar_config();
-        work_config.update_remote(test_remote_config("hooli"));
+        work_config.set_remote(test_remote_config("hooli"));
         caldir.create_calendar("work", Some(work_config)).unwrap();
 
         let mut other_config = test_calendar_config();
-        other_config.update_remote(test_remote_config("aviato"));
+        other_config.set_remote(test_remote_config("aviato"));
         caldir.create_calendar("other", Some(other_config)).unwrap();
 
         let connected = caldir.connections();

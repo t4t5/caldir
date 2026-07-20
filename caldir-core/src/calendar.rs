@@ -360,7 +360,7 @@ impl Calendar {
         self.remote_config().is_some()
     }
 
-    pub(crate) fn config(&self) -> Option<&CalendarConfig> {
+    pub fn config(&self) -> Option<&CalendarConfig> {
         self.config.as_ref()
     }
 
