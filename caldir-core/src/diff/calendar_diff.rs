@@ -54,16 +54,23 @@ impl CalendarDiff {
                     to_push.visibility = remote_event.event().visibility;
                 }
 
-                if &to_push != remote_event.event() && local_is_newer(local_event, remote_event) {
-                    outgoing.push(EventChange::Update {
+                let base = sync_bases.get(&id).and_then(Option::as_deref);
+                let direction = if &to_push == remote_event.event() {
+                    Some(UpdateDirection::Pull)
+                } else {
+                    update_direction(local_event, remote_event, base)
+                };
+
+                match direction {
+                    Some(UpdateDirection::Push) => outgoing.push(EventChange::Update {
                         from: remote_event.event().clone(),
                         to: to_push,
-                    });
-                } else {
-                    incoming.push(EventChange::Update {
+                    }),
+                    Some(UpdateDirection::Pull) => incoming.push(EventChange::Update {
                         from: event.clone(),
                         to: remote_event.event().clone(),
-                    });
+                    }),
+                    None => {}
                 }
                 continue;
             }
@@ -138,11 +145,38 @@ impl CalendarDiff {
     }
 }
 
-// After a pull, the local file's mtime equals the remote LAST-MODIFIED (see sync_file_mtime)
-// We only treat a diff as an outgoing change if mtime > LAST-MODIFIED
-// (Never if mtime == LAST-MODIFIED!)
-// This helps us augment old events with new potential properties
-// that previously might not have been parsed.
+enum UpdateDirection {
+    Push,
+    Pull,
+}
+
+fn update_direction(
+    local: &CalendarEvent,
+    remote: &RemoteEvent,
+    base: Option<&crate::Event>,
+) -> Option<UpdateDirection> {
+    // If base exists, use that for determining direction:
+    if let Some(base) = base {
+        let local_has_changes = local.event() != base;
+        let remote_has_changes = remote.event() != base;
+
+        match (local_has_changes, remote_has_changes) {
+            (false, false) => return None,
+            (true, false) => return Some(UpdateDirection::Push),
+            (false, true) => return Some(UpdateDirection::Pull),
+            (true, true) => {}
+        }
+    }
+
+    // Both sides changed, or no base exists for this legacy sync state (TODO: resolve conflicts?),
+    // use mtime / LAST-MODIFIED to determine direction. If both are equal, default to pull.
+    if local_is_newer(local, remote) {
+        Some(UpdateDirection::Push)
+    } else {
+        Some(UpdateDirection::Pull)
+    }
+}
+
 fn local_is_newer(local: &CalendarEvent, remote: &RemoteEvent) -> bool {
     match (local.modified_at(), remote.modified_at()) {
         (Some(l), Some(r)) => l > r,
