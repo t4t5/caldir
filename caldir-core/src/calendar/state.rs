@@ -33,15 +33,12 @@ impl CalendarState {
         Ok(Self { sync_bases })
     }
 
-    pub(crate) fn add_sync_bases(&mut self, events: impl IntoIterator<Item = Event>) {
-        for event in events {
-            self.sync_bases
-                .insert_event_base(event.event_instance_id(), event);
-        }
-    }
-
-    pub(crate) fn save(&self, state_dir: &Path) -> Result<(), CalendarStateError> {
-        self.sync_bases.save(state_dir)
+    pub(crate) fn record_sync_bases(
+        &mut self,
+        events: impl IntoIterator<Item = Event>,
+        state_dir: &Path,
+    ) -> Result<(), CalendarStateError> {
+        self.sync_bases.record(events, state_dir)
     }
 
     pub(crate) fn sync_bases(&self) -> &SyncBases {
@@ -76,10 +73,12 @@ mod tests {
     #[test]
     fn load_returns_empty_when_synced_event_ids_file_missing() {
         let dir = tempfile::TempDir::new().unwrap();
-        let state = CalendarState::load(dir.path()).unwrap();
+        let mut state = CalendarState::load(dir.path()).unwrap();
 
         let dst = tempfile::TempDir::new().unwrap();
-        state.save(dst.path()).unwrap();
+        state
+            .record_sync_bases(std::iter::empty(), dst.path())
+            .unwrap();
 
         let written = std::fs::read_to_string(dst.path().join(KNOWN_IDS_FILE_NAME)).unwrap();
         assert!(written.is_empty());
@@ -89,10 +88,12 @@ mod tests {
     fn writes_synced_event_ids_to_state_dir() {
         let src = tempfile::TempDir::new().unwrap();
         std::fs::write(src.path().join(KNOWN_IDS_FILE_NAME), "abc@hooli.com").unwrap();
-        let state = CalendarState::load(src.path()).unwrap();
+        let mut state = CalendarState::load(src.path()).unwrap();
 
         let dst = tempfile::TempDir::new().unwrap();
-        state.save(dst.path()).unwrap();
+        state
+            .record_sync_bases(std::iter::empty(), dst.path())
+            .unwrap();
 
         let written = std::fs::read_to_string(dst.path().join(KNOWN_IDS_FILE_NAME)).unwrap();
         assert_eq!(written, "abc@hooli.com");
@@ -102,9 +103,11 @@ mod tests {
     fn write_creates_state_dir_if_missing() {
         let dir = tempfile::TempDir::new().unwrap();
         let state_dir = dir.path().join("does/not/exist");
-        let state = CalendarState::load(dir.path()).unwrap();
+        let mut state = CalendarState::load(dir.path()).unwrap();
 
-        state.save(&state_dir).unwrap();
+        state
+            .record_sync_bases(std::iter::empty(), &state_dir)
+            .unwrap();
 
         assert!(state_dir.join(KNOWN_IDS_FILE_NAME).is_file());
     }

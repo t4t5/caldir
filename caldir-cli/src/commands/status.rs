@@ -40,7 +40,7 @@ async fn run_parsed(
 
     for (i, connection) in connections.into_iter().enumerate() {
         match connection {
-            Ok(connection) => {
+            Ok(mut connection) => {
                 let cal = connection.local();
                 let header = if connection.read_only() {
                     format!("{} {}", cal.render(caldir), "(read-only)".dimmed())

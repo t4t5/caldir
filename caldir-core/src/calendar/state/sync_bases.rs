@@ -43,18 +43,24 @@ impl SyncBases {
         self.0.insert(id, Some(Box::new(event)));
     }
 
-    pub(crate) fn save(&self, state_dir: &Path) -> Result<(), CalendarStateError> {
-        let known_ids_path = state_dir.join(KNOWN_IDS_FILE_NAME);
-        let event_bases_dir = state_dir.join(EVENT_BASES_DIR_NAME);
+    /// Records new bases and persists them. Only the given events' base files
+    /// are written, so a sync touches O(changes) files, not O(history).
+    pub(crate) fn record(
+        &mut self,
+        events: impl IntoIterator<Item = Event>,
+        state_dir: &Path,
+    ) -> Result<(), CalendarStateError> {
+        let events: Vec<Event> = events.into_iter().collect();
+
+        for event in &events {
+            self.insert_event_base(event.event_instance_id(), event.clone());
+        }
 
         // Keep writing the legacy format for clients using an older caldir-core.
-        KnownEventIds::write_from(self.0.keys(), &known_ids_path)?;
+        KnownEventIds::write_from(self.0.keys(), &state_dir.join(KNOWN_IDS_FILE_NAME))?;
 
         // New format with event bases:
-        EventBases::write_from(
-            self.0.values().filter_map(Option::as_deref),
-            &event_bases_dir,
-        )?;
+        EventBases::write_from(events.iter(), &state_dir.join(EVENT_BASES_DIR_NAME))?;
 
         Ok(())
     }
@@ -105,8 +111,7 @@ mod tests {
         let id = event.event_instance_id();
 
         let mut sync_bases = SyncBases::new();
-        sync_bases.insert_event_base(id.clone(), event);
-        sync_bases.save(state_dir.path()).unwrap();
+        sync_bases.record([event], state_dir.path()).unwrap();
 
         let bases_dir = state_dir.path().join(EVENT_BASES_DIR_NAME);
         for entry in std::fs::read_dir(&bases_dir).unwrap() {
@@ -117,5 +122,38 @@ mod tests {
 
         // Base content is lost, but the known-id entry keeps deletion memory.
         assert_eq!(loaded.get(&id), Some(&None));
+    }
+
+    #[test]
+    fn record_leaves_other_base_files_untouched() {
+        let state_dir = tempfile::TempDir::new().unwrap();
+        let event_a = test_event();
+        let mut event_b = test_event();
+        event_b.uid = crate::event::EventUid::new("other@example.com".to_string());
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.record([event_a], state_dir.path()).unwrap();
+
+        // Garble A's base on disk; recording B must not rewrite it.
+        let bases_dir = state_dir.path().join(EVENT_BASES_DIR_NAME);
+        let a_path = std::fs::read_dir(&bases_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        std::fs::write(&a_path, "garbled").unwrap();
+
+        sync_bases
+            .record([event_b.clone()], state_dir.path())
+            .unwrap();
+
+        assert_eq!(std::fs::read_to_string(&a_path).unwrap(), "garbled");
+
+        let loaded = SyncBases::load_from_state_dir(state_dir.path()).unwrap();
+        assert_eq!(
+            loaded.get(&event_b.event_instance_id()),
+            Some(&Some(Box::new(event_b)))
+        );
     }
 }

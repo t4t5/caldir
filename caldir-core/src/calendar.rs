@@ -369,8 +369,8 @@ impl Calendar {
         &mut self,
         events: impl IntoIterator<Item = Event>,
     ) -> Result<(), CalendarError> {
-        self.state.add_sync_bases(events);
-        self.state.save(&calendar_state_dir(&self.path))?;
+        self.state
+            .record_sync_bases(events, &calendar_state_dir(&self.path))?;
         Ok(())
     }
 

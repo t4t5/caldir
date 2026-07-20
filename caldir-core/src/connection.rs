@@ -2,10 +2,10 @@ mod error;
 
 use std::collections::HashMap;
 
-use crate::calendar::CalendarError;
+use crate::calendar::{CalendarError, SyncBases};
 use crate::diff::EventChange;
 use crate::event::EventInstanceId;
-use crate::{Calendar, CalendarDiff, CalendarEvent, DateRange, Event, Remote};
+use crate::{Calendar, CalendarDiff, CalendarEvent, DateRange, Event, Remote, RemoteEvent};
 use error::ConnectionError;
 
 /// A connection is a [local calendar] + [remote calendar] pair
@@ -34,9 +34,21 @@ impl Connection {
             .unwrap_or(false)
     }
 
-    pub async fn diff(&self, range: &DateRange) -> Result<CalendarDiff, ConnectionError> {
+    pub async fn diff(&mut self, range: &DateRange) -> Result<CalendarDiff, ConnectionError> {
         let local_events = self.local().events()?;
         let remote_events = self.remote().list_events(range).await?;
+
+        // State migration: in-sync pairs never produce a change to apply, so
+        // this is the only place their base can be recorded. Without it,
+        // legacy known-id entries would sit on the mtime fallback forever.
+        let backfill = bases_to_backfill(
+            &local_events,
+            &remote_events,
+            self.local.state().sync_bases(),
+        );
+        if !backfill.is_empty() {
+            self.local.record_sync_bases(backfill)?;
+        }
 
         let sync_bases = self.local().state().sync_bases();
 
@@ -141,6 +153,42 @@ impl Connection {
 
         Ok(())
     }
+}
+
+/// Events present and identical on both sides whose base is missing (legacy
+/// known-id entry) or stale. Both sides agreeing *is* the base — record it.
+/// Pairs with no sync state at all are left alone: they were never synced,
+/// and recording a base would silently change their delete semantics.
+fn bases_to_backfill(
+    local_events: &[CalendarEvent],
+    remote_events: &[RemoteEvent],
+    sync_bases: &SyncBases,
+) -> Vec<Event> {
+    let local_by_id: HashMap<_, _> = local_events
+        .iter()
+        .map(|e| (e.event().event_instance_id(), e.event()))
+        .collect();
+
+    let mut backfill = Vec::new();
+
+    for remote in remote_events {
+        let remote = remote.event();
+        let id = remote.event_instance_id();
+
+        let in_sync = local_by_id.get(&id).is_some_and(|local| *local == remote);
+
+        let base_is_current = match sync_bases.get(&id) {
+            None => continue,
+            Some(Some(base)) => base.as_ref() == remote,
+            Some(None) => false,
+        };
+
+        if in_sync && !base_is_current {
+            backfill.push(remote.clone());
+        }
+    }
+
+    backfill
 }
 
 fn pull_incoming_changes(
@@ -250,7 +298,7 @@ mod tests {
         mock.reply::<rpc::ListEvents>(vec![]);
         let remote = Remote::new(mock.provider(), test_remote_params());
 
-        let connection = Connection::new(calendar, remote);
+        let mut connection = Connection::new(calendar, remote);
         let diff = connection.diff(&DateRange::default()).await.unwrap();
 
         assert!(
@@ -273,10 +321,53 @@ mod tests {
         mock.reply::<rpc::ListEvents>(vec![]);
         let remote = Remote::new(mock.provider(), test_remote_params());
 
-        let connection = Connection::new(calendar, remote);
+        let mut connection = Connection::new(calendar, remote);
         let diff = connection.diff(&DateRange::default()).await.unwrap();
 
         assert_eq!(diff.outgoing(), &[EventChange::Create(event)]);
+    }
+
+    #[tokio::test]
+    async fn diff_backfills_base_for_in_sync_legacy_known_id() {
+        let (_tmp, caldir) = test_caldir();
+        let calendar = caldir
+            .create_calendar("writable-cal", Some(calendar_config(Some(false))))
+            .unwrap();
+        let event = test_event();
+        let id = event.event_instance_id();
+        calendar.create_event(event.clone()).unwrap();
+
+        // Legacy state: id is known, but no base was ever recorded.
+        let state_dir = calendar.path().join(".caldir/state");
+        std::fs::create_dir_all(&state_dir).unwrap();
+        std::fs::write(state_dir.join("known_event_ids"), id.to_string()).unwrap();
+        let calendar = Calendar::load(calendar.path()).unwrap();
+        assert_eq!(calendar.state().sync_base(&id), None);
+
+        let mock = test_mock_provider();
+        mock.reply::<rpc::ListEvents>(vec![event.clone()]);
+        let remote = Remote::new(mock.provider(), test_remote_params());
+
+        let mut connection = Connection::new(calendar, remote);
+        let diff = connection.diff(&DateRange::default()).await.unwrap();
+
+        assert!(diff.is_empty());
+        let reloaded = Calendar::load(connection.local().path()).unwrap();
+        assert_eq!(reloaded.state().sync_base(&id), Some(&event));
+    }
+
+    #[tokio::test]
+    async fn diff_does_not_backfill_base_for_never_synced_pair() {
+        let (_tmp, mock, mut connection) = writable_connection();
+        let event = test_event();
+        let id = event.event_instance_id();
+        connection.local().create_event(event.clone()).unwrap();
+
+        mock.reply::<rpc::ListEvents>(vec![event]);
+        connection.diff(&DateRange::default()).await.unwrap();
+
+        let reloaded = Calendar::load(connection.local().path()).unwrap();
+        assert!(!reloaded.state().synced_event_ids().contains(&id));
     }
 
     #[tokio::test]
