@@ -8,7 +8,7 @@ use crate::event::EventInstanceId;
 use crate::{Calendar, CalendarDiff, CalendarEvent, DateRange, Remote};
 use error::ConnectionError;
 
-use crate::calendar::SyncedEventIds;
+use crate::calendar::{SyncStateUpdate, SyncedEventIds};
 
 /// A connection is a [local calendar] + [remote calendar] pair
 pub struct Connection {
@@ -37,17 +37,15 @@ impl Connection {
     }
 
     pub async fn diff(&self, range: &DateRange) -> Result<CalendarDiff, ConnectionError> {
+        self.local.check_state_format()?;
         let local_events = self.local().events()?;
         let remote_events = self.remote().list_events(range).await?;
 
-        let synced_ids = self.synced_event_ids();
-        let event_bases = self.local().state().event_bases();
-
-        let mut diff = CalendarDiff::compute_with_event_bases(
+        let mut diff = CalendarDiff::compute(
             local_events,
             remote_events,
-            synced_ids,
-            event_bases,
+            self.synced_event_ids(),
+            self.local().state().event_bases(),
             range,
         );
 
@@ -60,32 +58,17 @@ impl Connection {
 
     // pull
     pub fn apply_incoming_diff(&mut self, diff: &CalendarDiff) -> Result<(), ConnectionError> {
-        let mut events_by_instance_id: HashMap<EventInstanceId, CalendarEvent> = self
-            .local
-            .events()?
-            .into_iter()
-            .map(|e| (e.event().event_instance_id(), e))
-            .collect();
-
-        let mut synced_ids = Vec::new();
-        let mut event_bases = diff.event_bases().to_vec();
-        let mut removed_bases = diff.removed_event_bases().to_vec();
+        self.local.check_state_format()?;
+        let mut events_by_instance_id = self.local_events_by_instance_id()?;
+        let mut update = SyncStateUpdate::from_diff(diff);
 
         // Same partial-failure flush pattern as `apply_outgoing_diff`: a
-        // local-fs error mid-loop must not drop the ids of changes we've
+        // local-fs error mid-loop must not drop the state of changes we've
         // already applied to disk.
-        let loop_result = pull_incoming_changes(
-            &self.local,
-            diff,
-            &mut events_by_instance_id,
-            &mut synced_ids,
-            &mut event_bases,
-            &mut removed_bases,
-        );
+        let loop_result =
+            pull_incoming_changes(&self.local, diff, &mut events_by_instance_id, &mut update);
 
-        let record_result = self
-            .local
-            .record_sync_state(synced_ids, event_bases, removed_bases);
+        let record_result = self.local.record_sync_state(update);
 
         loop_result?;
         record_result?;
@@ -97,31 +80,16 @@ impl Connection {
         &mut self,
         diff: &CalendarDiff,
     ) -> Result<(), ConnectionError> {
-        let mut events_by_instance_id: HashMap<EventInstanceId, CalendarEvent> = self
-            .local
-            .events()?
-            .into_iter()
-            .map(|e| (e.event().event_instance_id(), e))
-            .collect();
-
-        let mut synced_ids = Vec::new();
-        let mut event_bases = diff.event_bases().to_vec();
-        let mut removed_bases = diff.removed_event_bases().to_vec();
+        self.local.check_state_format()?;
+        let mut events_by_instance_id = self.local_events_by_instance_id()?;
+        let mut update = SyncStateUpdate::from_diff(diff);
 
         // Handles mid-loop errors gracefully
-        let loop_result = push_outgoing_changes(
-            &self.remote,
-            diff,
-            &mut events_by_instance_id,
-            &mut synced_ids,
-            &mut event_bases,
-            &mut removed_bases,
-        )
-        .await;
+        let loop_result =
+            push_outgoing_changes(&self.remote, diff, &mut events_by_instance_id, &mut update)
+                .await;
 
-        let record_result = self
-            .local
-            .record_sync_state(synced_ids, event_bases, removed_bases);
+        let record_result = self.local.record_sync_state(update);
 
         loop_result?;
         record_result?;
@@ -130,12 +98,7 @@ impl Connection {
 
     // discard
     pub fn discard_outgoing_diff(&self, diff: &CalendarDiff) -> Result<(), ConnectionError> {
-        let mut events_by_instance_id: HashMap<EventInstanceId, CalendarEvent> = self
-            .local
-            .events()?
-            .into_iter()
-            .map(|e| (e.event().event_instance_id(), e))
-            .collect();
+        let mut events_by_instance_id = self.local_events_by_instance_id()?;
 
         for change in diff.outgoing() {
             match change {
@@ -167,37 +130,43 @@ impl Connection {
     fn synced_event_ids(&self) -> &SyncedEventIds {
         self.local().state().synced_event_ids()
     }
+
+    fn local_events_by_instance_id(
+        &self,
+    ) -> Result<HashMap<EventInstanceId, CalendarEvent>, ConnectionError> {
+        Ok(self
+            .local
+            .events()?
+            .into_iter()
+            .map(|e| (e.event().event_instance_id(), e))
+            .collect())
+    }
 }
 
 fn pull_incoming_changes(
     local: &Calendar,
     diff: &CalendarDiff,
     events_by_instance_id: &mut HashMap<EventInstanceId, CalendarEvent>,
-    synced_ids: &mut Vec<EventInstanceId>,
-    event_bases: &mut Vec<crate::Event>,
-    removed_bases: &mut Vec<EventInstanceId>,
+    update: &mut SyncStateUpdate,
 ) -> Result<(), ConnectionError> {
     for change in diff.incoming() {
         match change {
             EventChange::Create(event) => {
                 let cal_event = local.create_event(event.clone())?;
-                let id = cal_event.event().event_instance_id();
-                events_by_instance_id.insert(id.clone(), cal_event);
-                synced_ids.push(id);
-                event_bases.push(event.clone());
+                events_by_instance_id.insert(event.event_instance_id(), cal_event);
+                update.record_synced(event);
             }
             EventChange::Update { to, .. } => {
                 if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id()) {
                     cal_event.update(to.clone()).map_err(CalendarError::from)?;
                 }
-                synced_ids.push(to.event_instance_id());
-                event_bases.push(to.clone());
+                update.record_synced(to);
             }
             EventChange::Delete(event) => {
                 if let Some(cal_event) = events_by_instance_id.remove(&event.event_instance_id()) {
                     cal_event.delete().map_err(CalendarError::from)?;
                 }
-                removed_bases.push(event.event_instance_id());
+                update.record_removed(event.event_instance_id());
             }
         }
     }
@@ -209,9 +178,7 @@ async fn push_outgoing_changes(
     remote: &Remote,
     diff: &CalendarDiff,
     events_by_instance_id: &mut HashMap<EventInstanceId, CalendarEvent>,
-    synced_ids: &mut Vec<EventInstanceId>,
-    event_bases: &mut Vec<crate::Event>,
-    removed_bases: &mut Vec<EventInstanceId>,
+    update: &mut SyncStateUpdate,
 ) -> Result<(), ConnectionError> {
     for change in diff.outgoing() {
         if let Some(remote_event) = remote.apply_change(change).await? {
@@ -230,14 +197,12 @@ async fn push_outgoing_changes(
                     .map_err(CalendarError::from)?;
             }
 
-            let returned_event_id = returned_event.event_instance_id();
-            if returned_event_id != original_event_id {
-                removed_bases.push(original_event_id);
+            if returned_event.event_instance_id() != original_event_id {
+                update.record_removed(original_event_id);
             }
-            synced_ids.push(returned_event_id);
-            event_bases.push(returned_event.clone());
+            update.record_synced(returned_event);
         } else if let EventChange::Delete(event) = change {
-            removed_bases.push(event.event_instance_id());
+            update.record_removed(event.event_instance_id());
         }
     }
 
@@ -565,6 +530,57 @@ mod tests {
             reloaded.state().synced_event_ids().contains(&id_a),
             "known_event_ids on disk should contain event A's id after a partial-success push",
         );
+    }
+
+    #[tokio::test]
+    async fn pull_edit_push_records_pushed_event_as_base() {
+        let (_tmp, mock, mut connection) = writable_connection();
+        let remote = test_event();
+        let id = remote.event_instance_id();
+
+        mock.reply::<rpc::ListEvents>(vec![remote.clone()]);
+        let pull = connection.diff(&DateRange::default()).await.unwrap();
+        connection.apply_incoming_diff(&pull).unwrap();
+
+        let mut local = connection.local().events().unwrap().remove(0);
+        let mut edited = local.event().clone();
+        edited.summary = Some("Edited locally".into());
+        local.update(edited.clone()).unwrap();
+
+        mock.reply::<rpc::ListEvents>(vec![remote.clone()]);
+        let push = connection.diff(&DateRange::default()).await.unwrap();
+        assert_eq!(
+            push.outgoing(),
+            &[EventChange::Update {
+                from: remote,
+                to: edited.clone(),
+            }]
+        );
+
+        let mut canonical = edited;
+        canonical.sequence += 1;
+        mock.reply::<rpc::UpdateEvent>(canonical.clone());
+        connection.apply_outgoing_diff(&push).await.unwrap();
+
+        let reloaded = Calendar::load(connection.local().path()).unwrap();
+        let base = reloaded.state().event_bases().get(&id).unwrap();
+        assert_eq!(base, &canonical);
+        assert_eq!(base.sequence, canonical.sequence);
+        assert_eq!(base.last_modified, canonical.last_modified);
+    }
+
+    #[tokio::test]
+    async fn diff_refuses_state_from_newer_caldir() {
+        let (_tmp, _mock, connection) = writable_connection();
+        let format_path = connection.local().path().join(".caldir/state/format");
+        std::fs::write(&format_path, "2").unwrap();
+
+        let err = match connection.diff(&DateRange::default()).await {
+            Ok(_) => panic!("format 2 should be refused"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("written by a newer caldir"));
     }
 
     #[tokio::test]

@@ -1,15 +1,19 @@
 use std::path::PathBuf;
 
-use crate::event::EventError;
-
 #[derive(Debug, thiserror::Error)]
 pub enum CalendarStateError {
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 
-    #[error("invalid event base {0}: {1}")]
-    InvalidEventBase(PathBuf, EventError),
+    #[error(
+        "sync state format {found} in {path} was written by a newer caldir (supported: {supported})"
+    )]
+    NewerFormat {
+        path: PathBuf,
+        found: u32,
+        supported: u32,
+    },
 
-    #[error("event base {path} should contain exactly one event, found {found}")]
-    InvalidEventBaseCount { path: PathBuf, found: usize },
+    #[error("invalid sync state format in {path}: {contents:?}")]
+    InvalidFormat { path: PathBuf, contents: String },
 }

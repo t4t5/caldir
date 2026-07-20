@@ -14,7 +14,7 @@ pub use error::CalendarError;
 pub use event::CalendarEvent;
 pub(crate) use event::CalendarEventError;
 pub use state::CalendarState;
-pub(crate) use state::{EventBases, SyncedEventIds};
+pub(crate) use state::{EventBases, SyncStateUpdate, SyncedEventIds};
 
 const DOTDIR_NAME: &str = ".caldir";
 
@@ -62,7 +62,7 @@ impl Calendar {
 
         // Create empty state file:
         let state_dir = calendar_state_dir(path);
-        let state = CalendarState::new();
+        let mut state = CalendarState::new();
         state.write(&state_dir)?;
 
         Ok(Self {
@@ -101,6 +101,11 @@ impl Calendar {
 
     pub fn state(&self) -> &CalendarState {
         &self.state
+    }
+
+    pub(crate) fn check_state_format(&self) -> Result<(), CalendarError> {
+        CalendarState::check_format(&calendar_state_dir(&self.path))?;
+        Ok(())
     }
 
     pub fn slug(&self) -> Option<&str> {
@@ -372,14 +377,10 @@ impl Calendar {
 
     pub(crate) fn record_sync_state(
         &mut self,
-        ids: impl IntoIterator<Item = EventInstanceId>,
-        bases: impl IntoIterator<Item = Event>,
-        removed_bases: impl IntoIterator<Item = EventInstanceId>,
+        update: SyncStateUpdate,
     ) -> Result<(), CalendarError> {
         self.state
-            .add_new_synced_ids(ids)
-            .upsert_event_bases(bases)
-            .remove_event_bases(removed_bases)
+            .apply(update)
             .write(&calendar_state_dir(&self.path))?;
         Ok(())
     }

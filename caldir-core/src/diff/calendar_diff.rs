@@ -1,32 +1,21 @@
 use std::collections::{HashMap, HashSet};
 
 use super::event_change::EventChange;
-use crate::event::Status;
+use crate::event::{EventInstanceId, Status};
 use crate::{
-    CalendarEvent, DateRange, RemoteEvent,
+    CalendarEvent, DateRange, Event, RemoteEvent,
     calendar::{EventBases, SyncedEventIds},
 };
 
 pub struct CalendarDiff {
     outgoing: Vec<EventChange>,
     incoming: Vec<EventChange>,
-    event_bases: Vec<crate::Event>,
-    removed_event_bases: Vec<crate::event::EventInstanceId>,
+    event_bases: Vec<Event>,
+    removed_event_bases: Vec<EventInstanceId>,
 }
 
 impl CalendarDiff {
-    #[cfg(test)]
     pub(crate) fn compute(
-        local_events: Vec<CalendarEvent>,
-        remote_events: Vec<RemoteEvent>,
-        synced_ids: &SyncedEventIds,
-        range: &DateRange,
-    ) -> Self {
-        let bases = EventBases::new();
-        Self::compute_with_event_bases(local_events, remote_events, synced_ids, &bases, range)
-    }
-
-    pub(crate) fn compute_with_event_bases(
         local_events: Vec<CalendarEvent>,
         remote_events: Vec<RemoteEvent>,
         synced_ids: &SyncedEventIds,
@@ -65,8 +54,15 @@ impl CalendarDiff {
 
             match (base, local_event, remote_event) {
                 (None, None, None) => {}
+
+                // Out-of-window absence is indistinguishable from deletion.
                 (_, Some(local_event), None)
                     if is_out_of_remote_window(local_event.event(), range) => {}
+
+                // --- No base: the format-1 legacy path, driven by
+                // `synced_ids` alone. It shrinks to just the bootstrap case
+                // (`caldir connect` onto a populated dir) once format 2
+                // migrates every known id to a base.
                 (None, Some(local_event), None) if synced_ids.contains(&id) => {
                     incoming.push(EventChange::Delete(local_event.event().clone()));
                 }
@@ -81,21 +77,17 @@ impl CalendarDiff {
                 (None, None, Some(remote_event)) => {
                     incoming.push(EventChange::Create(remote_event.event().clone()));
                 }
-                (None, Some(local_event), Some(remote_event)) => diff_without_base(
-                    local_event,
-                    remote_event,
-                    &mut outgoing,
-                    &mut incoming,
-                    &mut event_bases_to_record,
-                ),
+
+                // --- Base present: deletion is decided by content, not by
+                // an id having been seen before.
                 (Some(_), None, None) => event_bases_to_remove.push(id),
                 (Some(base), Some(local_event), None) if local_event.event() == base => {
                     incoming.push(EventChange::Delete(local_event.event().clone()));
                 }
+                // Modify/delete conflict: keep the edit rather than let the
+                // delete win — deletion is the unrecoverable outcome.
                 (Some(_base), Some(local_event), None) => {
-                    // Both changed: local edited while remote disappeared. Preserve
-                    // the existing fallback behavior where remote deletion wins.
-                    incoming.push(EventChange::Delete(local_event.event().clone()));
+                    outgoing.push(EventChange::Create(local_event.event().clone()));
                 }
                 (Some(base), None, Some(remote_event)) if remote_event.event() == base => {
                     if remote_event.event().status != Status::Cancelled {
@@ -103,13 +95,12 @@ impl CalendarDiff {
                     }
                 }
                 (Some(_base), None, Some(remote_event)) => {
-                    // Both changed: local disappeared while remote edited. Preserve
-                    // the existing fallback behavior where local deletion wins.
                     if remote_event.event().status != Status::Cancelled {
-                        outgoing.push(EventChange::Delete(remote_event.event().clone()));
+                        incoming.push(EventChange::Create(remote_event.event().clone()));
                     }
                 }
-                (Some(base), Some(local_event), Some(remote_event)) => diff_with_base(
+
+                (base, Some(local_event), Some(remote_event)) => diff_present_on_both_sides(
                     base,
                     local_event,
                     remote_event,
@@ -140,11 +131,11 @@ impl CalendarDiff {
         self.outgoing.is_empty() && self.incoming.is_empty()
     }
 
-    pub(crate) fn event_bases(&self) -> &[crate::Event] {
+    pub(crate) fn event_bases(&self) -> &[Event] {
         &self.event_bases
     }
 
-    pub(crate) fn removed_event_bases(&self) -> &[crate::event::EventInstanceId] {
+    pub(crate) fn removed_event_bases(&self) -> &[EventInstanceId] {
         &self.removed_event_bases
     }
 
@@ -167,94 +158,56 @@ impl CalendarDiff {
     }
 }
 
-fn diff_without_base(
+/// No base means we can't tell who changed, so both sides count as changed —
+/// which is exactly the bootstrap case, resolved by the LWW tiebreak.
+fn diff_present_on_both_sides(
+    base: Option<&Event>,
     local_event: &CalendarEvent,
     remote_event: &RemoteEvent,
     outgoing: &mut Vec<EventChange>,
     incoming: &mut Vec<EventChange>,
-    event_bases_to_record: &mut Vec<crate::Event>,
+    event_bases_to_record: &mut Vec<Event>,
 ) {
     let event = local_event.event();
-    if event == remote_event.event() {
-        event_bases_to_record.push(event.clone());
-        return;
-    }
+    let remote = remote_event.event();
 
-    if both_cancelled(event, remote_event.event()) {
-        return;
-    }
-
-    let to_push = event_to_push(event, remote_event.event());
-    if &to_push != remote_event.event() && local_is_newer(local_event, remote_event) {
-        outgoing.push(EventChange::Update {
-            from: remote_event.event().clone(),
-            to: to_push,
-        });
-    } else {
-        incoming.push(EventChange::Update {
-            from: event.clone(),
-            to: remote_event.event().clone(),
-        });
-    }
-}
-
-fn diff_with_base(
-    base: &crate::Event,
-    local_event: &CalendarEvent,
-    remote_event: &RemoteEvent,
-    outgoing: &mut Vec<EventChange>,
-    incoming: &mut Vec<EventChange>,
-    event_bases_to_record: &mut Vec<crate::Event>,
-) {
-    let event = local_event.event();
-    if event == remote_event.event() {
-        if event_base_needs_refresh(Some(base), event) {
+    if event == remote {
+        if base.is_none_or(|base| !base.same_snapshot(event)) {
             event_bases_to_record.push(event.clone());
         }
         return;
     }
 
-    if both_cancelled(event, remote_event.event()) {
+    if both_cancelled(event, remote) {
         return;
     }
 
-    let to_push = event_to_push(event, remote_event.event());
-    let local_changed = event != base;
-    let remote_changed = remote_event.event() != base;
+    let to_push = event_to_push(event, remote);
+    let can_push = &to_push != remote;
+    let local_changed = base.is_none_or(|base| event != base);
+    let remote_changed = base.is_none_or(|base| remote != base);
 
     match (local_changed, remote_changed) {
         (false, false) => {}
-        (true, false) if &to_push != remote_event.event() => {
-            outgoing.push(EventChange::Update {
-                from: remote_event.event().clone(),
-                to: to_push,
-            });
-        }
+        (true, false) if can_push => outgoing.push(EventChange::Update {
+            from: remote.clone(),
+            to: to_push,
+        }),
         (true, false) => {}
-        (false, true) => {
-            incoming.push(EventChange::Update {
-                from: event.clone(),
-                to: remote_event.event().clone(),
-            });
-        }
-        (true, true)
-            if &to_push != remote_event.event() && local_is_newer(local_event, remote_event) =>
-        {
+        (true, true) if can_push && local_is_newer(local_event, remote_event) => {
             outgoing.push(EventChange::Update {
-                from: remote_event.event().clone(),
+                from: remote.clone(),
                 to: to_push,
-            });
+            })
         }
-        (true, true) => {
-            incoming.push(EventChange::Update {
-                from: event.clone(),
-                to: remote_event.event().clone(),
-            });
-        }
+        (false, true) | (true, true) => incoming.push(EventChange::Update {
+            from: event.clone(),
+            to: remote.clone(),
+        }),
     }
 }
 
-fn event_to_push(event: &crate::Event, remote_event: &crate::Event) -> crate::Event {
+fn event_to_push(event: &Event, remote_event: &Event) -> Event {
     let mut to_push = event.clone();
     // Never push an unspecified (None) visibility — inherit the remote's.
     if to_push.visibility.is_none() {
@@ -263,12 +216,12 @@ fn event_to_push(event: &crate::Event, remote_event: &crate::Event) -> crate::Ev
     to_push
 }
 
-fn both_cancelled(local: &crate::Event, remote: &crate::Event) -> bool {
+fn both_cancelled(local: &Event, remote: &Event) -> bool {
     // Cancelled events are historical; we don't churn syncing them.
     local.status == Status::Cancelled && remote.status == Status::Cancelled
 }
 
-fn is_out_of_remote_window(event: &crate::Event, range: &DateRange) -> bool {
+fn is_out_of_remote_window(event: &Event, range: &DateRange) -> bool {
     // Out-of-window events aren't in the remote response, so we can't tell if
     // they're deleted or just out of range.
     if let (Some(from), Some(to)) = (range.from, range.to) {
@@ -276,10 +229,6 @@ fn is_out_of_remote_window(event: &crate::Event, range: &DateRange) -> bool {
     } else {
         false
     }
-}
-
-fn event_base_needs_refresh(base: Option<&crate::Event>, event: &crate::Event) -> bool {
-    base != Some(event)
 }
 
 // After a pull, the local file's mtime equals the remote LAST-MODIFIED (see sync_file_mtime).
@@ -306,6 +255,23 @@ mod tests {
     use chrono::{TimeZone, Utc};
     use pretty_assertions::assert_eq;
 
+    /// The format-1 legacy path: no bases recorded, so direction rests on
+    /// `synced_ids` plus the LWW tiebreak. Also the permanent bootstrap path.
+    fn compute_without_bases(
+        local_events: Vec<CalendarEvent>,
+        remote_events: Vec<RemoteEvent>,
+        synced_ids: &SyncedEventIds,
+        range: &DateRange,
+    ) -> CalendarDiff {
+        CalendarDiff::compute(
+            local_events,
+            remote_events,
+            synced_ids,
+            &EventBases::new(),
+            range,
+        )
+    }
+
     #[test]
     fn new_local_event_becomes_outgoing_create() {
         let (_tmp, calendar_event) = test_calendar_event();
@@ -315,7 +281,7 @@ mod tests {
         let remote_events = vec![];
         let synced_ids = SyncedEventIds::new();
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             local_events,
             remote_events,
             &synced_ids,
@@ -334,7 +300,7 @@ mod tests {
         let remote_events = vec![RemoteEvent::new(new_event.clone())];
         let synced_ids = SyncedEventIds::new();
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             local_events,
             remote_events,
             &synced_ids,
@@ -355,7 +321,7 @@ mod tests {
         let local_events = vec![];
         let remote_events = vec![RemoteEvent::new(remote_event.clone())];
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             local_events,
             remote_events,
             &synced_ids,
@@ -381,7 +347,7 @@ mod tests {
         // timestamp keeps the test deterministic vs. the just-written tempfile.
         cancelled.last_modified = Some(Utc.with_ymd_and_hms(3000, 1, 1, 0, 0, 0).unwrap());
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             vec![calendar_event],
             vec![RemoteEvent::new(cancelled.clone())],
             &SyncedEventIds::new(),
@@ -409,7 +375,7 @@ mod tests {
         let mut synced_ids = SyncedEventIds::new();
         synced_ids.insert(cancelled.event_instance_id());
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             vec![],
             vec![RemoteEvent::new(cancelled)],
             &synced_ids,
@@ -434,7 +400,7 @@ mod tests {
         remote.summary = Some("Now with extra data".into());
         remote.location = Some("Somewhere".into());
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             vec![calendar_event],
             vec![RemoteEvent::new(remote)],
             &SyncedEventIds::new(),
@@ -468,7 +434,7 @@ mod tests {
             to: Some(Utc.with_ymd_and_hms(2027, 5, 14, 0, 0, 0).unwrap()),
         };
 
-        let diff = CalendarDiff::compute(vec![calendar_event], vec![], &synced_ids, &range);
+        let diff = compute_without_bases(vec![calendar_event], vec![], &synced_ids, &range);
 
         assert_eq!(diff.outgoing, vec![]);
         assert_eq!(diff.incoming, vec![]);
@@ -485,7 +451,7 @@ mod tests {
         let local_events = vec![calendar_event];
         let remote_events = vec![];
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             local_events,
             remote_events,
             &synced_ids,
@@ -511,7 +477,7 @@ mod tests {
         let local_events = vec![calendar_event];
         let remote_events = vec![RemoteEvent::new(remote_event.clone())];
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             local_events,
             remote_events,
             &synced_ids,
@@ -539,7 +505,7 @@ mod tests {
         remote_event.summary = Some("Edited remotely".to_string());
         remote_event.sequence = 2;
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event.clone())],
             &SyncedEventIds::new(),
@@ -567,7 +533,7 @@ mod tests {
         local_event.sequence = 2;
         let calendar_event = calendar.create_event(local_event.clone()).unwrap();
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event.clone())],
             &SyncedEventIds::new(),
@@ -600,7 +566,7 @@ mod tests {
         let mut synced_ids = SyncedEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event)],
             &synced_ids,
@@ -631,7 +597,7 @@ mod tests {
         let mut synced_ids = SyncedEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event.clone())],
             &synced_ids,
@@ -669,7 +635,7 @@ mod tests {
         let mut synced_ids = SyncedEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event.clone())],
             &synced_ids,
@@ -703,7 +669,7 @@ mod tests {
         let mut bases = EventBases::new();
         bases.upsert(local_event.clone());
 
-        let diff = CalendarDiff::compute_with_event_bases(
+        let diff = CalendarDiff::compute(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event.clone())],
             &synced_ids,
@@ -729,17 +695,54 @@ mod tests {
         let mut bases = EventBases::new();
         bases.upsert(event);
 
-        let diff = CalendarDiff::compute_with_event_bases(
+        let diff =
+            CalendarDiff::compute(vec![], vec![], &synced_ids, &bases, &DateRange::default());
+
+        assert_eq!(diff.incoming, vec![]);
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(diff.removed_event_bases(), &[id]);
+    }
+
+    #[test]
+    fn local_edit_survives_remote_delete() {
+        let (_tmp, calendar) = test_calendar();
+        let base = test_event();
+        let mut local = base.clone();
+        local.summary = Some("Edited locally".into());
+        let calendar_event = calendar.create_event(local.clone()).unwrap();
+        let mut bases = EventBases::new();
+        bases.upsert(base);
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
             vec![],
-            vec![],
-            &synced_ids,
+            &SyncedEventIds::new(),
             &bases,
             &DateRange::default(),
         );
 
         assert_eq!(diff.incoming, vec![]);
+        assert_eq!(diff.outgoing, vec![EventChange::Create(local)]);
+    }
+
+    #[test]
+    fn remote_edit_survives_local_delete() {
+        let base = test_event();
+        let mut remote = base.clone();
+        remote.summary = Some("Edited remotely".into());
+        let mut bases = EventBases::new();
+        bases.upsert(base);
+
+        let diff = CalendarDiff::compute(
+            vec![],
+            vec![RemoteEvent::new(remote.clone())],
+            &SyncedEventIds::new(),
+            &bases,
+            &DateRange::default(),
+        );
+
         assert_eq!(diff.outgoing, vec![]);
-        assert_eq!(diff.removed_event_bases(), &[id]);
+        assert_eq!(diff.incoming, vec![EventChange::Create(remote)]);
     }
 
     #[test]
@@ -762,7 +765,7 @@ mod tests {
         let mut bases = EventBases::new();
         bases.upsert(base);
 
-        let diff = CalendarDiff::compute_with_event_bases(
+        let diff = CalendarDiff::compute(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event.clone())],
             &synced_ids,
@@ -796,7 +799,7 @@ mod tests {
 
         let mut bases = EventBases::new();
         bases.upsert(base);
-        let diff = CalendarDiff::compute_with_event_bases(
+        let diff = CalendarDiff::compute(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event.clone())],
             &SyncedEventIds::new(),
@@ -834,7 +837,7 @@ mod tests {
         let mut synced_ids = SyncedEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event)],
             &synced_ids,
@@ -868,7 +871,7 @@ mod tests {
         let mut synced_ids = SyncedEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             vec![calendar_event],
             vec![RemoteEvent::new(remote_event.clone())],
             &synced_ids,
@@ -922,7 +925,7 @@ mod tests {
         let local_events = vec![calendar_event];
         let remote_events = vec![RemoteEvent::new(remote_event.clone())];
 
-        let diff = CalendarDiff::compute(
+        let diff = compute_without_bases(
             local_events,
             remote_events,
             &synced_ids,
@@ -961,10 +964,38 @@ mod tests {
             to: Some(Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap()),
         };
 
-        let diff = CalendarDiff::compute(vec![calendar_event], vec![], &synced_ids, &range);
+        let diff = compute_without_bases(vec![calendar_event], vec![], &synced_ids, &range);
 
         assert_eq!(diff.outgoing, vec![]);
         assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn local_event_outside_window_is_not_deleted_when_it_has_a_base() {
+        let (_tmp, calendar) = test_calendar();
+        let mut event = test_event();
+        event.start = EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2020, 1, 1, 9, 0, 0).unwrap());
+        event.end = Some(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2020, 1, 1, 10, 0, 0).unwrap(),
+        ));
+        let calendar_event = calendar.create_event(event.clone()).unwrap();
+        let mut bases = EventBases::new();
+        bases.upsert(event);
+        let range = DateRange {
+            from: Some(Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap()),
+            to: Some(Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap()),
+        };
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![],
+            &SyncedEventIds::new(),
+            &bases,
+            &range,
+        );
+
+        assert!(diff.is_empty());
+        assert!(diff.removed_event_bases().is_empty());
     }
 
     #[test]
@@ -986,7 +1017,7 @@ mod tests {
             to: Some(Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap()),
         };
 
-        let diff = CalendarDiff::compute(vec![calendar_event], vec![], &synced_ids, &range);
+        let diff = compute_without_bases(vec![calendar_event], vec![], &synced_ids, &range);
 
         assert_eq!(diff.outgoing, vec![]);
         assert_eq!(diff.incoming, vec![EventChange::Delete(event)]);

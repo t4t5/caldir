@@ -115,6 +115,15 @@ impl Event {
         self.splice_valarms_into_vevent(ics)
     }
 
+    /// Equality *including* the sync metadata `PartialEq` ignores.
+    /// `==` treats a bumped LAST-MODIFIED/SEQUENCE as no change; a base
+    /// records the exact bytes we last agreed on, so it needs both.
+    pub fn same_snapshot(&self, other: &Self) -> bool {
+        self == other
+            && self.last_modified == other.last_modified
+            && self.sequence == other.sequence
+    }
+
     pub fn occurs_in_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> bool {
         let event_start = self.start.to_utc();
         let event_end = self.end.as_ref().unwrap_or(&self.start).to_utc();
