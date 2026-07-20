@@ -26,6 +26,37 @@ not by a release number.
 - `state/format` contains the format number; cores refuse to sync when it exceeds
   what they support.
 
+### The exhaustive diff table
+
+Guards, evaluated before the table (order matters; these are the bug-prone part):
+
+1. Local present + absent from remote response + no occurrence in the sync window →
+   **no-op**, regardless of base. Absence out-of-window is indistinguishable from
+   deletion.
+2. Remote `STATUS:CANCELLED` ≈ absence for delete purposes: both cancelled → no-op;
+   remote cancelled + local missing → no-op (never resurrect tombstoned events,
+   never push deletes at already-cancelled events).
+
+Then, matching on `(base, local, remote)`:
+
+| base | local | remote | action |
+|---|---|---|---|
+| none | ✓ | — | push create (never synced) |
+| none | — | ✓ | pull create |
+| none | ✓ | ✓ | bootstrap: equal → record base; differ → LWW tiebreak, record base on convergence |
+| tombstone | ✓ | — | pull delete (legacy `known_event_ids` behavior) |
+| tombstone | — | ✓ | push delete |
+| tombstone | ✓ | ✓ | bootstrap path, real base recorded on convergence |
+| tombstone | — | — | no-op |
+| snapshot | ✓ | — | `local == base` → pull delete; `local != base` → modify/delete conflict: keep the edit (push create) or warn — never silently destroy |
+| snapshot | — | ✓ | `remote == base` → push delete (also covers stale resurrection of an already-propagated delete); `remote != base` → changed since deletion → pull create (resurrect) or warn |
+| snapshot | ✓ | ✓ | three-way: equal → refresh base if stale; only local changed → push update; only remote changed → pull update; both changed → LWW tiebreak (mtime vs `LAST-MODIFIED`, then `SEQUENCE`) |
+| snapshot | — | — | no-op, snapshot retained |
+
+The `snapshot / — / ✓` split is the one behavior change vs. today: reappeared IDs are
+currently re-deleted unconditionally; content-awareness lets a genuine
+recreation/re-invite survive.
+
 ---
 
 ## Phase 1 — this branch + next release (format 1)
@@ -42,11 +73,15 @@ degrade the new core to the old LWW behavior (both-changed fallback), never corr
    - atomically write only upserted bases (keep `write_atomic`)
    - unlink only removed bases
    - skip touching disk entirely when ids/bases/removed are all empty
-2. **`state/format` guard.** Write `1` on state creation. On load: if the file exists
-   and parses to `> SUPPORTED_FORMAT`, fail the sync for that calendar with a clear
-   "written by a newer caldir" error. Missing file = format 1. This ships useless and
-   becomes essential: every core released without it extends the window where format 2
-   is impossible.
+2. **`state/format` guard.** Write `1` on state creation. Checked only where sync
+   state is opened (diff/pull/push) — never on read paths, so listing/editing local
+   ICS files always works regardless of format; only sync is refused:
+   - `> SUPPORTED_FORMAT` → clear "written by a newer caldir" error
+   - present but unparseable → fail closed with a clear error naming the file
+     (guessing format 1 on garbage defeats the guard's purpose)
+   - missing → format 1 (the defined pre-guard state)
+   This ships useless and becomes essential: every core released without it extends
+   the window where format 2 is impossible.
 3. **Cleanups from review:**
    - replace the `<[Result<Event, _>; 1]>::try_from` gymnastics in `bases.rs` load with
      a plain iterator match
@@ -93,21 +128,26 @@ degrade the new core to the old LWW behavior (both-changed fallback), never corr
 Trigger: pre-guard cores (≤ the last format-1-unaware release) are effectively extinct —
 rencal has shipped guard-aware core for a comfortable window, ideally with auto-update.
 
-1. **Migrate on load** (automatic, idempotent, no user action):
-   - for each ID in `known_event_ids` with no base file, write
-     `bases/<id>.tombstone` containing the raw ID
-   - delete `known_event_ids`
-   - write `2` to `state/format`
-   A calendar that never syncs during format 1 still migrates correctly, because this
-   runs at load, not at sync.
-2. **Diff on the unified model:**
-   - `LegacyTombstone` + one side present → propagate delete (today's
-     `known_event_ids` behavior)
-   - `LegacyTombstone` + both sides present → bootstrap path; real base recorded on
-     next clean sync
-   - `Snapshot` + reappeared remote: `remote == base` → stale resurrection,
-     delete again; `remote != base` → changed since deletion, surface/pull instead of
-     silently re-deleting (fixes today's unconditional re-delete of reappeared IDs)
+1. **Migrate when sync state is opened** (automatic, idempotent, no user action —
+   but never on read paths: migration bumps the format and locks out old cores, so
+   it must not run as a side effect of `caldir list` or similar).
+   The atomic `state/format` write is the commit point — every intermediate state
+   must be valid:
+   1. for each ID in `known_event_ids` with no base file, write
+      `bases/<id>.tombstone` containing the raw ID
+   2. atomically write `2` to `state/format` (tempfile + rename, like
+      `write_atomic` — otherwise it isn't a commit point)
+   3. delete `known_event_ids` (optional cleanup; format-2 code must tolerate a
+      leftover)
+   Crash before step 2 → tombstones are extra files old cores ignore,
+   `known_event_ids` intact, still valid format 1; migration re-runs. Crash after →
+   format 2 committed, guard-aware cores refuse cleanly, leftover file is inert.
+   Cleanup on later opens is a re-run of the same steps: tombstone any leftover ID
+   still lacking a base, then delete — idempotent, and absorbs an ID appended by a
+   concurrent old core between step 1 and the commit point.
+   A calendar that never syncs never migrates — fine, its legacy state is inert
+   until sync needs it.
+2. **Diff on the unified model** — implement the exhaustive table above, plus:
    - propagated deletes leave the base file untouched (no conversion, no unlink)
    - unparseable/empty `.ics` base → corruption → no base → bootstrap/LWW; never
      delete-propagation
