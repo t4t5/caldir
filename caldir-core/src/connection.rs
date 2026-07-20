@@ -2,13 +2,11 @@ mod error;
 
 use std::collections::HashMap;
 
-use crate::calendar::CalendarError;
+use crate::calendar::{CalendarError, SyncBases};
 use crate::diff::EventChange;
 use crate::event::EventInstanceId;
-use crate::{Calendar, CalendarDiff, CalendarEvent, DateRange, Remote};
+use crate::{Calendar, CalendarDiff, CalendarEvent, DateRange, Event, Remote, RemoteEvent};
 use error::ConnectionError;
-
-use crate::calendar::SyncedEventIds;
 
 /// A connection is a [local calendar] + [remote calendar] pair
 pub struct Connection {
@@ -36,13 +34,25 @@ impl Connection {
             .unwrap_or(false)
     }
 
-    pub async fn diff(&self, range: &DateRange) -> Result<CalendarDiff, ConnectionError> {
+    pub async fn diff(&mut self, range: &DateRange) -> Result<CalendarDiff, ConnectionError> {
         let local_events = self.local().events()?;
         let remote_events = self.remote().list_events(range).await?;
 
-        let synced_ids = self.synced_event_ids();
+        // State migration: in-sync pairs never produce a change to apply, so
+        // this is the only place their base can be recorded. Without it,
+        // legacy known-id entries would sit on the mtime fallback forever.
+        let backfill = bases_to_backfill(
+            &local_events,
+            &remote_events,
+            self.local.state().sync_bases(),
+        );
+        if !backfill.is_empty() {
+            self.local.record_sync_bases(backfill)?;
+        }
 
-        let mut diff = CalendarDiff::compute(local_events, remote_events, synced_ids, range);
+        let sync_bases = self.local().state().sync_bases();
+
+        let mut diff = CalendarDiff::compute(local_events, remote_events, sync_bases, range);
 
         if self.read_only() {
             diff.discard_outgoing();
@@ -60,19 +70,18 @@ impl Connection {
             .map(|e| (e.event().event_instance_id(), e))
             .collect();
 
-        let mut synced_ids = Vec::new();
+        let mut sync_bases = Vec::new();
 
         // Same partial-failure flush pattern as `apply_outgoing_diff`: a
-        // local-fs error mid-loop must not drop the ids of changes we've
-        // already applied to disk.
+        // local-fs error mid-loop must not drop changes already applied to disk.
         let loop_result = pull_incoming_changes(
             &self.local,
             diff,
             &mut events_by_instance_id,
-            &mut synced_ids,
+            &mut sync_bases,
         );
 
-        let record_result = self.local.record_synced_ids(synced_ids);
+        let record_result = self.local.record_sync_bases(sync_bases);
 
         loop_result?;
         record_result?;
@@ -91,18 +100,18 @@ impl Connection {
             .map(|e| (e.event().event_instance_id(), e))
             .collect();
 
-        let mut synced_ids = Vec::new();
+        let mut sync_bases = Vec::new();
 
         // Handles mid-loop errors gracefully
         let loop_result = push_outgoing_changes(
             &self.remote,
             diff,
             &mut events_by_instance_id,
-            &mut synced_ids,
+            &mut sync_bases,
         )
         .await;
 
-        let record_result = self.local.record_synced_ids(synced_ids);
+        let record_result = self.local.record_sync_bases(sync_bases);
 
         loop_result?;
         record_result?;
@@ -144,31 +153,63 @@ impl Connection {
 
         Ok(())
     }
+}
 
-    fn synced_event_ids(&self) -> &SyncedEventIds {
-        self.local().state().synced_event_ids()
+/// Events present and identical on both sides whose base is missing (legacy
+/// known-id entry) or stale. Both sides agreeing *is* the base — record it.
+/// Pairs with no sync state at all are left alone: they were never synced,
+/// and recording a base would silently change their delete semantics.
+fn bases_to_backfill(
+    local_events: &[CalendarEvent],
+    remote_events: &[RemoteEvent],
+    sync_bases: &SyncBases,
+) -> Vec<Event> {
+    let local_by_id: HashMap<_, _> = local_events
+        .iter()
+        .map(|e| (e.event().event_instance_id(), e.event()))
+        .collect();
+
+    let mut backfill = Vec::new();
+
+    for remote in remote_events {
+        let remote = remote.event();
+        let id = remote.event_instance_id();
+
+        let in_sync = local_by_id.get(&id).is_some_and(|local| *local == remote);
+
+        let base_is_current = match sync_bases.get(&id) {
+            None => continue,
+            Some(Some(base)) => base.as_ref() == remote,
+            Some(None) => false,
+        };
+
+        if in_sync && !base_is_current {
+            backfill.push(remote.clone());
+        }
     }
+
+    backfill
 }
 
 fn pull_incoming_changes(
     local: &Calendar,
     diff: &CalendarDiff,
     events_by_instance_id: &mut HashMap<EventInstanceId, CalendarEvent>,
-    synced_ids: &mut Vec<EventInstanceId>,
+    sync_bases: &mut Vec<Event>,
 ) -> Result<(), ConnectionError> {
     for change in diff.incoming() {
         match change {
             EventChange::Create(event) => {
                 let cal_event = local.create_event(event.clone())?;
                 let id = cal_event.event().event_instance_id();
-                events_by_instance_id.insert(id.clone(), cal_event);
-                synced_ids.push(id);
+                events_by_instance_id.insert(id, cal_event);
+                sync_bases.push(event.clone());
             }
             EventChange::Update { to, .. } => {
                 if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id()) {
                     cal_event.update(to.clone()).map_err(CalendarError::from)?;
                 }
-                synced_ids.push(to.event_instance_id());
+                sync_bases.push(to.clone());
             }
             EventChange::Delete(event) => {
                 if let Some(cal_event) = events_by_instance_id.remove(&event.event_instance_id()) {
@@ -185,7 +226,7 @@ async fn push_outgoing_changes(
     remote: &Remote,
     diff: &CalendarDiff,
     events_by_instance_id: &mut HashMap<EventInstanceId, CalendarEvent>,
-    synced_ids: &mut Vec<EventInstanceId>,
+    sync_bases: &mut Vec<Event>,
 ) -> Result<(), ConnectionError> {
     for change in diff.outgoing() {
         if let Some(remote_event) = remote.apply_change(change).await? {
@@ -204,7 +245,7 @@ async fn push_outgoing_changes(
                     .map_err(CalendarError::from)?;
             }
 
-            synced_ids.push(returned_event.event_instance_id());
+            sync_bases.push(returned_event.clone());
         }
     }
 
@@ -257,7 +298,7 @@ mod tests {
         mock.reply::<rpc::ListEvents>(vec![]);
         let remote = Remote::new(mock.provider(), test_remote_params());
 
-        let connection = Connection::new(calendar, remote);
+        let mut connection = Connection::new(calendar, remote);
         let diff = connection.diff(&DateRange::default()).await.unwrap();
 
         assert!(
@@ -280,10 +321,53 @@ mod tests {
         mock.reply::<rpc::ListEvents>(vec![]);
         let remote = Remote::new(mock.provider(), test_remote_params());
 
-        let connection = Connection::new(calendar, remote);
+        let mut connection = Connection::new(calendar, remote);
         let diff = connection.diff(&DateRange::default()).await.unwrap();
 
         assert_eq!(diff.outgoing(), &[EventChange::Create(event)]);
+    }
+
+    #[tokio::test]
+    async fn diff_backfills_base_for_in_sync_legacy_known_id() {
+        let (_tmp, caldir) = test_caldir();
+        let calendar = caldir
+            .create_calendar("writable-cal", Some(calendar_config(Some(false))))
+            .unwrap();
+        let event = test_event();
+        let id = event.event_instance_id();
+        calendar.create_event(event.clone()).unwrap();
+
+        // Legacy state: id is known, but no base was ever recorded.
+        let state_dir = calendar.path().join(".caldir/state");
+        std::fs::create_dir_all(&state_dir).unwrap();
+        std::fs::write(state_dir.join("known_event_ids"), id.to_string()).unwrap();
+        let calendar = Calendar::load(calendar.path()).unwrap();
+        assert_eq!(calendar.state().sync_base(&id), None);
+
+        let mock = test_mock_provider();
+        mock.reply::<rpc::ListEvents>(vec![event.clone()]);
+        let remote = Remote::new(mock.provider(), test_remote_params());
+
+        let mut connection = Connection::new(calendar, remote);
+        let diff = connection.diff(&DateRange::default()).await.unwrap();
+
+        assert!(diff.is_empty());
+        let reloaded = Calendar::load(connection.local().path()).unwrap();
+        assert_eq!(reloaded.state().sync_base(&id), Some(&event));
+    }
+
+    #[tokio::test]
+    async fn diff_does_not_backfill_base_for_never_synced_pair() {
+        let (_tmp, mock, mut connection) = writable_connection();
+        let event = test_event();
+        let id = event.event_instance_id();
+        connection.local().create_event(event.clone()).unwrap();
+
+        mock.reply::<rpc::ListEvents>(vec![event]);
+        connection.diff(&DateRange::default()).await.unwrap();
+
+        let reloaded = Calendar::load(connection.local().path()).unwrap();
+        assert!(!reloaded.state().synced_event_ids().contains(&id));
     }
 
     #[tokio::test]
@@ -352,17 +436,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn apply_incoming_diff_persists_state_to_disk() {
+    async fn apply_incoming_diff_persists_base_to_disk() {
         let (_tmp, _mock, mut connection) = writable_connection();
         let event = test_event();
         let id = event.event_instance_id();
 
         connection
-            .apply_incoming_diff(&incoming_create_diff(event))
+            .apply_incoming_diff(&incoming_create_diff(event.clone()))
             .unwrap();
 
         let reloaded = Calendar::load(connection.local().path()).unwrap();
-        assert!(reloaded.state().synced_event_ids().contains(&id));
+        assert_eq!(reloaded.state().sync_base(&id), Some(&event));
     }
 
     #[tokio::test]
@@ -446,6 +530,13 @@ mod tests {
         let reloaded = connection.local().events().unwrap();
         assert_eq!(reloaded.len(), 1);
         assert_eq!(reloaded[0].event().x_properties, canonical.x_properties);
+        assert_eq!(
+            connection
+                .local()
+                .state()
+                .sync_base(&canonical.event_instance_id()),
+            Some(&canonical)
+        );
     }
 
     #[tokio::test]
@@ -480,7 +571,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn apply_outgoing_diff_records_synced_id_for_outgoing_create() {
+    async fn apply_outgoing_diff_records_base_for_outgoing_create() {
         let (_tmp, mock, mut connection) = writable_connection();
         let event = test_event();
         let id = event.event_instance_id();
@@ -488,11 +579,11 @@ mod tests {
 
         mock.reply::<rpc::CreateEvent>(event.clone());
         connection
-            .apply_outgoing_diff(&outgoing_create_diff(event))
+            .apply_outgoing_diff(&outgoing_create_diff(event.clone()))
             .await
             .unwrap();
 
-        assert!(connection.local().state().synced_event_ids().contains(&id));
+        assert_eq!(connection.local().state().sync_base(&id), Some(&event));
     }
 
     #[tokio::test]
@@ -514,7 +605,10 @@ mod tests {
         mock.reply_error(ProviderTransportError::Timeout(Duration::from_secs(1)));
 
         let diff = CalendarDiff::from_changes(
-            vec![EventChange::Create(event_a), EventChange::Create(event_b)],
+            vec![
+                EventChange::Create(event_a.clone()),
+                EventChange::Create(event_b),
+            ],
             vec![],
         );
 
@@ -527,10 +621,10 @@ mod tests {
 
         let reloaded = Calendar::load(connection.local().path()).unwrap();
 
-        // We should still have saved the instance ID for the event that was pushed!
-        assert!(
-            reloaded.state().synced_event_ids().contains(&id_a),
-            "known_event_ids on disk should contain event A's id after a partial-success push",
+        assert_eq!(
+            reloaded.state().sync_base(&id_a),
+            Some(&event_a),
+            "event A's base should survive a later push failure",
         );
     }
 

@@ -1,0 +1,159 @@
+use crate::{Event, event::EventInstanceId};
+use std::collections::HashMap;
+use std::path::Path;
+
+use super::error::CalendarStateError;
+use super::event_bases::{EVENT_BASES_DIR_NAME, EventBases};
+use super::known_event_ids::{KNOWN_IDS_FILE_NAME, KnownEventIds};
+
+// If event base file exists -> <EventInstanceId, Some<Event>>
+// If no event base file, but known event ID exists -> <EventInstanceId, None>
+#[derive(Debug)]
+pub(crate) struct SyncBases(HashMap<EventInstanceId, Option<Box<Event>>>);
+
+impl SyncBases {
+    pub(crate) fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub(crate) fn get(&self, id: &EventInstanceId) -> Option<&Option<Box<Event>>> {
+        self.0.get(id)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&EventInstanceId, &Option<Box<Event>>)> {
+        self.0.iter()
+    }
+
+    pub(crate) fn load_from_state_dir(state_dir: &Path) -> Result<Self, CalendarStateError> {
+        let known_event_ids = Self::load_known_event_ids(state_dir)?;
+        let event_bases = Self::load_event_bases(state_dir)?;
+
+        let sync_bases = Self::from_event_bases_and_known_ids(event_bases, known_event_ids);
+
+        Ok(sync_bases)
+    }
+
+    // Legacy method:
+    pub(crate) fn insert_known_event_id(&mut self, id: EventInstanceId) {
+        self.0.entry(id).or_insert(None);
+    }
+
+    pub(crate) fn insert_event_base(&mut self, id: EventInstanceId, event: Event) {
+        self.0.insert(id, Some(Box::new(event)));
+    }
+
+    /// Records new bases and persists them. Only the given events' base files
+    /// are written, so a sync touches O(changes) files, not O(history).
+    pub(crate) fn record(
+        &mut self,
+        events: impl IntoIterator<Item = Event>,
+        state_dir: &Path,
+    ) -> Result<(), CalendarStateError> {
+        let events: Vec<Event> = events.into_iter().collect();
+
+        for event in &events {
+            self.insert_event_base(event.event_instance_id(), event.clone());
+        }
+
+        // Keep writing the legacy format for clients using an older caldir-core.
+        KnownEventIds::write_from(self.0.keys(), &state_dir.join(KNOWN_IDS_FILE_NAME))?;
+
+        // New format with event bases:
+        EventBases::write_from(events.iter(), &state_dir.join(EVENT_BASES_DIR_NAME))?;
+
+        Ok(())
+    }
+
+    // Legacy file:
+    fn load_known_event_ids(state_dir: &Path) -> Result<KnownEventIds, CalendarStateError> {
+        let known_ids_path = state_dir.join(KNOWN_IDS_FILE_NAME);
+        KnownEventIds::load(&known_ids_path)
+    }
+
+    // New file format with event bases:
+    fn load_event_bases(state_dir: &Path) -> Result<EventBases, CalendarStateError> {
+        let event_bases_dir = state_dir.join(EVENT_BASES_DIR_NAME);
+        let event_bases = EventBases::load(&event_bases_dir)?;
+        Ok(event_bases)
+    }
+
+    // Use event bases if they exist,
+    // Fallback to known event IDs if no event base exists:
+    fn from_event_bases_and_known_ids(
+        event_bases: EventBases,
+        known_event_ids: KnownEventIds,
+    ) -> Self {
+        let mut sync_bases = Self::new();
+
+        for id in known_event_ids.iter() {
+            sync_bases.insert_known_event_id(id.clone());
+        }
+
+        for (id, event) in event_bases.into_iter() {
+            sync_bases.insert_event_base(id, event);
+        }
+
+        sync_bases
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::test_event;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn corrupt_base_degrades_to_known_id_entry() {
+        let state_dir = tempfile::TempDir::new().unwrap();
+        let event = test_event();
+        let id = event.event_instance_id();
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.record([event], state_dir.path()).unwrap();
+
+        let bases_dir = state_dir.path().join(EVENT_BASES_DIR_NAME);
+        for entry in std::fs::read_dir(&bases_dir).unwrap() {
+            std::fs::write(entry.unwrap().path(), "not an ics file").unwrap();
+        }
+
+        let loaded = SyncBases::load_from_state_dir(state_dir.path()).unwrap();
+
+        // Base content is lost, but the known-id entry keeps deletion memory.
+        assert_eq!(loaded.get(&id), Some(&None));
+    }
+
+    #[test]
+    fn record_leaves_other_base_files_untouched() {
+        let state_dir = tempfile::TempDir::new().unwrap();
+        let event_a = test_event();
+        let mut event_b = test_event();
+        event_b.uid = crate::event::EventUid::new("other@example.com".to_string());
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.record([event_a], state_dir.path()).unwrap();
+
+        // Garble A's base on disk; recording B must not rewrite it.
+        let bases_dir = state_dir.path().join(EVENT_BASES_DIR_NAME);
+        let a_path = std::fs::read_dir(&bases_dir)
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .path();
+        std::fs::write(&a_path, "garbled").unwrap();
+
+        sync_bases
+            .record([event_b.clone()], state_dir.path())
+            .unwrap();
+
+        assert_eq!(std::fs::read_to_string(&a_path).unwrap(), "garbled");
+
+        let loaded = SyncBases::load_from_state_dir(state_dir.path()).unwrap();
+        assert_eq!(
+            loaded.get(&event_b.event_instance_id()),
+            Some(&Some(Box::new(event_b)))
+        );
+    }
+}

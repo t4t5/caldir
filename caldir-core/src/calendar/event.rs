@@ -110,7 +110,6 @@ impl CalendarEvent {
 
         event.set_attendee_status(email, status)?;
 
-        event.sequence += 1;
         event.last_modified = Some(Utc::now());
 
         // Save file
@@ -405,7 +404,7 @@ mod tests {
     }
 
     #[test]
-    fn update_attendee_status_bumps_sequence_and_sets_last_modified() {
+    fn update_attendee_status_preserves_sequence_and_sets_last_modified() {
         let (_tmp, mut cal_event) =
             cal_event_with_attendees(vec![Attendee::new("bob@example.com")]);
         let sequence_before = cal_event.event().sequence;
@@ -416,7 +415,7 @@ mod tests {
             .unwrap();
         let after = Utc::now();
 
-        assert_eq!(cal_event.event().sequence, sequence_before + 1);
+        assert_eq!(cal_event.event().sequence, sequence_before);
         let last_modified = cal_event
             .event()
             .last_modified

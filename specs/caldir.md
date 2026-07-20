@@ -112,13 +112,13 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 
 #### `LAST-MODIFIED`
 **What:** When the event was last changed.
-**How caldir uses it:** Parsed from ICS into the `Event.last_modified` field. Compared against local file mtime to determine sync direction (push vs pull). If absent from the remote response, local is assumed newer.
-**Why it matters:** Determines which version wins when content differs between local and remote.
+**How caldir uses it:** Parsed from ICS into the `Event.last_modified` field. Sync bases determine direction for one-sided edits. Local file mtime and remote `LAST-MODIFIED` are only used to break a conflict where both sides changed, or as the fallback for legacy events without a readable base.
+**Why it matters:** Provides a conflict-resolution signal when the three-way comparison cannot determine direction.
 
 #### `SEQUENCE`
-**What:** Revision number. Increments each time the event is modified.
-**How caldir uses it:** From provider's sequence number.
-**Why it matters:** Another conflict resolution signal. Higher sequence = newer version.
+**What:** The organizer's revision number. The organizer increments it for significant revisions; attendee replies preserve the revision they are responding to.
+**How caldir uses it:** Parsed from the provider event. When a conflict has no remote `LAST-MODIFIED` and the sequence numbers differ, the higher sequence wins.
+**Why it matters:** Provides a conflict-resolution signal for providers that do not supply modification timestamps.
 
 ---
 
@@ -210,7 +210,8 @@ The icalendar crate can introduce non-determinism by auto-generating fields:
 - Strip UID and DTSTAMP from VALARM components (not required by RFC 5545)
 
 **At comparison time:**
-- Sync uses file mtime (local) vs the `LAST-MODIFIED` field from the provider (remote)
+- Sync normally compares the local and remote event content against the last sync base
+- File mtime (local), `LAST-MODIFIED` (remote), and sometimes `SEQUENCE` only break conflicts or handle legacy state without a readable base
 - Event content comparison uses our custom `PartialEq`, which *ignores* `last_modified` and `sequence`; `x_properties` and `attachments` are compared order-independently (by value / URI), not excluded. DTSTAMP isn't an `Event` field, so it never participates.
 
 ---
@@ -311,37 +312,54 @@ The `RemoteConfig::account_identifier()` method in caldir-core extracts this by 
 
 ---
 
-## Sync State File
+## Sync State
+
+### `.caldir/state/bases/`
+
+Each synced event has a base: an ICS snapshot of the last event state accepted by both the local calendar and the provider. Base files use the SHA-256 hash of the event identity as their filename:
+
+```text
+.caldir/state/bases/<sha256>.ics
+```
+
+Event identity follows RFC 5545 and is always `(uid, recurrence_id)`:
+
+- Non-recurring events: `{uid}` (for example `abc123@google.com`)
+- Recurring instances: `{uid}__{recurrence_id}` (for example `abc123@google.com__20250317T100000Z`)
+
+The base serves two purposes:
+
+- Its presence records that the event has synced before, allowing caldir to distinguish a new event from a deletion.
+- Its content is the anchor for deciding update direction.
+
+Update direction is a three-way comparison:
+
+| Base vs local | Base vs remote | Result |
+|---|---|---|
+| same | same | No change |
+| changed | same | Push the local event |
+| same | changed | Pull the remote event |
+| changed | changed | Resolve the conflict using revision timestamps |
+
+For a conflict, caldir first uses `SEQUENCE` when the remote event has no `LAST-MODIFIED` and the sequence numbers differ. Otherwise it compares local file mtime with remote `LAST-MODIFIED`. When only one side has a revision timestamp, that side wins; equal timestamps resolve to the remote version, while no timestamp on either side resolves to the local version. Events without a readable base use this same revision-based logic as a compatibility fallback.
+
+Deletes do not use base content. If an identity has synced before, absence on either side is treated as a deletion and propagated even when the surviving copy was edited. For delete detection, a missing local file and remote `STATUS:CANCELLED` are already in sync; an active local copy still pulls a remote cancellation as a status update. Local events without an occurrence in the requested sync window are left untouched because remote absence is ambiguous outside that window.
+
+Bases are never removed. Retaining them after deletion preserves the knowledge that the identity synced before. Successful incoming creates and updates record the remote event as the new base. Successful outgoing creates and updates record the canonical event returned by the provider. If an already-synced local and remote event agree but their base is missing or stale, caldir backfills it during diff calculation. Unchanged bases are not rewritten.
+
+Unreadable or malformed base files are skipped when state is loaded. The event then falls back to presence-only legacy state and revision-based direction detection.
 
 ### `.caldir/state/known_event_ids`
 
-Each calendar directory contains a `.caldir/state/known_event_ids` file that tracks which event identities have ever been synced with the remote provider.
+`known_event_ids` is the legacy presence-only format. Caldir still reads and writes it for compatibility with older versions and so a corrupt base can retain deletion memory. It is a sorted plaintext list with one event identity per line:
 
-This file is append-only sync history, not a live index of currently present events. Event IDs are retained after deletes so caldir can keep distinguishing a user delete from a never-seen remote event on later syncs.
-
-**Format:** Plaintext file, one event ID per line (sorted alphabetically for deterministic output):
-```
+```text
 abc123@google.com
 abc123@google.com__20250317T100000Z
 def456@icloud.com
 ```
 
-Event IDs use the RFC 5545 identity:
-- Non-recurring events: `{uid}` (e.g., `abc123@google.com`)
-- Recurring event instances: `{uid}__{recurrence_id}` (e.g., `abc123@google.com__20250317T100000Z`)
-
-The double underscore (`__`) separator distinguishes the recurrence_id from the uid.
-
-**Why:** Enables the sync logic to distinguish between:
-- **Locally-created events** (event ID not in known_event_ids) → candidates for pushing to cloud
-- **Remotely-deleted events** (event ID in known_event_ids, but missing from remote) → candidates for local deletion
-
-Without this state, a local-only event is ambiguous: was it created locally and needs to be pushed, or was it pulled from the cloud and then deleted remotely?
-
-**Lifecycle:**
-- After `pull`: Event IDs of all fetched events are added to known_event_ids
-- After `push` (create): Newly created event IDs are added to known_event_ids
-- After `pull` or `push` (delete): Event IDs remain in known_event_ids
+IDs are retained after deletion. When both formats contain an identity, the ICS base supplies its content; an identity found only in `known_event_ids` is treated as previously synced but has no three-way comparison anchor.
 
 ---
 

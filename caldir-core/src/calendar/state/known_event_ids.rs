@@ -15,29 +15,23 @@ use super::CalendarStateError;
 use crate::event::EventInstanceId;
 use std::{collections::HashSet, path::Path};
 
-// Filename kept as `known_event_ids` for backwards compatibility with existing
-// on-disk state, even though the in-code name is `SyncedEventIds`.
-pub(crate) const SYNCED_IDS_FILE_NAME: &str = "known_event_ids";
+pub(crate) const KNOWN_IDS_FILE_NAME: &str = "known_event_ids";
 
 #[derive(Debug)]
-pub(crate) struct SyncedEventIds(HashSet<EventInstanceId>);
+pub(crate) struct KnownEventIds(HashSet<EventInstanceId>);
 
 /// Event instance IDs are stored in plaintext, one per line:
 /// e.g.
 ///   t5slp0vorqgoasogqkvadjt9jj@hooli.com__20240625T170000Z
 ///   t5slp0vorqgoasogqkvadjt9jj@hooli.com__20240625T180000
 ///   t81pd0rkq8ujaughbrjhh87svo@hooli.com
-impl SyncedEventIds {
+impl KnownEventIds {
     pub fn new() -> Self {
         Self(HashSet::new())
     }
 
-    pub fn insert(&mut self, id: EventInstanceId) {
-        self.0.insert(id);
-    }
-
-    pub fn contains(&self, id: &EventInstanceId) -> bool {
-        self.0.contains(id)
+    pub fn iter(&self) -> impl Iterator<Item = &EventInstanceId> {
+        self.0.iter()
     }
 
     pub fn load(path: &Path) -> Result<Self, CalendarStateError> {
@@ -57,22 +51,34 @@ impl SyncedEventIds {
         }
     }
 
-    /// Writes atomically (tempfile + rename) so a kill mid-write can't truncate
-    /// the file. Truncation would make the next sync treat every known event
-    /// as new and re-create them remotely.
+    #[cfg(test)]
     pub fn write(&self, path: &Path) -> Result<(), CalendarStateError> {
+        Self::write_from(self.0.iter(), path)
+    }
+
+    /// Writes atomically (tempfile + rename)
+    pub fn write_from<'a>(
+        event_ids: impl IntoIterator<Item = &'a EventInstanceId>,
+        path: &Path,
+    ) -> Result<(), CalendarStateError> {
         // Sort for deterministic output so the file diffs stay stable across writes.
-        let mut lines = self.0.iter().map(ToString::to_string).collect::<Vec<_>>();
+        let mut lines = event_ids
+            .into_iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
         lines.sort_unstable();
+
         let contents = lines.join("\n");
 
         let parent = path.parent().ok_or_else(|| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "synced ids path has no parent directory",
+                "known ids path has no parent directory",
             )
         })?;
 
+        std::fs::create_dir_all(parent)?;
         let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
         std::io::Write::write_all(&mut tmp, contents.as_bytes())?;
         tmp.persist(path).map_err(|e| e.error)?;
@@ -127,7 +133,7 @@ mod tests {
         let path = tmp.path().join("known_event_ids");
         std::fs::write(&path, sample_lines().join("\n")).unwrap();
 
-        let loaded = SyncedEventIds::load(&path).unwrap();
+        let loaded = KnownEventIds::load(&path).unwrap();
 
         assert_eq!(loaded.0, sample_ids());
     }
@@ -138,7 +144,7 @@ mod tests {
         let path = tmp.path().join("known_event_ids");
         std::fs::write(&path, "stale-id@example.com").unwrap();
 
-        SyncedEventIds(sample_ids()).write(&path).unwrap();
+        KnownEventIds(sample_ids()).write(&path).unwrap();
 
         let got = std::fs::read_to_string(&path).unwrap();
         assert!(!got.contains("stale-id@example.com"));
@@ -149,7 +155,7 @@ mod tests {
     fn writes_ids_to_plaintext_file() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("known_event_ids");
-        let ids = SyncedEventIds(sample_ids());
+        let ids = KnownEventIds(sample_ids());
 
         ids.write(&path).unwrap();
 

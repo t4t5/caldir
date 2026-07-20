@@ -30,7 +30,7 @@ pub async fn run(
 
     for (i, connection) in connections.into_iter().enumerate() {
         match connection {
-            Ok(connection) => {
+            Ok(mut connection) => {
                 let header = connection.local().render(caldir);
                 let spinner = tui::create_spinner(header.clone());
                 let result = connection.diff(&range).await;

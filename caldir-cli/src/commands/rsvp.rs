@@ -203,8 +203,34 @@ fn apply_response(event: &Event, email: &str, status: ParticipationStatus) -> Re
         .with_context(|| format!("Not an attendee: {}", email))?;
 
     attendee.status = Some(status);
-    updated.sequence = event.sequence + 1;
     updated.last_modified = Some(Utc::now());
 
     Ok(updated)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caldir_core::{Attendee, EventTime};
+    use chrono::NaiveDate;
+
+    #[test]
+    fn apply_response_preserves_sequence() {
+        let mut event = Event::new(
+            "Meeting",
+            EventTime::Date(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.sequence = 4;
+        event.attendees.push(Attendee::new("user@example.com"));
+
+        let updated =
+            apply_response(&event, "user@example.com", ParticipationStatus::Accepted).unwrap();
+
+        assert_eq!(updated.sequence, event.sequence);
+        assert_eq!(
+            updated.attendees[0].status,
+            Some(ParticipationStatus::Accepted)
+        );
+        assert!(updated.last_modified.is_some());
+    }
 }
