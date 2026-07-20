@@ -28,6 +28,13 @@ impl EventBases {
         for event in events {
             let filename = hash_filename(&event.event_instance_id().to_string());
             let event_path = path.join(format!("{filename}.ics"));
+
+            // Skip unchanged bases to avoid churning every file on every sync.
+            // Parse-compare, not byte-compare: to_ics_string stamps a fresh DTSTAMP.
+            if Event::load_single(&event_path).is_ok_and(|existing| &existing == event) {
+                continue;
+            }
+
             let mut tmp = tempfile::NamedTempFile::new_in(path)?;
             std::io::Write::write_all(&mut tmp, event.to_ics_string().as_bytes())?;
             tmp.persist(event_path).map_err(|err| err.error)?;
@@ -95,6 +102,37 @@ mod tests {
             "5dc4f5ac8fb72c87d9333e218f4b36d44f5fae5ad3cb888b788bbad2cbaf2148"
         );
         assert_eq!(filename.len(), 64);
+    }
+
+    #[test]
+    fn write_skips_unchanged_bases_despite_dtstamp_drift() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let event = test_event();
+        EventBases::write_from([&event], dir.path()).unwrap();
+
+        let path = dir.path().join(format!(
+            "{}.ics",
+            hash_filename(&event.event_instance_id().to_string())
+        ));
+
+        // Simulate an earlier sync: same event, older DTSTAMP.
+        let restamped: String = std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .map(|line| {
+                if line.starts_with("DTSTAMP:") {
+                    "DTSTAMP:20000101T000000Z\r\n".to_string()
+                } else {
+                    format!("{line}\r\n")
+                }
+            })
+            .collect();
+        std::fs::write(&path, &restamped).unwrap();
+
+        EventBases::write_from([&event], dir.path()).unwrap();
+
+        // Untouched: the old DTSTAMP survives.
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), restamped);
     }
 
     #[test]
