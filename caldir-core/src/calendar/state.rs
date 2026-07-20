@@ -49,6 +49,7 @@ impl CalendarState {
 
 #[cfg(test)]
 mod tests {
+    use super::known_event_ids::KNOWN_IDS_FILE_NAME;
     use super::*;
     use pretty_assertions::assert_eq;
 
@@ -66,7 +67,7 @@ mod tests {
         let state = CalendarState::load(dir.path()).unwrap();
 
         let dst = tempfile::TempDir::new().unwrap();
-        state.write(dst.path()).unwrap();
+        state.save(dst.path()).unwrap();
 
         let written = std::fs::read_to_string(dst.path().join(KNOWN_IDS_FILE_NAME)).unwrap();
         assert!(written.is_empty());
@@ -79,7 +80,7 @@ mod tests {
         let state = CalendarState::load(src.path()).unwrap();
 
         let dst = tempfile::TempDir::new().unwrap();
-        state.write(dst.path()).unwrap();
+        state.save(dst.path()).unwrap();
 
         let written = std::fs::read_to_string(dst.path().join(KNOWN_IDS_FILE_NAME)).unwrap();
         assert_eq!(written, "abc@hooli.com");
@@ -91,7 +92,7 @@ mod tests {
         let state_dir = dir.path().join("does/not/exist");
         let state = CalendarState::load(dir.path()).unwrap();
 
-        state.write(&state_dir).unwrap();
+        state.save(&state_dir).unwrap();
 
         assert!(state_dir.join(KNOWN_IDS_FILE_NAME).is_file());
     }

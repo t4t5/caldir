@@ -35,7 +35,7 @@ impl SyncBases {
 
     // Legacy method:
     pub(crate) fn insert_known_event_id(&mut self, id: EventInstanceId) {
-        self.0.insert(id, None);
+        self.0.entry(id).or_insert(None);
     }
 
     pub(crate) fn insert_event_base(&mut self, id: EventInstanceId, event: Event) {
