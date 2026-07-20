@@ -178,6 +178,10 @@ fn update_direction(
 }
 
 fn local_is_newer(local: &CalendarEvent, remote: &RemoteEvent) -> bool {
+    if remote.modified_at().is_none() && local.event().sequence != remote.event().sequence {
+        return local.event().sequence > remote.event().sequence;
+    }
+
     match (local.modified_at(), remote.modified_at()) {
         (Some(l), Some(r)) => l > r,
         (Some(_), None) => true,
@@ -435,6 +439,42 @@ mod tests {
             }]
         );
         assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn higher_remote_sequence_breaks_conflict_without_modified_time() {
+        let (_tmp, calendar) = test_calendar();
+        let mut base = test_event();
+        base.sequence = 1;
+
+        let mut local = base.clone();
+        local.summary = Some("Edited locally".to_string());
+        local.sequence = 2;
+        let calendar_event = calendar.create_event(local.clone()).unwrap();
+
+        let mut remote = base.clone();
+        remote.summary = Some("Edited remotely".to_string());
+        remote.sequence = 3;
+        remote.last_modified = None;
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.insert_event_base(base.event_instance_id(), base);
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote.clone())],
+            &sync_bases,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(
+            diff.incoming,
+            vec![EventChange::Update {
+                from: local,
+                to: remote,
+            }]
+        );
     }
 
     #[test]
