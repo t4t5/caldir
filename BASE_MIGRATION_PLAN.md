@@ -94,22 +94,19 @@ degrade the new core to the old LWW behavior, never corrupt.
    the test-only `CalendarDiff::compute` wrapper into
    `compute_with_event_bases`; import `Event`/`EventInstanceId` instead of
    `crate::`-qualified paths.
-4. **Tests:** pull → hand-edit → push round trip (base == pushed result);
+4. **Edits win modify/delete conflicts.** If the local event changed while the
+   remote event was deleted, push it as a create. If the remote event changed
+   while the local event was deleted, pull it as a create. Deletion is the only
+   unrecoverable outcome, so the first release that detects these conflicts
+   must not silently let it win.
+5. **Tests:** pull → hand-edit → push round trip (base == pushed result);
    out-of-window event with a base (the window guard is load-bearing); no-op
    sync leaves `bases/` untouched.
-
-### Decide (this branch or fast-follow)
-
-- **Modify/delete conflicts** currently let the delete win, silently destroying
-  the edit. Bases make the case detectable. Recommended: keep the edit
-  (push/pull create) or at minimum warn — deletion is the only unrecoverable
-  outcome.
 
 ### Release coordination
 
 - Release CLI with bumped `caldir-core`; bump rencal's dependency and ship it
-  promptly. If rencal lacks auto-update, add it before Phase 2 — it turns "old
-  cores are extinct" from a guess into a short window.
+  promptly.
 
 ### Keep until format 2
 
