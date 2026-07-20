@@ -10,8 +10,8 @@ use crate::{
 pub struct CalendarDiff {
     outgoing: Vec<EventChange>,
     incoming: Vec<EventChange>,
-    settled_bases: Vec<Event>,
-    stale_base_ids: Vec<EventInstanceId>,
+    bases_to_record: Vec<Event>,
+    bases_to_remove: Vec<EventInstanceId>,
 }
 
 impl CalendarDiff {
@@ -19,7 +19,7 @@ impl CalendarDiff {
         local_events: Vec<CalendarEvent>,
         remote_events: Vec<RemoteEvent>,
         synced_ids: &SyncedEventIds,
-        event_base_state: &EventBases,
+        bases: &EventBases,
         range: &DateRange,
     ) -> Self {
         let local_by_id: HashMap<_, &CalendarEvent> = local_events
@@ -35,7 +35,7 @@ impl CalendarDiff {
         for id in local_by_id
             .keys()
             .chain(remote_by_id.keys())
-            .chain(event_base_state.ids())
+            .chain(bases.ids())
         {
             if seen_ids.insert(id.clone()) {
                 event_ids.push(id.clone());
@@ -44,11 +44,11 @@ impl CalendarDiff {
 
         let mut outgoing = Vec::new();
         let mut incoming = Vec::new();
-        let mut settled_bases = Vec::new();
-        let mut stale_base_ids = Vec::new();
+        let mut bases_to_record = Vec::new();
+        let mut bases_to_remove = Vec::new();
 
         for id in event_ids {
-            let base = event_base_state.get(&id);
+            let base = bases.get(&id);
             let local_event = local_by_id.get(&id).copied();
             let remote_event = remote_by_id.get(&id).copied();
 
@@ -80,7 +80,7 @@ impl CalendarDiff {
 
                 // --- Base present: deletion is decided by content, not by
                 // an id having been seen before.
-                (Some(_), None, None) => stale_base_ids.push(id),
+                (Some(_), None, None) => bases_to_remove.push(id),
                 (Some(base), Some(local_event), None) if local_event.event() == base => {
                     incoming.push(EventChange::Delete(local_event.event().clone()));
                 }
@@ -106,7 +106,7 @@ impl CalendarDiff {
                     remote_event,
                     &mut outgoing,
                     &mut incoming,
-                    &mut settled_bases,
+                    &mut bases_to_record,
                 ),
             }
         }
@@ -114,8 +114,8 @@ impl CalendarDiff {
         CalendarDiff {
             outgoing,
             incoming,
-            settled_bases,
-            stale_base_ids,
+            bases_to_record,
+            bases_to_remove,
         }
     }
 
@@ -131,12 +131,12 @@ impl CalendarDiff {
         self.outgoing.is_empty() && self.incoming.is_empty()
     }
 
-    pub(crate) fn settled_bases(&self) -> &[Event] {
-        &self.settled_bases
+    pub(crate) fn bases_to_record(&self) -> &[Event] {
+        &self.bases_to_record
     }
 
-    pub(crate) fn stale_base_ids(&self) -> &[EventInstanceId] {
-        &self.stale_base_ids
+    pub(crate) fn bases_to_remove(&self) -> &[EventInstanceId] {
+        &self.bases_to_remove
     }
 
     /// Drop outgoing changes. Used for read-only calendars where outgoing
@@ -152,8 +152,8 @@ impl CalendarDiff {
         Self {
             outgoing,
             incoming,
-            settled_bases: Vec::new(),
-            stale_base_ids: Vec::new(),
+            bases_to_record: Vec::new(),
+            bases_to_remove: Vec::new(),
         }
     }
 }
@@ -166,14 +166,14 @@ fn diff_present_on_both_sides(
     remote_event: &RemoteEvent,
     outgoing: &mut Vec<EventChange>,
     incoming: &mut Vec<EventChange>,
-    settled_bases: &mut Vec<Event>,
+    bases_to_record: &mut Vec<Event>,
 ) {
     let event = local_event.event();
     let remote = remote_event.event();
 
     if event == remote {
         if base.is_none_or(|base| !base.same_snapshot(event)) {
-            settled_bases.push(event.clone());
+            bases_to_record.push(event.clone());
         }
         return;
     }
@@ -653,7 +653,7 @@ mod tests {
     }
 
     #[test]
-    fn event_base_suppresses_model_drift_even_when_local_mtime_is_newer() {
+    fn base_suppresses_model_drift_even_when_local_mtime_is_newer() {
         let (_tmp, calendar) = test_calendar();
 
         let mut local_event = test_event();
@@ -688,7 +688,7 @@ mod tests {
     }
 
     #[test]
-    fn removed_everywhere_removes_stale_event_base() {
+    fn removed_everywhere_removes_base() {
         let event = test_event();
         let id = event.event_instance_id();
         let synced_ids = SyncedEventIds::new();
@@ -700,7 +700,7 @@ mod tests {
 
         assert_eq!(diff.incoming, vec![]);
         assert_eq!(diff.outgoing, vec![]);
-        assert_eq!(diff.stale_base_ids(), &[id]);
+        assert_eq!(diff.bases_to_remove(), &[id]);
     }
 
     #[test]
@@ -746,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn event_base_pushes_local_edit_even_when_remote_timestamp_is_newer() {
+    fn base_pushes_local_edit_even_when_remote_timestamp_is_newer() {
         let (_tmp, calendar) = test_calendar();
 
         let mut base = test_event();
@@ -784,7 +784,7 @@ mod tests {
     }
 
     #[test]
-    fn event_base_uses_sequence_for_timestamp_less_conflict() {
+    fn base_uses_sequence_for_timestamp_less_conflict() {
         let (_tmp, calendar) = test_calendar();
         let mut base = test_event();
         base.sequence = 1;
@@ -995,7 +995,7 @@ mod tests {
         );
 
         assert!(diff.is_empty());
-        assert!(diff.stale_base_ids().is_empty());
+        assert!(diff.bases_to_remove().is_empty());
     }
 
     #[test]

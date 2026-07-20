@@ -60,7 +60,7 @@ impl Connection {
     pub fn apply_incoming_diff(&mut self, diff: &CalendarDiff) -> Result<(), ConnectionError> {
         self.local.check_state_format()?;
         let mut events_by_instance_id = self.local_events_by_instance_id()?;
-        record_base_changes(&mut self.local, diff);
+        apply_base_changes(&mut self.local, diff);
 
         // Same partial-failure flush pattern as `apply_outgoing_diff`: a
         // local-fs error mid-loop must not drop the state of changes we've
@@ -81,7 +81,7 @@ impl Connection {
     ) -> Result<(), ConnectionError> {
         self.local.check_state_format()?;
         let mut events_by_instance_id = self.local_events_by_instance_id()?;
-        record_base_changes(&mut self.local, diff);
+        apply_base_changes(&mut self.local, diff);
 
         // Handles mid-loop errors gracefully
         let loop_result = push_outgoing_changes(
@@ -146,11 +146,11 @@ impl Connection {
     }
 }
 
-fn record_base_changes(local: &mut Calendar, diff: &CalendarDiff) {
-    for event in diff.settled_bases() {
+fn apply_base_changes(local: &mut Calendar, diff: &CalendarDiff) {
+    for event in diff.bases_to_record() {
         local.state_mut().record_base(event.clone());
     }
-    for id in diff.stale_base_ids() {
+    for id in diff.bases_to_remove() {
         local.state_mut().remove_base(id);
     }
 }
