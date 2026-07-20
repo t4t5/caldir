@@ -102,6 +102,25 @@ impl Event {
         Ok(icalendar.events().map(Event::try_from).collect())
     }
 
+    pub(crate) fn load_single(path: &std::path::Path) -> Result<Self, EventError> {
+        let contents =
+            std::fs::read_to_string(path).map_err(|err| EventError::Io(path.to_path_buf(), err))?;
+
+        Self::from_single_ics_str(&contents)
+    }
+
+    fn from_single_ics_str(contents: &str) -> Result<Self, EventError> {
+        let events = Self::from_ics_str(contents)?;
+
+        match <[Result<Self, EventError>; 1]>::try_from(events) {
+            Ok([result]) => result,
+            Err(events) => Err(EventError::UnexpectedEventCount {
+                expected: 1,
+                found: events.len(),
+            }),
+        }
+    }
+
     pub fn to_ics_string(&self) -> String {
         let ical_event: icalendar::Event = self.into();
 
@@ -216,9 +235,7 @@ impl Event {
     /// Panics on any deviation — for use in tests with known-good fixtures.
     #[cfg(test)]
     pub(crate) fn parse_single_ics(contents: &str) -> Event {
-        let mut events = Self::from_ics_str(contents).expect("VCALENDAR should parse");
-        assert_eq!(events.len(), 1, "expected exactly one event in ICS");
-        events.pop().unwrap().expect("event should parse")
+        Self::from_single_ics_str(contents).expect("expected exactly one valid event in ICS")
     }
 
     // icalendar library adds UID to every VALARM
@@ -268,15 +285,7 @@ impl Serialize for Event {
 impl<'de> Deserialize<'de> for Event {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let ics = String::deserialize(deserializer)?;
-        let events = Event::from_ics_str(&ics).map_err(serde::de::Error::custom)?;
-
-        match <[Result<Event, EventError>; 1]>::try_from(events) {
-            Ok([result]) => result.map_err(serde::de::Error::custom),
-            Err(events) => Err(serde::de::Error::custom(format!(
-                "expected exactly one event in ICS, found {}",
-                events.len()
-            ))),
-        }
+        Event::from_single_ics_str(&ics).map_err(serde::de::Error::custom)
     }
 }
 

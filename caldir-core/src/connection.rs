@@ -8,7 +8,7 @@ use crate::event::EventInstanceId;
 use crate::{Calendar, CalendarDiff, CalendarEvent, DateRange, Remote};
 use error::ConnectionError;
 
-use crate::calendar::SyncedEventIds;
+use crate::calendar::KnownEventIds;
 
 /// A connection is a [local calendar] + [remote calendar] pair
 pub struct Connection {
@@ -42,7 +42,7 @@ impl Connection {
 
         let synced_ids = self.synced_event_ids();
 
-        let mut diff = CalendarDiff::compute(local_events, remote_events, synced_ids, range);
+        let mut diff = CalendarDiff::compute(local_events, remote_events, &synced_ids, range);
 
         if self.read_only() {
             diff.discard_outgoing();
@@ -145,8 +145,8 @@ impl Connection {
         Ok(())
     }
 
-    fn synced_event_ids(&self) -> &SyncedEventIds {
-        self.local().state().synced_event_ids()
+    fn synced_event_ids(&self) -> KnownEventIds {
+        self.local().state().known_event_ids()
     }
 }
 
@@ -529,7 +529,7 @@ mod tests {
 
         // We should still have saved the instance ID for the event that was pushed!
         assert!(
-            reloaded.state().synced_event_ids().contains(&id_a),
+            reloaded.state().known_event_ids().contains(&id_a),
             "known_event_ids on disk should contain event A's id after a partial-success push",
         );
     }

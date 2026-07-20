@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::event_change::EventChange;
 use crate::event::Status;
-use crate::{CalendarEvent, DateRange, RemoteEvent, calendar::SyncedEventIds};
+use crate::{CalendarEvent, DateRange, RemoteEvent, calendar::KnownEventIds};
 
 pub struct CalendarDiff {
     outgoing: Vec<EventChange>,
@@ -13,7 +13,7 @@ impl CalendarDiff {
     pub(crate) fn compute(
         local_events: Vec<CalendarEvent>,
         remote_events: Vec<RemoteEvent>,
-        synced_ids: &SyncedEventIds,
+        synced_ids: &KnownEventIds,
         range: &DateRange,
     ) -> Self {
         let local_event_ids: HashSet<_> = local_events
@@ -167,7 +167,7 @@ mod tests {
 
         let local_events = vec![calendar_event];
         let remote_events = vec![];
-        let synced_ids = SyncedEventIds::new();
+        let synced_ids = KnownEventIds::new();
 
         let diff = CalendarDiff::compute(
             local_events,
@@ -186,7 +186,7 @@ mod tests {
 
         let local_events = vec![];
         let remote_events = vec![RemoteEvent::new(new_event.clone())];
-        let synced_ids = SyncedEventIds::new();
+        let synced_ids = KnownEventIds::new();
 
         let diff = CalendarDiff::compute(
             local_events,
@@ -203,7 +203,7 @@ mod tests {
     fn deleted_local_event_becomes_outgoing_delete() {
         let remote_event = test_event();
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(remote_event.event_instance_id());
 
         let local_events = vec![];
@@ -238,7 +238,7 @@ mod tests {
         let diff = CalendarDiff::compute(
             vec![calendar_event],
             vec![RemoteEvent::new(cancelled.clone())],
-            &SyncedEventIds::new(),
+            &KnownEventIds::new(),
             &DateRange::default(),
         );
 
@@ -260,7 +260,7 @@ mod tests {
         let mut cancelled = test_event();
         cancelled.status = Status::Cancelled;
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(cancelled.event_instance_id());
 
         let diff = CalendarDiff::compute(
@@ -291,7 +291,7 @@ mod tests {
         let diff = CalendarDiff::compute(
             vec![calendar_event],
             vec![RemoteEvent::new(remote)],
-            &SyncedEventIds::new(),
+            &KnownEventIds::new(),
             &DateRange::default(),
         );
 
@@ -314,7 +314,7 @@ mod tests {
         ));
         let calendar_event = calendar.create_event(event.clone()).unwrap();
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(event.event_instance_id());
 
         let range = DateRange {
@@ -333,7 +333,7 @@ mod tests {
         let (_tmp, calendar_event) = test_calendar_event();
         let local_event = calendar_event.event().clone();
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
         let local_events = vec![calendar_event];
@@ -359,7 +359,7 @@ mod tests {
         local_event.summary = Some("Updated Test Event".to_string());
         let calendar_event = calendar.create_event(local_event.clone()).unwrap();
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(remote_event.event_instance_id());
 
         let local_events = vec![calendar_event];
@@ -395,7 +395,7 @@ mod tests {
 
         let calendar_event = calendar.create_event(local_event.clone()).unwrap();
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
         let diff = CalendarDiff::compute(
@@ -426,7 +426,7 @@ mod tests {
         let mut remote_event = local_event.clone();
         remote_event.visibility = Some(crate::event::Visibility::Private);
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
         let diff = CalendarDiff::compute(
@@ -464,7 +464,7 @@ mod tests {
         remote_event.visibility = Some(crate::event::Visibility::Private);
         remote_event.last_modified = Some(Utc.with_ymd_and_hms(2025, 6, 9, 10, 42, 20).unwrap());
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
         let diff = CalendarDiff::compute(
@@ -501,7 +501,7 @@ mod tests {
         remote_event.visibility = Some(crate::event::Visibility::Private);
         remote_event.last_modified = Some(Utc.with_ymd_and_hms(2025, 6, 9, 10, 42, 20).unwrap());
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
         let diff = CalendarDiff::compute(
@@ -535,7 +535,7 @@ mod tests {
 
         let calendar_event = calendar.create_event(local_event.clone()).unwrap();
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
         let diff = CalendarDiff::compute(
@@ -586,7 +586,7 @@ mod tests {
 
         let calendar_event = calendar.create_event(local_event.clone()).unwrap();
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(local_event.event_instance_id());
 
         let local_events = vec![calendar_event];
@@ -623,7 +623,7 @@ mod tests {
         ));
         let calendar_event = calendar.create_event(old_event.clone()).unwrap();
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(old_event.event_instance_id());
 
         let range = DateRange {
@@ -648,7 +648,7 @@ mod tests {
         ));
         let calendar_event = calendar.create_event(event.clone()).unwrap();
 
-        let mut synced_ids = SyncedEventIds::new();
+        let mut synced_ids = KnownEventIds::new();
         synced_ids.insert(event.event_instance_id());
 
         let range = DateRange {
