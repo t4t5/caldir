@@ -14,6 +14,7 @@ pub use error::CalendarError;
 pub use event::CalendarEvent;
 pub(crate) use event::CalendarEventError;
 pub use state::CalendarState;
+pub(crate) use state::SyncBases;
 
 const DOTDIR_NAME: &str = ".caldir";
 

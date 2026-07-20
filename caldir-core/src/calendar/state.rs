@@ -4,9 +4,12 @@ mod known_event_ids;
 mod sync_bases;
 
 pub use error::CalendarStateError;
-use std::{collections::HashSet, path::Path};
+use std::path::Path;
 
-use sync_bases::SyncBases;
+#[cfg(test)]
+use std::collections::HashSet;
+
+pub(crate) use sync_bases::SyncBases;
 
 use crate::EventInstanceId;
 
@@ -42,6 +45,11 @@ impl CalendarState {
         self.sync_bases.save(state_dir)
     }
 
+    pub(crate) fn sync_bases(&self) -> &SyncBases {
+        &self.sync_bases
+    }
+
+    #[cfg(test)]
     pub(crate) fn synced_event_ids(&self) -> HashSet<EventInstanceId> {
         self.sync_bases.iter().map(|(id, _)| id.clone()).collect()
     }

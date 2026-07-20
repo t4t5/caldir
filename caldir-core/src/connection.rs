@@ -1,6 +1,6 @@
 mod error;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::calendar::CalendarError;
 use crate::diff::EventChange;
@@ -38,9 +38,9 @@ impl Connection {
         let local_events = self.local().events()?;
         let remote_events = self.remote().list_events(range).await?;
 
-        let synced_ids = self.synced_event_ids();
+        let sync_bases = self.local().state().sync_bases();
 
-        let mut diff = CalendarDiff::compute(local_events, remote_events, &synced_ids, range);
+        let mut diff = CalendarDiff::compute(local_events, remote_events, sync_bases, range);
 
         if self.read_only() {
             diff.discard_outgoing();
@@ -141,10 +141,6 @@ impl Connection {
         }
 
         Ok(())
-    }
-
-    fn synced_event_ids(&self) -> HashSet<EventInstanceId> {
-        self.local().state().synced_event_ids()
     }
 }
 

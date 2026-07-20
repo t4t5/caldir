@@ -20,6 +20,7 @@ impl SyncBases {
         self.0.get(id)
     }
 
+    #[cfg(test)]
     pub(crate) fn iter(&self) -> impl Iterator<Item = (&EventInstanceId, &Option<Box<Event>>)> {
         self.0.iter()
     }
@@ -77,16 +78,16 @@ impl SyncBases {
         event_bases: EventBases,
         known_event_ids: KnownEventIds,
     ) -> Self {
-        let mut sync_bases = HashMap::new();
+        let mut sync_bases = Self::new();
 
         for id in known_event_ids.iter() {
-            sync_bases.insert(id.clone(), None);
+            sync_bases.insert_known_event_id(id.clone());
         }
 
         for (id, event) in event_bases.into_iter() {
-            sync_bases.insert(id, Some(Box::new(event)));
+            sync_bases.insert_event_base(id, event);
         }
 
-        Self(sync_bases)
+        sync_bases
     }
 }
