@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Shared types
-caldir-core = { path = "../caldir-core", version = "0.11.2" }
+caldir-core = { path = "../caldir-core", version = "0.12.0" }
 
 # Generic CalDAV operations
 caldir-provider-caldav = { path = "../caldir-provider-caldav", version = "0.2.0" }
