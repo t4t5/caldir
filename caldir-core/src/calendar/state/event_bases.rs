@@ -48,7 +48,11 @@ impl EventBases {
                 };
 
                 if file_path.is_file() && is_hashed_filename(filename) {
-                    let event = Event::load_single(&file_path)?;
+                    // An unreadable base is no base — degrade to the legacy
+                    // known-id entry rather than failing the whole load.
+                    let Ok(event) = Event::load_single(&file_path) else {
+                        continue;
+                    };
                     let event_instance_id = event.event_instance_id();
                     let expected_filename =
                         format!("{}.ics", hash_filename(&event_instance_id.to_string()));
@@ -102,6 +106,22 @@ mod tests {
         let loaded = EventBases::load(dir.path()).unwrap();
 
         assert_eq!(loaded.into_iter().count(), 0);
+    }
+
+    #[test]
+    fn corrupt_base_is_skipped_rather_than_failing_the_load() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let event = test_event();
+        EventBases::write_from([&event], dir.path()).unwrap();
+
+        let garbled = format!("{}.ics", hash_filename("garbled"));
+        let empty = format!("{}.ics", hash_filename("empty"));
+        std::fs::write(dir.path().join(garbled), "not an ics file").unwrap();
+        std::fs::write(dir.path().join(empty), "").unwrap();
+
+        let loaded: Vec<_> = EventBases::load(dir.path()).unwrap().into_iter().collect();
+
+        assert_eq!(loaded, vec![(event.event_instance_id(), event)]);
     }
 
     #[test]

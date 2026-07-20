@@ -91,3 +91,31 @@ impl SyncBases {
         sync_bases
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::test_event;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn corrupt_base_degrades_to_known_id_entry() {
+        let state_dir = tempfile::TempDir::new().unwrap();
+        let event = test_event();
+        let id = event.event_instance_id();
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.insert_event_base(id.clone(), event);
+        sync_bases.save(state_dir.path()).unwrap();
+
+        let bases_dir = state_dir.path().join(EVENT_BASES_DIR_NAME);
+        for entry in std::fs::read_dir(&bases_dir).unwrap() {
+            std::fs::write(entry.unwrap().path(), "not an ics file").unwrap();
+        }
+
+        let loaded = SyncBases::load_from_state_dir(state_dir.path()).unwrap();
+
+        // Base content is lost, but the known-id entry keeps deletion memory.
+        assert_eq!(loaded.get(&id), Some(&None));
+    }
+}
