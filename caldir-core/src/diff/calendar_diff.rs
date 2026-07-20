@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::event_change::EventChange;
 use crate::event::Status;
-use crate::{CalendarEvent, DateRange, RemoteEvent, calendar::KnownEventIds};
+use crate::{CalendarEvent, DateRange, EventInstanceId, RemoteEvent};
 
 pub struct CalendarDiff {
     outgoing: Vec<EventChange>,
@@ -13,7 +13,7 @@ impl CalendarDiff {
     pub(crate) fn compute(
         local_events: Vec<CalendarEvent>,
         remote_events: Vec<RemoteEvent>,
-        synced_ids: &KnownEventIds,
+        synced_ids: &HashSet<EventInstanceId>,
         range: &DateRange,
     ) -> Self {
         let local_event_ids: HashSet<_> = local_events
@@ -167,7 +167,7 @@ mod tests {
 
         let local_events = vec![calendar_event];
         let remote_events = vec![];
-        let synced_ids = KnownEventIds::new();
+        let synced_ids = HashSet::new();
 
         let diff = CalendarDiff::compute(
             local_events,
@@ -186,7 +186,7 @@ mod tests {
 
         let local_events = vec![];
         let remote_events = vec![RemoteEvent::new(new_event.clone())];
-        let synced_ids = KnownEventIds::new();
+        let synced_ids = HashSet::new();
 
         let diff = CalendarDiff::compute(
             local_events,
@@ -203,7 +203,7 @@ mod tests {
     fn deleted_local_event_becomes_outgoing_delete() {
         let remote_event = test_event();
 
-        let mut synced_ids = KnownEventIds::new();
+        let mut synced_ids = HashSet::new();
         synced_ids.insert(remote_event.event_instance_id());
 
         let local_events = vec![];
@@ -238,7 +238,7 @@ mod tests {
         let diff = CalendarDiff::compute(
             vec![calendar_event],
             vec![RemoteEvent::new(cancelled.clone())],
-            &KnownEventIds::new(),
+            &HashSet::new(),
             &DateRange::default(),
         );
 
@@ -260,7 +260,7 @@ mod tests {
         let mut cancelled = test_event();
         cancelled.status = Status::Cancelled;
 
-        let mut synced_ids = KnownEventIds::new();
+        let mut synced_ids = HashSet::new();
         synced_ids.insert(cancelled.event_instance_id());
 
         let diff = CalendarDiff::compute(

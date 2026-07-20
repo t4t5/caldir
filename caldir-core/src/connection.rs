@@ -1,14 +1,12 @@
 mod error;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::calendar::CalendarError;
 use crate::diff::EventChange;
 use crate::event::EventInstanceId;
 use crate::{Calendar, CalendarDiff, CalendarEvent, DateRange, Remote};
 use error::ConnectionError;
-
-use crate::calendar::KnownEventIds;
 
 /// A connection is a [local calendar] + [remote calendar] pair
 pub struct Connection {
@@ -145,8 +143,8 @@ impl Connection {
         Ok(())
     }
 
-    fn synced_event_ids(&self) -> KnownEventIds {
-        self.local().state().known_event_ids()
+    fn synced_event_ids(&self) -> HashSet<EventInstanceId> {
+        self.local().state().synced_event_ids()
     }
 }
 
@@ -529,7 +527,7 @@ mod tests {
 
         // We should still have saved the instance ID for the event that was pushed!
         assert!(
-            reloaded.state().known_event_ids().contains(&id_a),
+            reloaded.state().synced_event_ids().contains(&id_a),
             "known_event_ids on disk should contain event A's id after a partial-success push",
         );
     }

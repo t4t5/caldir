@@ -4,9 +4,11 @@ mod known_event_ids;
 mod sync_bases;
 
 pub use error::CalendarStateError;
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 
 use sync_bases::SyncBases;
+
+use crate::EventInstanceId;
 
 #[derive(Debug)]
 pub struct CalendarState {
@@ -14,16 +16,34 @@ pub struct CalendarState {
 }
 
 impl CalendarState {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             sync_bases: SyncBases::new(),
         }
     }
 
-    pub fn load(state_dir: &Path) -> Result<Self, CalendarStateError> {
+    pub(crate) fn load(state_dir: &Path) -> Result<Self, CalendarStateError> {
         let sync_bases = SyncBases::load_from_state_dir(state_dir)?;
 
         Ok(Self { sync_bases })
+    }
+
+    // FIXME (legacy) replace with "add_sync_base"
+    pub(crate) fn add_new_synced_ids(
+        &mut self,
+        new_ids: impl IntoIterator<Item = EventInstanceId>,
+    ) {
+        for id in new_ids {
+            self.sync_bases.insert_known_event_id(id);
+        }
+    }
+
+    pub(crate) fn save(&self, state_dir: &Path) -> Result<(), CalendarStateError> {
+        self.sync_bases.save(state_dir)
+    }
+
+    pub(crate) fn synced_event_ids(&self) -> HashSet<EventInstanceId> {
+        self.sync_bases.iter().map(|(id, _)| id.clone()).collect()
     }
 }
 

@@ -17,6 +17,22 @@ impl IntoIterator for EventBases {
 }
 
 impl EventBases {
+    pub(crate) fn write_from<'a>(
+        events: impl IntoIterator<Item = &'a Event>,
+        path: &Path,
+    ) -> Result<(), CalendarStateError> {
+        std::fs::create_dir_all(path)?;
+
+        for event in events {
+            let event_path = path.join(format!("{}.ics", event.event_instance_id()));
+            let mut tmp = tempfile::NamedTempFile::new_in(path)?;
+            std::io::Write::write_all(&mut tmp, event.to_ics_string().as_bytes())?;
+            tmp.persist(event_path).map_err(|err| err.error)?;
+        }
+
+        Ok(())
+    }
+
     pub(crate) fn load(path: &Path) -> Result<Self, CalendarStateError> {
         let mut event_bases = HashMap::new();
 

@@ -14,7 +14,6 @@ pub use error::CalendarError;
 pub use event::CalendarEvent;
 pub(crate) use event::CalendarEventError;
 pub use state::CalendarState;
-pub(crate) use state::KnownEventIds;
 
 const DOTDIR_NAME: &str = ".caldir";
 
@@ -60,15 +59,10 @@ impl Calendar {
             CalendarConfig::write(config, &config_path)?;
         }
 
-        // Create empty state file:
-        let state_dir = calendar_state_dir(path);
-        let state = CalendarState::new();
-        state.write(&state_dir)?;
-
         Ok(Self {
             path: path.to_path_buf(),
             config,
-            state,
+            state: CalendarState::new(),
         })
     }
 
@@ -374,9 +368,8 @@ impl Calendar {
         &mut self,
         ids: impl IntoIterator<Item = EventInstanceId>,
     ) -> Result<(), CalendarError> {
-        self.state
-            .add_new_synced_ids(ids)
-            .write(&calendar_state_dir(&self.path))?;
+        self.state.add_new_synced_ids(ids);
+        self.state.save(&calendar_state_dir(&self.path))?;
         Ok(())
     }
 

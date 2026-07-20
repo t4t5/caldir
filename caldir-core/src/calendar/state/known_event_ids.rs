@@ -30,18 +30,6 @@ impl KnownEventIds {
         Self(HashSet::new())
     }
 
-    pub fn from(event_ids: HashSet<EventInstanceId>) -> Self {
-        Self(event_ids)
-    }
-
-    pub fn insert(&mut self, id: EventInstanceId) {
-        self.0.insert(id);
-    }
-
-    pub fn contains(&self, id: &EventInstanceId) -> bool {
-        self.0.contains(id)
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = &EventInstanceId> {
         self.0.iter()
     }
@@ -63,13 +51,24 @@ impl KnownEventIds {
         }
     }
 
-    /// Writes atomically (tempfile + rename) so a kill mid-write can't truncate
-    /// the file. Truncation would make the next sync treat every known event
-    /// as new and re-create them remotely.
+    #[cfg(test)]
     pub fn write(&self, path: &Path) -> Result<(), CalendarStateError> {
+        Self::write_from(self.0.iter(), path)
+    }
+
+    /// Writes atomically (tempfile + rename)
+    pub fn write_from<'a>(
+        event_ids: impl IntoIterator<Item = &'a EventInstanceId>,
+        path: &Path,
+    ) -> Result<(), CalendarStateError> {
         // Sort for deterministic output so the file diffs stay stable across writes.
-        let mut lines = self.0.iter().map(ToString::to_string).collect::<Vec<_>>();
+        let mut lines = event_ids
+            .into_iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+
         lines.sort_unstable();
+
         let contents = lines.join("\n");
 
         let parent = path.parent().ok_or_else(|| {
@@ -79,6 +78,7 @@ impl KnownEventIds {
             )
         })?;
 
+        std::fs::create_dir_all(parent)?;
         let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
         std::io::Write::write_all(&mut tmp, contents.as_bytes())?;
         tmp.persist(path).map_err(|e| e.error)?;
