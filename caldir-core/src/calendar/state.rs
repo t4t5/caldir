@@ -1,8 +1,9 @@
 mod bases;
 mod error;
 mod synced_event_ids;
-mod update;
 
+use crate::Event;
+use crate::event::EventInstanceId;
 use bases::BASES_DIR_NAME;
 pub use error::CalendarStateError;
 use std::io::ErrorKind;
@@ -11,7 +12,6 @@ use synced_event_ids::SYNCED_IDS_FILE_NAME;
 
 pub(crate) use bases::EventBases;
 pub(crate) use synced_event_ids::SyncedEventIds;
-pub(crate) use update::SyncStateUpdate;
 
 const FORMAT_FILE_NAME: &str = "format";
 const SUPPORTED_FORMAT: u32 = 1;
@@ -76,17 +76,17 @@ impl CalendarState {
         &self.event_bases
     }
 
-    pub(crate) fn apply(&mut self, update: SyncStateUpdate) -> &mut Self {
-        for id in update.synced_ids {
-            self.synced_event_ids.insert(id);
-        }
-        for event in update.bases {
-            self.event_bases.upsert(event);
-        }
-        for id in update.removed_bases {
-            self.event_bases.remove(&id);
-        }
-        self
+    pub(crate) fn record_synced(&mut self, event: &Event) {
+        self.synced_event_ids.insert(event.event_instance_id());
+        self.event_bases.upsert(event.clone());
+    }
+
+    pub(crate) fn record_base(&mut self, event: Event) {
+        self.event_bases.upsert(event);
+    }
+
+    pub(crate) fn remove_base(&mut self, id: &EventInstanceId) {
+        self.event_bases.remove(id);
     }
 }
 

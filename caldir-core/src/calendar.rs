@@ -14,7 +14,7 @@ pub use error::CalendarError;
 pub use event::CalendarEvent;
 pub(crate) use event::CalendarEventError;
 pub use state::CalendarState;
-pub(crate) use state::{EventBases, SyncStateUpdate, SyncedEventIds};
+pub(crate) use state::{EventBases, SyncedEventIds};
 
 const DOTDIR_NAME: &str = ".caldir";
 
@@ -101,6 +101,10 @@ impl Calendar {
 
     pub fn state(&self) -> &CalendarState {
         &self.state
+    }
+
+    pub(crate) fn state_mut(&mut self) -> &mut CalendarState {
+        &mut self.state
     }
 
     pub(crate) fn check_state_format(&self) -> Result<(), CalendarError> {
@@ -375,13 +379,8 @@ impl Calendar {
             .filter(|id| id.contains('@'))
     }
 
-    pub(crate) fn record_sync_state(
-        &mut self,
-        update: SyncStateUpdate,
-    ) -> Result<(), CalendarError> {
-        self.state
-            .apply(update)
-            .write(&calendar_state_dir(&self.path))?;
+    pub(crate) fn write_sync_state(&mut self) -> Result<(), CalendarError> {
+        self.state.write(&calendar_state_dir(&self.path))?;
         Ok(())
     }
 

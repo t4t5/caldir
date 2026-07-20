@@ -8,7 +8,7 @@ use crate::event::EventInstanceId;
 use crate::{Calendar, CalendarDiff, CalendarEvent, DateRange, Remote};
 use error::ConnectionError;
 
-use crate::calendar::{SyncStateUpdate, SyncedEventIds};
+use crate::calendar::SyncedEventIds;
 
 /// A connection is a [local calendar] + [remote calendar] pair
 pub struct Connection {
@@ -60,15 +60,14 @@ impl Connection {
     pub fn apply_incoming_diff(&mut self, diff: &CalendarDiff) -> Result<(), ConnectionError> {
         self.local.check_state_format()?;
         let mut events_by_instance_id = self.local_events_by_instance_id()?;
-        let mut update = SyncStateUpdate::from_diff(diff);
+        record_base_changes(&mut self.local, diff);
 
         // Same partial-failure flush pattern as `apply_outgoing_diff`: a
         // local-fs error mid-loop must not drop the state of changes we've
         // already applied to disk.
-        let loop_result =
-            pull_incoming_changes(&self.local, diff, &mut events_by_instance_id, &mut update);
+        let loop_result = pull_incoming_changes(&mut self.local, diff, &mut events_by_instance_id);
 
-        let record_result = self.local.record_sync_state(update);
+        let record_result = self.local.write_sync_state();
 
         loop_result?;
         record_result?;
@@ -82,14 +81,18 @@ impl Connection {
     ) -> Result<(), ConnectionError> {
         self.local.check_state_format()?;
         let mut events_by_instance_id = self.local_events_by_instance_id()?;
-        let mut update = SyncStateUpdate::from_diff(diff);
+        record_base_changes(&mut self.local, diff);
 
         // Handles mid-loop errors gracefully
-        let loop_result =
-            push_outgoing_changes(&self.remote, diff, &mut events_by_instance_id, &mut update)
-                .await;
+        let loop_result = push_outgoing_changes(
+            &mut self.local,
+            &self.remote,
+            diff,
+            &mut events_by_instance_id,
+        )
+        .await;
 
-        let record_result = self.local.record_sync_state(update);
+        let record_result = self.local.write_sync_state();
 
         loop_result?;
         record_result?;
@@ -143,30 +146,38 @@ impl Connection {
     }
 }
 
+fn record_base_changes(local: &mut Calendar, diff: &CalendarDiff) {
+    for event in diff.settled_bases() {
+        local.state_mut().record_base(event.clone());
+    }
+    for id in diff.stale_base_ids() {
+        local.state_mut().remove_base(id);
+    }
+}
+
 fn pull_incoming_changes(
-    local: &Calendar,
+    local: &mut Calendar,
     diff: &CalendarDiff,
     events_by_instance_id: &mut HashMap<EventInstanceId, CalendarEvent>,
-    update: &mut SyncStateUpdate,
 ) -> Result<(), ConnectionError> {
     for change in diff.incoming() {
         match change {
             EventChange::Create(event) => {
                 let cal_event = local.create_event(event.clone())?;
                 events_by_instance_id.insert(event.event_instance_id(), cal_event);
-                update.record_synced(event);
+                local.state_mut().record_synced(event);
             }
             EventChange::Update { to, .. } => {
                 if let Some(cal_event) = events_by_instance_id.get_mut(&to.event_instance_id()) {
                     cal_event.update(to.clone()).map_err(CalendarError::from)?;
                 }
-                update.record_synced(to);
+                local.state_mut().record_synced(to);
             }
             EventChange::Delete(event) => {
                 if let Some(cal_event) = events_by_instance_id.remove(&event.event_instance_id()) {
                     cal_event.delete().map_err(CalendarError::from)?;
                 }
-                update.record_removed(event.event_instance_id());
+                local.state_mut().remove_base(&event.event_instance_id());
             }
         }
     }
@@ -175,10 +186,10 @@ fn pull_incoming_changes(
 }
 
 async fn push_outgoing_changes(
+    local: &mut Calendar,
     remote: &Remote,
     diff: &CalendarDiff,
     events_by_instance_id: &mut HashMap<EventInstanceId, CalendarEvent>,
-    update: &mut SyncStateUpdate,
 ) -> Result<(), ConnectionError> {
     for change in diff.outgoing() {
         if let Some(remote_event) = remote.apply_change(change).await? {
@@ -198,11 +209,11 @@ async fn push_outgoing_changes(
             }
 
             if returned_event.event_instance_id() != original_event_id {
-                update.record_removed(original_event_id);
+                local.state_mut().remove_base(&original_event_id);
             }
-            update.record_synced(returned_event);
+            local.state_mut().record_synced(returned_event);
         } else if let EventChange::Delete(event) = change {
-            update.record_removed(event.event_instance_id());
+            local.state_mut().remove_base(&event.event_instance_id());
         }
     }
 
@@ -494,7 +505,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn apply_outgoing_diff_persists_synced_ids_on_partial_success() {
+    async fn apply_outgoing_diff_persists_sync_state_on_partial_success() {
         use crate::provider::transport::ProviderTransportError;
         use std::time::Duration;
 
@@ -512,7 +523,10 @@ mod tests {
         mock.reply_error(ProviderTransportError::Timeout(Duration::from_secs(1)));
 
         let diff = CalendarDiff::from_changes(
-            vec![EventChange::Create(event_a), EventChange::Create(event_b)],
+            vec![
+                EventChange::Create(event_a.clone()),
+                EventChange::Create(event_b),
+            ],
             vec![],
         );
 
@@ -529,6 +543,11 @@ mod tests {
         assert!(
             reloaded.state().synced_event_ids().contains(&id_a),
             "known_event_ids on disk should contain event A's id after a partial-success push",
+        );
+        assert_eq!(
+            reloaded.state().event_bases().get(&id_a),
+            Some(&event_a),
+            "event A's base should be saved after a partial-success push",
         );
     }
 

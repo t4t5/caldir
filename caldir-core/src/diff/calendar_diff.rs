@@ -10,8 +10,8 @@ use crate::{
 pub struct CalendarDiff {
     outgoing: Vec<EventChange>,
     incoming: Vec<EventChange>,
-    event_bases: Vec<Event>,
-    removed_event_bases: Vec<EventInstanceId>,
+    settled_bases: Vec<Event>,
+    stale_base_ids: Vec<EventInstanceId>,
 }
 
 impl CalendarDiff {
@@ -44,8 +44,8 @@ impl CalendarDiff {
 
         let mut outgoing = Vec::new();
         let mut incoming = Vec::new();
-        let mut event_bases_to_record = Vec::new();
-        let mut event_bases_to_remove = Vec::new();
+        let mut settled_bases = Vec::new();
+        let mut stale_base_ids = Vec::new();
 
         for id in event_ids {
             let base = event_base_state.get(&id);
@@ -80,7 +80,7 @@ impl CalendarDiff {
 
                 // --- Base present: deletion is decided by content, not by
                 // an id having been seen before.
-                (Some(_), None, None) => event_bases_to_remove.push(id),
+                (Some(_), None, None) => stale_base_ids.push(id),
                 (Some(base), Some(local_event), None) if local_event.event() == base => {
                     incoming.push(EventChange::Delete(local_event.event().clone()));
                 }
@@ -106,7 +106,7 @@ impl CalendarDiff {
                     remote_event,
                     &mut outgoing,
                     &mut incoming,
-                    &mut event_bases_to_record,
+                    &mut settled_bases,
                 ),
             }
         }
@@ -114,8 +114,8 @@ impl CalendarDiff {
         CalendarDiff {
             outgoing,
             incoming,
-            event_bases: event_bases_to_record,
-            removed_event_bases: event_bases_to_remove,
+            settled_bases,
+            stale_base_ids,
         }
     }
 
@@ -131,12 +131,12 @@ impl CalendarDiff {
         self.outgoing.is_empty() && self.incoming.is_empty()
     }
 
-    pub(crate) fn event_bases(&self) -> &[Event] {
-        &self.event_bases
+    pub(crate) fn settled_bases(&self) -> &[Event] {
+        &self.settled_bases
     }
 
-    pub(crate) fn removed_event_bases(&self) -> &[EventInstanceId] {
-        &self.removed_event_bases
+    pub(crate) fn stale_base_ids(&self) -> &[EventInstanceId] {
+        &self.stale_base_ids
     }
 
     /// Drop outgoing changes. Used for read-only calendars where outgoing
@@ -152,8 +152,8 @@ impl CalendarDiff {
         Self {
             outgoing,
             incoming,
-            event_bases: Vec::new(),
-            removed_event_bases: Vec::new(),
+            settled_bases: Vec::new(),
+            stale_base_ids: Vec::new(),
         }
     }
 }
@@ -166,14 +166,14 @@ fn diff_present_on_both_sides(
     remote_event: &RemoteEvent,
     outgoing: &mut Vec<EventChange>,
     incoming: &mut Vec<EventChange>,
-    event_bases_to_record: &mut Vec<Event>,
+    settled_bases: &mut Vec<Event>,
 ) {
     let event = local_event.event();
     let remote = remote_event.event();
 
     if event == remote {
         if base.is_none_or(|base| !base.same_snapshot(event)) {
-            event_bases_to_record.push(event.clone());
+            settled_bases.push(event.clone());
         }
         return;
     }
@@ -700,7 +700,7 @@ mod tests {
 
         assert_eq!(diff.incoming, vec![]);
         assert_eq!(diff.outgoing, vec![]);
-        assert_eq!(diff.removed_event_bases(), &[id]);
+        assert_eq!(diff.stale_base_ids(), &[id]);
     }
 
     #[test]
@@ -995,7 +995,7 @@ mod tests {
         );
 
         assert!(diff.is_empty());
-        assert!(diff.removed_event_bases().is_empty());
+        assert!(diff.stale_base_ids().is_empty());
     }
 
     #[test]
