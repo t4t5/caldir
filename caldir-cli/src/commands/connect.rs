@@ -17,6 +17,10 @@ fn build_options(hosted: bool, redirect_uri: &str) -> serde_json::Map<String, se
     options
 }
 
+fn calendar_base_slug(name: Option<&str>, provider_slug: &ProviderSlug) -> String {
+    Calendar::base_slug_for(name.or(Some(provider_slug.as_str())))
+}
+
 pub async fn run(caldir: &mut Caldir, provider: Option<String>, hosted: bool) -> Result<()> {
     let provider_slug = provider.context(missing_provider_message(caldir))?;
 
@@ -180,7 +184,7 @@ async fn run_parsed(caldir: &mut Caldir, provider_slug: ProviderSlug, hosted: bo
 
     for &idx in &selections {
         let config = &calendar_configs[idx];
-        let desired_slug = Calendar::base_slug_for(config.name());
+        let desired_slug = calendar_base_slug(config.name(), &provider_slug);
         let calendar = caldir.create_calendar(&desired_slug, Some(config.clone()))?;
 
         if let Some(slug) = calendar.slug() {
@@ -392,4 +396,26 @@ fn prompt_text(label: &str) -> Result<String> {
 fn prompt_password(label: &str) -> Result<String> {
     let prompt = format!("{}: ", label);
     rpassword::prompt_password(&prompt).context("Failed to read password")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unnamed_calendar_uses_provider_slug() {
+        let provider_slug = ProviderSlug::from("tuta");
+
+        assert_eq!(calendar_base_slug(None, &provider_slug), "tuta");
+    }
+
+    #[test]
+    fn named_calendar_uses_calendar_name() {
+        let provider_slug = ProviderSlug::from("tuta");
+
+        assert_eq!(
+            calendar_base_slug(Some("Personal Calendar"), &provider_slug),
+            "personal-calendar"
+        );
+    }
 }
