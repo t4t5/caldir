@@ -19,8 +19,12 @@ not by a release number.
   `.tombstone` file containing the raw ID). `LegacyTombstone` means "synced before,
   content unknown"; it is created **only** by the `known_event_ids` migration, never
   by normal operation, and disappears naturally as events resync.
-- A zero-byte or unparseable `.ics` base is **corruption**, not state: treat as no
-  base (bootstrap/LWW path). Corruption must never be able to propagate a delete.
+- A zero-byte or unparseable `.ics` base — or an unreadable `.tombstone` — is
+  **corruption**, not state: treat as no base (bootstrap/LWW path). Corruption
+  degrades toward possible resurrection, never toward delete-propagation.
+- Tombstone content is the `EventInstanceId` display string; `From<&str>` already
+  round-trips it infallibly (`event/instance_id.rs`), same encoding as
+  `known_event_ids` lines.
 - The diff is a single exhaustive match on `(base, local, remote)`.
 - mtime's only job is the both-changed tiebreak. No `sync_file_mtime` back-dating.
 - `state/format` contains the format number; cores refuse to sync when it exceeds
@@ -50,7 +54,7 @@ Then, matching on `(base, local, remote)`:
 | tombstone | — | — | no-op |
 | snapshot | ✓ | — | `local == base` → pull delete; `local != base` → modify/delete conflict: keep the edit (push create) or warn — never silently destroy |
 | snapshot | — | ✓ | `remote == base` → push delete (also covers stale resurrection of an already-propagated delete); `remote != base` → changed since deletion → pull create (resurrect) or warn |
-| snapshot | ✓ | ✓ | three-way: equal → refresh base if stale; only local changed → push update; only remote changed → pull update; both changed → LWW tiebreak (mtime vs `LAST-MODIFIED`, then `SEQUENCE`) |
+| snapshot | ✓ | ✓ | three-way: equal → refresh base if stale; only local changed → push update; only remote changed → pull update; both changed → LWW tiebreak (per `local_is_newer`: differing `SEQUENCE` when the remote lacks `LAST-MODIFIED`, else mtime vs `LAST-MODIFIED`) |
 | snapshot | — | — | no-op, snapshot retained |
 
 The `snapshot / — / ✓` split is the one behavior change vs. today: reappeared IDs are
@@ -73,13 +77,19 @@ degrade the new core to the old LWW behavior (both-changed fallback), never corr
    - atomically write only upserted bases (keep `write_atomic`)
    - unlink only removed bases
    - skip touching disk entirely when ids/bases/removed are all empty
+
+   Note: unlinking on delete is **transitional**, despite the end state's
+   "never removed" — during format 1, `known_event_ids` carries deletion memory,
+   and the Phase 2 migration converts it to tombstones for anything unlinked.
+   Retention semantics begin at format 2.
 2. **`state/format` guard.** Write `1` on state creation. Checked only where sync
    state is opened (diff/pull/push) — never on read paths, so listing/editing local
    ICS files always works regardless of format; only sync is refused:
    - `> SUPPORTED_FORMAT` → clear "written by a newer caldir" error
    - present but unparseable → fail closed with a clear error naming the file
      (guessing format 1 on garbage defeats the guard's purpose)
-   - missing → format 1 (the defined pre-guard state)
+   - missing → format 1 (the defined pre-guard state); backfill `1` when opening
+     sync state so touched calendars become self-describing
    This ships useless and becomes essential: every core released without it extends
    the window where format 2 is impossible.
 3. **Cleanups from review:**
@@ -137,14 +147,20 @@ rencal has shipped guard-aware core for a comfortable window, ideally with auto-
       `bases/<id>.tombstone` containing the raw ID
    2. atomically write `2` to `state/format` (tempfile + rename, like
       `write_atomic` — otherwise it isn't a commit point)
-   3. delete `known_event_ids` (optional cleanup; format-2 code must tolerate a
-      leftover)
+   3. leave `known_event_ids` in place — do NOT delete it during the migration
+      open. An old core mid-sync may write the file after step 1; deleting now
+      would lose that ID (lost deletion memory → resurrection). Format-2 code
+      tolerates the leftover.
+   On a **later** format-2 open: re-import (tombstone any leftover ID still
+   lacking a base), then delete the file. This is the same idempotent pass crash
+   recovery needs anyway, and it catches the realistic "old sync was in progress
+   during migration" overlap. A continuously running pre-guard writer can still
+   race the later deletion — unfixable without a lock; that population is what
+   the Phase 2 extinction gate exists for.
    Crash before step 2 → tombstones are extra files old cores ignore,
    `known_event_ids` intact, still valid format 1; migration re-runs. Crash after →
-   format 2 committed, guard-aware cores refuse cleanly, leftover file is inert.
-   Cleanup on later opens is a re-run of the same steps: tombstone any leftover ID
-   still lacking a base, then delete — idempotent, and absorbs an ID appended by a
-   concurrent old core between step 1 and the commit point.
+   format 2 committed, guard-aware cores refuse cleanly, leftover file is inert
+   until the next open imports it.
    A calendar that never syncs never migrates — fine, its legacy state is inert
    until sync needs it.
 2. **Diff on the unified model** — implement the exhaustive table above, plus:
@@ -157,7 +173,14 @@ rencal has shipped guard-aware core for a comfortable window, ideally with auto-
    - `removed_event_bases` plumbing through `CalendarDiff` / `connection.rs`
      (deletes no longer touch base state at all)
    - mtime remains only inside `local_is_newer` for the both-changed tiebreak
-4. **Docs:** update `specs/caldir.md` state section; note in release notes that
+4. **Tests:** one test per diff-table row (including both sub-cases of the
+   snapshot rows); migration crash-point tests — interrupt after each step,
+   reopen, assert the state is valid format 1 or valid format 2, never mixed;
+   deferred-deletion case — ID appended to `known_event_ids` after import is
+   tombstoned by the next open before the file is removed;
+   corruption cases (zero-byte `.ics`, garbage `.tombstone`) assert no
+   delete-propagation; format guard cases (newer, unparseable, missing).
+5. **Docs:** update `specs/caldir.md` state section; note in release notes that
    format-2 caldirs are refused by guard-aware old cores and misread by pre-guard
    cores (≤0.11.2-era), hence the gate.
 
