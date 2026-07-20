@@ -25,6 +25,13 @@ not by a release number.
 - Tombstone content is the `EventInstanceId` display string; `From<&str>` already
   round-trips it infallibly (`event/instance_id.rs`), same encoding as
   `known_event_ids` lines.
+- **Tombstone → snapshot upgrade** (when a tombstoned event resyncs) is two file
+  ops: (1) atomically write `<id>.ics`, (2) remove `<id>.tombstone` — removal is
+  failable cleanup. If both exist at load, a valid snapshot wins (it proves a
+  later resync). If the `.ics` is corrupt alongside a tombstone, the pair is
+  **no base** — do not fall back to the tombstone: it is probably stale, and a
+  stale tombstone's failure mode is one-sided delete-propagation, which the
+  corruption invariant forbids.
 - The diff is a single exhaustive match on `(base, local, remote)`.
 - mtime's only job is the both-changed tiebreak. No `sync_file_mtime` back-dating.
 - `state/format` contains the format number; cores refuse to sync when it exceeds
@@ -178,8 +185,10 @@ rencal has shipped guard-aware core for a comfortable window, ideally with auto-
    reopen, assert the state is valid format 1 or valid format 2, never mixed;
    deferred-deletion case — ID appended to `known_event_ids` after import is
    tombstoned by the next open before the file is removed;
-   corruption cases (zero-byte `.ics`, garbage `.tombstone`) assert no
-   delete-propagation; format guard cases (newer, unparseable, missing).
+   corruption cases (zero-byte `.ics`, garbage `.tombstone`, corrupt `.ics` +
+   valid `.tombstone` pair → no base) assert no delete-propagation; coexisting
+   valid `.ics` + `.tombstone` → snapshot wins; format guard cases (newer,
+   unparseable, missing).
 5. **Docs:** update `specs/caldir.md` state section; note in release notes that
    format-2 caldirs are refused by guard-aware old cores and misread by pre-guard
    cores (≤0.11.2-era), hence the gate.
