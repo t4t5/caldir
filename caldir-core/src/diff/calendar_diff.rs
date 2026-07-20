@@ -404,6 +404,107 @@ mod tests {
     }
 
     #[test]
+    fn remote_update_without_modified_time_is_pulled_when_local_matches_base() {
+        let (_tmp, calendar) = test_calendar();
+        let base = test_event();
+        let calendar_event = calendar.create_event(base.clone()).unwrap();
+        assert!(calendar_event.modified_at().is_some());
+
+        let mut remote = base.clone();
+        remote.summary = Some("Edited remotely".to_string());
+        remote.last_modified = None;
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.insert_event_base(base.event_instance_id(), base.clone());
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote.clone())],
+            &sync_bases,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(
+            diff.incoming,
+            vec![EventChange::Update {
+                from: base,
+                to: remote,
+            }]
+        );
+    }
+
+    #[test]
+    fn remote_update_is_pulled_when_unchanged_local_file_has_newer_mtime() {
+        let (_tmp, calendar) = test_calendar();
+        let mut local = test_event();
+        local.last_modified = Some(Utc.with_ymd_and_hms(2026, 3, 5, 8, 45, 16).unwrap());
+        let calendar_event = calendar.create_event(local.clone()).unwrap();
+
+        let mut base = local.clone();
+        base.last_modified = None;
+
+        let mut remote = base.clone();
+        remote.summary = Some("Edited remotely".to_string());
+        remote.last_modified = Some(Utc.with_ymd_and_hms(2025, 6, 9, 10, 42, 20).unwrap());
+
+        assert!(calendar_event.modified_at() > remote.last_modified);
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.insert_event_base(base.event_instance_id(), base.clone());
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote.clone())],
+            &sync_bases,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(
+            diff.incoming,
+            vec![EventChange::Update {
+                from: local,
+                to: remote,
+            }]
+        );
+    }
+
+    #[test]
+    fn local_update_is_pushed_when_unchanged_remote_has_newer_modified_time() {
+        let (_tmp, calendar) = test_calendar();
+        let base = test_event();
+
+        let mut local = base.clone();
+        local.summary = Some("Edited locally".to_string());
+        local.last_modified = Some(Utc.with_ymd_and_hms(2025, 6, 9, 10, 42, 20).unwrap());
+        let calendar_event = calendar.create_event(local.clone()).unwrap();
+
+        let mut remote = base.clone();
+        remote.last_modified = Some(Utc.with_ymd_and_hms(2026, 3, 5, 8, 45, 16).unwrap());
+        assert!(calendar_event.modified_at() < remote.last_modified);
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.insert_event_base(base.event_instance_id(), base);
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![RemoteEvent::new(remote.clone())],
+            &sync_bases,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.incoming, vec![]);
+        assert_eq!(
+            diff.outgoing,
+            vec![EventChange::Update {
+                from: remote,
+                to: local,
+            }]
+        );
+    }
+
+    #[test]
     fn sync_metadata_only_differences_produce_no_diff() {
         // Differences confined to LAST-MODIFIED and SEQUENCE are sync noise —
         // they shouldn't surface as pending updates.
