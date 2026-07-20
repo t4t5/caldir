@@ -18,14 +18,35 @@ fn build_options(hosted: bool, redirect_uri: &str) -> serde_json::Map<String, se
 }
 
 pub async fn run(caldir: &mut Caldir, provider: Option<String>, hosted: bool) -> Result<()> {
-    let provider_slug = provider.context(
-        "Missing provider argument.\n\nUsage:
-  caldir connect <provider> (e.g. \"caldir connect google\")",
-    )?;
+    let provider_slug = provider.context(missing_provider_message(caldir))?;
 
     let provider_slug = ProviderSlug::from(provider_slug);
 
     run_parsed(caldir, provider_slug, hosted).await
+}
+
+fn missing_provider_message(caldir: &Caldir) -> String {
+    let mut providers: Vec<String> = caldir
+        .providers()
+        .slugs()
+        .into_iter()
+        .map(ToString::to_string)
+        .collect();
+    providers.sort();
+
+    let options = if providers.is_empty() {
+        "  (none found in PATH)".to_string()
+    } else {
+        providers
+            .into_iter()
+            .map(|provider| format!("  {provider}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    format!(
+        "Missing provider argument.\n\nUsage:\n  caldir connect <provider>\n\nAvailable providers:\n{options}"
+    )
 }
 
 async fn run_parsed(caldir: &mut Caldir, provider_slug: ProviderSlug, hosted: bool) -> Result<()> {
