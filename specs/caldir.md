@@ -116,7 +116,7 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 **Why it matters:** Determines which version wins when content differs between local and remote.
 
 #### `SEQUENCE`
-**What:** Revision number. Increments each time the event is modified.
+**What:** The organizer's revision number. The organizer increments it for significant revisions; attendee replies preserve the revision they are responding to.
 **How caldir uses it:** From provider's sequence number.
 **Why it matters:** Another conflict resolution signal. Higher sequence = newer version.
 
