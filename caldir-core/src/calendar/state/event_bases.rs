@@ -1,5 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
+use sha2::{Digest, Sha256};
+
 use super::CalendarStateError;
 use crate::{Event, EventInstanceId};
 
@@ -24,7 +26,8 @@ impl EventBases {
         std::fs::create_dir_all(path)?;
 
         for event in events {
-            let event_path = path.join(format!("{}.ics", event.event_instance_id()));
+            let filename = hash_filename(&event.event_instance_id().to_string());
+            let event_path = path.join(format!("{filename}.ics"));
             let mut tmp = tempfile::NamedTempFile::new_in(path)?;
             std::io::Write::write_all(&mut tmp, event.to_ics_string().as_bytes())?;
             tmp.persist(event_path).map_err(|err| err.error)?;
@@ -40,14 +43,75 @@ impl EventBases {
             for entry in std::fs::read_dir(path)? {
                 let entry = entry?;
                 let file_path = entry.path();
-                if file_path.is_file() {
+                let Some(filename) = file_path.file_name().and_then(|name| name.to_str()) else {
+                    continue;
+                };
+
+                if file_path.is_file() && is_hashed_filename(filename) {
                     let event = Event::load_single(&file_path)?;
                     let event_instance_id = event.event_instance_id();
-                    event_bases.insert(event_instance_id, event);
+                    let expected_filename =
+                        format!("{}.ics", hash_filename(&event_instance_id.to_string()));
+
+                    if filename == expected_filename {
+                        event_bases.insert(event_instance_id, event);
+                    }
                 }
             }
         }
 
         Ok(Self(event_bases))
+    }
+}
+
+fn hash_filename(value: &str) -> String {
+    format!("{:x}", Sha256::digest(value.as_bytes()))
+}
+
+fn is_hashed_filename(filename: &str) -> bool {
+    filename.strip_suffix(".ics").is_some_and(|stem| {
+        stem.len() == 64
+            && stem
+                .bytes()
+                .all(|b| b.is_ascii_digit() || matches!(b, b'a'..=b'f'))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EventBases, hash_filename, is_hashed_filename};
+    use crate::test_utils::test_event;
+
+    #[test]
+    fn filename_hash_is_fixed_length_and_filesystem_safe() {
+        let filename = hash_filename("event@google.com__TZID=Europe/Stockholm:20260630T190000");
+
+        assert_eq!(
+            filename,
+            "5dc4f5ac8fb72c87d9333e218f4b36d44f5fae5ad3cb888b788bbad2cbaf2148"
+        );
+        assert_eq!(filename.len(), 64);
+    }
+
+    #[test]
+    fn load_ignores_non_hashed_files() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let event = test_event();
+        std::fs::write(dir.path().join("legacy.ics"), event.to_ics_string()).unwrap();
+
+        let loaded = EventBases::load(dir.path()).unwrap();
+
+        assert_eq!(loaded.into_iter().count(), 0);
+    }
+
+    #[test]
+    fn recognizes_only_lowercase_sha256_filenames() {
+        assert!(is_hashed_filename(
+            "5dc4f5ac8fb72c87d9333e218f4b36d44f5fae5ad3cb888b788bbad2cbaf2148.ics"
+        ));
+        assert!(!is_hashed_filename("legacy.ics"));
+        assert!(!is_hashed_filename(
+            "5DC4F5AC8FB72C87D9333E218F4B36D44F5FAE5AD3CB888B788BBAD2CBAF2148.ics"
+        ));
     }
 }
