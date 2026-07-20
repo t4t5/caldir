@@ -11,6 +11,8 @@ use std::collections::HashSet;
 
 pub(crate) use sync_bases::SyncBases;
 
+use crate::Event;
+#[cfg(test)]
 use crate::EventInstanceId;
 
 #[derive(Debug)]
@@ -31,13 +33,10 @@ impl CalendarState {
         Ok(Self { sync_bases })
     }
 
-    // FIXME (legacy) replace with "add_sync_base"
-    pub(crate) fn add_new_synced_ids(
-        &mut self,
-        new_ids: impl IntoIterator<Item = EventInstanceId>,
-    ) {
-        for id in new_ids {
-            self.sync_bases.insert_known_event_id(id);
+    pub(crate) fn add_sync_bases(&mut self, events: impl IntoIterator<Item = Event>) {
+        for event in events {
+            self.sync_bases
+                .insert_event_base(event.event_instance_id(), event);
         }
     }
 
@@ -52,6 +51,11 @@ impl CalendarState {
     #[cfg(test)]
     pub(crate) fn synced_event_ids(&self) -> HashSet<EventInstanceId> {
         self.sync_bases.iter().map(|(id, _)| id.clone()).collect()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn sync_base(&self, id: &EventInstanceId) -> Option<&Event> {
+        self.sync_bases.get(id).and_then(Option::as_deref)
     }
 }
 

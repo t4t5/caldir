@@ -365,11 +365,11 @@ impl Calendar {
             .filter(|id| id.contains('@'))
     }
 
-    pub(crate) fn record_synced_ids(
+    pub(crate) fn record_sync_bases(
         &mut self,
-        ids: impl IntoIterator<Item = EventInstanceId>,
+        events: impl IntoIterator<Item = Event>,
     ) -> Result<(), CalendarError> {
-        self.state.add_new_synced_ids(ids);
+        self.state.add_sync_bases(events);
         self.state.save(&calendar_state_dir(&self.path))?;
         Ok(())
     }
