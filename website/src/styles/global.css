@@ -67,6 +67,14 @@
   padding-left: 1.5em;
 }
 
+.caldir-prose ul {
+  list-style-type: disc;
+}
+
+.caldir-prose ol {
+  list-style-type: decimal;
+}
+
 .caldir-prose li {
   margin: 0.25em 0;
 }

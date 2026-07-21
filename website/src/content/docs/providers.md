@@ -8,7 +8,9 @@ order: 4
 
 caldir uses a plugin architecture for calendar providers.
 
-## Available providers
+## Default providers
+
+These providers come pre-installed with caldir-cli:
 
 | Provider | Binary | Auth method |
 |---|---|---|
@@ -17,6 +19,16 @@ caldir uses a plugin architecture for calendar providers.
 | iCloud | `caldir-provider-icloud` | App-specific password |
 | Generic CalDAV | `caldir-provider-caldav` | Username + password |
 | Webcal (ICS feeds) | `caldir-provider-webcal` | None (public URLs) |
+
+## Other providers
+
+You can install additional providers to connect caldir to other calendar services:
+
+- [Proton Calendar](https://github.com/t4t5/caldir-provider-proton)
+- [Tuta Calendar](https://github.com/t4t5/caldir-provider-tuta)
+- [AT Protocol](https://github.com/t4t5/caldir-provider-atproto)
+
+Any `caldir-provider-*` binary discoverable through your `$PATH` can be used. You can even [build your own](#plugin-architecture)!
 
 ## Google Calendar
 
