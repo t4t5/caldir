@@ -43,7 +43,7 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 - Zoned datetime: `DTSTART;TZID=America/New_York:20250320T150000`
 - All-day events: `DTSTART;VALUE=DATE:20250320`
 
-**Timezone handling:** We preserve the original timezone format from ICS files for round-tripping. Events from Google come as UTC. Locally-created events use floating time (no timezone suffix). Events with TZID are preserved as-is.
+**Timezone handling:** We preserve the original timezone format from ICS files for round-tripping. Events from Google come as UTC. Locally-created events use floating time (no timezone suffix). Events with TZID keep their zone and wall clock, but the name is normalized to IANA at parse; offsets with no IANA equivalent (e.g. `GMT+0530`) convert to UTC.
 
 **Note:** We don't generate VTIMEZONE components—we rely on the TZID parameter referencing standard timezone names (IANA timezone database). Most modern calendar apps resolve these without needing embedded VTIMEZONE definitions.
 
@@ -304,7 +304,7 @@ The `RemoteConfig::account_identifier()` method in caldir-core extracts this by 
 
 ### Outlook / Microsoft 365
 - Microsoft Graph API; pulls from `/events` (not `/calendarView`) so recurring series stay as masters rather than expanded instances
-- Graph speaks Windows timezone names; `windows_tz` normalizes inbound to IANA and converts back on the outbound edge
+- Graph speaks Windows timezone names; `tz_normalize` maps inbound to IANA and converts back on the outbound edge
 - Exception instances carry `originalStart`, which becomes the `RECURRENCE-ID`
 
 ### Webcal
