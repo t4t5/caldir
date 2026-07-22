@@ -3,7 +3,7 @@
 use anyhow::Result;
 use caldir_core::{
     Attendee, Availability, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
-    RecurrenceId, Reminder, Status, Visibility, XProperty, windows_tz,
+    RecurrenceId, Reminder, Status, Visibility, XProperty, tz_normalize,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
@@ -261,7 +261,7 @@ fn parse_datetime_timezone(
             && original != "UTC"
             && original != "tzone://Microsoft/Utc"
         {
-            let tzid = windows_tz::normalize(original.to_string());
+            let tzid = tz_normalize::normalize(original.to_string());
             if let Ok(tz) = tzid.parse::<Tz>() {
                 let local = Utc.from_utc_datetime(&dt).with_timezone(&tz).naive_local();
                 return Ok(EventTime::DateTimeZoned {
@@ -274,7 +274,7 @@ fn parse_datetime_timezone(
     } else {
         Ok(EventTime::DateTimeZoned {
             datetime: dt,
-            tzid: windows_tz::normalize(timezone.to_string()),
+            tzid: tz_normalize::normalize(timezone.to_string()),
         })
     }
 }

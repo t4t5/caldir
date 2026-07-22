@@ -12,9 +12,11 @@ mod slugify;
 mod status;
 mod time;
 mod to_icalendar;
+pub mod tz_normalize;
 mod visibility;
-pub mod windows_tz;
 mod x_property;
+
+pub use tz_normalize as windows_tz;
 
 pub use attachment::Attachment;
 pub use attendee::{Attendee, ParticipationStatus};
@@ -386,6 +388,83 @@ END:VCALENDAR"
                 .to_ics_string()
                 .contains("DTSTART;TZID=America/Los_Angeles:20240101T120000")
         );
+    }
+
+    #[test]
+    fn normalizes_whole_hour_offset_tzid_and_preserves_the_instant() {
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:test-uid@caldir
+DTSTART;TZID=GMT+0100:20260724T190200
+SUMMARY:Trip to Sheffield
+END:VEVENT
+END:VCALENDAR"
+            .replace('\n', "\r\n");
+
+        let event = Event::parse_single_ics(&ics);
+
+        assert_eq!(
+            event.start,
+            EventTime::DateTimeZoned {
+                datetime: chrono::NaiveDate::from_ymd_opt(2026, 7, 24)
+                    .unwrap()
+                    .and_hms_opt(19, 2, 0)
+                    .unwrap(),
+                tzid: "Etc/GMT-1".to_string(),
+            }
+        );
+        assert_eq!(
+            event.start.to_utc(),
+            DateTime::parse_from_rfc3339("2026-07-24T18:02:00Z")
+                .unwrap()
+                .with_timezone(&Utc)
+        );
+    }
+
+    #[test]
+    fn offset_tzid_parse_write_parse_is_stable() {
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:test-uid@caldir
+DTSTART;TZID=GMT+0100:20260724T190200
+SUMMARY:Test
+END:VEVENT
+END:VCALENDAR"
+            .replace('\n', "\r\n");
+
+        let first = Event::parse_single_ics(&ics);
+        let serialized = first.to_ics_string();
+        let second = Event::parse_single_ics(&serialized);
+
+        assert!(serialized.contains("DTSTART;TZID=Etc/GMT-1:20260724T190200"));
+        assert_eq!(second, first);
+    }
+
+    #[test]
+    fn fractional_offset_tzid_is_converted_to_utc_on_parse() {
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:test-uid@caldir
+DTSTART;TZID=GMT+0530:20260724T190200
+SUMMARY:Test
+END:VEVENT
+END:VCALENDAR"
+            .replace('\n', "\r\n");
+
+        let event = Event::parse_single_ics(&ics);
+
+        assert_eq!(
+            event.start,
+            EventTime::DateTimeUtc(
+                DateTime::parse_from_rfc3339("2026-07-24T13:32:00Z")
+                    .unwrap()
+                    .with_timezone(&Utc)
+            )
+        );
+        assert!(event.to_ics_string().contains("DTSTART:20260724T133200Z"));
     }
 
     #[test]

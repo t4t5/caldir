@@ -85,7 +85,13 @@ impl EventTime {
 }
 
 fn parse_tzid(tzid: &str) -> Option<chrono_tz::Tz> {
-    tzid.parse().ok()
+    match tzid.parse() {
+        Ok(tz) => Some(tz),
+        Err(_) => {
+            super::tz_normalize::warn_unknown(tzid);
+            None
+        }
+    }
 }
 
 /// Convert a naive (non-zoned) datetime into a zoned datetime.
@@ -134,11 +140,7 @@ impl From<DatePerhapsTime> for EventTime {
                 EventTime::DateTimeUtc(datetime)
             }
             DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone { date_time, tzid }) => {
-                EventTime::DateTimeZoned {
-                    datetime: date_time,
-                    // Single chokepoint for Windows → IANA normalization.
-                    tzid: super::windows_tz::normalize(tzid),
-                }
+                super::tz_normalize::normalize_event_time(date_time, tzid)
             }
         }
     }
@@ -197,6 +199,26 @@ mod tests {
         let local = event_time.to_local_tz(&chrono_tz::Europe::Stockholm);
 
         assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-01-01T1200");
+    }
+
+    #[test]
+    fn unknown_zoned_event_matches_floating_semantics() {
+        let datetime = NaiveDate::from_ymd_opt(2024, 1, 1)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap();
+        let zoned = EventTime::DateTimeZoned {
+            datetime,
+            tzid: "Bogus/Zone".to_string(),
+        };
+        let floating = EventTime::DateTimeFloating(datetime);
+
+        assert_eq!(
+            zoned.to_local_tz(&chrono_tz::Europe::Stockholm),
+            floating.to_local_tz(&chrono_tz::Europe::Stockholm)
+        );
+        assert_eq!(zoned.to_utc(), floating.to_utc());
+        assert_eq!(zoned.normalized(), NormalizedEventTime::Floating(datetime));
     }
 
     #[test]
