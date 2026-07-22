@@ -389,7 +389,7 @@ END:VCALENDAR"
     }
 
     #[test]
-    fn normalizes_whole_hour_offset_tzid_and_preserves_the_instant() {
+    fn normalizes_offset_tzid_preserving_instant_and_round_trip() {
         let ics = r"BEGIN:VCALENDAR
 VERSION:2.0
 BEGIN:VEVENT
@@ -418,26 +418,10 @@ END:VCALENDAR"
                 .unwrap()
                 .with_timezone(&Utc)
         );
-    }
 
-    #[test]
-    fn offset_tzid_parse_write_parse_is_stable() {
-        let ics = r"BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-UID:test-uid@caldir
-DTSTART;TZID=GMT+0100:20260724T190200
-SUMMARY:Test
-END:VEVENT
-END:VCALENDAR"
-            .replace('\n', "\r\n");
-
-        let first = Event::parse_single_ics(&ics);
-        let serialized = first.to_ics_string();
-        let second = Event::parse_single_ics(&serialized);
-
+        let serialized = event.to_ics_string();
         assert!(serialized.contains("DTSTART;TZID=Etc/GMT-1:20260724T190200"));
-        assert_eq!(second, first);
+        assert_eq!(Event::parse_single_ics(&serialized), event);
     }
 
     #[test]

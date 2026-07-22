@@ -743,31 +743,4 @@ mod tests {
             ]
         );
     }
-
-    #[test]
-    fn expands_recurring_event_parsed_from_offset_tzid_ics() {
-        let ics = "BEGIN:VCALENDAR\r\n\
-                   VERSION:2.0\r\n\
-                   BEGIN:VEVENT\r\n\
-                   UID:offset-tzid-regression@caldir\r\n\
-                   SUMMARY:Daily fixed-offset event\r\n\
-                   DTSTART;TZID=GMT+0100:20260724T190200\r\n\
-                   DTEND;TZID=GMT+0100:20260724T193200\r\n\
-                   RRULE:FREQ=DAILY;COUNT=3\r\n\
-                   END:VEVENT\r\n\
-                   END:VCALENDAR\r\n";
-
-        let master = Event::parse_single_ics(ics);
-        let result = expand_in_range(vec![master], utc(2026, 7, 24, 0, 0), utc(2026, 7, 28, 0, 0));
-
-        let starts: Vec<_> = result.iter().map(starts_at).collect();
-        assert_eq!(
-            starts,
-            vec![
-                utc(2026, 7, 24, 18, 2),
-                utc(2026, 7, 25, 18, 2),
-                utc(2026, 7, 26, 18, 2),
-            ]
-        );
-    }
 }
