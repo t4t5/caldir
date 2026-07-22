@@ -13,6 +13,7 @@ pub use error::CaldirError;
 pub struct Caldir {
     config: CaldirConfig,
     config_path: Option<PathBuf>,
+    data_dir_override: Option<PathBuf>,
     providers: ProviderRegistry,
 }
 
@@ -22,6 +23,7 @@ impl Caldir {
         Caldir {
             config,
             config_path: None,
+            data_dir_override: None,
             providers,
         }
     }
@@ -34,6 +36,7 @@ impl Caldir {
         Ok(Self {
             config,
             config_path: Some(config_path),
+            data_dir_override: None,
             providers,
         })
     }
@@ -44,8 +47,17 @@ impl Caldir {
         self
     }
 
+    /// Use `path` for calendar filesystem operations without changing the
+    /// canonical directory stored in the shared caldir configuration.
+    pub fn with_data_dir_override(mut self, path: impl Into<PathBuf>) -> Self {
+        self.data_dir_override = Some(path.into());
+        self
+    }
+
     pub fn data_dir(&self) -> PathBuf {
-        self.config.data_dir()
+        self.data_dir_override
+            .clone()
+            .unwrap_or_else(|| self.config.data_dir())
     }
 
     pub fn default_calendar(&self) -> Result<Calendar, CaldirError> {
@@ -147,7 +159,7 @@ impl Caldir {
     /// Generate a unique slug that doesn't conflict with existing calendar directories.
     /// If the base slug exists, tries slug-2, slug-3, etc.
     fn unique_slug_for(&self, desired_slug: &str) -> String {
-        let calendar_dir = self.config.data_dir();
+        let calendar_dir = self.data_dir();
 
         if !calendar_dir.join(desired_slug).exists() {
             return desired_slug.to_string();
@@ -182,6 +194,57 @@ mod tests {
         assert_eq!(calendar.path(), caldir.data_dir().join("work"));
         assert_eq!(calendar.slug().unwrap(), "work");
         assert!(calendar.path().is_dir());
+    }
+
+    #[test]
+    fn data_dir_override_routes_operations_without_changing_config() {
+        let (canonical_tmp, config) = test_caldir_config();
+        let canonical_dir = config.data_dir();
+        let config_path = canonical_tmp.path().join("config.toml");
+        let override_tmp = tempfile::TempDir::new().unwrap();
+        let override_dir = override_tmp.path().join("portal-caldir");
+        std::fs::create_dir_all(&override_dir).unwrap();
+
+        let mut caldir = Caldir {
+            config,
+            config_path: Some(config_path.clone()),
+            data_dir_override: None,
+            providers: ProviderRegistry::new(),
+        }
+        .with_data_dir_override(&override_dir);
+
+        assert_eq!(caldir.data_dir(), override_dir);
+        assert_eq!(caldir.config().data_dir(), canonical_dir);
+
+        let created = caldir.create_calendar("work", None).unwrap();
+        assert_eq!(created.path(), override_dir.join("work"));
+        assert!(!canonical_dir.join("work").exists());
+
+        let enumerated = caldir.calendars();
+        assert_eq!(enumerated.len(), 1);
+        assert_eq!(
+            enumerated[0].as_ref().unwrap().path(),
+            override_dir.join("work")
+        );
+        assert_eq!(
+            caldir.calendar("work").unwrap().path(),
+            override_dir.join("work")
+        );
+
+        let collision = caldir.create_calendar("work", None).unwrap();
+        assert_eq!(collision.path(), override_dir.join("work-2"));
+
+        let mut updated_config = caldir.config().clone();
+        updated_config.set_time_format(TimeFormat::H12);
+        caldir.save_config(updated_config).unwrap();
+
+        assert_eq!(caldir.config().data_dir(), canonical_dir);
+        assert_eq!(caldir.config().time_format(), TimeFormat::H12);
+        assert_eq!(caldir.data_dir(), override_dir);
+
+        let persisted = CaldirConfig::load_or_default(&config_path).unwrap();
+        assert_eq!(persisted.data_dir(), canonical_dir);
+        assert_eq!(persisted.time_format(), TimeFormat::H12);
     }
 
     #[test]
