@@ -8,10 +8,8 @@ use std::{
 use windows_timezones::WindowsTimezone;
 
 pub(crate) enum Tzid {
-    /// An IANA name: the input itself, or what it maps to.
-    Iana(String),
-    /// A valid fixed offset (seconds east of UTC) with no IANA name.
-    FixedOffset(i32),
+    Iana(String),     // e.g. "Europe/London"
+    FixedOffset(i32), // e.g. "GMT+0100"
     Unknown,
 }
 
@@ -48,9 +46,10 @@ pub(crate) fn classify(tzid: &str) -> Tzid {
 
 /// Normalize an IANA, Windows, or whole-hour GMT/UTC offset TZID.
 ///
-/// IANA inputs and unknown strings pass through unchanged. Fractional fixed
-/// offsets also pass through because normalizing them requires the event's
-/// wall-clock value; [`super::EventTime`] parsing performs that conversion.
+/// IANA inputs and unknown strings pass through unchanged.
+/// Fractional fixed offsets also pass through,
+/// because normalizing them requires the event's wall-clock value
+/// [`super::EventTime`] parsing performs that conversion.
 pub fn normalize(tzid: String) -> String {
     match classify(&tzid) {
         Tzid::Iana(iana) => iana,
