@@ -23,28 +23,55 @@ pub(crate) fn classify(tzid: &str) -> Tzid {
     }
 
     if let Some(seconds) = parse_fixed_offset(tzid) {
-        if seconds % 3600 == 0 {
-            let hours = seconds / 3600;
-            // Etc/GMT zones have inverted signs: GMT+1 wall clock = Etc/GMT-1.
-            let iana = if hours == 0 {
-                "Etc/GMT".to_string()
-            } else {
-                format!("Etc/GMT{:+}", -hours)
-            };
-            // Etc/GMT±N only exists for -12..=+14; anything else falls
-            // through to the fixed-offset path.
-            if iana.parse::<Tz>().is_ok() {
-                return Tzid::Iana(iana);
+        return offset_tzid(seconds);
+    }
+
+    // RFC 5545 §3.2.19 global-registry form, e.g.
+    // `/mozilla.org/20070129_1/Europe/Berlin`: retry the ladder on each
+    // path suffix.
+    if let Some(rest) = tzid.strip_prefix('/') {
+        let segments: Vec<&str> = rest.split('/').collect();
+        for start in 0..segments.len() {
+            match classify(&segments[start..].join("/")) {
+                Tzid::Unknown => continue,
+                resolved => return resolved,
             }
         }
+    }
 
-        return Tzid::FixedOffset(seconds);
+    // Windows display names, e.g. `(UTC+01:00) Amsterdam, Berlin, …`:
+    // retry the ladder on the parenthesized prefix.
+    if let Some((inner, _)) = tzid.strip_prefix('(').and_then(|rest| rest.split_once(')')) {
+        match classify(inner) {
+            Tzid::Unknown => {}
+            resolved => return resolved,
+        }
     }
 
     Tzid::Unknown
 }
 
-/// Normalize an IANA, Windows, or whole-hour GMT/UTC offset TZID.
+fn offset_tzid(seconds: i32) -> Tzid {
+    if seconds % 3600 == 0 {
+        let hours = seconds / 3600;
+        // Etc/GMT zones have inverted signs: GMT+1 wall clock = Etc/GMT-1.
+        let iana = if hours == 0 {
+            "Etc/GMT".to_string()
+        } else {
+            format!("Etc/GMT{:+}", -hours)
+        };
+        // Etc/GMT±N only exists for -12..=+14; anything else falls
+        // through to the fixed-offset path.
+        if iana.parse::<Tz>().is_ok() {
+            return Tzid::Iana(iana);
+        }
+    }
+
+    Tzid::FixedOffset(seconds)
+}
+
+/// Normalize an IANA, Windows, whole-hour GMT/UTC offset,
+/// global-registry (`/vendor/…`), or display-name (`(UTC+01:00) …`) TZID.
 ///
 /// IANA inputs and unknown strings pass through unchanged.
 /// Fractional fixed offsets also pass through,
@@ -146,14 +173,32 @@ mod tests {
             // valid offsets with no Etc zone: resolved at EventTime parse
             ("GMT+0530", "GMT+0530"),
             ("GMT-1300", "GMT-1300"),
+            // global-registry prefixes resolve to their IANA suffix
+            ("/mozilla.org/20070129_1/Europe/Berlin", "Europe/Berlin"),
+            (
+                "/freeassociation.sourceforge.net/America/New_York",
+                "America/New_York",
+            ),
+            ("/citadel.org/20211207_1/UTC", "UTC"),
+            // Windows display names resolve via the parenthesized prefix
+            (
+                "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
+                "Etc/GMT-1",
+            ),
+            ("(UTC-05:00) Eastern Time (US & Canada)", "Etc/GMT+5"),
+            ("(UTC) Coordinated Universal Time", "UTC"),
+            // fractional display-name offset: resolved at EventTime parse
+            (
+                "(UTC+05:30) Chennai, Kolkata, Mumbai, New Delhi",
+                "(UTC+05:30) Chennai, Kolkata, Mumbai, New Delhi",
+            ),
             // malformed and unknown pass through
             ("GMT+9900", "GMT+9900"),
             ("GMT+", "GMT+"),
             ("GMT+01:0x", "GMT+01:0x"),
-            (
-                "/mozilla.org/20070129_1/Europe/Berlin",
-                "/mozilla.org/20070129_1/Europe/Berlin",
-            ),
+            ("/not/a/zone", "/not/a/zone"),
+            ("/", "/"),
+            ("(no offset here) Some Place", "(no offset here) Some Place"),
             ("PST", "PST"),
             ("AEST", "AEST"),
             ("tzone://Microsoft/Custom", "tzone://Microsoft/Custom"),
