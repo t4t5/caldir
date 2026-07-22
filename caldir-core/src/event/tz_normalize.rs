@@ -102,6 +102,9 @@ fn parse_fixed_offset(tzid: &str) -> Option<i32> {
         b'-' => (-1, &rest[1..]),
         _ => return None,
     };
+    if !digits.is_ascii() {
+        return None;
+    }
 
     let (hours, minutes) = if let Some((hours, minutes)) = digits.split_once(':') {
         if !(1..=2).contains(&hours.len()) || minutes.len() != 2 {
@@ -200,6 +203,7 @@ mod tests {
             ("GMT+9900", "GMT+9900"),
             ("GMT+", "GMT+"),
             ("GMT+01:0x", "GMT+01:0x"),
+            ("GMT+éé", "GMT+éé"),
             ("/not/a/zone", "/not/a/zone"),
             ("/", "/"),
             ("(no offset here) Some Place", "(no offset here) Some Place"),
