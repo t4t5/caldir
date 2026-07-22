@@ -1,4 +1,11 @@
 //! Normalize inbound TZIDs to values understood by IANA timezone consumers.
+//!
+//! - `W. Europe Standard Time` → `Europe/Berlin`
+//! - `GMT+0100` → `Etc/GMT-1`
+//! - `GMT+0530` → passed through, converted to UTC at [`super::EventTime`] parse
+//! - `/mozilla.org/20070129_1/Europe/Berlin` → `Europe/Berlin`
+//! - `(UTC+01:00) Amsterdam, Berlin, …` → `Etc/GMT-1`
+//! - `Bogus/Zone` → passed through, treated as floating local time (warns once)
 
 use chrono_tz::Tz;
 use std::{
