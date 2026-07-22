@@ -1,6 +1,6 @@
 //! Convert caldir Event to a Microsoft Graph event.
 
-use caldir_core::{Availability, Event, EventTime, ParticipationStatus, Visibility, windows_tz};
+use caldir_core::{Availability, Event, EventTime, ParticipationStatus, Visibility, tz_normalize};
 use chrono::{Datelike, Duration, NaiveDateTime, NaiveTime, TimeZone, Utc};
 
 use crate::constants::HTML_DESC_PROPERTY;
@@ -129,7 +129,7 @@ fn event_time_to_graph(time: &EventTime) -> DateTimeTimeZone {
         EventTime::DateTimeZoned { datetime, tzid } => DateTimeTimeZone {
             date_time: datetime.format("%Y-%m-%dT%H:%M:%S.0000000").to_string(),
             // Graph expects Windows names; pass IANA through if no mapping.
-            time_zone: windows_tz::from_iana(tzid)
+            time_zone: tz_normalize::from_iana(tzid)
                 .map(String::from)
                 .unwrap_or_else(|| tzid.clone()),
         },

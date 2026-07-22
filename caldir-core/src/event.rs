@@ -12,8 +12,8 @@ mod slugify;
 mod status;
 mod time;
 mod to_icalendar;
+pub mod tz_normalize;
 mod visibility;
-pub mod windows_tz;
 mod x_property;
 
 pub use attachment::Attachment;
@@ -386,6 +386,42 @@ END:VCALENDAR"
                 .to_ics_string()
                 .contains("DTSTART;TZID=America/Los_Angeles:20240101T120000")
         );
+    }
+
+    #[test]
+    fn normalizes_offset_tzid_preserving_instant_and_round_trip() {
+        let ics = r"BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:test-uid@caldir
+DTSTART;TZID=GMT+0100:20260724T190200
+SUMMARY:Trip to Sheffield
+END:VEVENT
+END:VCALENDAR"
+            .replace('\n', "\r\n");
+
+        let event = Event::parse_single_ics(&ics);
+
+        assert_eq!(
+            event.start,
+            EventTime::DateTimeZoned {
+                datetime: chrono::NaiveDate::from_ymd_opt(2026, 7, 24)
+                    .unwrap()
+                    .and_hms_opt(19, 2, 0)
+                    .unwrap(),
+                tzid: "Etc/GMT-1".to_string(),
+            }
+        );
+        assert_eq!(
+            event.start.to_utc(),
+            DateTime::parse_from_rfc3339("2026-07-24T18:02:00Z")
+                .unwrap()
+                .with_timezone(&Utc)
+        );
+
+        let serialized = event.to_ics_string();
+        assert!(serialized.contains("DTSTART;TZID=Etc/GMT-1:20260724T190200"));
+        assert_eq!(Event::parse_single_ics(&serialized), event);
     }
 
     #[test]

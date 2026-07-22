@@ -1,4 +1,5 @@
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use super::tz_normalize::{self, Tzid};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use icalendar::{CalendarDateTime, DatePerhapsTime};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -85,7 +86,13 @@ impl EventTime {
 }
 
 fn parse_tzid(tzid: &str) -> Option<chrono_tz::Tz> {
-    tzid.parse().ok()
+    match tzid.parse() {
+        Ok(tz) => Some(tz),
+        Err(_) => {
+            tz_normalize::warn_unknown(tzid);
+            None
+        }
+    }
 }
 
 /// Convert a naive (non-zoned) datetime into a zoned datetime.
@@ -134,10 +141,28 @@ impl From<DatePerhapsTime> for EventTime {
                 EventTime::DateTimeUtc(datetime)
             }
             DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone { date_time, tzid }) => {
-                EventTime::DateTimeZoned {
-                    datetime: date_time,
-                    // Single chokepoint for Windows → IANA normalization.
-                    tzid: super::windows_tz::normalize(tzid),
+                match tz_normalize::classify(&tzid) {
+                    Tzid::Iana(tzid) => EventTime::DateTimeZoned {
+                        datetime: date_time,
+                        tzid,
+                    },
+                    Tzid::FixedOffset(seconds) => {
+                        let offset =
+                            FixedOffset::east_opt(seconds).expect("validated fixed offset");
+                        let datetime = offset
+                            .from_local_datetime(&date_time)
+                            .single()
+                            .expect("fixed offsets have no ambiguous local times")
+                            .with_timezone(&Utc);
+                        EventTime::DateTimeUtc(datetime)
+                    }
+                    Tzid::Unknown => {
+                        tz_normalize::warn_unknown(&tzid);
+                        EventTime::DateTimeZoned {
+                            datetime: date_time,
+                            tzid,
+                        }
+                    }
                 }
             }
         }
@@ -200,6 +225,26 @@ mod tests {
     }
 
     #[test]
+    fn unknown_zoned_event_matches_floating_semantics() {
+        let datetime = NaiveDate::from_ymd_opt(2024, 1, 1)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap();
+        let zoned = EventTime::DateTimeZoned {
+            datetime,
+            tzid: "Bogus/Zone".to_string(),
+        };
+        let floating = EventTime::DateTimeFloating(datetime);
+
+        assert_eq!(
+            zoned.to_local_tz(&chrono_tz::Europe::Stockholm),
+            floating.to_local_tz(&chrono_tz::Europe::Stockholm)
+        );
+        assert_eq!(zoned.to_utc(), floating.to_utc());
+        assert_eq!(zoned.normalized(), NormalizedEventTime::Floating(datetime));
+    }
+
+    #[test]
     fn to_local_handles_dst_spring_forward_gap() {
         // In Stockholm, 2024-03-31 02:30 doesn't exist — clocks jumped from
         // 02:00 CET to 03:00 CEST. We should still produce a slug.
@@ -230,6 +275,82 @@ mod tests {
         let local = event_time.to_local_tz(&chrono_tz::Europe::Stockholm);
 
         assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-10-27T0230");
+    }
+
+    #[test]
+    fn fractional_offset_tzid_parses_to_utc() {
+        let datetime = NaiveDate::from_ymd_opt(2026, 7, 24)
+            .unwrap()
+            .and_hms_opt(19, 2, 0)
+            .unwrap();
+        let parsed = EventTime::from(DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone {
+            date_time: datetime,
+            tzid: "GMT+0530".to_string(),
+        }));
+
+        // 19:02 at +05:30 = 13:32 UTC
+        assert_eq!(
+            parsed,
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 7, 24, 13, 32, 0).unwrap())
+        );
+    }
+
+    #[test]
+    fn windows_display_names_preserve_dst_rules() {
+        for (tzid, date, expected_tzid, expected_utc) in [
+            (
+                "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
+                (2026, 1, 15),
+                "Europe/Berlin",
+                (2026, 1, 15, 14),
+            ),
+            (
+                "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
+                (2026, 7, 15),
+                "Europe/Berlin",
+                (2026, 7, 15, 13),
+            ),
+            (
+                "(UTC-05:00) Eastern Time (US & Canada)",
+                (2026, 1, 15),
+                "America/New_York",
+                (2026, 1, 15, 20),
+            ),
+            (
+                "(UTC-05:00) Eastern Time (US & Canada)",
+                (2026, 7, 15),
+                "America/New_York",
+                (2026, 7, 15, 19),
+            ),
+        ] {
+            let datetime = NaiveDate::from_ymd_opt(date.0, date.1, date.2)
+                .unwrap()
+                .and_hms_opt(15, 0, 0)
+                .unwrap();
+            let parsed =
+                EventTime::from(DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone {
+                    date_time: datetime,
+                    tzid: tzid.to_string(),
+                }));
+
+            assert!(
+                matches!(&parsed, EventTime::DateTimeZoned { tzid, .. } if tzid == expected_tzid),
+                "{tzid} on {datetime} normalized incorrectly"
+            );
+            assert_eq!(
+                parsed.to_utc(),
+                Utc.with_ymd_and_hms(
+                    expected_utc.0,
+                    expected_utc.1,
+                    expected_utc.2,
+                    expected_utc.3,
+                    0,
+                    0,
+                )
+                .unwrap(),
+                "{tzid} on {datetime} resolved incorrectly"
+            );
+        }
     }
 
     #[test]

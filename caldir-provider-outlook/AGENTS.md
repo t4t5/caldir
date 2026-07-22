@@ -18,4 +18,4 @@ Exception instances arrive with `originalStart` as a UTC ISO-8601 string (`Edm.D
 
 ## Timezones
 
-Graph speaks Microsoft Windows zone names (`"GMT Standard Time"`). Caldir-core's `windows_tz` module handles both directions — inbound `windows_tz::normalize` maps to IANA, outbound `windows_tz::from_iana` maps back. The same module is also reached by ICS-bytes paths (Outlook publish-calendar feeds, Windows-authored `.ics` files), so any TZID parsing benefits regardless of how the event entered.
+Graph speaks Microsoft Windows zone names (`"GMT Standard Time"`). Caldir-core's `tz_normalize` module handles both directions — inbound `tz_normalize::normalize` maps to IANA, outbound `tz_normalize::from_iana` maps back. The same module is also reached by ICS-bytes paths (Outlook publish-calendar feeds, Windows-authored `.ics` files), so any TZID parsing benefits regardless of how the event entered.
