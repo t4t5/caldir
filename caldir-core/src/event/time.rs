@@ -296,6 +296,64 @@ mod tests {
     }
 
     #[test]
+    fn windows_display_names_preserve_dst_rules() {
+        for (tzid, date, expected_tzid, expected_utc) in [
+            (
+                "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
+                (2026, 1, 15),
+                "Europe/Berlin",
+                (2026, 1, 15, 14),
+            ),
+            (
+                "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
+                (2026, 7, 15),
+                "Europe/Berlin",
+                (2026, 7, 15, 13),
+            ),
+            (
+                "(UTC-05:00) Eastern Time (US & Canada)",
+                (2026, 1, 15),
+                "America/New_York",
+                (2026, 1, 15, 20),
+            ),
+            (
+                "(UTC-05:00) Eastern Time (US & Canada)",
+                (2026, 7, 15),
+                "America/New_York",
+                (2026, 7, 15, 19),
+            ),
+        ] {
+            let datetime = NaiveDate::from_ymd_opt(date.0, date.1, date.2)
+                .unwrap()
+                .and_hms_opt(15, 0, 0)
+                .unwrap();
+            let parsed =
+                EventTime::from(DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone {
+                    date_time: datetime,
+                    tzid: tzid.to_string(),
+                }));
+
+            assert!(
+                matches!(&parsed, EventTime::DateTimeZoned { tzid, .. } if tzid == expected_tzid),
+                "{tzid} on {datetime} normalized incorrectly"
+            );
+            assert_eq!(
+                parsed.to_utc(),
+                Utc.with_ymd_and_hms(
+                    expected_utc.0,
+                    expected_utc.1,
+                    expected_utc.2,
+                    expected_utc.3,
+                    0,
+                    0,
+                )
+                .unwrap(),
+                "{tzid} on {datetime} resolved incorrectly"
+            );
+        }
+    }
+
+    #[test]
     fn to_utc_passes_through_utc_event() {
         let utc = Utc.with_ymd_and_hms(2024, 1, 1, 12, 0, 0).unwrap();
 

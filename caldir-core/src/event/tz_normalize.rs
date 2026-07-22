@@ -4,7 +4,7 @@
 //! - `GMT+0100` → `Etc/GMT-1`
 //! - `GMT+0530` → passed through, converted to UTC at [`super::EventTime`] parse
 //! - `/mozilla.org/20070129_1/Europe/Berlin` → `Europe/Berlin`
-//! - `(UTC+01:00) Amsterdam, Berlin, …` → `Etc/GMT-1`
+//! - `(UTC+01:00) Amsterdam, Berlin, …` → `Europe/Berlin`
 //! - `Bogus/Zone` → passed through, treated as floating local time (warns once)
 
 use chrono_tz::Tz;
@@ -12,6 +12,7 @@ use std::{
     collections::HashSet,
     sync::{Mutex, OnceLock},
 };
+use strum::IntoEnumIterator;
 use windows_timezones::WindowsTimezone;
 
 pub(crate) enum Tzid {
@@ -25,7 +26,7 @@ pub(crate) fn classify(tzid: &str) -> Tzid {
         return Tzid::Iana(tzid.to_string());
     }
 
-    if let Ok(windows_timezone) = tzid.parse::<WindowsTimezone>() {
+    if let Some(windows_timezone) = windows_timezone(tzid) {
         return Tzid::Iana(Tz::from(windows_timezone).name().to_string());
     }
 
@@ -46,16 +47,13 @@ pub(crate) fn classify(tzid: &str) -> Tzid {
         }
     }
 
-    // Windows display names, e.g. `(UTC+01:00) Amsterdam, Berlin, …`:
-    // retry the ladder on the parenthesized prefix.
-    if let Some((inner, _)) = tzid.strip_prefix('(').and_then(|rest| rest.split_once(')')) {
-        match classify(inner) {
-            Tzid::Unknown => {}
-            resolved => return resolved,
-        }
-    }
-
     Tzid::Unknown
+}
+
+fn windows_timezone(tzid: &str) -> Option<WindowsTimezone> {
+    tzid.parse().ok().or_else(|| {
+        WindowsTimezone::iter().find(|windows_timezone| windows_timezone.description() == tzid)
+    })
 }
 
 fn offset_tzid(seconds: i32) -> Tzid {
@@ -187,17 +185,16 @@ mod tests {
                 "America/New_York",
             ),
             ("/citadel.org/20211207_1/UTC", "UTC"),
-            // Windows display names resolve via the parenthesized prefix
+            // Windows display names map to their geographic IANA zones
             (
                 "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
-                "Etc/GMT-1",
+                "Europe/Berlin",
             ),
-            ("(UTC-05:00) Eastern Time (US & Canada)", "Etc/GMT+5"),
-            ("(UTC) Coordinated Universal Time", "UTC"),
-            // fractional display-name offset: resolved at EventTime parse
+            ("(UTC-05:00) Eastern Time (US & Canada)", "America/New_York"),
+            ("(UTC) Coordinated Universal Time", "Etc/UTC"),
             (
                 "(UTC+05:30) Chennai, Kolkata, Mumbai, New Delhi",
-                "(UTC+05:30) Chennai, Kolkata, Mumbai, New Delhi",
+                "Asia/Calcutta",
             ),
             // malformed and unknown pass through
             ("GMT+9900", "GMT+9900"),
@@ -206,6 +203,7 @@ mod tests {
             ("/not/a/zone", "/not/a/zone"),
             ("/", "/"),
             ("(no offset here) Some Place", "(no offset here) Some Place"),
+            ("(UTC+01:00) Unknown Place", "(UTC+01:00) Unknown Place"),
             ("PST", "PST"),
             ("AEST", "AEST"),
             ("tzone://Microsoft/Custom", "tzone://Microsoft/Custom"),
