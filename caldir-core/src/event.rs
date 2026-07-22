@@ -16,8 +16,6 @@ pub mod tz_normalize;
 mod visibility;
 mod x_property;
 
-pub use tz_normalize as windows_tz;
-
 pub use attachment::Attachment;
 pub use attendee::{Attendee, ParticipationStatus};
 pub use availability::Availability;

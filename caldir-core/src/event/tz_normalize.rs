@@ -54,8 +54,8 @@ fn classify(tzid: String) -> Normalized {
         return Normalized::Zoned(tzid);
     }
 
-    if let Ok(windows_tz) = tzid.parse::<WindowsTimezone>() {
-        return Normalized::Zoned(Tz::from(windows_tz).name().to_string());
+    if let Ok(windows_timezone) = tzid.parse::<WindowsTimezone>() {
+        return Normalized::Zoned(Tz::from(windows_timezone).name().to_string());
     }
 
     if let Some(seconds) = parse_fixed_offset(&tzid) {
@@ -130,8 +130,8 @@ pub(crate) fn warn_unknown(tzid: &str) {
 /// non-IANA inputs or IANA zones with no Windows counterpart.
 pub fn from_iana(iana: &str) -> Option<&'static str> {
     let tz: Tz = iana.parse().ok()?;
-    let windows_tz = WindowsTimezone::try_from(tz).ok()?;
-    Some(windows_tz.name())
+    let windows_timezone = WindowsTimezone::try_from(tz).ok()?;
+    Some(windows_timezone.name())
 }
 
 #[cfg(test)]

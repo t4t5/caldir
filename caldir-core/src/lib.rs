@@ -19,7 +19,7 @@ pub use diff::{CalendarDiff, EventChange};
 pub use event::{
     Attachment, Attendee, Availability, Event, EventInstanceId, EventTime, EventUid, Organizer,
     ParticipationStatus, Recurrence, RecurrenceId, Reminder, Status, Visibility, XProperty,
-    expand_in_range, tz_normalize, windows_tz,
+    expand_in_range, tz_normalize,
 };
 pub use provider::{Provider, ProviderRegistry, ProviderSlug};
 pub use remote::{Remote, RemoteConfig, RemoteConfigParams, RemoteEvent};
