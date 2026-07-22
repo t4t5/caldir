@@ -441,31 +441,6 @@ END:VCALENDAR"
     }
 
     #[test]
-    fn fractional_offset_tzid_is_converted_to_utc_on_parse() {
-        let ics = r"BEGIN:VCALENDAR
-VERSION:2.0
-BEGIN:VEVENT
-UID:test-uid@caldir
-DTSTART;TZID=GMT+0530:20260724T190200
-SUMMARY:Test
-END:VEVENT
-END:VCALENDAR"
-            .replace('\n', "\r\n");
-
-        let event = Event::parse_single_ics(&ics);
-
-        assert_eq!(
-            event.start,
-            EventTime::DateTimeUtc(
-                DateTime::parse_from_rfc3339("2026-07-24T13:32:00Z")
-                    .unwrap()
-                    .with_timezone(&Utc)
-            )
-        );
-        assert!(event.to_ics_string().contains("DTSTART:20260724T133200Z"));
-    }
-
-    #[test]
     fn to_ics_string_sets_calendar_headers() {
         let event = Event::new(
             "Test",

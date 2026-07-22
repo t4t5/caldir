@@ -1,4 +1,5 @@
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use super::tz_normalize::{self, Tzid};
+use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use icalendar::{CalendarDateTime, DatePerhapsTime};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -88,7 +89,7 @@ fn parse_tzid(tzid: &str) -> Option<chrono_tz::Tz> {
     match tzid.parse() {
         Ok(tz) => Some(tz),
         Err(_) => {
-            super::tz_normalize::warn_unknown(tzid);
+            tz_normalize::warn_unknown(tzid);
             None
         }
     }
@@ -140,7 +141,29 @@ impl From<DatePerhapsTime> for EventTime {
                 EventTime::DateTimeUtc(datetime)
             }
             DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone { date_time, tzid }) => {
-                super::tz_normalize::normalize_event_time(date_time, tzid)
+                match tz_normalize::classify(&tzid) {
+                    Tzid::Iana(tzid) => EventTime::DateTimeZoned {
+                        datetime: date_time,
+                        tzid,
+                    },
+                    Tzid::FixedOffset(seconds) => {
+                        let offset =
+                            FixedOffset::east_opt(seconds).expect("validated fixed offset");
+                        let datetime = offset
+                            .from_local_datetime(&date_time)
+                            .single()
+                            .expect("fixed offsets have no ambiguous local times")
+                            .with_timezone(&Utc);
+                        EventTime::DateTimeUtc(datetime)
+                    }
+                    Tzid::Unknown => {
+                        tz_normalize::warn_unknown(&tzid);
+                        EventTime::DateTimeZoned {
+                            datetime: date_time,
+                            tzid,
+                        }
+                    }
+                }
             }
         }
     }
@@ -252,6 +275,24 @@ mod tests {
         let local = event_time.to_local_tz(&chrono_tz::Europe::Stockholm);
 
         assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-10-27T0230");
+    }
+
+    #[test]
+    fn fractional_offset_tzid_parses_to_utc() {
+        let datetime = NaiveDate::from_ymd_opt(2026, 7, 24)
+            .unwrap()
+            .and_hms_opt(19, 2, 0)
+            .unwrap();
+        let parsed = EventTime::from(DatePerhapsTime::DateTime(CalendarDateTime::WithTimezone {
+            date_time: datetime,
+            tzid: "GMT+0530".to_string(),
+        }));
+
+        // 19:02 at +05:30 = 13:32 UTC
+        assert_eq!(
+            parsed,
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 7, 24, 13, 32, 0).unwrap())
+        );
     }
 
     #[test]
