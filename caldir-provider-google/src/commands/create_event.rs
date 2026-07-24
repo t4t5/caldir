@@ -113,7 +113,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
             if google_event.conference_data.is_some() && is_conference_data_error(&error) =>
         {
             eprintln!(
-                "caldir-provider-google: warning: Google rejected copied conference data; \
+                "caldir-provider-google: warning: Google rejected conference data; \
                  retrying without it: {error}"
             );
             google_event.conference_data = None;

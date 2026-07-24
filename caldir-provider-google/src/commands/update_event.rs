@@ -67,7 +67,8 @@ async fn patch_event_without_attendees(
     let body = patch_body_without_attendees(event)?;
 
     let url = format!(
-        "https://www.googleapis.com/calendar/v3/calendars/{}/events/{}?sendUpdates=all",
+        "https://www.googleapis.com/calendar/v3/calendars/{}/events/{}?\
+         sendUpdates=all&conferenceDataVersion=1",
         calendar_id, event_id,
     );
 
