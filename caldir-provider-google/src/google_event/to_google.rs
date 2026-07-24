@@ -86,9 +86,9 @@ impl ToGoogle for Event {
             .unwrap_or_default()
             .to_string();
 
-        let conference_data = self
-            .x_property("X-GOOGLE-CONFERENCE")
-            .and_then(google_meet_conference_data);
+        let conference_data = self.x_property("X-GOOGLE-CONFERENCE").and_then(|url| {
+            google_meet_conference_data(url, &format!("{}-{}", self.uid.as_str(), self.sequence))
+        });
 
         google_calendar::types::Event {
             id: google_event_id,
@@ -113,7 +113,28 @@ impl ToGoogle for Event {
     }
 }
 
-fn google_meet_conference_data(url: &str) -> Option<google_calendar::types::ConferenceData> {
+fn google_meet_conference_data(
+    url: &str,
+    request_id: &str,
+) -> Option<google_calendar::types::ConferenceData> {
+    if url.trim().is_empty() {
+        return Some(google_calendar::types::ConferenceData {
+            conference_id: String::new(),
+            conference_solution: None,
+            entry_points: Vec::new(),
+            create_request: Some(google_calendar::types::CreateConferenceRequest {
+                conference_solution_key: Some(google_calendar::types::ConferenceSolutionKey {
+                    type_: "hangoutsMeet".to_string(),
+                }),
+                request_id: request_id.to_string(),
+                status: None,
+            }),
+            notes: String::new(),
+            parameters: None,
+            signature: String::new(),
+        });
+    }
+
     let parsed = url::Url::parse(url).ok()?;
     if parsed.scheme() != "https" || parsed.host_str() != Some("meet.google.com") {
         return None;
@@ -355,6 +376,48 @@ mod tests {
         assert_eq!(conference.entry_points.len(), 1);
         assert_eq!(conference.entry_points[0].entry_point_type, "video");
         assert_eq!(conference.entry_points[0].uri, url);
+        assert!(conference.create_request.is_none());
+    }
+
+    #[test]
+    fn empty_google_meet_x_property_requests_conference_creation() {
+        let mut event = sample_event();
+        event.sequence = 3;
+        event.x_properties = vec![XProperty::new("X-GOOGLE-CONFERENCE", "")];
+        let expected_request_id = format!("{}-3", event.uid.as_str());
+
+        let google = event.to_google();
+        let conference = google
+            .conference_data
+            .expect("empty Google Meet property should request a conference");
+        let request = conference
+            .create_request
+            .expect("conference creation request should be populated");
+
+        assert!(conference.entry_points.is_empty());
+        assert!(conference.conference_solution.is_none());
+        assert_eq!(request.request_id, expected_request_id);
+        assert_eq!(
+            request
+                .conference_solution_key
+                .map(|key| key.type_)
+                .as_deref(),
+            Some("hangoutsMeet")
+        );
+    }
+
+    #[test]
+    fn whitespace_google_meet_x_property_requests_conference_creation() {
+        let mut event = sample_event();
+        event.x_properties = vec![XProperty::new("X-GOOGLE-CONFERENCE", " \t ")];
+
+        let conference = event
+            .to_google()
+            .conference_data
+            .expect("whitespace Google Meet property should request a conference");
+
+        assert!(conference.create_request.is_some());
+        assert!(conference.entry_points.is_empty());
     }
 
     #[test]
