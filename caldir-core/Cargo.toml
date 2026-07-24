@@ -1,6 +1,6 @@
 [package]
 name = "caldir-core"
-version = "0.12.0"
+version = "0.13.0"
 edition = "2024"
 description = "Core library for caldir calendar storage, sync, and provider protocol"
 license.workspace = true
