@@ -95,11 +95,11 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     let mut google_event = cmd.event.to_google();
     google_event.id = String::new();
 
-    let response = client
+    let response = match client
         .events()
         .insert(
             calendar_id,
-            0,
+            1,
             0,
             false,
             SendUpdates::All,
@@ -107,11 +107,46 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
             &google_event,
         )
         .await
-        .with_context(|| format!("Failed to create event: {}", google_event.summary))?;
+    {
+        Ok(response) => Ok(response),
+        Err(error)
+            if google_event.conference_data.is_some() && is_conference_data_error(&error) =>
+        {
+            eprintln!(
+                "caldir-provider-google: warning: Google rejected copied conference data; \
+                 retrying without it: {error}"
+            );
+            google_event.conference_data = None;
+
+            client
+                .events()
+                .insert(
+                    calendar_id,
+                    1,
+                    0,
+                    false,
+                    SendUpdates::All,
+                    false,
+                    &google_event,
+                )
+                .await
+        }
+        Err(error) => Err(error),
+    }
+    .with_context(|| format!("Failed to create event: {}", google_event.summary))?;
 
     let created_event = Event::from_google(response.body)?;
 
     Ok(created_event)
+}
+
+fn is_conference_data_error(error: &google_calendar::ClientError) -> bool {
+    match error {
+        google_calendar::ClientError::HttpError { error, .. } => {
+            error.to_ascii_lowercase().contains("conference")
+        }
+        _ => false,
+    }
 }
 
 /// Format a `recurrence_id` as the suffix Google appends to a recurring
@@ -138,5 +173,33 @@ fn google_instance_suffix(rid: &EventTime) -> String {
             };
             utc.format("%Y%m%dT%H%M%SZ").to_string()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use google_calendar::{ClientError, HeaderMap, StatusCode};
+
+    fn http_error(message: &str) -> ClientError {
+        ClientError::HttpError {
+            status: StatusCode::BAD_REQUEST,
+            headers: HeaderMap::new(),
+            error: message.to_string(),
+        }
+    }
+
+    #[test]
+    fn identifies_conference_data_errors_for_insert_retry() {
+        let error = http_error(r#"{"error":{"message":"Invalid conferenceData value"}}"#);
+
+        assert!(is_conference_data_error(&error));
+    }
+
+    #[test]
+    fn does_not_retry_unrelated_insert_errors() {
+        let error = http_error(r#"{"error":{"message":"Invalid attendee email"}}"#);
+
+        assert!(!is_conference_data_error(&error));
     }
 }

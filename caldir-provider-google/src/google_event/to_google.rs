@@ -86,6 +86,10 @@ impl ToGoogle for Event {
             .unwrap_or_default()
             .to_string();
 
+        let conference_data = self
+            .x_property("X-GOOGLE-CONFERENCE")
+            .and_then(google_meet_conference_data);
+
         google_calendar::types::Event {
             id: google_event_id,
             i_cal_uid: self.uid.as_str().to_string(),
@@ -103,9 +107,52 @@ impl ToGoogle for Event {
             original_start_time,
             sequence: self.sequence as i64,
             color_id,
+            conference_data,
             ..Default::default()
         }
     }
+}
+
+fn google_meet_conference_data(url: &str) -> Option<google_calendar::types::ConferenceData> {
+    let parsed = url::Url::parse(url).ok()?;
+    if parsed.scheme() != "https" || parsed.host_str() != Some("meet.google.com") {
+        return None;
+    }
+
+    let mut path_segments = parsed
+        .path_segments()?
+        .filter(|segment| !segment.is_empty());
+    let conference_id = path_segments.next()?;
+    if path_segments.next().is_some() {
+        return None;
+    }
+
+    Some(google_calendar::types::ConferenceData {
+        conference_id: conference_id.to_string(),
+        conference_solution: Some(google_calendar::types::ConferenceSolution {
+            icon_uri: String::new(),
+            key: Some(google_calendar::types::ConferenceSolutionKey {
+                type_: "hangoutsMeet".to_string(),
+            }),
+            name: String::new(),
+        }),
+        entry_points: vec![google_calendar::types::EntryPoint {
+            access_code: String::new(),
+            entry_point_features: Vec::new(),
+            entry_point_type: "video".to_string(),
+            label: String::new(),
+            meeting_code: String::new(),
+            passcode: String::new(),
+            password: String::new(),
+            pin: String::new(),
+            region_code: String::new(),
+            uri: url.to_string(),
+        }],
+        create_request: None,
+        notes: String::new(),
+        parameters: None,
+        signature: String::new(),
+    })
 }
 
 fn attendee_to_google(attendee: &Attendee) -> google_calendar::types::EventAttendee {
@@ -197,7 +244,7 @@ pub(crate) fn participation_status_to_google(status: ParticipationStatus) -> &'s
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caldir_core::{Event, EventTime, Reminder, Visibility};
+    use caldir_core::{Event, EventTime, Reminder, Visibility, XProperty};
     use chrono::NaiveDate;
 
     fn sample_event() -> Event {
@@ -284,6 +331,46 @@ mod tests {
 
         assert!(reminders.use_default);
         assert!(reminders.overrides.is_empty());
+    }
+
+    #[test]
+    fn google_meet_x_property_populates_conference_data() {
+        let url = "https://meet.google.com/abc-defg-hij";
+        let mut event = sample_event();
+        event.x_properties = vec![XProperty::new("X-GOOGLE-CONFERENCE", url)];
+
+        let google = event.to_google();
+        let conference = google
+            .conference_data
+            .expect("Google Meet conference data should be preserved");
+
+        assert_eq!(conference.conference_id, "abc-defg-hij");
+        assert_eq!(
+            conference
+                .conference_solution
+                .and_then(|solution| solution.key)
+                .map(|key| key.type_),
+            Some("hangoutsMeet".to_string())
+        );
+        assert_eq!(conference.entry_points.len(), 1);
+        assert_eq!(conference.entry_points[0].entry_point_type, "video");
+        assert_eq!(conference.entry_points[0].uri, url);
+    }
+
+    #[test]
+    fn non_google_meet_x_property_does_not_populate_conference_data() {
+        let mut event = sample_event();
+        event.x_properties = vec![XProperty::new(
+            "X-GOOGLE-CONFERENCE",
+            "https://zoom.us/j/123456789",
+        )];
+
+        assert!(event.to_google().conference_data.is_none());
+    }
+
+    #[test]
+    fn event_without_conference_x_property_has_no_conference_data() {
+        assert!(sample_event().to_google().conference_data.is_none());
     }
 
     #[test]
