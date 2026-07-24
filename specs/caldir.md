@@ -171,14 +171,6 @@ END:VALARM
 **What:** Standard URL field.
 **How caldir uses it:** Set to the video conference URL (Google Meet, etc.) if present.
 
-#### `X-GOOGLE-EVENT-ID`
-**What:** Google-specific extension storing Google's internal event ID.
-**How caldir uses it:** Stored in `x_properties` when pulled from Google. Used for API calls (updates, deletes) since Google's API requires its own event ID, not the RFC 5545 UID.
-
-#### `X-GOOGLE-CONFERENCE`
-**What:** Google-specific extension for conference links.
-**How caldir uses it:** Preserved in `x_properties` when pulled from Google, enabling round-trip sync. We don't actively generate this field—only `URL` is set from the conference URL.
-
 ### Attachments
 
 #### `ATTACH`
@@ -281,34 +273,6 @@ caldav_calendar_url = "https://example.com/dav/calendar"
 ```
 
 The `RemoteConfig::account_identifier()` method in caldir-core extracts this by looking up `{provider}_account` in the config. Returns `None` for providers without accounts (e.g. webcal).
-
----
-
-## Provider-Specific Notes
-
-### Google Calendar
-- We use `single_events=false` to get RRULE instead of expanded instances
-- Google's event `id` is stored as `X-GOOGLE-EVENT-ID` for API calls; the ICS `UID` is Google's `iCalUID`
-- Conference data comes from `conferenceData.entryPoints[type=video].uri`
-- Reminders come from `reminders.overrides` (not default reminders)
-
-### Apple/iCloud (CalDAV)
-- Uses standard CalDAV protocol with app-specific passwords
-- The ICS `UID` is used directly for CalDAV API calls (no separate provider ID needed)
-- `X-APPLE-STRUCTURED-LOCATION` and `X-APPLE-TRAVEL-ADVISORY-BEHAVIOR` aren't interpreted, but round-trip verbatim like any `X-` property
-
-### CalDAV (generic)
-- Plain RFC 4791 with HTTP basic auth; works with Fastmail, Nextcloud, Radicale, etc.
-- Writability is detected per-calendar via a `DAV:current-user-privilege-set` PROPFIND (RFC 3744); calendars without write/bind privileges sync read-only
-- Shares its core CalDAV ops with the iCloud provider
-
-### Outlook / Microsoft 365
-- Microsoft Graph API; pulls from `/events` (not `/calendarView`) so recurring series stay as masters rather than expanded instances
-- Graph speaks Windows timezone names; `tz_normalize` maps inbound to IANA and converts back on the outbound edge
-- Exception instances carry `originalStart`, which becomes the `RECURRENCE-ID`
-
-### Webcal
-- Read-only `.ics` feed subscriptions (e.g. holiday calendars); no account, never pushed
 
 ---
 
