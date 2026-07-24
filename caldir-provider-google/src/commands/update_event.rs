@@ -115,6 +115,7 @@ mod tests {
         let body = patch_body_without_attendees(&event).unwrap();
 
         assert!(body.get("attendees").is_none());
+        assert!(body.get("conferenceData").is_none());
         assert_eq!(
             body.get("summary").and_then(Value::as_str),
             Some("Weekly sync")
