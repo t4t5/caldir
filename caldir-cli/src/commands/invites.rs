@@ -79,7 +79,12 @@ pub fn run(caldir: &Caldir, calendar: Option<String>, all: bool) -> Result<()> {
             .unwrap_or_default();
         println!(
             "{}",
-            format_event_line(event, cal_slug, &status_suffix, caldir)
+            format_event_line(
+                event,
+                cal_slug,
+                &status_suffix,
+                caldir.config().time_format(),
+            )
         );
 
         if let Some(organizer) = event.organizer.as_ref().filter(|o| !o.email.is_empty()) {

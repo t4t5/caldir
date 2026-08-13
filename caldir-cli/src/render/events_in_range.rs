@@ -1,84 +1,69 @@
-use anyhow::Result;
-use caldir_core::{Caldir, Calendar, Event, EventTime};
-use chrono::{DateTime, Duration, NaiveDate, Utc};
+use caldir_core::{Event, EventTime};
+use chrono::{Duration, NaiveDate};
 use owo_colors::OwoColorize;
 
-use crate::render::event::{format_event_line, is_visible, render_participation_status};
+use crate::output::TextRender;
+use crate::render::event::{format_event_line, render_participation_status};
 use crate::render::time::{format_date_label, local_date};
+use crate::views::agenda::{AgendaEntry, AgendaView};
 
-pub fn render_events_in_range(
-    caldir: &Caldir,
-    calendars: Vec<Calendar>,
-    from: DateTime<Utc>,
-    to: DateTime<Utc>,
-) -> Result<()> {
-    let range_start = from.with_timezone(&chrono::Local).date_naive();
-    let range_end = to.with_timezone(&chrono::Local).date_naive();
+impl TextRender for AgendaView {
+    fn to_text(&self) -> String {
+        // One entry per (day, event). A multi-day all-day event is repeated
+        // under every day it spans in text output only.
+        let mut display_entries: Vec<(NaiveDate, &AgendaEntry)> = self
+            .entries
+            .iter()
+            .flat_map(|entry| {
+                display_days(&entry.event, self.range_start(), self.range_end())
+                    .into_iter()
+                    .map(move |day| (day, entry))
+            })
+            .collect();
 
-    // One entry per (day, event)
-    // Note: a multi-day all-day event is repeated under every day it spans
-    // (day, cal_slug, account_email, event)
-    let mut entries: Vec<(NaiveDate, Option<&str>, Option<&str>, Event)> = Vec::new();
+        display_entries.sort_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then_with(|| {
+                    a.1.event
+                        .start
+                        .is_date()
+                        .cmp(&b.1.event.start.is_date())
+                        .reverse()
+                })
+                .then_with(|| a.1.event.start.to_utc().cmp(&b.1.event.start.to_utc()))
+        });
 
-    for cal in &calendars {
-        let events = cal.expanded_events_in_range(from, to)?;
-
-        // Used to check the user's attendance status:
-        let remote_email = cal.remote_email();
-
-        for event in events {
-            if !is_visible(&event) {
-                continue;
-            }
-            for day in display_days(&event, range_start, range_end) {
-                entries.push((day, cal.slug(), remote_email, event.clone()));
-            }
-        }
-    }
-
-    // Sort by day, then all-day events before timed ones, then by start time.
-    entries.sort_by(|a, b| {
-        a.0.cmp(&b.0)
-            .then_with(|| a.3.start.is_date().cmp(&b.3.start.is_date()).reverse())
-            .then_with(|| a.3.start.to_utc().cmp(&b.3.start.to_utc()))
-    });
-
-    if entries.is_empty() {
-        println!("{}", "No events found".dimmed());
-        return Ok(());
-    }
-
-    // Group events by day and print
-    let mut current_date: Option<NaiveDate> = None;
-
-    for (day, cal_slug, email, event) in &entries {
-        if current_date != Some(*day) {
-            if current_date.is_some() {
-                println!();
-            }
-            println!("{}", format_date_label(*day).bold());
-            current_date = Some(*day);
+        if display_entries.is_empty() {
+            return "No events found".dimmed().to_string();
         }
 
-        let invite_indicator = email
-            .as_deref()
-            .filter(|email| event.is_invite_for(email))
-            .and_then(|email| event.attendee_status(email))
-            .map(|status| format!(" ({})", render_participation_status(status)))
-            .unwrap_or_default();
+        let mut lines = Vec::new();
+        let mut current_date = None;
 
-        println!(
-            "{}",
-            format_event_line(
-                event,
-                cal_slug.unwrap_or("(Unknown calendar)"),
+        for (day, entry) in display_entries {
+            if current_date != Some(day) {
+                if current_date.is_some() {
+                    lines.push(String::new());
+                }
+                lines.push(format_date_label(day).bold().to_string());
+                current_date = Some(day);
+            }
+
+            let invite_indicator = entry
+                .rsvp
+                .map(|status| format!(" ({})", render_participation_status(status)))
+                .unwrap_or_default();
+
+            lines.push(format_event_line(
+                &entry.event,
+                entry.calendar.as_deref().unwrap_or("(Unknown calendar)"),
                 &invite_indicator,
-                caldir
-            )
-        );
-    }
+                self.time_format(),
+            ));
+        }
 
-    Ok(())
+        lines.join("\n")
+    }
 }
 
 /// The day(s) an event should be listed under, clamped to `[range_start, range_end]`.
@@ -107,7 +92,7 @@ fn display_days(event: &Event, range_start: NaiveDate, range_end: NaiveDate) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use chrono::{TimeZone, Utc};
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()

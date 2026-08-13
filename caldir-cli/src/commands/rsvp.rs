@@ -136,7 +136,10 @@ fn run_interactive(caldir: &Caldir) -> Result<()> {
             .map(|o| o.name.as_deref().unwrap_or(&o.email).to_string())
             .unwrap_or_else(|| "(unknown)".to_string());
 
-        println!("{}", format_event_line(&event, &cal_slug, "", caldir));
+        println!(
+            "{}",
+            format_event_line(&event, &cal_slug, "", caldir.config().time_format())
+        );
         println!("       {} {}", "from:".dimmed(), organizer.dimmed());
         print!("  [a]ccept  [d]ecline  [m]aybe  [s]kip: ");
         io::stdout().flush()?;

@@ -2,6 +2,7 @@ mod commands;
 mod output;
 mod render;
 mod utils;
+mod views;
 
 use anyhow::{Result, bail};
 use caldir_core::Caldir;
@@ -221,7 +222,10 @@ enum Commands {
 
 impl Commands {
     fn supports_json(&self) -> bool {
-        matches!(self, Self::Config)
+        matches!(
+            self,
+            Self::Config | Self::Events { .. } | Self::Today { .. } | Self::Week { .. }
+        )
     }
 }
 
@@ -277,10 +281,20 @@ async fn main() -> Result<()> {
             force,
         } => commands::sync::run(&caldir, calendar, from, to, verbose, force).await,
         Commands::Events { calendar, from, to } => {
-            commands::events::run(&caldir, calendar, from, to)
+            let view = commands::events::run(&caldir, calendar, from, to)?;
+            output::emit(&view, output_format);
+            Ok(())
         }
-        Commands::Today { calendar } => commands::today::run(&caldir, calendar),
-        Commands::Week { calendar } => commands::week::run(&caldir, calendar),
+        Commands::Today { calendar } => {
+            let view = commands::today::run(&caldir, calendar)?;
+            output::emit(&view, output_format);
+            Ok(())
+        }
+        Commands::Week { calendar } => {
+            let view = commands::week::run(&caldir, calendar)?;
+            output::emit(&view, output_format);
+            Ok(())
+        }
         Commands::New {
             title,
             start,
@@ -352,9 +366,18 @@ mod tests {
     }
 
     #[test]
-    fn only_config_supports_json() {
+    fn views_support_json() {
         assert!(Commands::Config.supports_json());
-        assert!(!Commands::Today { calendar: None }.supports_json());
+        assert!(
+            Commands::Events {
+                calendar: None,
+                from: None,
+                to: None,
+            }
+            .supports_json()
+        );
+        assert!(Commands::Today { calendar: None }.supports_json());
+        assert!(Commands::Week { calendar: None }.supports_json());
         assert!(!Commands::Update.supports_json());
     }
 }

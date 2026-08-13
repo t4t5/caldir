@@ -1,4 +1,4 @@
-use caldir_core::{Caldir, Event, ParticipationStatus, Status};
+use caldir_core::{Event, ParticipationStatus, Status, TimeFormat};
 use owo_colors::OwoColorize;
 
 use crate::render::time::format_time_only;
@@ -8,8 +8,13 @@ pub fn is_visible(event: &Event) -> bool {
 }
 
 /// Format a standard event line: "  {time} {summary} [{cal_slug}]{status}"
-pub fn format_event_line(event: &Event, cal_slug: &str, status: &str, caldir: &Caldir) -> String {
-    let time = format_time_only(&event.start, caldir.config().time_format());
+pub fn format_event_line(
+    event: &Event,
+    cal_slug: &str,
+    status: &str,
+    time_format: TimeFormat,
+) -> String {
+    let time = format_time_only(&event.start, time_format);
     let cal_tag = format!("[{}]", cal_slug);
 
     let summary_text = &event.summary.clone().unwrap_or("(Untitled)".to_string());
