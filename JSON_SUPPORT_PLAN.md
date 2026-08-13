@@ -115,17 +115,20 @@ Four commits/PRs, each independently landable.
 
 ### 1. caldir-core: `Ics<Event>` at the RPC boundary
 
-- New `rpc/ics.rs`: `pub struct Ics<T>(pub T)` with `Serialize` (via
-  `to_ics_string`) and `Deserialize` (via `from_single_ics_str`) implemented
-  for `Ics<Event>`, plus `From<Event>` and `into_inner()`. Export from lib.
-- Delete the `Serialize`/`Deserialize` impls on `Event` (`event.rs:277-290`).
-  `Event` ends with no serde impls.
-- RPC types: `CreateEvent { event: Ics<Event> }`, same for `UpdateEvent`;
-  `ListEvents::Response = Vec<Ics<Event>>`. (`Response<T>` serializes `data`
-  directly, so the bare `Vec` alias needs the newtype — `#[serde(with)]`
-  can't attach to it.)
-- Providers (google, icloud, outlook, caldav, webcal): mechanical
-  wrap/unwrap at the handler edges, ~10 sites.
+As built (the codec stays out of provider code entirely, unlike the original
+sketch of `Ics<Event>` fields + ~10 wrap/unwrap sites per provider):
+
+- New `rpc/ics.rs`: `serialize`/`deserialize` fns (via `to_ics_string` /
+  `from_single_ics_str`) plus a crate-internal `Ics<T>` wrapper delegating to
+  them.
+- Delete the `Serialize`/`Deserialize` impls on `Event`. `Event` ends with no
+  serde impls.
+- Request structs keep `event: Event`, annotated
+  `#[serde(with = "crate::rpc::ics")]`.
+- Responses convert at the dispatch/exchange boundary via a crate-private
+  `WireValue` trait (`Event::Wire = Ics<Event>`, identity for plain-JSON
+  types), so `Handler` methods and providers keep plain `Event` — zero
+  provider changes.
 
 **Wire bytes are identical** — still ICS strings inside the JSON RPC — so no
 protocol version concerns; existing round-trip tests prove it. Breaking for

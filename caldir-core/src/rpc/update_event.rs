@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct UpdateEvent {
     #[serde(flatten)]
     pub remote: RemoteConfigParams,
-    #[serde(with = "super::ics")]
+    #[serde(with = "crate::rpc::ics")]
     pub event: Event,
 }
 

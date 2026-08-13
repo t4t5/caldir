@@ -153,17 +153,7 @@ mod tests {
         const TIMEOUT: Duration = Duration::from_secs(7);
     }
 
-    impl rpc::WireValue for EchoResponse {
-        type Wire = Self;
-
-        fn into_wire(self) -> Self::Wire {
-            self
-        }
-
-        fn from_wire(wire: Self::Wire) -> Self {
-            wire
-        }
-    }
+    rpc::json_wire!(EchoResponse);
 
     fn provider_with_transport(transport: Arc<dyn ProviderTransport>) -> Provider {
         Provider::with_transport(ProviderSlug::from("test"), transport)

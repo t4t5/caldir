@@ -122,7 +122,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EventTime, Ics, RemoteConfigParams};
+    use crate::rpc::Ics;
+    use crate::{EventTime, RemoteConfigParams};
     use chrono::NaiveDate;
 
     struct StubHandler;

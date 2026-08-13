@@ -36,7 +36,7 @@ impl WireValue for Event {
     type Wire = Ics<Event>;
 
     fn into_wire(self) -> Self::Wire {
-        self.into()
+        Ics(self)
     }
 
     fn from_wire(wire: Self::Wire) -> Self {
@@ -56,10 +56,11 @@ impl<T: WireValue> WireValue for Vec<T> {
     }
 }
 
+// No blanket impl for Serialize types: coherence would conflict with the Event impl.
 macro_rules! json_wire {
     ($($ty:ty),+ $(,)?) => {
         $(
-            impl WireValue for $ty {
+            impl $crate::rpc::WireValue for $ty {
                 type Wire = Self;
 
                 fn into_wire(self) -> Self::Wire {
@@ -73,6 +74,9 @@ macro_rules! json_wire {
         )+
     };
 }
+
+#[cfg(test)]
+pub(crate) use json_wire;
 
 json_wire!((), CalendarConfig, ConnectResponse);
 

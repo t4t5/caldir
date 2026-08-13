@@ -1,3 +1,6 @@
+//! ICS string codec for events on the RPC wire.
+//! Fields use `#[serde(with = "crate::rpc::ics")]`; response values wrap in [`Ics`].
+
 use crate::Event;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -7,12 +10,6 @@ pub struct Ics<T>(pub T);
 impl<T> Ics<T> {
     pub fn into_inner(self) -> T {
         self.0
-    }
-}
-
-impl From<Event> for Ics<Event> {
-    fn from(event: Event) -> Self {
-        Self(event)
     }
 }
 
@@ -50,7 +47,7 @@ mod tests {
             EventTime::Date(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
         );
 
-        let json = serde_json::to_string(&Ics::from(event.clone())).unwrap();
+        let json = serde_json::to_string(&Ics(event.clone())).unwrap();
         let decoded: Ics<Event> = serde_json::from_str(&json).unwrap();
 
         assert_eq!(decoded.into_inner(), event);
