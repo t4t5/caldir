@@ -99,8 +99,6 @@ jobs:
             --generate-notes
 
   publish:
-    # Runs even when no CLI release happened (crate-only bumps), but never
-    # when CI or any release job failed.
     needs: [ci, release]
     if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest

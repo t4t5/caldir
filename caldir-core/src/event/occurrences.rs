@@ -192,8 +192,6 @@ fn format_dtstart(start: &EventTime) -> String {
 
 fn format_exdate_or_rdate(name: &str, time: &EventTime, start: &EventTime) -> String {
     match (start, time) {
-        // A date is a date — converting via to_utc() would shift it by the
-        // machine's UTC offset (e.g. Jan 12 → Jan 11 east of UTC).
         (_, EventTime::Date(d)) => format!("{};VALUE=DATE:{}", name, d.format("%Y%m%d")),
         (EventTime::Date(_), _) => {
             format!("{};VALUE=DATE:{}", name, time.to_utc().format("%Y%m%d"))
