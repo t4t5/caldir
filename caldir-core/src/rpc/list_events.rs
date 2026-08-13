@@ -1,4 +1,4 @@
-use super::{Method, Rpc};
+use super::{Ics, Method, Rpc};
 use crate::{Event, RemoteConfigParams};
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,7 @@ pub struct ListEvents {
 
 impl Rpc for ListEvents {
     const METHOD: Method = Method::ListEvents;
-    type Response = Vec<Event>;
+    type Response = Vec<Ics<Event>>;
 }
 
 #[cfg(test)]

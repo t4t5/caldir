@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use caldir_core::rpc::{
     Connect, ConnectResponse, CreateEvent, DeleteEvent, ListCalendars, ListEvents, UpdateEvent,
 };
-use caldir_core::{CalendarConfig, Event, provider};
+use caldir_core::{CalendarConfig, Event, Ics, provider};
 
 struct GoogleProvider;
 
@@ -25,16 +25,20 @@ impl provider::Handler for GoogleProvider {
         Ok(commands::list_calendars::handle(cmd).await?)
     }
 
-    async fn list_events(&self, cmd: ListEvents) -> provider::Result<Vec<Event>> {
-        Ok(commands::list_events::handle(cmd).await?)
+    async fn list_events(&self, cmd: ListEvents) -> provider::Result<Vec<Ics<Event>>> {
+        Ok(commands::list_events::handle(cmd)
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
 
-    async fn create_event(&self, cmd: CreateEvent) -> provider::Result<Event> {
-        Ok(commands::create_event::handle(cmd).await?)
+    async fn create_event(&self, cmd: CreateEvent) -> provider::Result<Ics<Event>> {
+        Ok(commands::create_event::handle(cmd).await?.into())
     }
 
-    async fn update_event(&self, cmd: UpdateEvent) -> provider::Result<Event> {
-        Ok(commands::update_event::handle(cmd).await?)
+    async fn update_event(&self, cmd: UpdateEvent) -> provider::Result<Ics<Event>> {
+        Ok(commands::update_event::handle(cmd).await?.into())
     }
 
     async fn delete_event(&self, cmd: DeleteEvent) -> provider::Result<()> {

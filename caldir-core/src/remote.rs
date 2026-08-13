@@ -4,7 +4,7 @@ mod event;
 
 use crate::diff::EventChange;
 use crate::provider::ProviderError;
-use crate::{DateRange, Event, Provider, rpc};
+use crate::{DateRange, Event, Ics, Provider, rpc};
 
 pub use config::{RemoteConfig, RemoteConfigParams};
 pub(crate) use error::RemoteError;
@@ -32,6 +32,7 @@ impl Remote {
             })
             .await?
             .into_iter()
+            .map(Ics::into_inner)
             .map(RemoteEvent::new)
             .collect();
 
@@ -64,9 +65,10 @@ impl Remote {
             .provider
             .call(rpc::CreateEvent {
                 remote: self.params.clone(),
-                event,
+                event: event.into(),
             })
-            .await?;
+            .await?
+            .into_inner();
 
         Ok(RemoteEvent::new(event))
     }
@@ -75,7 +77,7 @@ impl Remote {
         self.provider
             .call(rpc::DeleteEvent {
                 remote: self.params.clone(),
-                event,
+                event: event.into(),
             })
             .await?;
 
@@ -87,9 +89,10 @@ impl Remote {
             .provider
             .call(rpc::UpdateEvent {
                 remote: self.params.clone(),
-                event,
+                event: event.into(),
             })
-            .await?;
+            .await?
+            .into_inner();
 
         Ok(RemoteEvent::new(event))
     }
@@ -112,7 +115,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(mock.captured_request::<rpc::CreateEvent>().event, event);
+        assert_eq!(
+            mock.captured_request::<rpc::CreateEvent>()
+                .event
+                .into_inner(),
+            event
+        );
     }
 
     #[tokio::test]
@@ -131,7 +139,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(mock.captured_request::<rpc::UpdateEvent>().event, to);
+        assert_eq!(
+            mock.captured_request::<rpc::UpdateEvent>()
+                .event
+                .into_inner(),
+            to
+        );
     }
 
     #[tokio::test]
@@ -162,7 +175,10 @@ mod tests {
             .await
             .unwrap();
 
-        let captured = mock.captured_request::<rpc::UpdateEvent>().event;
+        let captured = mock
+            .captured_request::<rpc::UpdateEvent>()
+            .event
+            .into_inner();
         assert_eq!(captured.x_properties.len(), 1);
         assert_eq!(
             captured.x_properties[0].params,
@@ -181,6 +197,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(mock.captured_request::<rpc::DeleteEvent>().event, event);
+        assert_eq!(
+            mock.captured_request::<rpc::DeleteEvent>()
+                .event
+                .into_inner(),
+            event
+        );
     }
 }

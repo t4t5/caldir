@@ -12,8 +12,8 @@ use std::future::Future;
 use std::io::{self, BufRead, Write};
 
 use crate::rpc::{
-    Connect, ConnectResponse, CreateEvent, DeleteEvent, ListCalendars, ListEvents, Method, Request,
-    Response, UpdateEvent,
+    Connect, ConnectResponse, CreateEvent, DeleteEvent, Ics, ListCalendars, ListEvents, Method,
+    Request, Response, UpdateEvent,
 };
 use crate::{CalendarConfig, Event};
 
@@ -32,15 +32,15 @@ pub trait Handler: Send + Sync {
         Err("list_calendars is not supported by this provider".into())
     }
 
-    async fn list_events(&self, _cmd: ListEvents) -> Result<Vec<Event>> {
+    async fn list_events(&self, _cmd: ListEvents) -> Result<Vec<Ics<Event>>> {
         Err("list_events is not supported by this provider".into())
     }
 
-    async fn create_event(&self, _cmd: CreateEvent) -> Result<Event> {
+    async fn create_event(&self, _cmd: CreateEvent) -> Result<Ics<Event>> {
         Err("This provider does not support creating events".into())
     }
 
-    async fn update_event(&self, _cmd: UpdateEvent) -> Result<Event> {
+    async fn update_event(&self, _cmd: UpdateEvent) -> Result<Ics<Event>> {
         Err("This provider does not support updating events".into())
     }
 

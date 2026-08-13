@@ -1,4 +1,4 @@
-use super::{Method, Rpc};
+use super::{Ics, Method, Rpc};
 use crate::{Event, RemoteConfigParams};
 use serde::{Deserialize, Serialize};
 
@@ -6,12 +6,12 @@ use serde::{Deserialize, Serialize};
 pub struct UpdateEvent {
     #[serde(flatten)]
     pub remote: RemoteConfigParams,
-    pub event: Event,
+    pub event: Ics<Event>,
 }
 
 impl Rpc for UpdateEvent {
     const METHOD: Method = Method::UpdateEvent;
-    type Response = Event;
+    type Response = Ics<Event>;
 }
 
 #[cfg(test)]
@@ -34,7 +34,7 @@ mod tests {
 
         let cmd = UpdateEvent {
             remote: params,
-            event: event.clone(),
+            event: event.clone().into(),
         };
 
         let json = cmd.to_json().unwrap();

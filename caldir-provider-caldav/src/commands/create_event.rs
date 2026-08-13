@@ -16,5 +16,11 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     let session = store.load(&config.caldav_account)?;
     let (username, password) = session.credentials();
 
-    ops::create_event(username, password, &config.caldav_calendar_url, cmd.event).await
+    ops::create_event(
+        username,
+        password,
+        &config.caldav_calendar_url,
+        cmd.event.into_inner(),
+    )
+    .await
 }

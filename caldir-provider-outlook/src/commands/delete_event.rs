@@ -10,6 +10,7 @@ use crate::session::SessionStore;
 
 pub async fn handle(cmd: DeleteEvent) -> Result<()> {
     let config = OutlookRemoteConfig::try_from(&cmd.remote)?;
+    let event = cmd.event.into_inner();
 
     let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
     let session_store = SessionStore::new(storage.clone());
@@ -20,8 +21,7 @@ pub async fn handle(cmd: DeleteEvent) -> Result<()> {
         .await?;
     let graph = GraphClient::new(session.access_token());
 
-    let outlook_event_id = cmd
-        .event
+    let outlook_event_id = event
         .x_property(PROVIDER_EVENT_ID_PROPERTY)
         .ok_or_else(|| {
             anyhow::anyhow!("Cannot delete event without {PROVIDER_EVENT_ID_PROPERTY}")

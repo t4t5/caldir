@@ -13,6 +13,7 @@ use crate::session::SessionStore;
 
 pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     let config = GoogleRemoteConfig::try_from(&cmd.remote)?;
+    let event = cmd.event.into_inner();
     let account_email = &config.google_account;
     let calendar_id = &config.google_calendar_id;
 
@@ -29,9 +30,8 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     // Shares the master's iCalUID, so creating via events().insert() trips Google's "duplicate identifier" check.
     // Google's data model treats an override as a modification of an existing auto-expanded instance.
     // PUT the synthetic instance id `{master_id}_{rid}` instead.
-    if let Some(rid) = cmd.event.recurrence_id.as_ref() {
-        let master_id = cmd
-            .event
+    if let Some(rid) = event.recurrence_id.as_ref() {
+        let master_id = event
             .x_property(PROVIDER_EVENT_ID_PROPERTY)
             .ok_or_else(|| {
                 anyhow!(
@@ -47,19 +47,14 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
         );
 
         // If it's just an RSVP status update, use PATCH instead of PUT:
-        if cmd.event.is_invite_for(account_email) {
-            let google_event = patch_invite_status(
-                &session,
-                calendar_id,
-                &instance_id,
-                &cmd.event,
-                account_email,
-            )
-            .await?;
+        if event.is_invite_for(account_email) {
+            let google_event =
+                patch_invite_status(&session, calendar_id, &instance_id, &event, account_email)
+                    .await?;
 
             return Event::from_google(google_event);
         } else {
-            let mut google_event = cmd.event.to_google();
+            let mut google_event = event.to_google();
 
             google_event.id = instance_id.clone();
 
@@ -92,7 +87,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
 
     // Let google change the ID
     // (Otherwise we'll get "Invalid resource id value")
-    let mut google_event = cmd.event.to_google();
+    let mut google_event = event.to_google();
     google_event.id = String::new();
 
     let response = match client

@@ -23,4 +23,5 @@ pub use event::{
 };
 pub use provider::{Provider, ProviderRegistry, ProviderSlug};
 pub use remote::{Remote, RemoteConfig, RemoteConfigParams, RemoteEvent};
+pub use rpc::Ics;
 pub use utils::{DateBounds, DateRange};

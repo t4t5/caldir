@@ -1,4 +1,4 @@
-use super::{Method, Rpc};
+use super::{Ics, Method, Rpc};
 use crate::{Event, RemoteConfigParams};
 use serde::{Deserialize, Serialize};
 
@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct DeleteEvent {
     #[serde(flatten)]
     pub remote: RemoteConfigParams,
-    pub event: Event,
+    pub event: Ics<Event>,
 }
 
 impl Rpc for DeleteEvent {
@@ -37,7 +37,7 @@ mod tests {
 
         let cmd = DeleteEvent {
             remote: params,
-            event,
+            event: event.into(),
         };
 
         let json = cmd.to_json().unwrap();

@@ -345,7 +345,7 @@ mod tests {
         assert_eq!(calendar.state().sync_base(&id), None);
 
         let mock = test_mock_provider();
-        mock.reply::<rpc::ListEvents>(vec![event.clone()]);
+        mock.reply::<rpc::ListEvents>(vec![event.clone().into()]);
         let remote = Remote::new(mock.provider(), test_remote_params());
 
         let mut connection = Connection::new(calendar, remote);
@@ -363,7 +363,7 @@ mod tests {
         let id = event.event_instance_id();
         connection.local().create_event(event.clone()).unwrap();
 
-        mock.reply::<rpc::ListEvents>(vec![event]);
+        mock.reply::<rpc::ListEvents>(vec![event.into()]);
         connection.diff(&DateRange::default()).await.unwrap();
 
         let reloaded = Calendar::load(connection.local().path()).unwrap();
@@ -475,7 +475,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(mock.captured_request::<rpc::CreateEvent>().event, event);
+        assert_eq!(
+            mock.captured_request::<rpc::CreateEvent>()
+                .event
+                .into_inner(),
+            event
+        );
     }
 
     #[tokio::test]
@@ -492,7 +497,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(mock.captured_request::<rpc::UpdateEvent>().event, to);
+        assert_eq!(
+            mock.captured_request::<rpc::UpdateEvent>()
+                .event
+                .into_inner(),
+            to
+        );
     }
 
     #[tokio::test]
@@ -506,7 +516,12 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(mock.captured_request::<rpc::DeleteEvent>().event, event);
+        assert_eq!(
+            mock.captured_request::<rpc::DeleteEvent>()
+                .event
+                .into_inner(),
+            event
+        );
     }
 
     #[tokio::test]

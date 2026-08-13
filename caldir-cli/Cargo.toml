@@ -34,7 +34,7 @@ humantime = "2"
 iana-time-zone = "0.1"
 
 # Core library
-caldir-core = { path = "../caldir-core", version = "0.13.0" }
+caldir-core = { path = "../caldir-core", version = "0.14.0" }
 
 # Colored output
 owo-colors = "4"
