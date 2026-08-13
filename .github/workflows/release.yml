@@ -8,6 +8,9 @@ permissions:
   contents: write
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   check-cli-version:
     runs-on: ubuntu-latest
     outputs:
@@ -33,7 +36,7 @@ jobs:
           fi
 
   build:
-    needs: check-cli-version
+    needs: [check-cli-version, ci]
     if: needs.check-cli-version.outputs.should_release == 'true'
     strategy:
       matrix:
@@ -96,7 +99,9 @@ jobs:
             --generate-notes
 
   publish:
-    needs: release
+    # Runs even when no CLI release happened (crate-only bumps), but never
+    # when CI or any release job failed.
+    needs: [ci, release]
     if: ${{ !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
