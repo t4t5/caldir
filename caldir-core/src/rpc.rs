@@ -6,6 +6,7 @@ mod list_calendars;
 mod list_events;
 mod update_event;
 
+use crate::{CalendarConfig, Event};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -24,15 +25,64 @@ pub use update_event::UpdateEvent;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 
+pub(crate) trait WireValue: Sized {
+    type Wire: Serialize + DeserializeOwned;
+
+    fn into_wire(self) -> Self::Wire;
+    fn from_wire(wire: Self::Wire) -> Self;
+}
+
+impl WireValue for Event {
+    type Wire = Ics<Event>;
+
+    fn into_wire(self) -> Self::Wire {
+        self.into()
+    }
+
+    fn from_wire(wire: Self::Wire) -> Self {
+        wire.into_inner()
+    }
+}
+
+impl<T: WireValue> WireValue for Vec<T> {
+    type Wire = Vec<T::Wire>;
+
+    fn into_wire(self) -> Self::Wire {
+        self.into_iter().map(WireValue::into_wire).collect()
+    }
+
+    fn from_wire(wire: Self::Wire) -> Self {
+        wire.into_iter().map(T::from_wire).collect()
+    }
+}
+
+macro_rules! json_wire {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl WireValue for $ty {
+                type Wire = Self;
+
+                fn into_wire(self) -> Self::Wire {
+                    self
+                }
+
+                fn from_wire(wire: Self::Wire) -> Self {
+                    wire
+                }
+            }
+        )+
+    };
+}
+
+json_wire!((), CalendarConfig, ConnectResponse);
+
+pub(crate) type Wire<T> = <T as WireValue>::Wire;
+
 // Handles serialization of command + deserialization of response
 pub(crate) trait Rpc: Serialize {
-    type Response;
-    type WireResponse: Serialize + DeserializeOwned;
+    type Response: WireValue;
     const METHOD: Method;
     const TIMEOUT: Duration = DEFAULT_TIMEOUT;
-
-    fn encode_response(response: Self::Response) -> Self::WireResponse;
-    fn decode_response(response: Self::WireResponse) -> Self::Response;
 
     fn to_json(&self) -> Result<serde_json::Value, serde_json::Error>
     where

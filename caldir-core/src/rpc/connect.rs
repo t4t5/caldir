@@ -20,15 +20,6 @@ pub struct Connect {
 impl Rpc for Connect {
     const METHOD: Method = Method::Connect;
     type Response = ConnectResponse;
-    type WireResponse = ConnectResponse;
-
-    fn encode_response(response: Self::Response) -> Self::WireResponse {
-        response
-    }
-
-    fn decode_response(response: Self::WireResponse) -> Self::Response {
-        response
-    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use super::{Ics, Method, Rpc};
+use super::{Method, Rpc};
 use crate::{Event, RemoteConfigParams};
 use serde::{Deserialize, Serialize};
 
@@ -13,15 +13,6 @@ pub struct UpdateEvent {
 impl Rpc for UpdateEvent {
     const METHOD: Method = Method::UpdateEvent;
     type Response = Event;
-    type WireResponse = Ics<Event>;
-
-    fn encode_response(response: Self::Response) -> Self::WireResponse {
-        response.into()
-    }
-
-    fn decode_response(response: Self::WireResponse) -> Self::Response {
-        response.into_inner()
-    }
 }
 
 #[cfg(test)]

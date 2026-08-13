@@ -1,4 +1,4 @@
-use super::{Ics, Method, Rpc};
+use super::{Method, Rpc};
 use crate::{Event, RemoteConfigParams};
 use serde::{Deserialize, Serialize};
 
@@ -13,15 +13,6 @@ pub struct ListEvents {
 impl Rpc for ListEvents {
     const METHOD: Method = Method::ListEvents;
     type Response = Vec<Event>;
-    type WireResponse = Vec<Ics<Event>>;
-
-    fn encode_response(response: Self::Response) -> Self::WireResponse {
-        response.into_iter().map(Into::into).collect()
-    }
-
-    fn decode_response(response: Self::WireResponse) -> Self::Response {
-        response.into_iter().map(Ics::into_inner).collect()
-    }
 }
 
 #[cfg(test)]

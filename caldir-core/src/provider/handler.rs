@@ -12,7 +12,7 @@ use std::io::{self, BufRead, Write};
 
 use crate::rpc::{
     Connect, ConnectResponse, CreateEvent, DeleteEvent, ListCalendars, ListEvents, Method, Request,
-    Response, Rpc, UpdateEvent,
+    Response, Rpc, UpdateEvent, WireValue,
 };
 use crate::{CalendarConfig, Event};
 
@@ -116,7 +116,7 @@ where
 {
     let cmd: C = serde_json::from_value(params)?;
     let response = handler(cmd).await?;
-    Ok(serde_json::to_value(C::encode_response(response))?)
+    Ok(serde_json::to_value(response.into_wire())?)
 }
 
 #[cfg(test)]

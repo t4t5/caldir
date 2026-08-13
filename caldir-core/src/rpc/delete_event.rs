@@ -13,15 +13,6 @@ pub struct DeleteEvent {
 impl Rpc for DeleteEvent {
     const METHOD: Method = Method::DeleteEvent;
     type Response = ();
-    type WireResponse = ();
-
-    fn encode_response(response: Self::Response) -> Self::WireResponse {
-        response
-    }
-
-    fn decode_response(response: Self::WireResponse) -> Self::Response {
-        response
-    }
 }
 
 #[cfg(test)]
