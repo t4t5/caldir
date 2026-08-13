@@ -192,10 +192,10 @@ fn format_dtstart(start: &EventTime) -> String {
 
 fn format_exdate_or_rdate(name: &str, time: &EventTime, start: &EventTime) -> String {
     match (start, time) {
+        (_, EventTime::Date(d)) => format!("{};VALUE=DATE:{}", name, d.format("%Y%m%d")),
         (EventTime::Date(_), _) => {
             format!("{};VALUE=DATE:{}", name, time.to_utc().format("%Y%m%d"))
         }
-        (_, EventTime::Date(d)) => format!("{};VALUE=DATE:{}", name, d.format("%Y%m%d")),
         (_, EventTime::DateTimeUtc(dt)) => {
             format!("{}:{}", name, dt.format("%Y%m%dT%H%M%SZ"))
         }
