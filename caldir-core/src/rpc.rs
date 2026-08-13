@@ -5,9 +5,8 @@ mod ics;
 mod list_calendars;
 mod list_events;
 mod update_event;
+mod wire;
 
-use crate::{CalendarConfig, Event};
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -22,60 +21,11 @@ pub(crate) use ics::Ics;
 pub use list_calendars::ListCalendars;
 pub use list_events::ListEvents;
 pub use update_event::UpdateEvent;
+#[cfg(test)]
+pub(crate) use wire::JsonWireValue;
+pub(crate) use wire::{Wire, WireValue};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
-
-pub(crate) trait WireValue: Sized {
-    type Wire: Serialize + DeserializeOwned;
-
-    fn into_wire(self) -> Self::Wire;
-    fn from_wire(wire: Self::Wire) -> Self;
-}
-
-impl WireValue for Event {
-    type Wire = Ics;
-
-    fn into_wire(self) -> Self::Wire {
-        Ics(self)
-    }
-
-    fn from_wire(wire: Self::Wire) -> Self {
-        wire.into_inner()
-    }
-}
-
-impl<T: WireValue> WireValue for Vec<T> {
-    type Wire = Vec<T::Wire>;
-
-    fn into_wire(self) -> Self::Wire {
-        self.into_iter().map(WireValue::into_wire).collect()
-    }
-
-    fn from_wire(wire: Self::Wire) -> Self {
-        wire.into_iter().map(T::from_wire).collect()
-    }
-}
-
-/// Response types that pass through as plain JSON; ICS-encoded types impl [`WireValue`] directly.
-pub(crate) trait JsonWireValue: Serialize + DeserializeOwned {}
-
-impl JsonWireValue for () {}
-impl JsonWireValue for CalendarConfig {}
-impl JsonWireValue for ConnectResponse {}
-
-impl<T: JsonWireValue> WireValue for T {
-    type Wire = Self;
-
-    fn into_wire(self) -> Self::Wire {
-        self
-    }
-
-    fn from_wire(wire: Self::Wire) -> Self {
-        wire
-    }
-}
-
-pub(crate) type Wire<T> = <T as WireValue>::Wire;
 
 // Handles serialization of command + deserialization of response
 pub(crate) trait Rpc: Serialize {
