@@ -153,7 +153,7 @@ mod tests {
         const TIMEOUT: Duration = Duration::from_secs(7);
     }
 
-    rpc::json_wire!(EchoResponse);
+    impl rpc::JsonWireValue for EchoResponse {}
 
     fn provider_with_transport(transport: Arc<dyn ProviderTransport>) -> Provider {
         Provider::with_transport(ProviderSlug::from("test"), transport)

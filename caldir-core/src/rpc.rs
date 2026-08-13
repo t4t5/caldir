@@ -56,29 +56,23 @@ impl<T: WireValue> WireValue for Vec<T> {
     }
 }
 
-// No blanket impl for Serialize types: coherence would conflict with the Event impl.
-macro_rules! json_wire {
-    ($($ty:ty),+ $(,)?) => {
-        $(
-            impl $crate::rpc::WireValue for $ty {
-                type Wire = Self;
+pub(crate) trait JsonWireValue: Serialize + DeserializeOwned {}
 
-                fn into_wire(self) -> Self::Wire {
-                    self
-                }
+impl JsonWireValue for () {}
+impl JsonWireValue for CalendarConfig {}
+impl JsonWireValue for ConnectResponse {}
 
-                fn from_wire(wire: Self::Wire) -> Self {
-                    wire
-                }
-            }
-        )+
-    };
+impl<T: JsonWireValue> WireValue for T {
+    type Wire = Self;
+
+    fn into_wire(self) -> Self::Wire {
+        self
+    }
+
+    fn from_wire(wire: Self::Wire) -> Self {
+        wire
+    }
 }
-
-#[cfg(test)]
-pub(crate) use json_wire;
-
-json_wire!((), CalendarConfig, ConnectResponse);
 
 pub(crate) type Wire<T> = <T as WireValue>::Wire;
 
