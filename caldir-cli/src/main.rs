@@ -1,8 +1,6 @@
 mod commands;
 mod output;
-mod render;
 mod utils;
-mod views;
 
 use anyhow::{Result, bail};
 use caldir_core::Caldir;

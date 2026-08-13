@@ -1,4 +1,4 @@
-use crate::render::time::format_datetime;
+use crate::output::time::format_datetime;
 use caldir_core::{
     Attachment, Attendee, Caldir, Calendar, CalendarDiff, EventChange, Recurrence, Reminder,
     TimeFormat, XProperty,

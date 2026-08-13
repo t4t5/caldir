@@ -3,9 +3,9 @@ use caldir_core::Caldir;
 use caldir_core::DateBounds;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 
+use crate::output::agenda::AgendaView;
 use crate::utils::parse_date;
 use crate::utils::{require_calendars, resolve_calendars};
-use crate::views::agenda::AgendaView;
 
 pub fn run(
     caldir: &Caldir,

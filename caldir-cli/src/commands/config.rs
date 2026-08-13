@@ -1,23 +1,7 @@
 use anyhow::Result;
 use caldir_core::{Caldir, CaldirConfig};
-use serde::Serialize;
-use std::path::PathBuf;
 
-use crate::output::TextRender;
-
-#[derive(Serialize)]
-pub struct ConfigView {
-    pub path: PathBuf,
-    pub config: CaldirConfig,
-}
-
-impl TextRender for ConfigView {
-    fn to_text(&self) -> String {
-        format!("Path: {}\n\n{}", self.path.display(), self.config)
-            .trim_end()
-            .to_string()
-    }
-}
+use crate::output::config::ConfigView;
 
 pub fn run(caldir: &Caldir) -> Result<ConfigView> {
     Ok(ConfigView {
@@ -29,10 +13,11 @@ pub fn run(caldir: &Caldir) -> Result<ConfigView> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::output::Output;
+    use crate::output::{Output, TextRender};
     use caldir_core::{Reminder, TimeFormat};
     use indoc::indoc;
     use pretty_assertions::assert_eq;
+    use std::path::PathBuf;
 
     fn sample_view() -> ConfigView {
         ConfigView {

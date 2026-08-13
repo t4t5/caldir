@@ -3,8 +3,8 @@ use caldir_core::{Caldir, Calendar, Event, EventTime, ParticipationStatus, Statu
 use chrono::{DateTime, NaiveDate, SecondsFormat, Utc};
 use serde::ser::{Serialize, SerializeSeq, SerializeStruct, Serializer};
 
-use crate::render::event::is_visible;
-use crate::render::time::local_date;
+use crate::output::event::is_visible;
+use crate::output::time::local_date;
 
 pub struct AgendaView {
     time_format: TimeFormat,

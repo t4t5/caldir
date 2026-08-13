@@ -3,8 +3,8 @@ use caldir_core::Caldir;
 use caldir_core::DateBounds;
 use chrono::{DateTime, Datelike, Duration, TimeZone, Utc};
 
+use crate::output::agenda::AgendaView;
 use crate::utils::{require_calendars, resolve_calendars};
-use crate::views::agenda::AgendaView;
 
 pub fn run(caldir: &Caldir, calendar: Option<String>) -> Result<AgendaView> {
     require_calendars(caldir)?;

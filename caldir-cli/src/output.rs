@@ -1,5 +1,12 @@
 use serde::Serialize;
 
+pub mod agenda;
+mod agenda_text;
+pub mod config;
+pub mod diff;
+pub mod event;
+pub mod time;
+
 /// Human text rendering for a command's result.
 pub trait TextRender {
     fn to_text(&self) -> String;

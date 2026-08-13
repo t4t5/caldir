@@ -3,9 +3,9 @@ use chrono::{Duration, NaiveDate};
 use owo_colors::OwoColorize;
 
 use crate::output::TextRender;
-use crate::render::event::{format_event_line, render_participation_status};
-use crate::render::time::{format_date_label, local_date};
-use crate::views::agenda::{AgendaEntry, AgendaView};
+use crate::output::agenda::{AgendaEntry, AgendaView};
+use crate::output::event::{format_event_line, render_participation_status};
+use crate::output::time::{format_date_label, local_date};
 
 impl TextRender for AgendaView {
     fn to_text(&self) -> String {

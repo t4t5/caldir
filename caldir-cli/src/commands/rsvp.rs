@@ -6,8 +6,8 @@ use caldir_core::{Caldir, CalendarEvent, DateBounds, Event, ParticipationStatus}
 use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
 
-use crate::render::event::format_event_line;
-use crate::render::time::format_date_only;
+use crate::output::event::format_event_line;
+use crate::output::time::format_date_only;
 use crate::utils::require_calendars;
 
 pub fn run(caldir: &Caldir, path: Option<String>, response: Option<String>) -> Result<()> {

@@ -1,6 +1,6 @@
 mod warning;
 
-use crate::render::diff::Render;
+use crate::output::diff::Render;
 use crate::utils::require_calendars;
 use anyhow::Result;
 use caldir_core::{Caldir, Calendar};

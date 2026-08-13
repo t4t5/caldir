@@ -3,8 +3,8 @@ use caldir_core::{Caldir, DateBounds, ParticipationStatus};
 use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
 
-use crate::render::event::{format_event_line, is_visible, render_participation_status};
-use crate::render::time::format_date_only;
+use crate::output::event::{format_event_line, is_visible, render_participation_status};
+use crate::output::time::format_date_only;
 use crate::utils::{require_calendars, resolve_calendars};
 
 pub fn run(caldir: &Caldir, calendar: Option<String>, all: bool) -> Result<()> {

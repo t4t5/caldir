@@ -1,7 +1,7 @@
 use caldir_core::{Event, ParticipationStatus, Status, TimeFormat};
 use owo_colors::OwoColorize;
 
-use crate::render::time::format_time_only;
+use crate::output::time::format_time_only;
 
 pub fn is_visible(event: &Event) -> bool {
     event.status != Status::Cancelled
