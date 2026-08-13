@@ -111,7 +111,7 @@ fields never change meaning. Document on caldir.org.
 
 ## Implementation
 
-Four commits/PRs, each independently landable.
+Four phases, each independently landable.
 
 ### 1. caldir-core: `Ics<Event>` at the RPC boundary
 
@@ -131,9 +131,10 @@ sketch of `Ics<Event>` fields + ~10 wrap/unwrap sites per provider):
   provider changes.
 
 **Wire bytes are identical** — still ICS strings inside the JSON RPC — so no
-protocol version concerns; existing round-trip tests prove it. Breaking for
-core's *Rust* API only: core `0.13.0` → `0.14.0`, providers bumped together
-as usual.
+protocol version concerns; existing round-trip tests prove it. Removing the
+serde impls is a breaking change to core's Rust API and must be considered at
+release time, but this phase does not change crate versions or dependency
+constraints. Providers require no source or manifest changes.
 
 ### 2. caldir-cli: output layer + `ConfigView`
 
@@ -187,13 +188,16 @@ impl AgendaView {
   `Result<AgendaView>`; range and calendar resolution untouched. `main.rs`
   arms become `emit(&commands::today::run(…)?, output_format)`.
 
-### 4. Docs & release
+### 4. Docs & release preparation
 
 - `--help` text for the global flag.
 - caldir.org: "Machine-readable output" section — the contract example, the
   additive-stability promise, the multi-day counting difference vs text
   (once in JSON, N days in text), the exclusive-DTEND note.
-- caldir-cli `0.11.x` → `0.12.0`.
+- Record the core Rust API break and CLI feature for release notes. Choose any
+  crate version changes through the normal release process after the work is
+  complete; this plan does not prescribe them. Do not bump providers solely
+  for this work because their source and the RPC wire format are unchanged.
 
 ## Testing
 
