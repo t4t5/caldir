@@ -1,26 +1,17 @@
-mod connect;
-mod create_event;
-mod delete_event;
 mod ics;
-mod list_calendars;
-mod list_events;
-mod update_event;
+mod methods;
 mod wire;
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-// actions:
-pub use connect::{
-    Connect, ConnectResponse, ConnectStepKind, CredentialField, CredentialsData, FieldType,
-    HostedOAuthData, OAuthData, SetupData,
+pub use methods::{
+    Connect, ConnectResponse, ConnectStepKind, CreateEvent, CredentialField, CredentialsData,
+    DeleteEvent, FieldType, HostedOAuthData, ListCalendars, ListEvents, Method, OAuthData,
+    SetupData, UpdateEvent,
 };
-pub use create_event::CreateEvent;
-pub use delete_event::DeleteEvent;
+
 pub(crate) use ics::Ics;
-pub use list_calendars::ListCalendars;
-pub use list_events::ListEvents;
-pub use update_event::UpdateEvent;
 #[cfg(test)]
 pub(crate) use wire::JsonWireValue;
 pub(crate) use wire::{Wire, WireValue};
@@ -39,17 +30,6 @@ pub(crate) trait Rpc: Serialize {
     {
         serde_json::to_value(Request::from_rpc(self)?)
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Method {
-    Connect,
-    ListCalendars,
-    ListEvents,
-    CreateEvent,
-    UpdateEvent,
-    DeleteEvent,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

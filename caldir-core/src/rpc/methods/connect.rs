@@ -1,7 +1,7 @@
 mod request;
 mod response;
 
-use super::{Method, Rpc};
+use crate::rpc::{Method, Rpc};
 use serde::{Deserialize, Serialize};
 
 pub use request::{

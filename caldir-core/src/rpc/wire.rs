@@ -1,4 +1,4 @@
-use super::{ConnectResponse, Ics};
+use crate::rpc::{ConnectResponse, Ics};
 use crate::{CalendarConfig, Event};
 use serde::Serialize;
 use serde::de::DeserializeOwned;

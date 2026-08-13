@@ -1,4 +1,4 @@
-use super::{Method, Rpc};
+use crate::rpc::{Method, Rpc};
 use crate::{Event, RemoteConfigParams};
 use serde::{Deserialize, Serialize};
 
