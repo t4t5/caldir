@@ -5,21 +5,21 @@ use crate::Event;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Ics<T>(pub T);
+pub struct Ics(pub Event);
 
-impl<T> Ics<T> {
-    pub fn into_inner(self) -> T {
+impl Ics {
+    pub fn into_inner(self) -> Event {
         self.0
     }
 }
 
-impl Serialize for Ics<Event> {
+impl Serialize for Ics {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serialize(&self.0, serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for Ics<Event> {
+impl<'de> Deserialize<'de> for Ics {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserialize(deserializer).map(Self)
     }
@@ -48,7 +48,7 @@ mod tests {
         );
 
         let json = serde_json::to_string(&Ics(event.clone())).unwrap();
-        let decoded: Ics<Event> = serde_json::from_str(&json).unwrap();
+        let decoded: Ics = serde_json::from_str(&json).unwrap();
 
         assert_eq!(decoded.into_inner(), event);
     }

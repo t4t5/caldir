@@ -18,7 +18,7 @@ pub use connect::{
 };
 pub use create_event::CreateEvent;
 pub use delete_event::DeleteEvent;
-pub use ics::Ics;
+pub(crate) use ics::Ics;
 pub use list_calendars::ListCalendars;
 pub use list_events::ListEvents;
 pub use update_event::UpdateEvent;
@@ -33,7 +33,7 @@ pub(crate) trait WireValue: Sized {
 }
 
 impl WireValue for Event {
-    type Wire = Ics<Event>;
+    type Wire = Ics;
 
     fn into_wire(self) -> Self::Wire {
         Ics(self)
@@ -56,6 +56,7 @@ impl<T: WireValue> WireValue for Vec<T> {
     }
 }
 
+/// Response types that pass through as plain JSON; ICS-encoded types impl [`WireValue`] directly.
 pub(crate) trait JsonWireValue: Serialize + DeserializeOwned {}
 
 impl JsonWireValue for () {}

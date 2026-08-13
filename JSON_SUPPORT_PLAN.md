@@ -119,14 +119,14 @@ As built (the codec stays out of provider code entirely, unlike the original
 sketch of `Ics<Event>` fields + ~10 wrap/unwrap sites per provider):
 
 - New `rpc/ics.rs`: `serialize`/`deserialize` fns (via `to_ics_string` /
-  `from_single_ics_str`) plus a crate-internal `Ics<T>` wrapper delegating to
+  `from_single_ics_str`) plus a crate-internal `Ics` wrapper delegating to
   them.
 - Delete the `Serialize`/`Deserialize` impls on `Event`. `Event` ends with no
   serde impls.
 - Request structs keep `event: Event`, annotated
   `#[serde(with = "crate::rpc::ics")]`.
 - Responses convert at the dispatch/exchange boundary via a crate-private
-  `WireValue` trait (`Event::Wire = Ics<Event>`, identity for plain-JSON
+  `WireValue` trait (`Event::Wire = Ics`, identity for plain-JSON
   types), so `Handler` methods and providers keep plain `Event` — zero
   provider changes.
 

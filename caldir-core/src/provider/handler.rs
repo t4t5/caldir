@@ -179,7 +179,7 @@ mod tests {
 
         let response = process_request(&EventHandler, &request.to_string()).await;
         let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
-        let wire_event: Ics<Event> = serde_json::from_value(parsed["data"].clone()).unwrap();
+        let wire_event: Ics = serde_json::from_value(parsed["data"].clone()).unwrap();
 
         assert_eq!(wire_event.into_inner(), event);
     }
