@@ -11,7 +11,6 @@ use crate::session::SessionStore;
 
 pub async fn handle(cmd: DeleteEvent) -> Result<()> {
     let config = CaldavRemoteConfig::try_from(&cmd.remote)?;
-    let event = cmd.event.into_inner();
     let store = SessionStore::new(ProviderStorage::for_provider(PROVIDER_NAME)?);
     let session = store.load(&config.caldav_account)?;
     let (username, password) = session.credentials();
@@ -20,7 +19,7 @@ pub async fn handle(cmd: DeleteEvent) -> Result<()> {
         username,
         password,
         &config.caldav_calendar_url,
-        event.uid.as_str(),
+        cmd.event.uid.as_str(),
     )
     .await
 }

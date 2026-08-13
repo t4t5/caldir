@@ -16,11 +16,5 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
     let session = store.load(&config.icloud_account)?;
     let (username, password) = session.credentials();
 
-    ops::update_event(
-        username,
-        password,
-        &config.icloud_calendar_url,
-        cmd.event.into_inner(),
-    )
-    .await
+    ops::update_event(username, password, &config.icloud_calendar_url, cmd.event).await
 }

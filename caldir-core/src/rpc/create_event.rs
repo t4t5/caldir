@@ -6,12 +6,22 @@ use serde::{Deserialize, Serialize};
 pub struct CreateEvent {
     #[serde(flatten)]
     pub remote: RemoteConfigParams,
-    pub event: Ics<Event>,
+    #[serde(with = "super::ics")]
+    pub event: Event,
 }
 
 impl Rpc for CreateEvent {
     const METHOD: Method = Method::CreateEvent;
-    type Response = Ics<Event>;
+    type Response = Event;
+    type WireResponse = Ics<Event>;
+
+    fn encode_response(response: Self::Response) -> Self::WireResponse {
+        response.into()
+    }
+
+    fn decode_response(response: Self::WireResponse) -> Self::Response {
+        response.into_inner()
+    }
 }
 
 #[cfg(test)]
@@ -34,7 +44,7 @@ mod tests {
 
         let cmd = CreateEvent {
             remote: params,
-            event: event.clone().into(),
+            event: event.clone(),
         };
 
         let json = cmd.to_json().unwrap();

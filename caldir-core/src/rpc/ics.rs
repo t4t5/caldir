@@ -18,17 +18,23 @@ impl From<Event> for Ics<Event> {
 
 impl Serialize for Ics<Event> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.0.to_ics_string())
+        serialize(&self.0, serializer)
     }
 }
 
 impl<'de> Deserialize<'de> for Ics<Event> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let ics = String::deserialize(deserializer)?;
-        Event::from_single_ics_str(&ics)
-            .map(Self)
-            .map_err(serde::de::Error::custom)
+        deserialize(deserializer).map(Self)
     }
+}
+
+pub(crate) fn serialize<S: Serializer>(event: &Event, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&event.to_ics_string())
+}
+
+pub(crate) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Event, D::Error> {
+    let ics = String::deserialize(deserializer)?;
+    Event::from_single_ics_str(&ics).map_err(serde::de::Error::custom)
 }
 
 #[cfg(test)]

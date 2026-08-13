@@ -26,9 +26,13 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 
 // Handles serialization of command + deserialization of response
 pub(crate) trait Rpc: Serialize {
-    type Response: Serialize + DeserializeOwned;
+    type Response;
+    type WireResponse: Serialize + DeserializeOwned;
     const METHOD: Method;
     const TIMEOUT: Duration = DEFAULT_TIMEOUT;
+
+    fn encode_response(response: Self::Response) -> Self::WireResponse;
+    fn decode_response(response: Self::WireResponse) -> Self::Response;
 
     fn to_json(&self) -> Result<serde_json::Value, serde_json::Error>
     where

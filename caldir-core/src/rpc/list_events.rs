@@ -12,7 +12,16 @@ pub struct ListEvents {
 
 impl Rpc for ListEvents {
     const METHOD: Method = Method::ListEvents;
-    type Response = Vec<Ics<Event>>;
+    type Response = Vec<Event>;
+    type WireResponse = Vec<Ics<Event>>;
+
+    fn encode_response(response: Self::Response) -> Self::WireResponse {
+        response.into_iter().map(Into::into).collect()
+    }
+
+    fn decode_response(response: Self::WireResponse) -> Self::Response {
+        response.into_iter().map(Ics::into_inner).collect()
+    }
 }
 
 #[cfg(test)]

@@ -15,7 +15,6 @@ use crate::session::SessionStore;
 
 pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     let config = OutlookRemoteConfig::try_from(&cmd.remote)?;
-    let request_event = cmd.event.into_inner();
 
     let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
     let session_store = SessionStore::new(storage.clone());
@@ -31,8 +30,9 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     // "create exception" affordance on that endpoint). Look up the
     // auto-expanded instance and PATCH it instead — Graph attaches the
     // override to the series and assigns it a fresh per-instance id.
-    if let Some(rid) = request_event.recurrence_id.as_ref() {
-        let master_id = request_event
+    if let Some(rid) = cmd.event.recurrence_id.as_ref() {
+        let master_id = cmd
+            .event
             .x_property(PROVIDER_EVENT_ID_PROPERTY)
             .ok_or_else(|| {
                 anyhow!(
@@ -44,12 +44,12 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
         let rid_time = rid.as_event_time();
         let instance_id = find_instance_id(&graph, master_id, rid_time).await?;
 
-        let body = to_outlook(&request_event);
+        let body = to_outlook(&cmd.event);
         let path = format!("/me/events/{}", instance_id);
         let response = graph.patch(&path, &body).await.with_context(|| {
             format!(
                 "Failed to patch recurring instance: {}",
-                request_event.summary.as_deref().unwrap_or("")
+                cmd.event.summary.as_deref().unwrap_or("")
             )
         })?;
 
@@ -64,18 +64,18 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
         // standalone-looking event. Restore the master's UID and the sent
         // recurrence_id so the override file has a stable (uid, recurrence_id)
         // key matching what list_events emits on subsequent pulls.
-        event.uid = request_event.uid.clone();
-        event.recurrence_id = request_event.recurrence_id.clone();
+        event.uid = cmd.event.uid.clone();
+        event.recurrence_id = cmd.event.recurrence_id.clone();
         return Ok(event);
     }
 
-    let body = to_outlook(&request_event);
+    let body = to_outlook(&cmd.event);
 
     let path = format!("/me/calendars/{}/events", config.outlook_calendar_id);
     let response = graph.post(&path, &body).await.with_context(|| {
         format!(
             "Failed to create event: {}",
-            request_event.summary.as_deref().unwrap_or("")
+            cmd.event.summary.as_deref().unwrap_or("")
         )
     })?;
 

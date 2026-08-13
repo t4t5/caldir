@@ -21,8 +21,8 @@ impl MockProvider {
     }
 
     /// Stub the next RPC call to return `response` (typed by `C::Response`).
-    pub(crate) fn reply<C: Rpc>(&self, response: impl Into<C::Response>) {
-        let response = response.into();
+    pub(crate) fn reply<C: Rpc>(&self, response: C::Response) {
+        let response = C::encode_response(response);
         let envelope = serde_json::json!({
             "status": "success",
             "data": response,
