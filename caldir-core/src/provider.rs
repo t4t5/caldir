@@ -78,11 +78,11 @@ impl Provider {
         // Make call:
         let response_json = self.transport.exchange(&request_json, C::TIMEOUT).await?;
 
-        let response: rpc::Response<C::Response> =
+        let response: rpc::Response<rpc::Wire<C::Response>> =
             serde_json::from_str(&response_json).map_err(ProviderError::Deserialize)?;
 
         match response {
-            rpc::Response::Success { data } => Ok(data),
+            rpc::Response::Success { data } => Ok(rpc::WireValue::from_wire(data)),
             rpc::Response::Error { error } => Err(ProviderError::Provider(error)),
         }
     }
@@ -152,6 +152,8 @@ mod tests {
         const METHOD: rpc::Method = rpc::Method::ListEvents;
         const TIMEOUT: Duration = Duration::from_secs(7);
     }
+
+    impl rpc::JsonWireValue for EchoResponse {}
 
     fn provider_with_transport(transport: Arc<dyn ProviderTransport>) -> Provider {
         Provider::with_transport(ProviderSlug::from("test"), transport)

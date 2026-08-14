@@ -6,8 +6,8 @@ use caldir_core::{Caldir, CalendarEvent, DateBounds, Event, ParticipationStatus}
 use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
 
-use crate::render::event::format_event_line;
-use crate::render::time::format_date_only;
+use crate::output::event::format_event_line;
+use crate::output::time::format_date_only;
 use crate::utils::require_calendars;
 
 pub fn run(caldir: &Caldir, path: Option<String>, response: Option<String>) -> Result<()> {
@@ -136,7 +136,10 @@ fn run_interactive(caldir: &Caldir) -> Result<()> {
             .map(|o| o.name.as_deref().unwrap_or(&o.email).to_string())
             .unwrap_or_else(|| "(unknown)".to_string());
 
-        println!("{}", format_event_line(&event, &cal_slug, "", caldir));
+        println!(
+            "{}",
+            format_event_line(&event, &cal_slug, "", caldir.config().time_format())
+        );
         println!("       {} {}", "from:".dimmed(), organizer.dimmed());
         print!("  [a]ccept  [d]ecline  [m]aybe  [s]kip: ");
         io::stdout().flush()?;

@@ -108,11 +108,15 @@
 }
 
 @media (min-width: 880px) {
-  .caldir-prose code { font-size: 14px; }
+  .caldir-prose code {
+    font-size: 14px;
+  }
 }
 
 @media (max-width: 879px) {
-  .caldir-prose code { font-size: 12px; }
+  .caldir-prose code {
+    font-size: 12px;
+  }
 }
 
 .caldir-prose hr {
@@ -126,9 +130,22 @@
   color: var(--color-text-body);
 }
 
+.caldir-prose details {
+  border: 1px solid var(--color-separator);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.caldir-prose details[open],
+.caldir-prose details::details-content {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+}
+
 .caldir-prose summary {
   cursor: pointer;
-  margin-bottom: 8px;
+  outline: none;
 }
 
 .caldir-prose summary:hover {

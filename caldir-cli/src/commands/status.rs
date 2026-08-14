@@ -2,7 +2,7 @@ use anyhow::Result;
 use caldir_core::{Caldir, CaldirError, Connection, DateRange};
 use owo_colors::OwoColorize;
 
-use crate::render::diff::{CalendarDiffRender, Render};
+use crate::output::diff::{CalendarDiffRender, Render};
 use crate::utils::tui;
 use crate::utils::{require_calendars, resolve_sync_range};
 

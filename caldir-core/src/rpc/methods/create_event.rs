@@ -1,16 +1,17 @@
-use super::{Method, Rpc};
+use crate::rpc::{Method, Rpc};
 use crate::{Event, RemoteConfigParams};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
-pub struct UpdateEvent {
+pub struct CreateEvent {
     #[serde(flatten)]
     pub remote: RemoteConfigParams,
+    #[serde(with = "crate::rpc::ics")]
     pub event: Event,
 }
 
-impl Rpc for UpdateEvent {
-    const METHOD: Method = Method::UpdateEvent;
+impl Rpc for CreateEvent {
+    const METHOD: Method = Method::CreateEvent;
     type Response = Event;
 }
 
@@ -20,7 +21,7 @@ mod tests {
     use crate::{RemoteConfigParams, event::EventTime};
 
     #[test]
-    fn update_event_serializes_json() {
+    fn create_event_serializes_json() {
         let mut params = RemoteConfigParams::new();
         params.insert(
             "hooli_account".to_string(),
@@ -32,14 +33,14 @@ mod tests {
             EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
         );
 
-        let cmd = UpdateEvent {
+        let cmd = CreateEvent {
             remote: params,
             event: event.clone(),
         };
 
         let json = cmd.to_json().unwrap();
 
-        assert_eq!(json["command"], "update_event");
+        assert_eq!(json["command"], "create_event");
         assert_eq!(json["params"]["hooli_account"], "user@hmail.com");
 
         let ics = json["params"]["event"]

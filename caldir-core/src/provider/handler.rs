@@ -5,7 +5,6 @@
 //! and writing JSON responses to stdout.
 
 use async_trait::async_trait;
-use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::error::Error as StdError;
 use std::future::Future;
@@ -13,7 +12,7 @@ use std::io::{self, BufRead, Write};
 
 use crate::rpc::{
     Connect, ConnectResponse, CreateEvent, DeleteEvent, ListCalendars, ListEvents, Method, Request,
-    Response, UpdateEvent,
+    Response, Rpc, UpdateEvent, WireValue,
 };
 use crate::{CalendarConfig, Event};
 
@@ -109,21 +108,23 @@ async fn dispatch<H: Handler>(handler: &H, request: Request) -> Result<serde_jso
     }
 }
 
-async fn call<C, R, F, Fut>(params: serde_json::Value, handler: F) -> Result<serde_json::Value>
+async fn call<C, F, Fut>(params: serde_json::Value, handler: F) -> Result<serde_json::Value>
 where
-    C: DeserializeOwned,
-    R: Serialize,
+    C: DeserializeOwned + Rpc,
     F: FnOnce(C) -> Fut,
-    Fut: Future<Output = Result<R>>,
+    Fut: Future<Output = Result<C::Response>>,
 {
     let cmd: C = serde_json::from_value(params)?;
     let response = handler(cmd).await?;
-    Ok(serde_json::to_value(response)?)
+    Ok(serde_json::to_value(response.into_wire())?)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rpc::Ics;
+    use crate::{EventTime, RemoteConfigParams};
+    use chrono::NaiveDate;
 
     struct StubHandler;
 
@@ -134,6 +135,19 @@ mod tests {
                 account_identifier: Some("me@example.com".to_string()),
                 calendars: None,
             })
+        }
+    }
+
+    struct EventHandler;
+
+    #[async_trait]
+    impl Handler for EventHandler {
+        async fn connect(&self, _cmd: Connect) -> Result<ConnectResponse> {
+            unreachable!()
+        }
+
+        async fn create_event(&self, cmd: CreateEvent) -> Result<Event> {
+            Ok(cmd.event)
         }
     }
 
@@ -148,6 +162,26 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
         assert_eq!(parsed["status"], "success");
         assert_eq!(parsed["data"]["account_identifier"], "me@example.com");
+    }
+
+    #[tokio::test]
+    async fn event_codec_is_confined_to_dispatch_boundary() {
+        let event = Event::new(
+            "Test",
+            EventTime::Date(NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        let request = CreateEvent {
+            remote: RemoteConfigParams::new(),
+            event: event.clone(),
+        }
+        .to_json()
+        .unwrap();
+
+        let response = process_request(&EventHandler, &request.to_string()).await;
+        let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
+        let wire_event: Ics = serde_json::from_value(parsed["data"].clone()).unwrap();
+
+        assert_eq!(wire_event.into_inner(), event);
     }
 
     #[tokio::test]

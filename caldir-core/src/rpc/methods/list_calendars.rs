@@ -1,5 +1,5 @@
-use super::{Method, Rpc};
 use crate::CalendarConfig;
+use crate::rpc::{Method, Rpc};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]

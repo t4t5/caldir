@@ -110,6 +110,42 @@ caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
 caldir events --calendar work
 ```
 
+<details>
+<summary>Optional JSON output</summary>
+
+Useful when building scripts, status bar widgets, etc:
+
+```bash
+caldir events --json
+```
+
+Returns:
+
+```json
+[
+  {
+    "instance_id": "b2f9@caldir__TZID=Europe/Stockholm:20260814T160000",
+    "uid": "b2f9@caldir",
+    "calendar": "personal",
+    "title": "Friday retro",
+    "all_day": false,
+    "start": "2026-08-14T16:00:00+02:00",
+    "end": "2026-08-14T16:30:00+02:00",
+    "tzid": "Europe/Stockholm",
+    "location": null,
+    "description": null,
+    "status": "confirmed",
+    "rsvp": "accepted",
+    "recurring": true
+  }
+]
+```
+
+- `start`/`end` are RFC 3339 timestamps with UTC offset. All-day events use date-only strings, where `end` follows the ICS exclusive-end convention (a one-day event on the 14th has `end` on the 15th).
+- `rsvp` is only set when the event is an invite addressed to the calendar's account.
+
+</details>
+
 ## `caldir invites`
 
 List pending invites across all calendars (next 30 days). Shows organizer, file path, and current status for each invite.
@@ -159,6 +195,9 @@ Show configuration paths and calendar info.
 
 ```bash
 caldir config
+
+# As JSON
+caldir config --json
 ```
 
 ## `caldir update`

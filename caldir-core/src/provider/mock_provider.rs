@@ -2,7 +2,7 @@ use super::transport::ProviderTransport;
 use super::transport::ProviderTransportError;
 use super::transport::mock_transport::MockTransport;
 use super::{Provider, ProviderSlug};
-use crate::rpc::{Request, Rpc};
+use crate::rpc::{Request, Rpc, WireValue};
 use serde::de::DeserializeOwned;
 use std::sync::Arc;
 
@@ -22,6 +22,7 @@ impl MockProvider {
 
     /// Stub the next RPC call to return `response` (typed by `C::Response`).
     pub(crate) fn reply<C: Rpc>(&self, response: C::Response) {
+        let response = response.into_wire();
         let envelope = serde_json::json!({
             "status": "success",
             "data": response,

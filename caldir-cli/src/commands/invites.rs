@@ -3,8 +3,8 @@ use caldir_core::{Caldir, DateBounds, ParticipationStatus};
 use chrono::{Duration, Utc};
 use owo_colors::OwoColorize;
 
-use crate::render::event::{format_event_line, is_visible, render_participation_status};
-use crate::render::time::format_date_only;
+use crate::output::event::{format_event_line, is_visible, render_participation_status};
+use crate::output::time::format_date_only;
 use crate::utils::{require_calendars, resolve_calendars};
 
 pub fn run(caldir: &Caldir, calendar: Option<String>, all: bool) -> Result<()> {
@@ -79,7 +79,12 @@ pub fn run(caldir: &Caldir, calendar: Option<String>, all: bool) -> Result<()> {
             .unwrap_or_default();
         println!(
             "{}",
-            format_event_line(event, cal_slug, &status_suffix, caldir)
+            format_event_line(
+                event,
+                cal_slug,
+                &status_suffix,
+                caldir.config().time_format(),
+            )
         );
 
         if let Some(organizer) = event.organizer.as_ref().filter(|o| !o.email.is_empty()) {

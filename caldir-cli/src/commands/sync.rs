@@ -2,7 +2,7 @@ use anyhow::Result;
 use caldir_core::{Caldir, Connection, DateRange};
 use owo_colors::OwoColorize;
 
-use crate::render::diff::{CalendarDiffRender, Render};
+use crate::output::diff::{CalendarDiffRender, Render};
 use crate::utils::{allow_mass_delete, connections, count_changes, resolve_sync_range, tui};
 
 type Counts = (usize, usize, usize);

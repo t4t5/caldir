@@ -26,7 +26,6 @@ pub use occurrences::expand_in_range;
 pub use organizer::Organizer;
 pub use recurrence::Recurrence;
 pub use reminder::Reminder;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use status::Status;
 pub use time::EventTime;
 pub use visibility::Visibility;
@@ -109,7 +108,7 @@ impl Event {
         Self::from_single_ics_str(&contents)
     }
 
-    fn from_single_ics_str(contents: &str) -> Result<Self, EventError> {
+    pub(crate) fn from_single_ics_str(contents: &str) -> Result<Self, EventError> {
         let events = Self::from_ics_str(contents)?;
 
         match <[Result<Self, EventError>; 1]>::try_from(events) {
@@ -271,21 +270,6 @@ impl Event {
             }
         }
         self
-    }
-}
-
-// Wire format for events is ICS, not JSON
-impl Serialize for Event {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_ics_string())
-    }
-}
-
-// Each ICS document should have exactly one event:
-impl<'de> Deserialize<'de> for Event {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let ics = String::deserialize(deserializer)?;
-        Event::from_single_ics_str(&ics).map_err(serde::de::Error::custom)
     }
 }
 

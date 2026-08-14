@@ -1,4 +1,4 @@
-use super::{Method, Rpc};
+use crate::rpc::{Method, Rpc};
 use crate::{Event, RemoteConfigParams};
 use serde::{Deserialize, Serialize};
 
@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct DeleteEvent {
     #[serde(flatten)]
     pub remote: RemoteConfigParams,
+    #[serde(with = "crate::rpc::ics")]
     pub event: Event,
 }
 

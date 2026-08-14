@@ -1,13 +1,11 @@
 mod commands;
-mod render;
+mod output;
 mod utils;
 
-#[cfg(test)]
-mod test_utils;
-
-use anyhow::Result;
+use anyhow::{Result, bail};
 use caldir_core::Caldir;
 use clap::{Parser, Subcommand};
+use output::OutputFormat;
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
@@ -16,6 +14,10 @@ use clap::{Parser, Subcommand};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Output as JSON
+    #[arg(long, global = true)]
+    json: bool,
 }
 
 #[derive(Subcommand)]
@@ -216,9 +218,28 @@ enum Commands {
     Update,
 }
 
+impl Commands {
+    fn supports_json(&self) -> bool {
+        matches!(
+            self,
+            Self::Config | Self::Events { .. } | Self::Today { .. } | Self::Week { .. }
+        )
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if cli.json && !cli.command.supports_json() {
+        bail!("--json is not yet supported for this command");
+    }
+
+    let output_format = if cli.json {
+        OutputFormat::Json
+    } else {
+        OutputFormat::Text
+    };
 
     // `update` doesn't touch the caldir, so dispatch it before loading anything.
     if let Commands::Update = cli.command {
@@ -258,10 +279,20 @@ async fn main() -> Result<()> {
             force,
         } => commands::sync::run(&caldir, calendar, from, to, verbose, force).await,
         Commands::Events { calendar, from, to } => {
-            commands::events::run(&caldir, calendar, from, to)
+            let view = commands::events::run(&caldir, calendar, from, to)?;
+            output::emit(&view, output_format);
+            Ok(())
         }
-        Commands::Today { calendar } => commands::today::run(&caldir, calendar),
-        Commands::Week { calendar } => commands::week::run(&caldir, calendar),
+        Commands::Today { calendar } => {
+            let view = commands::today::run(&caldir, calendar)?;
+            output::emit(&view, output_format);
+            Ok(())
+        }
+        Commands::Week { calendar } => {
+            let view = commands::week::run(&caldir, calendar)?;
+            output::emit(&view, output_format);
+            Ok(())
+        }
         Commands::New {
             title,
             start,
@@ -291,7 +322,11 @@ async fn main() -> Result<()> {
         } => commands::discard::run(&caldir, calendar, from, to, verbose, force).await,
         Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
         Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
-        Commands::Config => commands::config::run(&caldir),
+        Commands::Config => {
+            let view = commands::config::run(&caldir)?;
+            output::emit(&view, output_format);
+            Ok(())
+        }
         Commands::Doctor => commands::doctor::run(&caldir),
         Commands::Update => unreachable!("handled above"),
     }
@@ -326,5 +361,21 @@ mod tests {
             "google"
         ]));
         assert!(parse_hosted(&["caldir", "connect", "google"]));
+    }
+
+    #[test]
+    fn views_support_json() {
+        assert!(Commands::Config.supports_json());
+        assert!(
+            Commands::Events {
+                calendar: None,
+                from: None,
+                to: None,
+            }
+            .supports_json()
+        );
+        assert!(Commands::Today { calendar: None }.supports_json());
+        assert!(Commands::Week { calendar: None }.supports_json());
+        assert!(!Commands::Update.supports_json());
     }
 }

@@ -3,7 +3,7 @@ use caldir_core::{Caldir, CalendarDiff, Connection, EventChange};
 use dialoguer::Confirm;
 use owo_colors::OwoColorize;
 
-use crate::render::diff::{CalendarDiffRender, Render};
+use crate::output::diff::{CalendarDiffRender, Render};
 use crate::utils::{resolve_sync_range, tui};
 
 pub async fn run(
