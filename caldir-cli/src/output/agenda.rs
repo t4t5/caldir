@@ -7,16 +7,16 @@ use crate::output::event::is_visible;
 use crate::output::time::local_date;
 
 pub struct AgendaView {
-    time_format: TimeFormat,
     pub entries: Vec<AgendaEntry>,
     range_start: NaiveDate,
     range_end: NaiveDate,
+    time_format: TimeFormat,
 }
 
 pub struct AgendaEntry {
+    pub event: Event,
     pub calendar: Option<String>,
     pub rsvp: Option<ParticipationStatus>,
-    pub event: Event,
 }
 
 impl AgendaView {
