@@ -136,8 +136,9 @@ fn is_conference_data_error(error: &google_calendar::ClientError) -> bool {
 }
 
 /// Google API id of a recurring-instance override: `{master_id}_{instance suffix}`.
+/// A downloaded override already carries its own instance id — use it as-is.
 fn override_instance_id(event: &Event, rid: &EventTime) -> Result<String> {
-    let master_id = event
+    let provider_id = event
         .x_property(PROVIDER_EVENT_ID_PROPERTY)
         .ok_or_else(|| {
             anyhow!(
@@ -146,7 +147,13 @@ fn override_instance_id(event: &Event, rid: &EventTime) -> Result<String> {
             )
         })?;
 
-    Ok(format!("{}_{}", master_id, google_instance_suffix(rid)))
+    let suffix = google_instance_suffix(rid);
+
+    if provider_id.ends_with(&format!("_{suffix}")) {
+        return Ok(provider_id.to_string());
+    }
+
+    Ok(format!("{provider_id}_{suffix}"))
 }
 
 /// Format a `recurrence_id` as the suffix Google appends to a recurring
@@ -179,7 +186,25 @@ fn google_instance_suffix(rid: &EventTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caldir_core::{RecurrenceId, XProperty};
+    use chrono::{TimeZone, Utc};
     use google_calendar::{ClientError, HeaderMap, StatusCode};
+
+    #[test]
+    fn synthesized_override_gets_the_suffix_appended_to_the_master_id() {
+        // An override created locally inherits the MASTER's X-GOOGLE-EVENT-ID.
+        let rid = EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 8, 14, 17, 0, 0).unwrap());
+        let mut event = Event::new("Weekly sync", rid.clone());
+        event.recurrence_id = Some(RecurrenceId::from_event_time(rid.clone()));
+        event
+            .x_properties
+            .push(XProperty::new(PROVIDER_EVENT_ID_PROPERTY, "master123"));
+
+        assert_eq!(
+            override_instance_id(&event, &rid).unwrap(),
+            "master123_20260814T170000Z"
+        );
+    }
 
     #[test]
     fn recreating_a_downloaded_override_must_not_double_its_google_id() {
