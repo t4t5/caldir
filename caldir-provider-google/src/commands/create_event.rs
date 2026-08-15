@@ -30,21 +30,7 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     // Google's data model treats an override as a modification of an existing auto-expanded instance.
     // PUT the synthetic instance id `{master_id}_{rid}` instead.
     if let Some(rid) = cmd.event.recurrence_id.as_ref() {
-        let master_id = cmd
-            .event
-            .x_property(PROVIDER_EVENT_ID_PROPERTY)
-            .ok_or_else(|| {
-                anyhow!(
-                    "Cannot create recurring instance override without master's \
-                     {PROVIDER_EVENT_ID_PROPERTY}"
-                )
-            })?;
-
-        let instance_id = format!(
-            "{}_{}",
-            master_id,
-            google_instance_suffix(rid.as_event_time())
-        );
+        let instance_id = override_instance_id(&cmd.event, rid.as_event_time())?;
 
         // If it's just an RSVP status update, use PATCH instead of PUT:
         if cmd.event.is_invite_for(account_email) {
@@ -149,6 +135,27 @@ fn is_conference_data_error(error: &google_calendar::ClientError) -> bool {
     }
 }
 
+/// Google API id of a recurring-instance override: `{master_id}_{instance suffix}`.
+/// A downloaded override already carries its own instance id — use it as-is.
+fn override_instance_id(event: &Event, rid: &EventTime) -> Result<String> {
+    let provider_id = event
+        .x_property(PROVIDER_EVENT_ID_PROPERTY)
+        .ok_or_else(|| {
+            anyhow!(
+                "Cannot create recurring instance override without master's \
+             {PROVIDER_EVENT_ID_PROPERTY}"
+            )
+        })?;
+
+    let suffix = google_instance_suffix(rid);
+
+    if provider_id.ends_with(&format!("_{suffix}")) {
+        return Ok(provider_id.to_string());
+    }
+
+    Ok(format!("{provider_id}_{suffix}"))
+}
+
 /// Format a `recurrence_id` as the suffix Google appends to a recurring
 /// event's id to identify a single instance:
 /// - all-day:    `YYYYMMDD`
@@ -179,7 +186,60 @@ fn google_instance_suffix(rid: &EventTime) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caldir_core::{RecurrenceId, XProperty};
+    use chrono::{TimeZone, Utc};
     use google_calendar::{ClientError, HeaderMap, StatusCode};
+
+    #[test]
+    fn synthesized_override_gets_the_suffix_appended_to_the_master_id() {
+        // An override created locally inherits the MASTER's X-GOOGLE-EVENT-ID.
+        let rid = EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 8, 14, 17, 0, 0).unwrap());
+        let mut event = Event::new("Weekly sync", rid.clone());
+        event.recurrence_id = Some(RecurrenceId::from_event_time(rid.clone()));
+        event
+            .x_properties
+            .push(XProperty::new(PROVIDER_EVENT_ID_PROPERTY, "master123"));
+
+        assert_eq!(
+            override_instance_id(&event, &rid).unwrap(),
+            "master123_20260814T170000Z"
+        );
+    }
+
+    #[test]
+    fn recreating_a_downloaded_override_must_not_double_its_google_id() {
+        // When the organizer moves one occurrence of a recurring event,
+        // Google stores the modified occurrence under its own event id:
+        // "{master_id}_{original start as UTC}". Here the 17:00 occurrence
+        // of "master123" was moved to 18:00:
+        let downloaded: google_calendar::types::Event = serde_json::from_value(serde_json::json!({
+            "id": "master123_20260814T170000Z",
+            "iCalUID": "master123@google.com",
+            "summary": "Weekly sync",
+            "status": "confirmed",
+            "recurringEventId": "master123",
+            "originalStartTime": { "dateTime": "2026-08-14T17:00:00Z" },
+            "start": { "dateTime": "2026-08-14T18:00:00Z" },
+            "end": { "dateTime": "2026-08-14T19:00:00Z" },
+        }))
+        .unwrap();
+
+        // Pulling it stores that id — suffix included — in X-GOOGLE-EVENT-ID:
+        let event = Event::from_google(downloaded).unwrap();
+        assert_eq!(
+            event.x_property(PROVIDER_EVENT_ID_PROPERTY).unwrap(),
+            "master123_20260814T170000Z"
+        );
+
+        // If sync state is lost, the local file is mistaken for a new event
+        // and pushed through create_event (rencal#99). The PUT must target
+        // the id Google already knows — a doubled suffix 404s:
+        let rid = event.recurrence_id.clone().unwrap();
+        assert_eq!(
+            override_instance_id(&event, rid.as_event_time()).unwrap(),
+            "master123_20260814T170000Z"
+        );
+    }
 
     fn http_error(message: &str) -> ClientError {
         ClientError::HttpError {
