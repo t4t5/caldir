@@ -40,29 +40,7 @@ impl EventTime {
     }
 
     pub fn to_utc(&self) -> DateTime<Utc> {
-        match self {
-            EventTime::Date(date) => date
-                .and_hms_opt(0, 0, 0)
-                .expect("midnight should be a valid NaiveDateTime")
-                .and_local_timezone(chrono::Local)
-                .unwrap()
-                .with_timezone(&Utc),
-            EventTime::DateTimeFloating(datetime) => datetime
-                .and_local_timezone(chrono::Local)
-                .unwrap()
-                .with_timezone(&Utc),
-            EventTime::DateTimeUtc(datetime) => *datetime,
-            EventTime::DateTimeZoned { datetime, tzid } => match parse_tzid(tzid) {
-                Some(event_tz) => datetime
-                    .and_local_timezone(event_tz)
-                    .unwrap()
-                    .with_timezone(&Utc),
-                None => datetime
-                    .and_local_timezone(chrono::Local)
-                    .unwrap()
-                    .with_timezone(&Utc),
-            },
-        }
+        self.to_local_tz(&chrono::Local).with_timezone(&Utc)
     }
 
     /// Check if this is an all-day date (not a datetime)
@@ -394,5 +372,29 @@ mod tests {
         let utc = event_time.to_utc();
 
         assert_eq!(utc.format("%Y-%m-%dT%H%M").to_string(), "2024-07-01T1600");
+    }
+
+    #[test]
+    fn to_utc_handles_dst_gap_and_overlap() {
+        for (datetime, expected) in [
+            ((2026, 3, 29, 1, 30), (2026, 3, 29, 1, 30)),
+            ((2026, 10, 25, 1, 30), (2026, 10, 25, 0, 30)),
+        ] {
+            let event_time = EventTime::DateTimeZoned {
+                datetime: NaiveDate::from_ymd_opt(datetime.0, datetime.1, datetime.2)
+                    .unwrap()
+                    .and_hms_opt(datetime.3, datetime.4, 0)
+                    .unwrap(),
+                tzid: "Europe/London".to_string(),
+            };
+
+            assert_eq!(
+                event_time.to_utc(),
+                Utc.with_ymd_and_hms(
+                    expected.0, expected.1, expected.2, expected.3, expected.4, 0,
+                )
+                .unwrap()
+            );
+        }
     }
 }
