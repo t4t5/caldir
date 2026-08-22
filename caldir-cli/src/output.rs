@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 pub mod agenda;
+mod agenda_json;
 mod agenda_text;
 pub mod config;
 pub mod diff;

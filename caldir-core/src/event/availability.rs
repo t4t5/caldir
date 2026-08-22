@@ -1,6 +1,7 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Availability {
     // Busy (OPAQUE) is the RFC 5545 default — see `Status` for the rationale.
     #[default]
