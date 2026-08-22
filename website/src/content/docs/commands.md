@@ -113,7 +113,7 @@ caldir events --calendar work
 <details>
 <summary>Optional JSON output</summary>
 
-Useful when building scripts, status bar widgets, etc:
+Useful when building scripts, status bar widgets, etc.
 
 ```bash
 caldir events --json
@@ -128,13 +128,50 @@ Returns:
     "uid": "b2f9@caldir",
     "calendar": "personal",
     "title": "Friday retro",
+    "summary": "Friday retro",
     "all_day": false,
     "start": "2026-08-14T16:00:00+02:00",
     "end": "2026-08-14T16:30:00+02:00",
     "tzid": "Europe/Stockholm",
-    "location": null,
-    "description": null,
+    "location": "Conference room",
+    "description": "Weekly retrospective",
     "status": "confirmed",
+    "availability": "busy",
+    "visibility": "private",
+    "recurrence": null,
+    "recurrence_id": "2026-08-14T16:00:00+02:00",
+    "organizer": {
+      "email": "host@example.com",
+      "name": "Host Person"
+    },
+    "attendees": [
+      {
+        "email": "me@example.com",
+        "name": "Me",
+        "status": "accepted"
+      }
+    ],
+    "reminders": [
+      { "minutes_before_start": 10 }
+    ],
+    "url": "https://meet.google.com/abc-defg-hij",
+    "attachments": [
+      {
+        "uri": "https://example.com/agenda.html",
+        "params": [
+          { "name": "FMTTYPE", "value": "text/html" }
+        ]
+      }
+    ],
+    "x_properties": [
+      {
+        "name": "X-GOOGLE-CONFERENCE",
+        "value": "https://meet.google.com/abc-defg-hij",
+        "params": []
+      }
+    ],
+    "last_modified": "2026-08-13T10:11:12Z",
+    "sequence": 2,
     "rsvp": "accepted",
     "recurring": true
   }

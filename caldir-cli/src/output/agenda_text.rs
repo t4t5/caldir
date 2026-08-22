@@ -15,7 +15,7 @@ impl TextRender for AgendaView {
             .entries
             .iter()
             .flat_map(|entry| {
-                display_days(&entry.event, self.range_start(), self.range_end())
+                display_days(&entry.event, self.range_start, self.range_end)
                     .into_iter()
                     .map(move |day| (day, entry))
             })
@@ -58,7 +58,7 @@ impl TextRender for AgendaView {
                 &entry.event,
                 entry.calendar.as_deref().unwrap_or("(Unknown calendar)"),
                 &invite_indicator,
-                self.time_format(),
+                self.time_format,
             ));
         }
 
