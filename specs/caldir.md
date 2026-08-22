@@ -170,7 +170,6 @@ END:VALARM
 #### `URL`
 **What:** Standard URL field.
 **How caldir uses it:** Set to the video conference URL (Google Meet, etc.) if present.
-**JSON:** Agenda JSON exposes this as `url`. Provider conference metadata such as `X-GOOGLE-CONFERENCE`, `X-OUTLOOK-CONFERENCE`, and `X-PM-CONFERENCE-URL` remains unfiltered in `x_properties`, including each property's parameters. Consumers should prefer the provider property they understand and use `url` as a provider-neutral fallback.
 
 ### Attachments
 
