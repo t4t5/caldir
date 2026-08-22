@@ -113,7 +113,7 @@ caldir events --calendar work
 <details>
 <summary>Optional JSON output</summary>
 
-Useful when building scripts, status bar widgets, etc:
+Useful when building scripts, status bar widgets, etc. This is a stable machine-readable interface; consumers should ignore fields they do not understand:
 
 ```bash
 caldir events --json
@@ -128,13 +128,50 @@ Returns:
     "uid": "b2f9@caldir",
     "calendar": "personal",
     "title": "Friday retro",
+    "summary": "Friday retro",
     "all_day": false,
     "start": "2026-08-14T16:00:00+02:00",
     "end": "2026-08-14T16:30:00+02:00",
     "tzid": "Europe/Stockholm",
-    "location": null,
-    "description": null,
+    "location": "Conference room",
+    "description": "Weekly retrospective",
     "status": "confirmed",
+    "availability": "busy",
+    "visibility": "private",
+    "recurrence": null,
+    "recurrence_id": "2026-08-14T16:00:00+02:00",
+    "organizer": {
+      "email": "host@example.com",
+      "name": "Host Person"
+    },
+    "attendees": [
+      {
+        "email": "me@example.com",
+        "name": "Me",
+        "status": "accepted"
+      }
+    ],
+    "reminders": [
+      { "minutes_before_start": 10 }
+    ],
+    "url": "https://meet.google.com/abc-defg-hij",
+    "attachments": [
+      {
+        "uri": "https://example.com/agenda.html",
+        "params": [
+          { "name": "FMTTYPE", "value": "text/html" }
+        ]
+      }
+    ],
+    "x_properties": [
+      {
+        "name": "X-GOOGLE-CONFERENCE",
+        "value": "https://meet.google.com/abc-defg-hij",
+        "params": []
+      }
+    ],
+    "last_modified": "2026-08-13T10:11:12Z",
+    "sequence": 2,
     "rsvp": "accepted",
     "recurring": true
   }
@@ -142,7 +179,15 @@ Returns:
 ```
 
 - `start`/`end` are RFC 3339 timestamps with UTC offset. All-day events use date-only strings, where `end` follows the ICS exclusive-end convention (a one-day event on the 14th has `end` on the 15th).
-- `rsvp` is only set when the event is an invite addressed to the calendar's account.
+- `title` is retained as a compatibility alias for `summary`. `all_day`, `tzid`, and `recurring` are convenience fields derived from the event.
+- `status` is `confirmed`, `tentative`, or `cancelled`; `availability` is `busy` or `free`; and `visibility` is `public`, `private`, `confidential`, or `null`.
+- `recurrence`, when present, contains `rrule`, `exdates`, and `rdates`. The date values use the same date-only or RFC 3339 encoding as `start`. Agenda commands expand recurring series, so an emitted occurrence generally has `recurrence: null` and uses `recurrence_id` to identify its position in the series.
+- `organizer` and each attendee contain `email` and optional `name`. An attendee's `status` is `accepted`, `declined`, `tentative`, `needs_action`, or `null`. The top-level `rsvp` is only set when the event is an invite addressed to the calendar's account.
+- Each reminder contains a signed `minutes_before_start` integer. `attachments` contain a URI and parameters; `x_properties` contain the unfiltered property name, value, and parameters. Parameters are ordered arrays of `{ "name", "value" }` objects so order and duplicate names can be preserved.
+- X-properties are provider-defined. Consumers should ignore names they do not understand and tolerate new JSON fields for forward compatibility.
+- `last_modified` is an RFC 3339 UTC timestamp or `null`; `sequence` is the event revision number.
+
+Full JSON may contain attendee addresses, provider event IDs, conference URLs, and HTML alternate descriptions. Do not publish it without reviewing or filtering sensitive fields.
 
 </details>
 
