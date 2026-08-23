@@ -1,3 +1,4 @@
+pub mod calendars;
 pub mod config;
 pub mod connect;
 pub mod discard;

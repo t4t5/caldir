@@ -226,6 +226,21 @@ caldir discard --calendar work
 caldir discard --force
 ```
 
+## `caldir calendars`
+
+List every calendar in the local caldir together with its stored name, color,
+read-only setting, and provider.
+
+```bash
+caldir calendars
+
+# As JSON
+caldir calendars --json
+```
+
+This command reads local calendar configuration only. It does not contact
+providers or inspect events.
+
 ## `caldir config`
 
 Show configuration paths and calendar info.

@@ -212,6 +212,8 @@ enum Commands {
     },
     #[command(about = "Show configuration paths and calendar info")]
     Config,
+    #[command(about = "List configured calendars")]
+    Calendars,
     #[command(about = "Check your caldir for bad data (e.g. duplicate files)")]
     Doctor,
     #[command(about = "Update caldir and installed providers to the latest version")]
@@ -222,7 +224,11 @@ impl Commands {
     fn supports_json(&self) -> bool {
         matches!(
             self,
-            Self::Config | Self::Events { .. } | Self::Today { .. } | Self::Week { .. }
+            Self::Calendars
+                | Self::Config
+                | Self::Events { .. }
+                | Self::Today { .. }
+                | Self::Week { .. }
         )
     }
 }
@@ -327,6 +333,11 @@ async fn main() -> Result<()> {
             output::emit(&view, output_format);
             Ok(())
         }
+        Commands::Calendars => {
+            let view = commands::calendars::run(&caldir)?;
+            output::emit(&view, output_format);
+            Ok(())
+        }
         Commands::Doctor => commands::doctor::run(&caldir),
         Commands::Update => unreachable!("handled above"),
     }
@@ -365,6 +376,7 @@ mod tests {
 
     #[test]
     fn views_support_json() {
+        assert!(Commands::Calendars.supports_json());
         assert!(Commands::Config.supports_json());
         assert!(
             Commands::Events {
