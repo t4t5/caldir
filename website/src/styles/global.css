@@ -22,6 +22,11 @@
   --breakpoint-md: 880px;
 }
 
+/* keep short and scrolling pages aligned */
+html {
+  scrollbar-gutter: stable;
+}
+
 .caldir-prose h1,
 .caldir-prose h2,
 .caldir-prose h3 {
