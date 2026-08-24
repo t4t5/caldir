@@ -4,4 +4,5 @@ export const docsLinks = [
   { slug: "commands", title: "Commands", href: "/commands" },
   { slug: "providers", title: "Providers", href: "/providers" },
   { slug: "configuration", title: "Configuration", href: "/configuration" },
+  { slug: "ecosystem", title: "Ecosystem", href: "/ecosystem" },
 ];
