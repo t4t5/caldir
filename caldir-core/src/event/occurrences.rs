@@ -79,22 +79,29 @@ pub(crate) fn expand_master(
 
     let duration = master_duration(master);
 
-    dates
+    let mut result: Vec<Event> = dates
         .into_iter()
         .filter_map(|occ| {
             let occ_time = occurrence_to_event_time(&occ, &master.start);
             let rid = RecurrenceId::from_event_time(occ_time.clone());
 
-            if let Some(override_event) = overrides.get(&rid) {
-                if override_event.status == Status::Cancelled {
-                    return None;
-                }
-                return Some(override_event.clone());
+            if overrides.contains_key(&rid) {
+                return None;
             }
 
             Some(synthesize_instance(master, occ_time, duration))
         })
-        .collect()
+        .collect();
+
+    // Overrides have their own start time (possibly rescheduled outside their original slot)
+    // so we range-check them like singles.
+    for override_event in overrides.values() {
+        if override_event.status != Status::Cancelled && override_event.occurs_in_range(from, to) {
+            result.push(override_event.clone());
+        }
+    }
+
+    result
 }
 
 impl Event {
@@ -538,6 +545,23 @@ mod tests {
         // The event should be there!
         let starts: Vec<_> = result.iter().map(starts_at).collect();
         assert_eq!(starts, vec![utc(2026, 1, 20, 9, 0)]);
+    }
+
+    #[test]
+    fn override_moved_out_of_range_is_not_returned_for_its_original_slot() {
+        // Jan 6 instance rescheduled to Jan 20; query only covers Jan 6.
+        let master = recurring("Standup", utc(2026, 1, 5, 9, 0), "FREQ=DAILY;COUNT=3");
+        let mut moved = override_for(&master, EventTime::DateTimeUtc(utc(2026, 1, 6, 9, 0)));
+        moved.start = EventTime::DateTimeUtc(utc(2026, 1, 20, 9, 0));
+        moved.end = Some(EventTime::DateTimeUtc(utc(2026, 1, 20, 10, 0)));
+
+        let result = expand_in_range(
+            vec![master, moved],
+            utc(2026, 1, 6, 0, 0),
+            utc(2026, 1, 7, 0, 0),
+        );
+
+        assert!(result.is_empty());
     }
 
     #[test]
