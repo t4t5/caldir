@@ -519,6 +519,28 @@ mod tests {
     }
 
     #[test]
+    fn moved_override_is_found_by_its_start_date() {
+        let master = recurring("Standup", utc(2026, 1, 5, 9, 0), "FREQ=DAILY;COUNT=3");
+
+        // Override the Jan 6 instance and move it to Jan 20 (recurring-id stays the same):
+        let mut moved = override_for(&master, EventTime::DateTimeUtc(utc(2026, 1, 6, 9, 0)));
+
+        moved.start = EventTime::DateTimeUtc(utc(2026, 1, 20, 9, 0));
+        moved.end = Some(EventTime::DateTimeUtc(utc(2026, 1, 20, 10, 0)));
+
+        // Find all events for Jan 20:
+        let result = expand_in_range(
+            vec![master, moved],
+            utc(2026, 1, 20, 0, 0),
+            utc(2026, 1, 21, 0, 0),
+        );
+
+        // The event should be there!
+        let starts: Vec<_> = result.iter().map(starts_at).collect();
+        assert_eq!(starts, vec![utc(2026, 1, 20, 9, 0)]);
+    }
+
+    #[test]
     fn cancelled_override_drops_instance() {
         let master = recurring("Standup", utc(2026, 1, 5, 9, 0), "FREQ=DAILY;COUNT=3");
         let mut cancelled = override_for(&master, EventTime::DateTimeUtc(utc(2026, 1, 6, 9, 0)));
