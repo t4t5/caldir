@@ -44,6 +44,11 @@ impl Caldir {
         self
     }
 
+    /// Override the RPC timeout for all providers.
+    pub fn set_provider_timeout(&mut self, timeout: std::time::Duration) {
+        self.providers.set_timeout(timeout);
+    }
+
     pub fn data_dir(&self) -> PathBuf {
         self.config.data_dir()
     }

@@ -2,6 +2,7 @@ use super::error::ProviderError;
 use crate::{Provider, ProviderSlug};
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::Duration;
 
 use super::slug::PROVIDER_BINARY_PREFIX;
 
@@ -32,6 +33,13 @@ impl ProviderRegistry {
 
     pub fn add(&mut self, provider: Provider) {
         self.0.insert(provider.slug().clone(), provider);
+    }
+
+    /// Override the RPC timeout for all registered providers.
+    pub fn set_timeout(&mut self, timeout: Duration) {
+        for provider in self.0.values_mut() {
+            provider.set_timeout(timeout);
+        }
     }
 
     /// Slugs of all registered providers. Order is not stable.

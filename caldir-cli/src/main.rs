@@ -18,6 +18,10 @@ struct Cli {
     /// Output as JSON
     #[arg(long, global = true)]
     json: bool,
+
+    /// Provider response timeout (e.g. "30s", "2m")
+    #[arg(long, global = true, value_parser = humantime::parse_duration)]
+    timeout: Option<std::time::Duration>,
 }
 
 #[derive(Subcommand)]
@@ -254,6 +258,10 @@ async fn main() -> Result<()> {
 
     let mut caldir = Caldir::load()?;
 
+    if let Some(timeout) = cli.timeout {
+        caldir.set_provider_timeout(timeout);
+    }
+
     match cli.command {
         Commands::Connect { provider, hosted } => {
             commands::connect::run(&mut caldir, provider, hosted).await
@@ -372,6 +380,20 @@ mod tests {
             "google"
         ]));
         assert!(parse_hosted(&["caldir", "connect", "google"]));
+    }
+
+    #[test]
+    fn timeout_parses_human_readable_duration() {
+        let cli = Cli::parse_from(["caldir", "status", "--timeout", "30s"]);
+
+        assert_eq!(cli.timeout, Some(std::time::Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn timeout_defaults_to_none() {
+        let cli = Cli::parse_from(["caldir", "status"]);
+
+        assert_eq!(cli.timeout, None);
     }
 
     #[test]
