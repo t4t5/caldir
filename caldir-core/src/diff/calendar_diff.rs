@@ -27,6 +27,26 @@ impl CalendarDiff {
             .map(|e| (e.event().event_instance_id(), e))
             .collect();
 
+        let mut master_uids: HashSet<_> = local_events
+            .iter()
+            .filter(|e| e.event().recurrence.is_some() && e.event().recurrence_id.is_none())
+            .map(|e| e.event().uid.clone())
+            .collect();
+
+        master_uids.extend(
+            remote_events
+                .iter()
+                .map(RemoteEvent::event)
+                .filter(|event| {
+                    event.recurrence.is_some()
+                        && event.recurrence_id.is_none()
+                        && event.status != Status::Cancelled
+                        && !local_event_ids.contains(&event.event_instance_id())
+                        && sync_bases.get(&event.event_instance_id()).is_none()
+                })
+                .map(|event| event.uid.clone()),
+        );
+
         let mut outgoing = Vec::new();
         let mut incoming = Vec::new();
 
@@ -98,12 +118,15 @@ impl CalendarDiff {
                 continue;
             }
 
-            // Missing locally + cancelled on remote: treat as already in sync.
-            // A missing file is semantically equivalent to STATUS:CANCELLED —
-            // both mean "not active". Avoids resurrecting tombstones on pull
-            // and avoids spurious push-deletes for events Google has already
-            // cancelled.
+            // Skip cancelled tombstones, but materialize recurring overrides
+            // while their master remains so its RRULE does not expand them.
             if remote_event.event().status == Status::Cancelled {
+                let event = remote_event.event();
+
+                if event.recurrence_id.is_some() && master_uids.contains(&event.uid) {
+                    incoming.push(EventChange::Create(event.clone()));
+                }
+
                 continue;
             }
 
@@ -194,7 +217,7 @@ fn local_is_newer(local: &CalendarEvent, remote: &RemoteEvent) -> bool {
 mod tests {
     use super::*;
     use crate::Event;
-    use crate::event::EventTime;
+    use crate::event::{EventTime, Recurrence, RecurrenceId};
     use crate::test_utils::{test_calendar, test_calendar_event, test_event};
     use chrono::{TimeZone, Utc};
     use pretty_assertions::assert_eq;
@@ -306,6 +329,117 @@ mod tests {
             vec![],
             vec![RemoteEvent::new(cancelled)],
             &synced_ids,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn cancelled_instance_of_local_master_becomes_incoming_create() {
+        let (_tmp, calendar) = test_calendar();
+        let mut master = test_event();
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY"));
+        let calendar_event = calendar.create_event(master.clone()).unwrap();
+
+        let mut cancelled_instance = master.clone();
+        cancelled_instance.recurrence = None;
+        cancelled_instance.recurrence_id =
+            Some(RecurrenceId::from_event_time(master.start.clone()));
+        cancelled_instance.status = Status::Cancelled;
+
+        let diff = CalendarDiff::compute(
+            vec![calendar_event],
+            vec![
+                RemoteEvent::new(master),
+                RemoteEvent::new(cancelled_instance.clone()),
+            ],
+            &SyncBases::new(),
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(diff.incoming, vec![EventChange::Create(cancelled_instance)]);
+    }
+
+    #[test]
+    fn first_sync_pulls_master_and_cancelled_instance() {
+        let mut master = test_event();
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY"));
+
+        let mut cancelled_instance = master.clone();
+        cancelled_instance.recurrence = None;
+        cancelled_instance.recurrence_id =
+            Some(RecurrenceId::from_event_time(master.start.clone()));
+        cancelled_instance.status = Status::Cancelled;
+
+        let diff = CalendarDiff::compute(
+            vec![],
+            vec![
+                RemoteEvent::new(master.clone()),
+                RemoteEvent::new(cancelled_instance.clone()),
+            ],
+            &SyncBases::new(),
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(
+            diff.incoming,
+            vec![
+                EventChange::Create(master),
+                EventChange::Create(cancelled_instance),
+            ]
+        );
+    }
+
+    #[test]
+    fn cancelled_instance_is_skipped_when_local_master_was_deleted() {
+        let mut master = test_event();
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY"));
+
+        let mut cancelled_instance = master.clone();
+        cancelled_instance.recurrence = None;
+        cancelled_instance.recurrence_id =
+            Some(RecurrenceId::from_event_time(master.start.clone()));
+        cancelled_instance.status = Status::Cancelled;
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.insert_known_event_id(master.event_instance_id());
+
+        let diff = CalendarDiff::compute(
+            vec![],
+            vec![
+                RemoteEvent::new(master.clone()),
+                RemoteEvent::new(cancelled_instance),
+            ],
+            &sync_bases,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![EventChange::Delete(master)]);
+        assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn cancelled_instance_is_skipped_when_remote_master_is_cancelled() {
+        let mut master = test_event();
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY"));
+        master.status = Status::Cancelled;
+
+        let mut cancelled_instance = master.clone();
+        cancelled_instance.recurrence = None;
+        cancelled_instance.recurrence_id =
+            Some(RecurrenceId::from_event_time(master.start.clone()));
+
+        let diff = CalendarDiff::compute(
+            vec![],
+            vec![
+                RemoteEvent::new(master),
+                RemoteEvent::new(cancelled_instance),
+            ],
+            &SyncBases::new(),
             &DateRange::default(),
         );
 
