@@ -13,6 +13,7 @@ use crate::rpc;
 use account::ProviderAccount;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 use transport::{ProviderTransport, SubprocessTransport};
 
 pub(crate) use error::ProviderError;
@@ -25,6 +26,7 @@ pub use storage::{ProviderStorage, StorageError};
 pub struct Provider {
     slug: ProviderSlug,
     transport: Arc<dyn ProviderTransport>,
+    timeout: Option<Duration>,
 }
 
 impl Provider {
@@ -46,11 +48,16 @@ impl Provider {
         Ok(Provider {
             slug,
             transport: Arc::new(transport),
+            timeout: None,
         })
     }
 
     pub fn slug(&self) -> &ProviderSlug {
         &self.slug
+    }
+
+    pub(crate) fn set_timeout(&mut self, timeout: Duration) {
+        self.timeout = Some(timeout);
     }
 
     pub fn provider_account(&self, identifier: String) -> ProviderAccount {
@@ -76,7 +83,8 @@ impl Provider {
             serde_json::to_string(&request_value).map_err(ProviderError::Serialize)?;
 
         // Make call:
-        let response_json = self.transport.exchange(&request_json, C::TIMEOUT).await?;
+        let timeout = self.timeout.unwrap_or(C::TIMEOUT);
+        let response_json = self.transport.exchange(&request_json, timeout).await?;
 
         let response: rpc::Response<rpc::Wire<C::Response>> =
             serde_json::from_str(&response_json).map_err(ProviderError::Deserialize)?;
@@ -92,7 +100,11 @@ impl Provider {
         slug: ProviderSlug,
         transport: Arc<dyn ProviderTransport>,
     ) -> Self {
-        Provider { slug, transport }
+        Provider {
+            slug,
+            transport,
+            timeout: None,
+        }
     }
 
     #[cfg(test)]
@@ -248,6 +260,22 @@ mod tests {
             .unwrap();
 
         assert_eq!(mock.captured_timeout(), Some(Duration::from_secs(7)));
+    }
+
+    #[tokio::test]
+    async fn call_prefers_configured_timeout_over_per_command_timeout() {
+        let mock = Arc::new(MockTransport::with_response(
+            r#"{"status":"success","data":{"value":"x"}}"#,
+        ));
+        let mut provider = provider_with_transport(mock.clone());
+        provider.set_timeout(Duration::from_secs(30));
+
+        provider
+            .call(EchoCommand { value: "x".into() })
+            .await
+            .unwrap();
+
+        assert_eq!(mock.captured_timeout(), Some(Duration::from_secs(30)));
     }
 
     #[tokio::test]
