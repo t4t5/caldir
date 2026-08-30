@@ -91,7 +91,7 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
     Ok(all_events)
 }
 
-const EVENT_SELECT: &str = "id,iCalUId,subject,body,start,end,originalStartTimeZone,originalEndTimeZone,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,showAs,sensitivity,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus,type";
+const EVENT_SELECT: &str = "id,iCalUId,subject,body,start,end,originalStartTimeZone,originalEndTimeZone,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,isReminderOn,showAs,sensitivity,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus,type";
 
 async fn discover_window_event_ids(
     graph: &GraphClient,
@@ -227,5 +227,10 @@ mod tests {
             error.to_string(),
             "Unknown calendar view event type `futureType`"
         );
+    }
+
+    #[test]
+    fn event_projection_includes_reminder_state() {
+        assert!(EVENT_SELECT.split(',').any(|field| field == "isReminderOn"));
     }
 }
