@@ -19,6 +19,7 @@ caldir-core = { path = "../caldir-core", version = "0.14.1" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
+futures = "0.3"
 
 # HTTP client (Graph API + OAuth)
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -46,4 +47,3 @@ html2text = "0.17"
 
 [dev-dependencies]
 tempfile = "3"
-

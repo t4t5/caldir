@@ -3,6 +3,9 @@
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
+
+use crate::graph_api::types::GraphResponse;
 
 const GRAPH_BASE_URL: &str = "https://graph.microsoft.com/v1.0";
 
@@ -40,6 +43,32 @@ impl GraphClient {
             .await
             .with_context(|| format!("GET {url}"))?;
         check_status(response).await
+    }
+
+    pub async fn get_paged<T: DeserializeOwned>(&self, path: &str) -> Result<Vec<T>> {
+        let mut values = Vec::new();
+        let mut next_link: Option<String> = None;
+        let mut first = true;
+
+        loop {
+            let response = if first {
+                first = false;
+                self.get(path).await?
+            } else if let Some(ref url) = next_link {
+                self.get_url(url).await?
+            } else {
+                break;
+            };
+
+            let page: GraphResponse<T> = response
+                .json()
+                .await
+                .context("Failed to parse paginated Graph response")?;
+            values.extend(page.value);
+            next_link = page.next_link;
+        }
+
+        Ok(values)
     }
 
     pub async fn post<B: Serialize + ?Sized>(

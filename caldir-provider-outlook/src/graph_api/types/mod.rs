@@ -36,6 +36,16 @@ pub struct GraphCalendar {
     pub can_edit: bool,
 }
 
+/// Minimal event row used to discover logical events in a calendar view.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarViewRow {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub series_master_id: Option<String>,
+}
+
 /// Graph API event resource.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

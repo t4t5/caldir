@@ -6,11 +6,11 @@ Outlook / Microsoft 365 provider via the Microsoft Graph API. Same provider cont
 
 Same two-mode setup as Google: **hosted** (OAuth flows through `caldir.org`, no Azure AD app needed) or **self-hosted** (`--hosted=false`, user registers their own app and ships client_id/secret in `app_config.toml`). The mode is recorded on the session so refresh knows which endpoint to hit.
 
-## Why `/events`, not `/calendarView`
+## Calendar view discovery vs. event data
 
-Graph's `calendarView` *expands* every recurring occurrence into its own event with a synthetic `iCalUId`, turning one weekly meeting into ~50 indistinguishable rows. `/events` returns the natural shape — series masters with their `recurrence` pattern, plus exception overrides — which maps cleanly to caldir's one-file-per-logical-event model.
+`list_events` uses `calendarView` only as a window-bounded discovery index, selecting event IDs and types. Its expanded occurrences are never converted into caldir events: occurrence and exception rows point back to their series master, which is fetched in full from `/events/{id}`. This preserves caldir's natural shape of one recurring master with its `recurrence` pattern, plus exception overrides fetched from `/instances`.
 
-We deliberately don't pass a date filter: OData filters only see a series master's *first* occurrence, so a long-running meeting started in 2020 would be excluded from a 2026 window. We pull everything and let core enforce the ±365-day window.
+Do not replace discovery with a date filter on `/events`. OData filters only see a series master's *first* occurrence, so a long-running meeting started in 2020 would be excluded from a 2026 window.
 
 ## Recurring identity
 

@@ -1,15 +1,16 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use caldir_core::Event;
 use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::ListEvents;
 use chrono::{DateTime, Utc};
+use futures::stream::{self, StreamExt, TryStreamExt};
 
 use crate::app_config::AppConfigStore;
 use crate::constants::PROVIDER_NAME;
 use crate::graph_api::client::GraphClient;
-use crate::graph_api::types::{GraphEvent, GraphResponse};
+use crate::graph_api::types::{CalendarViewRow, GraphEvent};
 use crate::outlook_event::from_outlook::from_outlook;
 use crate::remote_config::OutlookRemoteConfig;
 use crate::session::SessionStore;
@@ -26,75 +27,60 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
         .await?;
     let graph = GraphClient::new(session.access_token());
 
-    // `/events` returns single events and recurring series masters (with
-    // their RRULE) but NOT exceptions to those series — Microsoft Graph
-    // surfaces exceptions only via `/instances` or `/calendarView`. We
-    // intentionally avoid `/calendarView`'s blanket expansion (which would
-    // turn one weekly meeting into ~50 indistinguishable rows) and instead
-    // call `/instances` once per master, picking out only `type=exception`.
-    // Date filtering on `/events` is intentionally omitted: OData's
-    // `start/dateTime` filter only sees a series master's first occurrence,
-    // so a long-running meeting started years ago would be excluded even if
-    // it has occurrences in our window.
-    let path = format!(
-        "/me/calendars/{}/events?$top=100&$select=id,iCalUId,subject,body,start,end,originalStartTimeZone,originalEndTimeZone,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,showAs,sensitivity,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus,type",
-        config.outlook_calendar_id
-    );
-
-    let mut all_events = Vec::new();
-    // Map outlook event id → master's iCalUId, used to rewrite each
-    // exception's iCalUId so masters and their overrides share the same UID
-    // locally (RFC 5545 — Graph mints unique iCalUIds per exception, which
-    // would otherwise break the (uid, recurrence_id) sync key).
-    let mut master_ids: HashMap<String, String> = HashMap::new();
-    let mut next_link: Option<String> = None;
-    let mut first = true;
-
-    loop {
-        let response = if first {
-            first = false;
-            graph.get(&path).await?
-        } else if let Some(ref url) = next_link {
-            graph.get_url(url).await?
-        } else {
-            break;
-        };
-
-        let page: GraphResponse<GraphEvent> = response
-            .json()
-            .await
-            .context("Failed to parse events response")?;
-
-        for graph_event in page.value {
-            let outlook_id = graph_event.id.clone();
-            let master_uid = graph_event.i_cal_uid.clone();
-            let is_master =
-                graph_event.event_type == "seriesMaster" || graph_event.recurrence.is_some();
-
-            match from_outlook(graph_event, &config.outlook_account) {
-                Ok(event) => {
-                    if is_master {
-                        master_ids.insert(outlook_id, master_uid);
-                    }
-                    all_events.push(event);
-                }
-                Err(_) => continue, // Skip malformed events
-            }
-        }
-
-        next_link = page.next_link;
-        if next_link.is_none() {
-            break;
-        }
-    }
-
     let from = normalize_window_bound(&cmd.from)
         .with_context(|| format!("Invalid `from` timestamp: {}", cmd.from))?;
     let to = normalize_window_bound(&cmd.to)
         .with_context(|| format!("Invalid `to` timestamp: {}", cmd.to))?;
 
-    for (master_id, master_uid) in &master_ids {
-        let exceptions = fetch_exceptions(&graph, master_id, master_uid, &from, &to).await?;
+    // Discover IDs with `/calendarView`, then fetch only those logical events
+    // in full. Recurring exceptions still come from each master's `/instances`.
+    let event_ids =
+        discover_window_event_ids(&graph, &config.outlook_calendar_id, &from, &to).await?;
+
+    let graph_events: Vec<GraphEvent> = stream::iter(event_ids.into_iter().map(|event_id| {
+        let graph = &graph;
+        async move { fetch_event(graph, &event_id).await }
+    }))
+    .buffered(4)
+    .try_collect()
+    .await?;
+
+    let mut all_events = Vec::new();
+    // Outlook event id and iCalUId, used to rewrite each
+    // exception's iCalUId so masters and their overrides share the same UID
+    // locally (RFC 5545 — Graph mints unique iCalUIds per exception, which
+    // would otherwise break the (uid, recurrence_id) sync key).
+    let mut master_ids = Vec::new();
+
+    for graph_event in graph_events {
+        let outlook_id = graph_event.id.clone();
+        let master_uid = graph_event.i_cal_uid.clone();
+        let is_master =
+            graph_event.event_type == "seriesMaster" || graph_event.recurrence.is_some();
+
+        match from_outlook(graph_event, &config.outlook_account) {
+            Ok(event) => {
+                if is_master {
+                    master_ids.push((outlook_id, master_uid));
+                }
+                all_events.push(event);
+            }
+            Err(_) => continue, // Skip malformed events
+        }
+    }
+
+    let exception_sets: Vec<Vec<GraphEvent>> =
+        stream::iter(master_ids.into_iter().map(|(master_id, master_uid)| {
+            let graph = &graph;
+            let from = &from;
+            let to = &to;
+            async move { fetch_exceptions(graph, &master_id, &master_uid, from, to).await }
+        }))
+        .buffered(4)
+        .try_collect()
+        .await?;
+
+    for exceptions in exception_sets {
         for exception in exceptions {
             if let Ok(event) = from_outlook(exception, &config.outlook_account) {
                 all_events.push(event);
@@ -103,6 +89,58 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
     }
 
     Ok(all_events)
+}
+
+const EVENT_SELECT: &str = "id,iCalUId,subject,body,start,end,originalStartTimeZone,originalEndTimeZone,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,showAs,sensitivity,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus,type";
+
+async fn discover_window_event_ids(
+    graph: &GraphClient,
+    calendar_id: &str,
+    from: &str,
+    to: &str,
+) -> Result<Vec<String>> {
+    let path = format!(
+        "/me/calendars/{calendar_id}/calendarView?startDateTime={from}&endDateTime={to}&$select=id,type,seriesMasterId&$top=999"
+    );
+    let rows = graph
+        .get_paged(&path)
+        .await
+        .context("Failed to discover events in calendar window")?;
+    collect_window_event_ids(rows)
+}
+
+fn collect_window_event_ids(rows: Vec<CalendarViewRow>) -> Result<Vec<String>> {
+    let mut ids = Vec::new();
+    let mut seen = HashSet::new();
+
+    for row in rows {
+        let id = match row.event_type.as_str() {
+            "singleInstance" | "seriesMaster" => row.id,
+            "occurrence" | "exception" => row.series_master_id.with_context(|| {
+                format!(
+                    "Calendar view {} {} is missing seriesMasterId",
+                    row.event_type, row.id
+                )
+            })?,
+            event_type => bail!("Unknown calendar view event type `{event_type}`"),
+        };
+
+        if seen.insert(id.clone()) {
+            ids.push(id);
+        }
+    }
+
+    Ok(ids)
+}
+
+async fn fetch_event(graph: &GraphClient, event_id: &str) -> Result<GraphEvent> {
+    let path = format!("/me/events/{event_id}?$select={EVENT_SELECT}");
+    graph
+        .get(&path)
+        .await?
+        .json()
+        .await
+        .with_context(|| format!("Failed to parse event {event_id}"))
 }
 
 /// Reformat an RFC3339 timestamp as `YYYY-MM-DDTHH:MM:SSZ` for embedding in
@@ -124,42 +162,70 @@ async fn fetch_exceptions(
     to: &str,
 ) -> Result<Vec<GraphEvent>> {
     let path = format!(
-        "/me/events/{}/instances?$top=100&startDateTime={}&endDateTime={}&$select=id,iCalUId,subject,body,start,end,originalStartTimeZone,originalEndTimeZone,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,showAs,sensitivity,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus,type",
-        master_id, from, to
+        "/me/events/{master_id}/instances?$top=999&startDateTime={from}&endDateTime={to}&$select={EVENT_SELECT}"
     );
 
-    let mut out = Vec::new();
-    let mut next_link: Option<String> = None;
-    let mut first = true;
+    let instances: Vec<GraphEvent> = graph
+        .get_paged(&path)
+        .await
+        .with_context(|| format!("Failed to fetch instances of master {master_id}"))?;
 
-    loop {
-        let response = if first {
-            first = false;
-            graph.get(&path).await?
-        } else if let Some(ref url) = next_link {
-            graph.get_url(url).await?
-        } else {
-            break;
-        };
-
-        let page: GraphResponse<GraphEvent> = response
-            .json()
-            .await
-            .with_context(|| format!("Failed to parse instances of master {}", master_id))?;
-
-        for mut instance in page.value {
-            if instance.event_type != "exception" {
-                continue;
+    Ok(instances
+        .into_iter()
+        .filter_map(|mut instance| {
+            if instance.event_type == "exception" {
+                instance.i_cal_uid = master_uid.to_string();
+                Some(instance)
+            } else {
+                None
             }
-            instance.i_cal_uid = master_uid.to_string();
-            out.push(instance);
-        }
+        })
+        .collect())
+}
 
-        next_link = page.next_link;
-        if next_link.is_none() {
-            break;
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(id: &str, event_type: &str, series_master_id: Option<&str>) -> CalendarViewRow {
+        CalendarViewRow {
+            id: id.to_string(),
+            event_type: event_type.to_string(),
+            series_master_id: series_master_id.map(str::to_string),
         }
     }
 
-    Ok(out)
+    #[test]
+    fn collects_and_deduplicates_logical_event_ids() {
+        let rows = vec![
+            row("single", "singleInstance", None),
+            row("master-row", "seriesMaster", None),
+            row("occurrence-1", "occurrence", Some("recurring")),
+            row("occurrence-2", "occurrence", Some("recurring")),
+            row("exception", "exception", Some("recurring")),
+            row("single", "singleInstance", None),
+        ];
+
+        let ids = collect_window_event_ids(rows).unwrap();
+
+        assert_eq!(ids, vec!["single", "master-row", "recurring"]);
+    }
+
+    #[test]
+    fn rejects_recurring_instance_without_master_id() {
+        let error =
+            collect_window_event_ids(vec![row("occurrence", "occurrence", None)]).unwrap_err();
+
+        assert!(error.to_string().contains("missing seriesMasterId"));
+    }
+
+    #[test]
+    fn rejects_unknown_event_type() {
+        let error = collect_window_event_ids(vec![row("event", "futureType", None)]).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "Unknown calendar view event type `futureType`"
+        );
+    }
 }
