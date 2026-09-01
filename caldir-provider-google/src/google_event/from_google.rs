@@ -5,7 +5,7 @@ use caldir_core::{
 };
 
 use crate::constants::{
-    PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY, PROVIDER_EVENT_TYPE_PROPERTY,
+    GOOGLE_COLOR_ID_PROPERTY, GOOGLE_EVENT_ID_PROPERTY, GOOGLE_EVENT_TYPE_PROPERTY,
 };
 
 pub trait FromGoogle {
@@ -96,18 +96,15 @@ impl FromGoogle for Event {
 
         let mut x_properties = Vec::new();
         // Store Google's event ID for API calls (updates, deletes)
-        x_properties.push(XProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id));
+        x_properties.push(XProperty::new(GOOGLE_EVENT_ID_PROPERTY, event.id));
         if let Some(ref url) = conference_url {
             x_properties.push(XProperty::new("X-GOOGLE-CONFERENCE", url));
         }
         if !event.color_id.is_empty() {
-            x_properties.push(XProperty::new(PROVIDER_COLOR_ID_PROPERTY, event.color_id));
+            x_properties.push(XProperty::new(GOOGLE_COLOR_ID_PROPERTY, event.color_id));
         }
         if !event.event_type.is_empty() && event.event_type != "default" {
-            x_properties.push(XProperty::new(
-                PROVIDER_EVENT_TYPE_PROPERTY,
-                event.event_type,
-            ));
+            x_properties.push(XProperty::new(GOOGLE_EVENT_TYPE_PROPERTY, event.event_type));
         }
 
         Ok(Event {
@@ -448,7 +445,7 @@ mod tests {
         let event = Event::from_google(ge).unwrap();
 
         assert_eq!(
-            event.x_property(PROVIDER_EVENT_TYPE_PROPERTY),
+            event.x_property(GOOGLE_EVENT_TYPE_PROPERTY),
             Some("focusTime")
         );
     }
@@ -460,7 +457,7 @@ mod tests {
 
         let event = Event::from_google(ge).unwrap();
 
-        assert_eq!(event.x_property(PROVIDER_EVENT_TYPE_PROPERTY), None);
+        assert_eq!(event.x_property(GOOGLE_EVENT_TYPE_PROPERTY), None);
     }
 
     // `useDefault: true` means "inherit the calendar's default reminders". We

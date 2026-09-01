@@ -5,7 +5,7 @@ use caldir_core::{Event, EventTime};
 use chrono::{DateTime, Duration, NaiveDate, Utc};
 
 use crate::app_config::AppConfigStore;
-use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
+use crate::constants::{OUTLOOK_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::graph_api::client::GraphClient;
 use crate::graph_api::types::{GraphEvent, GraphResponse};
 use crate::outlook_event::from_outlook::from_outlook;
@@ -33,11 +33,11 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     if let Some(rid) = cmd.event.recurrence_id.as_ref() {
         let master_id = cmd
             .event
-            .x_property(PROVIDER_EVENT_ID_PROPERTY)
+            .x_property(OUTLOOK_EVENT_ID_PROPERTY)
             .ok_or_else(|| {
                 anyhow!(
                     "Cannot create recurring instance override without master's \
-                     {PROVIDER_EVENT_ID_PROPERTY}"
+                     {OUTLOOK_EVENT_ID_PROPERTY}"
                 )
             })?;
 

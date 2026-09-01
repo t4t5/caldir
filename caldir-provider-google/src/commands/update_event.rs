@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::app_config::AppConfigStore;
 use crate::commands::invite::patch_invite_status;
-use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_EVENT_TYPE_PROPERTY, PROVIDER_NAME};
+use crate::constants::{GOOGLE_EVENT_ID_PROPERTY, GOOGLE_EVENT_TYPE_PROPERTY, PROVIDER_NAME};
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::SessionStore;
@@ -29,8 +29,8 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
     // Get Google's event ID from custom properties
     let google_event_id = cmd
         .event
-        .x_property(PROVIDER_EVENT_ID_PROPERTY)
-        .ok_or_else(|| anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}"))?;
+        .x_property(GOOGLE_EVENT_ID_PROPERTY)
+        .ok_or_else(|| anyhow!("Cannot update event without {GOOGLE_EVENT_ID_PROPERTY}"))?;
 
     if cmd.event.is_invite_for(account_email) {
         // Only update our own attendee status:
@@ -93,7 +93,7 @@ fn patch_body_without_attendees(event: &Event) -> Result<Value> {
     let mut body = serde_json::to_value(event.to_google())?;
 
     if let Value::Object(fields) = &mut body {
-        if event.x_property(PROVIDER_EVENT_TYPE_PROPERTY) == Some("birthday") {
+        if event.x_property(GOOGLE_EVENT_TYPE_PROPERTY) == Some("birthday") {
             fields.retain(|key, _| BIRTHDAY_PATCH_FIELDS.contains(&key.as_str()));
 
             return Ok(body);
@@ -156,8 +156,8 @@ mod tests {
             minutes_before_start: 15,
         }];
         event.x_properties = vec![
-            XProperty::new(PROVIDER_EVENT_TYPE_PROPERTY, "birthday"),
-            XProperty::new(crate::constants::PROVIDER_COLOR_ID_PROPERTY, "5"),
+            XProperty::new(GOOGLE_EVENT_TYPE_PROPERTY, "birthday"),
+            XProperty::new(crate::constants::GOOGLE_COLOR_ID_PROPERTY, "5"),
         ];
 
         let body = patch_body_without_attendees(&event).unwrap();

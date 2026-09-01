@@ -4,7 +4,7 @@ use caldir_core::rpc::UpdateEvent;
 use caldir_core::{Event, ParticipationStatus};
 
 use crate::app_config::AppConfigStore;
-use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
+use crate::constants::{OUTLOOK_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::graph_api::client::GraphClient;
 use crate::graph_api::types::GraphEvent;
 use crate::outlook_event::from_outlook::from_outlook;
@@ -27,9 +27,9 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
 
     let outlook_event_id = cmd
         .event
-        .x_property(PROVIDER_EVENT_ID_PROPERTY)
+        .x_property(OUTLOOK_EVENT_ID_PROPERTY)
         .ok_or_else(|| {
-            anyhow::anyhow!("Cannot update event without {PROVIDER_EVENT_ID_PROPERTY}")
+            anyhow::anyhow!("Cannot update event without {OUTLOOK_EVENT_ID_PROPERTY}")
         })?;
 
     if cmd.event.is_invite_for(account_email) {

@@ -5,7 +5,7 @@ use google_calendar::types::SendUpdates;
 use google_calendar::{ClientError, StatusCode};
 
 use crate::app_config::AppConfigStore;
-use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
+use crate::constants::{GOOGLE_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::SessionStore;
 
@@ -16,10 +16,8 @@ pub async fn handle(cmd: DeleteEvent) -> Result<()> {
 
     let google_event_id = cmd
         .event
-        .x_property(PROVIDER_EVENT_ID_PROPERTY)
-        .ok_or_else(|| {
-            anyhow::anyhow!("Cannot delete event without {PROVIDER_EVENT_ID_PROPERTY}")
-        })?;
+        .x_property(GOOGLE_EVENT_ID_PROPERTY)
+        .ok_or_else(|| anyhow::anyhow!("Cannot delete event without {GOOGLE_EVENT_ID_PROPERTY}"))?;
 
     let storage = ProviderStorage::for_provider(PROVIDER_NAME)?;
     let session_store = SessionStore::new(storage.clone());

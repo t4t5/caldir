@@ -7,7 +7,7 @@ use google_calendar::types::SendUpdates;
 use crate::app_config::AppConfigStore;
 use crate::commands::invite::patch_invite_status;
 use crate::commands::update_event::patch_event_without_attendees;
-use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
+use crate::constants::{GOOGLE_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::SessionStore;
@@ -126,14 +126,12 @@ fn is_conference_data_error(error: &google_calendar::ClientError) -> bool {
 /// Google API id of a recurring-instance override: `{master_id}_{instance suffix}`.
 /// A downloaded override already carries its own instance id — use it as-is.
 fn override_instance_id(event: &Event, rid: &EventTime) -> Result<String> {
-    let provider_id = event
-        .x_property(PROVIDER_EVENT_ID_PROPERTY)
-        .ok_or_else(|| {
-            anyhow!(
-                "Cannot create recurring instance override without master's \
-             {PROVIDER_EVENT_ID_PROPERTY}"
-            )
-        })?;
+    let provider_id = event.x_property(GOOGLE_EVENT_ID_PROPERTY).ok_or_else(|| {
+        anyhow!(
+            "Cannot create recurring instance override without master's \
+             {GOOGLE_EVENT_ID_PROPERTY}"
+        )
+    })?;
 
     let suffix = google_instance_suffix(rid);
 
@@ -186,7 +184,7 @@ mod tests {
         event.recurrence_id = Some(RecurrenceId::from_event_time(rid.clone()));
         event
             .x_properties
-            .push(XProperty::new(PROVIDER_EVENT_ID_PROPERTY, "master123"));
+            .push(XProperty::new(GOOGLE_EVENT_ID_PROPERTY, "master123"));
 
         assert_eq!(
             override_instance_id(&event, &rid).unwrap(),
@@ -215,7 +213,7 @@ mod tests {
         // Pulling it stores that id — suffix included — in X-GOOGLE-EVENT-ID:
         let event = Event::from_google(downloaded).unwrap();
         assert_eq!(
-            event.x_property(PROVIDER_EVENT_ID_PROPERTY).unwrap(),
+            event.x_property(GOOGLE_EVENT_ID_PROPERTY).unwrap(),
             "master123_20260814T170000Z"
         );
 

@@ -9,7 +9,7 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
 
 use crate::constants::{
-    HTML_DESC_PROPERTY, PROVIDER_CONFERENCE_PROPERTY, PROVIDER_EVENT_ID_PROPERTY,
+    HTML_DESC_PROPERTY, OUTLOOK_CONFERENCE_PROPERTY, OUTLOOK_EVENT_ID_PROPERTY,
 };
 use crate::graph_api::types::{
     GraphEvent, PatternedRecurrence, RecurrencePattern, RecurrenceRange,
@@ -157,9 +157,9 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&Utc));
 
-    let mut x_properties = vec![XProperty::new(PROVIDER_EVENT_ID_PROPERTY, event.id)];
+    let mut x_properties = vec![XProperty::new(OUTLOOK_EVENT_ID_PROPERTY, event.id)];
     if let Some(url) = conference_url {
-        x_properties.push(XProperty::new(PROVIDER_CONFERENCE_PROPERTY, url));
+        x_properties.push(XProperty::new(OUTLOOK_CONFERENCE_PROPERTY, url));
     }
     if let Some(html) = html_body {
         // FMTTYPE=text/html identifies the alternate description as HTML per

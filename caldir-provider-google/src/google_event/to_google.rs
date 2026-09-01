@@ -3,7 +3,7 @@ use caldir_core::{
     Status, Visibility,
 };
 
-use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
+use crate::constants::{GOOGLE_COLOR_ID_PROPERTY, GOOGLE_EVENT_ID_PROPERTY};
 
 pub trait ToGoogle {
     fn to_google(&self) -> google_calendar::types::Event;
@@ -77,12 +77,12 @@ impl ToGoogle for Event {
             .map(event_time_to_google);
 
         let google_event_id = self
-            .x_property(PROVIDER_EVENT_ID_PROPERTY)
+            .x_property(GOOGLE_EVENT_ID_PROPERTY)
             .unwrap_or_default()
             .to_string();
 
         let color_id = self
-            .x_property(PROVIDER_COLOR_ID_PROPERTY)
+            .x_property(GOOGLE_COLOR_ID_PROPERTY)
             .unwrap_or_default()
             .to_string();
 

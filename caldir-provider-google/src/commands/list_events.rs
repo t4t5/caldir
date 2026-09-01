@@ -7,7 +7,7 @@ use caldir_core::{Availability, Event, EventTime, EventUid, RecurrenceId, Status
 use google_calendar::types::OrderBy;
 
 use crate::app_config::AppConfigStore;
-use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
+use crate::constants::{GOOGLE_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::google_event::{FromGoogle, google_dt_to_event_time};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::SessionStore;
@@ -145,7 +145,7 @@ fn cancellation_to_event(
         reminders: Vec::new(),
         url: None,
         attachments: Vec::new(),
-        x_properties: vec![XProperty::new(PROVIDER_EVENT_ID_PROPERTY, &ge.id)],
+        x_properties: vec![XProperty::new(GOOGLE_EVENT_ID_PROPERTY, &ge.id)],
     })
 }
 
