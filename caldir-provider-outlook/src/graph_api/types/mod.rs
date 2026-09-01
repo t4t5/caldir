@@ -46,6 +46,14 @@ pub struct CalendarViewRow {
     pub series_master_id: Option<String>,
 }
 
+/// Minimal event row used to index recurring series masters.
+#[derive(Debug, Deserialize)]
+pub struct SeriesMasterIndexRow {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub event_type: String,
+}
+
 /// Graph API event resource.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
