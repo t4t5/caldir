@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use crate::app_config::AppConfigStore;
 use crate::commands::invite::patch_invite_status;
-use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
+use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_EVENT_TYPE_PROPERTY, PROVIDER_NAME};
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::SessionStore;
@@ -88,6 +88,13 @@ pub(crate) async fn patch_event_without_attendees(
 }
 
 fn patch_body_without_attendees(event: &Event) -> Result<Value> {
+    if event.x_property(PROVIDER_EVENT_TYPE_PROPERTY) == Some("birthday") {
+        return Ok(serde_json::json!({
+            "eventType": "birthday",
+            "summary": event.summary.clone().unwrap_or_default(),
+        }));
+    }
+
     let mut body = serde_json::to_value(event.to_google())?;
 
     if let Value::Object(fields) = &mut body {
@@ -113,7 +120,7 @@ fn patch_body_without_attendees(event: &Event) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caldir_core::{Attendee, EventTime, Recurrence};
+    use caldir_core::{Attendee, EventTime, Recurrence, XProperty};
     use chrono::{NaiveDate, TimeZone, Utc};
 
     #[test]
@@ -134,6 +141,43 @@ mod tests {
             Some("Weekly sync")
         );
         assert!(body.get("recurrence").is_some());
+    }
+
+    #[test]
+    fn birthday_patch_only_updates_summary() {
+        let mut event = Event::new(
+            "Alice's birthday",
+            EventTime::Date(NaiveDate::from_ymd_opt(2026, 7, 10).unwrap()),
+        );
+        event.description = Some("Should not be sent".into());
+        event.location = Some("This should not be sent either".into());
+        event.x_properties = vec![XProperty::new(PROVIDER_EVENT_TYPE_PROPERTY, "birthday")];
+
+        let body = patch_body_without_attendees(&event).unwrap();
+
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "eventType": "birthday",
+                "summary": "Alice's birthday",
+            })
+        );
+    }
+
+    #[test]
+    fn patch_body_includes_description() {
+        let mut event = Event::new(
+            "Planning",
+            EventTime::Date(NaiveDate::from_ymd_opt(2026, 7, 10).unwrap()),
+        );
+        event.description = Some("Bring the roadmap".into());
+
+        let body = patch_body_without_attendees(&event).unwrap();
+
+        assert_eq!(
+            body.get("description").and_then(Value::as_str),
+            Some("Bring the roadmap")
+        );
     }
 
     #[test]
