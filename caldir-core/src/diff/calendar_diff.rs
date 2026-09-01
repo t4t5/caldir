@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use super::event_change::EventChange;
 use crate::calendar::SyncBases;
-use crate::event::Status;
-use crate::{CalendarEvent, DateRange, RemoteEvent};
+use crate::event::{EventInstanceId, EventUid, Status};
+use crate::{CalendarEvent, DateRange, Event, RemoteEvent};
 
 pub struct CalendarDiff {
     outgoing: Vec<EventChange>,
@@ -25,6 +25,24 @@ impl CalendarDiff {
         let remote_by_id: HashMap<_, &RemoteEvent> = remote_events
             .iter()
             .map(|e| (e.event().event_instance_id(), e))
+            .collect();
+
+        let remote_live_master_uids: HashSet<_> = remote_events
+            .iter()
+            .map(RemoteEvent::event)
+            .filter(|event| {
+                event.recurrence.is_some()
+                    && event.recurrence_id.is_none()
+                    && event.status != Status::Cancelled
+            })
+            .map(|event| event.uid.clone())
+            .collect();
+
+        let local_masters: HashMap<_, &Event> = local_events
+            .iter()
+            .map(CalendarEvent::event)
+            .filter(|event| event.recurrence.is_some() && event.recurrence_id.is_none())
+            .map(|event| (event.uid.clone(), event))
             .collect();
 
         let mut master_uids: HashSet<_> = local_events
@@ -103,7 +121,15 @@ impl CalendarDiff {
                 continue;
             }
 
-            if sync_bases.get(&id).is_some() {
+            if sync_bases.get(&id).is_some()
+                || is_orphaned_override(
+                    event,
+                    &remote_live_master_uids,
+                    &local_masters,
+                    sync_bases,
+                    range,
+                )
+            {
                 incoming.push(EventChange::Delete(event.clone()));
             } else {
                 outgoing.push(EventChange::Create(event.clone()));
@@ -158,6 +184,33 @@ impl CalendarDiff {
     /// could never be applied — surfacing them as pending pushes is misleading.
     pub fn discard_outgoing(&mut self) {
         self.outgoing.clear();
+    }
+}
+
+fn is_orphaned_override(
+    event: &Event,
+    remote_live_master_uids: &HashSet<EventUid>,
+    local_masters: &HashMap<EventUid, &Event>,
+    sync_bases: &SyncBases,
+    range: &DateRange,
+) -> bool {
+    if event.recurrence_id.is_none() || remote_live_master_uids.contains(&event.uid) {
+        return false;
+    }
+
+    let master_id = EventInstanceId::new(event.uid.clone(), None);
+    if sync_bases.get(&master_id).is_none() {
+        return false;
+    }
+
+    let Some(master) = local_masters.get(&event.uid) else {
+        return true;
+    };
+
+    if let (Some(from), Some(to)) = (range.from, range.to) {
+        master.has_occurrence_in_range(from, to)
+    } else {
+        true
     }
 }
 
@@ -222,6 +275,16 @@ mod tests {
     use chrono::{TimeZone, Utc};
     use pretty_assertions::assert_eq;
 
+    fn recurring_series() -> (Event, Event) {
+        let mut master = test_event();
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY"));
+
+        let mut override_event = master.occurrence_at(master.start.clone());
+        override_event.summary = Some("Overridden occurrence".to_string());
+
+        (master, override_event)
+    }
+
     #[test]
     fn new_local_event_becomes_outgoing_create() {
         let (_tmp, calendar_event) = test_calendar_event();
@@ -259,6 +322,160 @@ mod tests {
 
         assert_eq!(diff.outgoing, vec![]);
         assert_eq!(diff.incoming, vec![EventChange::Create(new_event)]);
+    }
+
+    #[test]
+    fn orphaned_override_is_deleted_after_master_already_deleted() {
+        for full_base in [true, false] {
+            let (_tmp, calendar) = test_calendar();
+            let (master, override_event) = recurring_series();
+            let calendar_event = calendar.create_event(override_event.clone()).unwrap();
+
+            let mut sync_bases = SyncBases::new();
+            if full_base {
+                sync_bases.insert_event_base(master.event_instance_id(), master);
+            } else {
+                sync_bases.insert_known_event_id(master.event_instance_id());
+            }
+
+            let diff = CalendarDiff::compute(
+                vec![calendar_event],
+                vec![],
+                &sync_bases,
+                &DateRange::default(),
+            );
+
+            assert_eq!(diff.outgoing, vec![]);
+            assert_eq!(diff.incoming, vec![EventChange::Delete(override_event)]);
+        }
+    }
+
+    #[test]
+    fn cancelled_remote_master_is_not_considered_live() {
+        let (_tmp, calendar) = test_calendar();
+        let (master, override_event) = recurring_series();
+        let local_master = calendar.create_event(master.clone()).unwrap();
+        let local_override = calendar.create_event(override_event.clone()).unwrap();
+
+        let mut cancelled_master = master.clone();
+        cancelled_master.status = Status::Cancelled;
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.insert_event_base(master.event_instance_id(), master.clone());
+
+        let diff = CalendarDiff::compute(
+            vec![local_master, local_override],
+            vec![RemoteEvent::new(cancelled_master.clone())],
+            &sync_bases,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![]);
+        assert_eq!(
+            diff.incoming,
+            vec![
+                EventChange::Update {
+                    from: master,
+                    to: cancelled_master,
+                },
+                EventChange::Delete(override_event),
+            ]
+        );
+    }
+
+    #[test]
+    fn new_local_series_still_pushes_master_and_override() {
+        let (_tmp, calendar) = test_calendar();
+        let (master, override_event) = recurring_series();
+        let local_master = calendar.create_event(master.clone()).unwrap();
+        let local_override = calendar.create_event(override_event.clone()).unwrap();
+
+        let diff = CalendarDiff::compute(
+            vec![local_master, local_override],
+            vec![],
+            &SyncBases::new(),
+            &DateRange::default(),
+        );
+
+        assert_eq!(
+            diff.outgoing,
+            vec![
+                EventChange::Create(master),
+                EventChange::Create(override_event),
+            ]
+        );
+        assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn fresh_override_of_live_remote_series_still_pushes() {
+        let (_tmp, calendar) = test_calendar();
+        let (master, override_event) = recurring_series();
+        let local_master = calendar.create_event(master.clone()).unwrap();
+        let local_override = calendar.create_event(override_event.clone()).unwrap();
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.insert_event_base(master.event_instance_id(), master.clone());
+
+        let diff = CalendarDiff::compute(
+            vec![local_master, local_override],
+            vec![RemoteEvent::new(master)],
+            &sync_bases,
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![EventChange::Create(override_event)]);
+        assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn orphan_rule_requires_synced_master_evidence() {
+        let (_tmp, calendar) = test_calendar();
+        let (_master, override_event) = recurring_series();
+        let local_override = calendar.create_event(override_event.clone()).unwrap();
+
+        let diff = CalendarDiff::compute(
+            vec![local_override],
+            vec![],
+            &SyncBases::new(),
+            &DateRange::default(),
+        );
+
+        assert_eq!(diff.outgoing, vec![EventChange::Create(override_event)]);
+        assert_eq!(diff.incoming, vec![]);
+    }
+
+    #[test]
+    fn orphan_rule_is_conservative_when_local_master_is_out_of_range() {
+        let (_tmp, calendar) = test_calendar();
+        let (mut master, mut override_event) = recurring_series();
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY;COUNT=2"));
+        override_event.start = EventTime::DateTimeFloating(
+            chrono::NaiveDate::from_ymd_opt(2027, 1, 1)
+                .unwrap()
+                .and_hms_opt(12, 0, 0)
+                .unwrap(),
+        );
+
+        let local_master = calendar.create_event(master.clone()).unwrap();
+        let local_override = calendar.create_event(override_event.clone()).unwrap();
+
+        let mut sync_bases = SyncBases::new();
+        sync_bases.insert_event_base(master.event_instance_id(), master);
+
+        let range = DateRange {
+            from: Some(Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap()),
+            to: Some(Utc.with_ymd_and_hms(2027, 1, 2, 0, 0, 0).unwrap()),
+        };
+        let diff = CalendarDiff::compute(
+            vec![local_master, local_override],
+            vec![],
+            &sync_bases,
+            &range,
+        );
+
+        assert_eq!(diff.outgoing, vec![EventChange::Create(override_event)]);
+        assert_eq!(diff.incoming, vec![]);
     }
 
     #[test]
