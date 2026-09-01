@@ -58,7 +58,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
     }
 }
 
-async fn patch_event_without_attendees(
+pub(crate) async fn patch_event_without_attendees(
     access_token: &str,
     calendar_id: &str,
     event_id: &str,
