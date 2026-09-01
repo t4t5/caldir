@@ -6,6 +6,7 @@ use google_calendar::types::SendUpdates;
 
 use crate::app_config::AppConfigStore;
 use crate::commands::invite::patch_invite_status;
+use crate::commands::update_event::patch_event_without_attendees;
 use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
@@ -45,34 +46,21 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
 
             return Event::from_google(google_event);
         } else {
-            let mut google_event = cmd.event.to_google();
-
-            google_event.id = instance_id.clone();
-
-            // Overrides never carry their own RRULE in Google's model.
-            google_event.recurrence = Vec::new();
-
-            let response = client
-                .events()
-                .update(
-                    calendar_id,
-                    &instance_id,
-                    0,
-                    0,
-                    false,
-                    SendUpdates::All,
-                    false,
-                    &google_event,
+            let google_event = patch_event_without_attendees(
+                session.access_token(),
+                calendar_id,
+                &instance_id,
+                &cmd.event,
+            )
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to update recurring instance: {}",
+                    cmd.event.summary.as_deref().unwrap_or_default()
                 )
-                .await
-                .with_context(|| {
-                    format!(
-                        "Failed to update recurring instance: {}",
-                        google_event.summary
-                    )
-                })?;
+            })?;
 
-            return Event::from_google(response.body);
+            return Event::from_google(google_event);
         }
     }
 

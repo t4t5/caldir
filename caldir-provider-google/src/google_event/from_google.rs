@@ -4,7 +4,9 @@ use caldir_core::{
     RecurrenceId, Reminder, Status, Visibility, XProperty,
 };
 
-use crate::constants::{PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY};
+use crate::constants::{
+    PROVIDER_COLOR_ID_PROPERTY, PROVIDER_EVENT_ID_PROPERTY, PROVIDER_EVENT_TYPE_PROPERTY,
+};
 
 pub trait FromGoogle {
     fn from_google(event: google_calendar::types::Event) -> Result<Self>
@@ -100,6 +102,12 @@ impl FromGoogle for Event {
         }
         if !event.color_id.is_empty() {
             x_properties.push(XProperty::new(PROVIDER_COLOR_ID_PROPERTY, event.color_id));
+        }
+        if !event.event_type.is_empty() && event.event_type != "default" {
+            x_properties.push(XProperty::new(
+                PROVIDER_EVENT_TYPE_PROPERTY,
+                event.event_type,
+            ));
         }
 
         Ok(Event {
@@ -430,6 +438,29 @@ mod tests {
         let event = Event::from_google(minimal_event()).unwrap();
 
         assert_eq!(event.url, None);
+    }
+
+    #[test]
+    fn special_event_type_is_preserved_as_provider_metadata() {
+        let mut ge = minimal_event();
+        ge.event_type = "focusTime".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(
+            event.x_property(PROVIDER_EVENT_TYPE_PROPERTY),
+            Some("focusTime")
+        );
+    }
+
+    #[test]
+    fn default_event_type_is_not_written_to_ics() {
+        let mut ge = minimal_event();
+        ge.event_type = "default".into();
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert_eq!(event.x_property(PROVIDER_EVENT_TYPE_PROPERTY), None);
     }
 
     // `useDefault: true` means "inherit the calendar's default reminders". We

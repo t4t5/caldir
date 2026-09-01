@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::DeleteEvent;
 use google_calendar::types::SendUpdates;
+use google_calendar::{ClientError, StatusCode};
 
 use crate::app_config::AppConfigStore;
 use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
@@ -29,11 +30,54 @@ pub async fn handle(cmd: DeleteEvent) -> Result<()> {
         .await?;
     let client = session_store.client(&session, &app_config_store)?;
 
-    client
+    match client
         .events()
         .delete(calendar_id, google_event_id, false, SendUpdates::All)
         .await
-        .context("Failed to delete event")?;
+    {
+        Ok(_) => Ok(()),
+        Err(error) if is_already_deleted_error(&error) => Ok(()),
+        Err(error) => Err(error).context("Failed to delete event"),
+    }
+}
 
-    Ok(())
+fn is_already_deleted_error(error: &ClientError) -> bool {
+    matches!(
+        error,
+        ClientError::HttpError {
+            status: StatusCode::GONE | StatusCode::NOT_FOUND,
+            ..
+        }
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use google_calendar::HeaderMap;
+
+    fn http_error(status: StatusCode) -> ClientError {
+        ClientError::HttpError {
+            status,
+            headers: HeaderMap::new(),
+            error: String::new(),
+        }
+    }
+
+    #[test]
+    fn gone_event_is_already_deleted() {
+        assert!(is_already_deleted_error(&http_error(StatusCode::GONE)));
+    }
+
+    #[test]
+    fn missing_event_is_already_deleted() {
+        assert!(is_already_deleted_error(&http_error(StatusCode::NOT_FOUND)));
+    }
+
+    #[test]
+    fn other_http_errors_are_not_already_deleted() {
+        assert!(!is_already_deleted_error(&http_error(
+            StatusCode::FORBIDDEN
+        )));
+    }
 }

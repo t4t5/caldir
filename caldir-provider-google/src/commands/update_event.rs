@@ -6,10 +6,12 @@ use serde_json::Value;
 
 use crate::app_config::AppConfigStore;
 use crate::commands::invite::patch_invite_status;
-use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_NAME};
+use crate::constants::{PROVIDER_EVENT_ID_PROPERTY, PROVIDER_EVENT_TYPE_PROPERTY, PROVIDER_NAME};
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::SessionStore;
+
+const BIRTHDAY_PATCH_FIELDS: &[&str] = &["summary", "colorId", "reminders"];
 
 pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
     let config = GoogleRemoteConfig::try_from(&cmd.remote)?;
@@ -58,7 +60,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
     }
 }
 
-async fn patch_event_without_attendees(
+pub(crate) async fn patch_event_without_attendees(
     access_token: &str,
     calendar_id: &str,
     event_id: &str,
@@ -91,7 +93,26 @@ fn patch_body_without_attendees(event: &Event) -> Result<Value> {
     let mut body = serde_json::to_value(event.to_google())?;
 
     if let Value::Object(fields) = &mut body {
+        if event.x_property(PROVIDER_EVENT_TYPE_PROPERTY) == Some("birthday") {
+            fields.retain(|key, _| BIRTHDAY_PATCH_FIELDS.contains(&key.as_str()));
+
+            return Ok(body);
+        }
+
         fields.remove("attendees");
+
+        for key in ["start", "end"] {
+            let Some(Value::Object(time)) = fields.get_mut(key) else {
+                continue;
+            };
+
+            if time.contains_key("dateTime") {
+                time.insert("date".to_string(), Value::Null);
+            } else if time.contains_key("date") {
+                time.insert("dateTime".to_string(), Value::Null);
+                time.insert("timeZone".to_string(), Value::Null);
+            }
+        }
     }
 
     Ok(body)
@@ -100,8 +121,8 @@ fn patch_body_without_attendees(event: &Event) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caldir_core::{Attendee, EventTime, Recurrence};
-    use chrono::NaiveDate;
+    use caldir_core::{Attendee, EventTime, Recurrence, Reminder, XProperty};
+    use chrono::{NaiveDate, TimeZone, Utc};
 
     #[test]
     fn patch_body_omits_attendees() {
@@ -121,5 +142,91 @@ mod tests {
             Some("Weekly sync")
         );
         assert!(body.get("recurrence").is_some());
+    }
+
+    #[test]
+    fn birthday_patch_only_updates_supported_fields() {
+        let mut event = Event::new(
+            "Alice's birthday",
+            EventTime::Date(NaiveDate::from_ymd_opt(2026, 7, 10).unwrap()),
+        );
+        event.description = Some("Should not be sent".into());
+        event.location = Some("This should not be sent either".into());
+        event.reminders = vec![Reminder {
+            minutes_before_start: 15,
+        }];
+        event.x_properties = vec![
+            XProperty::new(PROVIDER_EVENT_TYPE_PROPERTY, "birthday"),
+            XProperty::new(crate::constants::PROVIDER_COLOR_ID_PROPERTY, "5"),
+        ];
+
+        let body = patch_body_without_attendees(&event).unwrap();
+
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "summary": "Alice's birthday",
+                "colorId": "5",
+                "reminders": {
+                    "overrides": [{"method": "popup", "minutes": 15}],
+                    "useDefault": false,
+                },
+            })
+        );
+    }
+
+    #[test]
+    fn patch_body_includes_description() {
+        let mut event = Event::new(
+            "Planning",
+            EventTime::Date(NaiveDate::from_ymd_opt(2026, 7, 10).unwrap()),
+        );
+        event.description = Some("Bring the roadmap".into());
+
+        let body = patch_body_without_attendees(&event).unwrap();
+
+        assert_eq!(
+            body.get("description").and_then(Value::as_str),
+            Some("Bring the roadmap")
+        );
+    }
+
+    #[test]
+    fn timed_patch_explicitly_clears_all_day_date() {
+        let mut event = Event::new(
+            "Timed event",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 7, 10, 9, 0, 0).unwrap()),
+        );
+        event.end = Some(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 7, 10, 10, 0, 0).unwrap(),
+        ));
+
+        let body = patch_body_without_attendees(&event).unwrap();
+
+        for key in ["start", "end"] {
+            let time = body.get(key).and_then(Value::as_object).unwrap();
+            assert!(time.get("dateTime").is_some());
+            assert_eq!(time.get("date"), Some(&Value::Null));
+        }
+    }
+
+    #[test]
+    fn all_day_patch_explicitly_clears_timed_fields() {
+        let mut event = Event::new(
+            "All-day event",
+            EventTime::Date(NaiveDate::from_ymd_opt(2026, 7, 10).unwrap()),
+        );
+        event.end = Some(EventTime::Date(
+            NaiveDate::from_ymd_opt(2026, 7, 11).unwrap(),
+        ));
+
+        let body = patch_body_without_attendees(&event).unwrap();
+
+        for key in ["start", "end"] {
+            let time = body.get(key).and_then(Value::as_object).unwrap();
+            assert!(time.get("date").is_some_and(|date| !date.is_null()));
+            assert_eq!(time.get("dateTime"), Some(&Value::Null));
+            assert_eq!(time.get("timeZone"), Some(&Value::Null));
+        }
     }
 }
