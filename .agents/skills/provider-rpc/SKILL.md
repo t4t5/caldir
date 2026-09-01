@@ -130,7 +130,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 Picking the right endpoint matters — Graph has three with very different semantics:
 
 - `/me/calendars/{id}/events` — series **masters** and **standalones** only. Does NOT include exceptions or expanded occurrences. Best for "what discrete events does this calendar contain".
-- `/me/events/{master_id}/instances?startDateTime=...&endDateTime=...` — every occurrence of one series in the window, including overrides. Each item carries a `type` field: `occurrence` (auto-expanded, identical to master) or `exception` (overridden). caldir's `list_events` calls this once per master and keeps only `type=exception`.
+- `/me/events/{master_id}/instances?startDateTime=...&endDateTime=...` — every occurrence of one series in the window, including overrides. Each item carries a `type` field: `occurrence` (auto-expanded, identical to master) or `exception` (overridden). caldir's `list_events` calls this for masters represented in `calendarView` and keeps only `type=exception`.
 - `/me/calendarView?startDateTime=...&endDateTime=...` — every occurrence of every series, fully expanded. Convenient for "show me the calendar" but a long-running weekly meeting becomes ~50 indistinguishable rows, so caldir avoids it.
 
 URL gotcha: Graph rejects RFC3339 timestamps containing `+` (e.g. `2026-05-01T16:00:00+00:00`) because URL-decoders read `+` as a space. Use the `Z` form (`2026-05-01T16:00:00Z`).

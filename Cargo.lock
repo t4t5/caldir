@@ -296,6 +296,7 @@ dependencies = [
  "caldir-core",
  "chrono",
  "chrono-tz",
+ "futures",
  "html2text",
  "reqwest",
  "serde",
