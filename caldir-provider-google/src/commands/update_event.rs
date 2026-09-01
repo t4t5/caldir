@@ -92,6 +92,19 @@ fn patch_body_without_attendees(event: &Event) -> Result<Value> {
 
     if let Value::Object(fields) = &mut body {
         fields.remove("attendees");
+
+        for key in ["start", "end"] {
+            let Some(Value::Object(time)) = fields.get_mut(key) else {
+                continue;
+            };
+
+            if time.contains_key("dateTime") {
+                time.insert("date".to_string(), Value::Null);
+            } else if time.contains_key("date") {
+                time.insert("dateTime".to_string(), Value::Null);
+                time.insert("timeZone".to_string(), Value::Null);
+            }
+        }
     }
 
     Ok(body)
@@ -101,7 +114,7 @@ fn patch_body_without_attendees(event: &Event) -> Result<Value> {
 mod tests {
     use super::*;
     use caldir_core::{Attendee, EventTime, Recurrence};
-    use chrono::NaiveDate;
+    use chrono::{NaiveDate, TimeZone, Utc};
 
     #[test]
     fn patch_body_omits_attendees() {
@@ -121,5 +134,44 @@ mod tests {
             Some("Weekly sync")
         );
         assert!(body.get("recurrence").is_some());
+    }
+
+    #[test]
+    fn timed_patch_explicitly_clears_all_day_date() {
+        let mut event = Event::new(
+            "Timed event",
+            EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 7, 10, 9, 0, 0).unwrap()),
+        );
+        event.end = Some(EventTime::DateTimeUtc(
+            Utc.with_ymd_and_hms(2026, 7, 10, 10, 0, 0).unwrap(),
+        ));
+
+        let body = patch_body_without_attendees(&event).unwrap();
+
+        for key in ["start", "end"] {
+            let time = body.get(key).and_then(Value::as_object).unwrap();
+            assert!(time.get("dateTime").is_some());
+            assert_eq!(time.get("date"), Some(&Value::Null));
+        }
+    }
+
+    #[test]
+    fn all_day_patch_explicitly_clears_timed_fields() {
+        let mut event = Event::new(
+            "All-day event",
+            EventTime::Date(NaiveDate::from_ymd_opt(2026, 7, 10).unwrap()),
+        );
+        event.end = Some(EventTime::Date(
+            NaiveDate::from_ymd_opt(2026, 7, 11).unwrap(),
+        ));
+
+        let body = patch_body_without_attendees(&event).unwrap();
+
+        for key in ["start", "end"] {
+            let time = body.get(key).and_then(Value::as_object).unwrap();
+            assert!(time.get("date").is_some_and(|date| !date.is_null()));
+            assert_eq!(time.get("dateTime"), Some(&Value::Null));
+            assert_eq!(time.get("timeZone"), Some(&Value::Null));
+        }
     }
 }
