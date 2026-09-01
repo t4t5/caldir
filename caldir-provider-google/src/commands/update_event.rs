@@ -11,6 +11,8 @@ use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::SessionStore;
 
+const BIRTHDAY_PATCH_FIELDS: &[&str] = &["summary", "colorId", "reminders"];
+
 pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
     let config = GoogleRemoteConfig::try_from(&cmd.remote)?;
     let account_email = &config.google_account;
@@ -88,16 +90,15 @@ pub(crate) async fn patch_event_without_attendees(
 }
 
 fn patch_body_without_attendees(event: &Event) -> Result<Value> {
-    if event.x_property(PROVIDER_EVENT_TYPE_PROPERTY) == Some("birthday") {
-        return Ok(serde_json::json!({
-            "eventType": "birthday",
-            "summary": event.summary.clone().unwrap_or_default(),
-        }));
-    }
-
     let mut body = serde_json::to_value(event.to_google())?;
 
     if let Value::Object(fields) = &mut body {
+        if event.x_property(PROVIDER_EVENT_TYPE_PROPERTY) == Some("birthday") {
+            fields.retain(|key, _| BIRTHDAY_PATCH_FIELDS.contains(&key.as_str()));
+
+            return Ok(body);
+        }
+
         fields.remove("attendees");
 
         for key in ["start", "end"] {
@@ -120,7 +121,7 @@ fn patch_body_without_attendees(event: &Event) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caldir_core::{Attendee, EventTime, Recurrence, XProperty};
+    use caldir_core::{Attendee, EventTime, Recurrence, Reminder, XProperty};
     use chrono::{NaiveDate, TimeZone, Utc};
 
     #[test]
@@ -144,22 +145,32 @@ mod tests {
     }
 
     #[test]
-    fn birthday_patch_only_updates_summary() {
+    fn birthday_patch_only_updates_supported_fields() {
         let mut event = Event::new(
             "Alice's birthday",
             EventTime::Date(NaiveDate::from_ymd_opt(2026, 7, 10).unwrap()),
         );
         event.description = Some("Should not be sent".into());
         event.location = Some("This should not be sent either".into());
-        event.x_properties = vec![XProperty::new(PROVIDER_EVENT_TYPE_PROPERTY, "birthday")];
+        event.reminders = vec![Reminder {
+            minutes_before_start: 15,
+        }];
+        event.x_properties = vec![
+            XProperty::new(PROVIDER_EVENT_TYPE_PROPERTY, "birthday"),
+            XProperty::new(crate::constants::PROVIDER_COLOR_ID_PROPERTY, "5"),
+        ];
 
         let body = patch_body_without_attendees(&event).unwrap();
 
         assert_eq!(
             body,
             serde_json::json!({
-                "eventType": "birthday",
                 "summary": "Alice's birthday",
+                "colorId": "5",
+                "reminders": {
+                    "overrides": [{"method": "popup", "minutes": 15}],
+                    "useDefault": false,
+                },
             })
         );
     }
