@@ -256,7 +256,7 @@ async fn push_outgoing_changes(
 mod tests {
     use super::*;
     use crate::diff::EventChange;
-    use crate::event::{EventUid, XProperty};
+    use crate::event::{EventUid, Recurrence, XProperty};
     use crate::provider::mock_provider::MockProvider;
     use crate::test_utils::{
         incoming_create_diff, incoming_delete_diff, incoming_update_diff, outgoing_create_diff,
@@ -368,6 +368,42 @@ mod tests {
 
         let reloaded = Calendar::load(connection.local().path()).unwrap();
         assert!(!reloaded.state().synced_event_ids().contains(&id));
+    }
+
+    #[tokio::test]
+    async fn deleted_remote_series_cleans_up_unsynced_local_override() {
+        let (_tmp, mock, mut connection) = writable_connection();
+        let mut master = test_event();
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY"));
+        let mut override_event = master.occurrence_at(master.start.clone());
+        override_event.summary = Some("Overridden occurrence".to_string());
+
+        connection.local().create_event(master.clone()).unwrap();
+        connection
+            .local()
+            .create_event(override_event.clone())
+            .unwrap();
+        connection
+            .local
+            .record_sync_bases([master.clone()])
+            .unwrap();
+
+        mock.reply::<rpc::ListEvents>(vec![]);
+
+        let diff = connection.diff(&DateRange::default()).await.unwrap();
+        assert_eq!(diff.incoming().len(), 2);
+        assert!(diff.incoming().contains(&EventChange::Delete(master)));
+        assert!(
+            diff.incoming()
+                .contains(&EventChange::Delete(override_event))
+        );
+        assert!(diff.outgoing().is_empty());
+
+        connection.apply_incoming_diff(&diff).unwrap();
+        connection.apply_outgoing_diff(&diff).await.unwrap();
+
+        assert!(connection.local().events().unwrap().is_empty());
+        let _: rpc::ListEvents = mock.captured_request();
     }
 
     #[tokio::test]
