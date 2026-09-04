@@ -3,7 +3,9 @@ use caldir_core::{
     Status, Visibility,
 };
 
-use crate::constants::{GOOGLE_COLOR_ID_PROPERTY, GOOGLE_EVENT_ID_PROPERTY};
+use crate::constants::{
+    GOOGLE_COLOR_ID_PROPERTY, GOOGLE_DEFAULT_REMINDERS_PROPERTY, GOOGLE_EVENT_ID_PROPERTY,
+};
 
 pub trait ToGoogle {
     fn to_google(&self) -> google_calendar::types::Event;
@@ -47,19 +49,13 @@ impl ToGoogle for Event {
             })
             .collect();
 
-        // "No VALARM locally" = "inherit Google's calendar defaults"
-        // Sending `None` here would otherwise clear the calendar-level default
-        let reminders = if valid_reminders.is_empty() {
-            Some(google_calendar::types::Reminders {
-                overrides: vec![],
-                use_default: true,
-            })
-        } else {
-            Some(google_calendar::types::Reminders {
-                overrides: valid_reminders,
-                use_default: false,
-            })
-        };
+        // VALARMs always win. Without them: marker means inherit Google's
+        // calendar defaults, otherwise no reminders.
+        let use_default = valid_reminders.is_empty() && uses_default_reminders(self);
+        let reminders = Some(google_calendar::types::Reminders {
+            overrides: valid_reminders,
+            use_default,
+        });
 
         let attendees: Vec<google_calendar::types::EventAttendee> =
             self.attendees.iter().map(attendee_to_google).collect();
@@ -111,6 +107,12 @@ impl ToGoogle for Event {
             ..Default::default()
         }
     }
+}
+
+fn uses_default_reminders(event: &Event) -> bool {
+    event
+        .x_property(GOOGLE_DEFAULT_REMINDERS_PROPERTY)
+        .is_some_and(|value| value.eq_ignore_ascii_case("TRUE"))
 }
 
 fn google_meet_conference_data(
@@ -299,9 +301,8 @@ mod tests {
             "expected 0-minute reminder to be filtered out, got {:?}",
             reminders.overrides
         );
-        // With no surviving overrides, fall back to the calendar default
-        // rather than sending an empty `overrides` array that would clear it.
-        assert!(reminders.use_default);
+        // With no surviving overrides or marker, send no reminders.
+        assert!(!reminders.use_default);
     }
 
     #[test]
@@ -340,18 +341,76 @@ mod tests {
         assert!(!reminders.use_default);
     }
 
-    // Local files without VALARMs must push as `useDefault: true` so that
-    // we don't silently strip Google's calendar-level default reminders on push.
     #[test]
-    fn empty_reminders_sends_use_default_true() {
+    fn no_valarm_and_no_marker_sends_no_reminders() {
         let event = sample_event();
         assert!(event.reminders.is_empty());
 
         let google = event.to_google();
         let reminders = google.reminders.expect("reminders always set");
 
+        assert!(!reminders.use_default);
+        assert!(reminders.overrides.is_empty());
+    }
+
+    #[test]
+    fn default_reminders_marker_sends_use_default_true() {
+        let mut event = sample_event();
+        event.x_properties = vec![XProperty::new(GOOGLE_DEFAULT_REMINDERS_PROPERTY, "TRUE")];
+
+        let reminders = event.to_google().reminders.expect("reminders always set");
+
         assert!(reminders.use_default);
         assert!(reminders.overrides.is_empty());
+    }
+
+    #[test]
+    fn marker_false_sends_no_reminders() {
+        let mut event = sample_event();
+        event.x_properties = vec![XProperty::new(GOOGLE_DEFAULT_REMINDERS_PROPERTY, "FALSE")];
+
+        let reminders = event.to_google().reminders.expect("reminders always set");
+
+        assert!(!reminders.use_default);
+        assert!(reminders.overrides.is_empty());
+    }
+
+    #[test]
+    fn marker_value_is_case_insensitive() {
+        let mut event = sample_event();
+        event.x_properties = vec![XProperty::new(GOOGLE_DEFAULT_REMINDERS_PROPERTY, "true")];
+
+        let reminders = event.to_google().reminders.expect("reminders always set");
+
+        assert!(reminders.use_default);
+    }
+
+    #[test]
+    fn valarms_win_over_default_reminders_marker() {
+        let mut event = sample_event();
+        event.reminders = vec![Reminder {
+            minutes_before_start: 20,
+        }];
+        event.x_properties = vec![XProperty::new(GOOGLE_DEFAULT_REMINDERS_PROPERTY, "TRUE")];
+
+        let reminders = event.to_google().reminders.expect("reminders always set");
+
+        assert!(!reminders.use_default);
+        assert_eq!(reminders.overrides.len(), 1);
+        assert_eq!(reminders.overrides[0].minutes, 20);
+    }
+
+    #[test]
+    fn no_reminders_serialise_with_explicit_use_default_false() {
+        let reminders = google_calendar::types::Reminders {
+            use_default: false,
+            overrides: vec![],
+        };
+
+        assert_eq!(
+            serde_json::to_value(reminders).unwrap(),
+            serde_json::json!({"useDefault": false})
+        );
     }
 
     #[test]

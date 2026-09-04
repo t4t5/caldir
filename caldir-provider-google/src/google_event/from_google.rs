@@ -5,7 +5,8 @@ use caldir_core::{
 };
 
 use crate::constants::{
-    GOOGLE_COLOR_ID_PROPERTY, GOOGLE_EVENT_ID_PROPERTY, GOOGLE_EVENT_TYPE_PROPERTY,
+    GOOGLE_COLOR_ID_PROPERTY, GOOGLE_DEFAULT_REMINDERS_PROPERTY, GOOGLE_EVENT_ID_PROPERTY,
+    GOOGLE_EVENT_TYPE_PROPERTY,
 };
 
 pub trait FromGoogle {
@@ -34,10 +35,9 @@ impl FromGoogle for Event {
         let recurrence_id = google_dt_to_event_time(event.original_start_time.as_ref())
             .map(RecurrenceId::from_event_time);
 
-        // Note: when `reminders.useDefault: true` and overrides is empty, we
-        // intentionally leave reminders empty here — the local file has no
-        // VALARM, and `to_google` reads "no VALARM" as "inherit Google's
-        // calendar default reminders" on push.
+        // Overrides become VALARMs. The default state is carried separately so
+        // the local file does not pin today's calendar defaults.
+        let use_default_reminders = event.reminders.as_ref().is_some_and(|r| r.use_default);
         let reminders: Vec<Reminder> = if let Some(ref rem) = event.reminders {
             rem.overrides
                 .iter()
@@ -105,6 +105,9 @@ impl FromGoogle for Event {
         }
         if !event.event_type.is_empty() && event.event_type != "default" {
             x_properties.push(XProperty::new(GOOGLE_EVENT_TYPE_PROPERTY, event.event_type));
+        }
+        if use_default_reminders {
+            x_properties.push(XProperty::new(GOOGLE_DEFAULT_REMINDERS_PROPERTY, "TRUE"));
         }
 
         Ok(Event {
@@ -259,6 +262,7 @@ fn google_to_participation_status(google_status: &str) -> Option<ParticipationSt
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::google_event::ToGoogle;
     use google_calendar::types as g;
 
     fn empty_event() -> g::Event {
@@ -460,12 +464,8 @@ mod tests {
         assert_eq!(event.x_property(GOOGLE_EVENT_TYPE_PROPERTY), None);
     }
 
-    // `useDefault: true` means "inherit the calendar's default reminders". We
-    // deliberately don't expand those into explicit VALARMs locally: round-
-    // tripping back via `to_google` would then send them as overrides and
-    // pin the event to today's defaults, even if the calendar default later
-    // changes. The empty-reminders state on disk is what makes the next push
-    // emit `useDefault: true` again.
+    // The marker preserves "inherit the calendar defaults" without expanding
+    // today's defaults into VALARMs and pinning the event to them.
     #[test]
     fn use_default_reminders_produces_empty_reminders() {
         let mut ge = minimal_event();
@@ -477,6 +477,10 @@ mod tests {
         let event = Event::from_google(ge).unwrap();
 
         assert!(event.reminders.is_empty());
+        assert_eq!(
+            event.x_property(GOOGLE_DEFAULT_REMINDERS_PROPERTY),
+            Some("TRUE")
+        );
     }
 
     #[test]
@@ -494,5 +498,55 @@ mod tests {
 
         assert_eq!(event.reminders.len(), 1);
         assert_eq!(event.reminders[0].minutes_before_start, 10);
+        assert_eq!(event.x_property(GOOGLE_DEFAULT_REMINDERS_PROPERTY), None);
+    }
+
+    #[test]
+    fn explicit_no_reminders_produces_no_marker() {
+        let mut ge = minimal_event();
+        ge.reminders = Some(g::Reminders {
+            use_default: false,
+            overrides: vec![],
+        });
+
+        let event = Event::from_google(ge).unwrap();
+
+        assert!(event.reminders.is_empty());
+        assert_eq!(event.x_property(GOOGLE_DEFAULT_REMINDERS_PROPERTY), None);
+    }
+
+    #[test]
+    fn missing_reminders_field_produces_no_marker() {
+        let event = Event::from_google(minimal_event()).unwrap();
+
+        assert!(event.reminders.is_empty());
+        assert_eq!(event.x_property(GOOGLE_DEFAULT_REMINDERS_PROPERTY), None);
+    }
+
+    #[test]
+    fn default_reminders_marker_round_trips() {
+        let mut event = Event::from_google(minimal_event()).unwrap();
+        event
+            .x_properties
+            .push(XProperty::new(GOOGLE_DEFAULT_REMINDERS_PROPERTY, "TRUE"));
+
+        let round_tripped = Event::from_google(event.to_google()).unwrap();
+
+        assert_eq!(
+            round_tripped.x_property(GOOGLE_DEFAULT_REMINDERS_PROPERTY),
+            Some("TRUE")
+        );
+    }
+
+    #[test]
+    fn no_reminders_marker_is_not_added_during_round_trip() {
+        let event = Event::from_google(minimal_event()).unwrap();
+
+        let round_tripped = Event::from_google(event.to_google()).unwrap();
+
+        assert_eq!(
+            round_tripped.x_property(GOOGLE_DEFAULT_REMINDERS_PROPERTY),
+            None
+        );
     }
 }
