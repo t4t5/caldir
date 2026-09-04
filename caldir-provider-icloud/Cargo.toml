@@ -15,7 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Shared types
-caldir-core = { path = "../caldir-core", version = "0.14.2" }
+caldir-core = { path = "../caldir-core", version = "0.14.3" }
 
 # Generic CalDAV operations
 caldir-provider-caldav = { path = "../caldir-provider-caldav", version = "0.2.0" }
@@ -34,4 +34,3 @@ anyhow = "1"
 
 [dev-dependencies]
 tempfile = "3"
-
