@@ -163,7 +163,7 @@ mod tests {
         let provider = registry.get(&ProviderSlug::from("hooli")).unwrap();
 
         let transport_debug = format!("{:?}", provider.transport());
-        assert!(transport_debug.contains(bin_path_1.to_str().unwrap()));
+        assert!(transport_debug.contains(&format!("{bin_path_1:?}")));
     }
 
     #[test]
@@ -176,7 +176,7 @@ mod tests {
 
         let provider = registry.get(&ProviderSlug::from("hooli")).unwrap();
         let debug = format!("{:?}", provider.transport());
-        assert!(debug.contains(bundled_bin.to_str().unwrap()));
+        assert!(debug.contains(&format!("{bundled_bin:?}")));
     }
 
     #[test]
@@ -186,7 +186,7 @@ mod tests {
         {
             let retrieved = registry.get(&ProviderSlug::from("hooli")).unwrap();
             let debug = format!("{:?}", retrieved.transport());
-            assert!(debug.contains(bin_path.to_str().unwrap()));
+            assert!(debug.contains(&format!("{bin_path:?}")));
         }
 
         // Build a new provider pointing at a different binary, and add it
@@ -198,6 +198,6 @@ mod tests {
 
         let retrieved = registry.get(&ProviderSlug::from("hooli")).unwrap();
         let debug = format!("{:?}", retrieved.transport());
-        assert!(debug.contains(bin_path_new.to_str().unwrap()));
+        assert!(debug.contains(&format!("{bin_path_new:?}")));
     }
 }
