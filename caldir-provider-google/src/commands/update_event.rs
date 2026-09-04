@@ -176,6 +176,28 @@ mod tests {
     }
 
     #[test]
+    fn birthday_with_default_reminders_marker_uses_calendar_defaults() {
+        let mut event = Event::new(
+            "Alice's birthday",
+            EventTime::Date(NaiveDate::from_ymd_opt(2026, 7, 10).unwrap()),
+        );
+        event.x_properties = vec![
+            XProperty::new(GOOGLE_EVENT_TYPE_PROPERTY, "birthday"),
+            XProperty::new(crate::constants::GOOGLE_DEFAULT_REMINDERS_PROPERTY, "TRUE"),
+        ];
+
+        let body = patch_body_without_attendees(&event).unwrap();
+
+        assert_eq!(
+            body,
+            serde_json::json!({
+                "summary": "Alice's birthday",
+                "reminders": {"useDefault": true},
+            })
+        );
+    }
+
+    #[test]
     fn patch_body_includes_description() {
         let mut event = Event::new(
             "Planning",

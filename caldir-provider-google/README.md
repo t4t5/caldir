@@ -5,8 +5,8 @@
 Recurring events are fetched with `singleEvents=false`, preserving each series
 as a master with an `RRULE` instead of expanding every occurrence.
 
-Only explicit event reminder overrides are stored. Google calendar-level
-default reminders are not copied into individual events.
+Explicit event reminder overrides are stored as `VALARM`s. Google calendar-level
+defaults are represented by a property rather than copied into individual events.
 
 ## Google-specific ICS properties
 
@@ -15,6 +15,13 @@ default reminders are not copied into individual events.
 Google identifies events with its own internal ID, separate from the RFC 5545
 `UID`. The provider stores that ID in `X-GOOGLE-EVENT-ID` when pulling an event
 and uses it for later updates and deletes.
+
+### `X-GOOGLE-DEFAULT-REMINDERS`
+
+`X-GOOGLE-DEFAULT-REMINDERS:TRUE` means the event inherits its Google calendar's
+default reminders. Without `VALARM`s or this marker, the event has no reminders.
+Set the marker to `FALSE` to opt out; the provider removes it after Google
+confirms the no-reminders state.
 
 ### `X-GOOGLE-CONFERENCE`
 
