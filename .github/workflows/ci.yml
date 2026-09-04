@@ -14,7 +14,10 @@ jobs:
         run: cargo fmt --all -- --check
 
   check:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     env:
       RUSTFLAGS: -D warnings
     steps:
@@ -34,9 +37,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # UTC + one zone east + one zone west (to catch timezone-dependent bugs)
-        tz: [UTC, Europe/Stockholm, America/New_York]
-    runs-on: ubuntu-latest
+        include:
+          # UTC + one zone east + one zone west (to catch timezone-dependent bugs)
+          - os: ubuntu-latest
+            tz: UTC
+          - os: ubuntu-latest
+            tz: Europe/Stockholm
+          - os: ubuntu-latest
+            tz: America/New_York
+          - os: windows-latest
+            tz: UTC
+    runs-on: ${{ matrix.os }}
     env:
       RUSTFLAGS: -D warnings
       TZ: ${{ matrix.tz }}

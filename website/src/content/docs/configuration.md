@@ -26,6 +26,8 @@ default_reminders = ["1h", "2h"]
 
 By default, the config file has all options commented out.
 
+On Windows, use forward slashes in `calendar_dir`, or use a single-quoted TOML string such as `calendar_dir = 'C:\Users\me\caldir'`. Backslashes in double-quoted TOML strings are treated as escapes.
+
 ## Per-calendar config
 
 Each calendar stores its configuration in a local `config.toml`:

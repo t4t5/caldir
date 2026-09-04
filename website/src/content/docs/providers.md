@@ -119,4 +119,4 @@ Commands:
 - `update_event` — update an existing event
 - `delete_event` — delete an event
 
-Each provider manages its own state (credentials, tokens) in `~/.config/caldir/providers/{name}/`.
+Each provider manages its own state (credentials, tokens) in `~/.config/caldir/providers/{name}/` on Linux and macOS, or `%APPDATA%\caldir\providers\{name}\` on Windows.

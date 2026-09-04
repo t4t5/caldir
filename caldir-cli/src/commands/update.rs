@@ -7,6 +7,12 @@ const REPO: &str = "t4t5/caldir";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub async fn run() -> Result<()> {
+    if cfg!(windows) {
+        println!("caldir is installed through winget on Windows. To update, run:");
+        println!("  winget upgrade t4t5.caldir");
+        return Ok(());
+    }
+
     let spinner = crate::utils::tui::create_spinner("Checking for updates...".to_string());
 
     let latest = fetch_latest_release().await?;

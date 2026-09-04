@@ -49,6 +49,8 @@ jobs:
             target: x86_64-unknown-linux-musl
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -64,19 +66,25 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package
+        shell: bash
         run: |
           staging="caldir-${{ matrix.target }}"
           mkdir "$staging"
+          ext=""
+          case "${{ matrix.target }}" in *windows*) ext=".exe" ;; esac
           for bin in caldir caldir-provider-google caldir-provider-icloud caldir-provider-caldav caldir-provider-outlook caldir-provider-webcal; do
-            cp "target/${{ matrix.target }}/release/${bin}" "$staging/"
+            cp "target/${{ matrix.target }}/release/${bin}${ext}" "$staging/"
           done
-          tar -czf "${staging}.tar.gz" -C "$staging" .
-          echo "TARBALL=${staging}.tar.gz" >> "$GITHUB_ENV"
+          case "${{ matrix.target }}" in
+            *windows*) archive="${staging}.zip";    (cd "$staging" && 7z a -tzip "../${archive}" *) ;;
+            *)         archive="${staging}.tar.gz"; tar -czf "$archive" -C "$staging" . ;;
+          esac
+          echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@v4
         with:
           name: caldir-${{ matrix.target }}
-          path: ${{ env.TARBALL }}
+          path: ${{ env.ARCHIVE }}
 
   release:
     needs: [check-cli-version, build]
@@ -94,9 +102,29 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version="v${{ needs.check-cli-version.outputs.version }}"
-          gh release create "$version" artifacts/*.tar.gz \
+          gh release create "$version" artifacts/* \
             --title "$version" \
             --generate-notes
+
+  winget:
+    needs: [check-cli-version, release]
+    runs-on: windows-latest
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    steps:
+      - name: Submit manifest to winget-pkgs
+        if: env.WINGET_TOKEN != ''
+        shell: pwsh
+        run: |
+          $version = "${{ needs.check-cli-version.outputs.version }}"
+          $url = "https://github.com/t4t5/caldir/releases/download/v$version/caldir-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          .\wingetcreate.exe update t4t5.caldir --version $version --urls $url --submit --token $env:WINGET_TOKEN
+
+      - name: Await winget bootstrap
+        if: env.WINGET_TOKEN == ''
+        shell: pwsh
+        run: Write-Host "Skipping winget submission until the package is bootstrapped and WINGET_TOKEN is configured."
 
   publish:
     needs: [ci, release]

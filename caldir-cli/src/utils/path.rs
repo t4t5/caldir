@@ -5,7 +5,7 @@ pub struct TildePath<'a>(&'a Path);
 
 impl fmt::Display for TildePath<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Ok(home) = std::env::var("HOME")
+        if let Some(home) = home::home_dir()
             && let Ok(relative) = self.0.strip_prefix(&home)
         {
             return write!(f, "~/{}", relative.display());

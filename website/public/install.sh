@@ -13,6 +13,10 @@ main() {
   case "$os" in
     Darwin) target_os="apple-darwin" ;;
     Linux)  target_os="unknown-linux-musl" ;;
+    MINGW*|MSYS*|CYGWIN*)
+      echo "On Windows, install with: winget install t4t5.caldir" >&2
+      exit 1
+      ;;
     *)
       echo "Error: unsupported OS: $os" >&2
       exit 1
