@@ -55,12 +55,6 @@ caldir sync
 # Your calendar events are now in ~/caldir
 ```
 
-On Windows, install caldir and the default providers with winget:
-
-```powershell
-winget install t4t5.caldir
-```
-
 <details>
 <summary>Install from source</summary>
 

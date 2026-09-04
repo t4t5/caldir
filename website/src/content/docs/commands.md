@@ -259,9 +259,3 @@ Update caldir and all installed providers to the latest version.
 ```bash
 caldir update
 ```
-
-On Windows, update the winget package instead:
-
-```powershell
-winget upgrade t4t5.caldir
-```

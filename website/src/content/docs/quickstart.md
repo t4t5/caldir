@@ -12,12 +12,6 @@ curl -sSf https://caldir.org/install.sh | sh
 
 This installs the `caldir` CLI and the default [provider plugins](/providers).
 
-On Windows, install with winget:
-
-```powershell
-winget install t4t5.caldir
-```
-
 <details>
 <summary>Or install from source</summary>
 
