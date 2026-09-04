@@ -53,7 +53,7 @@ A provider (`caldir-provider-xxx`) is a binary that speaks caldir's JSON RPC ove
 
 ### Storage directory
 
-Providers that need on-disk state (OAuth tokens, app passwords, sync cursors) write to the path in `CALDIR_PROVIDER_STORAGE_DIR`, falling back to `~/.config/caldir/providers/{name}/` if unset.
+Providers that need on-disk state (OAuth tokens, app passwords, sync cursors) write to the path in `CALDIR_PROVIDER_STORAGE_DIR`, falling back to `~/.config/caldir/providers/{name}/` on Linux and macOS or `%APPDATA%\caldir\providers\{name}\` on Windows if unset.
 
 ### Adding a default provider
 
@@ -63,6 +63,7 @@ When shipping a new default provider with caldir, update:
 2. `.github/workflows/release.yml` — single source of truth for what ships in tarballs (`install.sh` and `caldir update` discover from there)
 3. `website/src/content/docs/providers.md` and `getting-started.md`
 4. `.agents/skills/bump/SKILL.md`
+5. the `NestedInstallerFiles` list in the next `microsoft/winget-pkgs` manifest PR
 
 ## Specs
 

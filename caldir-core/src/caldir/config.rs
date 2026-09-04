@@ -268,6 +268,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_os = "windows"))]
     fn default_system_config_path_is_dot_config_caldir_config_toml() {
         let path = CaldirConfig::default_system_config_path().unwrap();
         let expected_path = expand_tilde(&PathBuf::from("~/.config/caldir/config.toml"));
