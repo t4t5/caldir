@@ -7,6 +7,7 @@ pub mod calendars;
 pub mod config;
 pub mod diff;
 pub mod event;
+pub mod invites;
 pub mod time;
 
 /// Human text rendering for a command's result.
