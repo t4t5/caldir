@@ -231,6 +231,7 @@ impl Commands {
             Self::Calendars
                 | Self::Config
                 | Self::Events { .. }
+                | Self::Invites { .. }
                 | Self::Today { .. }
                 | Self::Week { .. }
         )
@@ -334,7 +335,11 @@ async fn main() -> Result<()> {
             verbose,
             force,
         } => commands::discard::run(&caldir, calendar, from, to, verbose, force).await,
-        Commands::Invites { calendar, all } => commands::invites::run(&caldir, calendar, all),
+        Commands::Invites { calendar, all } => {
+            let view = commands::invites::run(&caldir, calendar, all)?;
+            output::emit(&view, output_format);
+            Ok(())
+        }
         Commands::Rsvp { path, response } => commands::rsvp::run(&caldir, path, response),
         Commands::Config => {
             let view = commands::config::run(&caldir)?;
@@ -410,6 +415,13 @@ mod tests {
         );
         assert!(Commands::Today { calendar: None }.supports_json());
         assert!(Commands::Week { calendar: None }.supports_json());
+        assert!(
+            Commands::Invites {
+                calendar: None,
+                all: false,
+            }
+            .supports_json()
+        );
         assert!(!Commands::Update.supports_json());
     }
 }

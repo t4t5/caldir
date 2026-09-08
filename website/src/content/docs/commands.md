@@ -197,6 +197,38 @@ caldir invites --all
 caldir invites --calendar work
 ```
 
+<details>
+<summary>Optional JSON output</summary>
+
+Same fields as [`caldir events --json`](#caldir-events), plus `path`: the `.ics` file to pass to `caldir rsvp`.
+
+```bash
+caldir invites --json
+```
+
+Returns:
+
+```json
+[
+  {
+    "path": "/home/me/caldir/work/2026-03-20T1500__standup.ics",
+    "instance_id": "b2f9@caldir",
+    "uid": "b2f9@caldir",
+    "calendar": "work",
+    "title": "Standup",
+    "start": "2026-03-20T15:00:00+01:00",
+    "end": "2026-03-20T15:30:00+01:00",
+    "organizer": { "email": "host@example.com", "name": "Host Person" },
+    "rsvp": "needs_action",
+    ...
+  }
+]
+```
+
+For a recurring invite, `path` is the series master unless that occurrence has its own override file.
+
+</details>
+
 ## `caldir rsvp`
 
 Respond to pending calendar invites. Updates the local ICS file (run `caldir push` afterward to sync your response).
