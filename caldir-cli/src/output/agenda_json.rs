@@ -113,9 +113,7 @@ impl<'a> From<&'a Event> for EventJson<'a> {
             availability: *availability,
             visibility: *visibility,
             recurrence: recurrence.as_ref().map(RecurrenceJson::from),
-            recurrence_id: recurrence_id
-                .as_ref()
-                .map(|id| serialize_time(id.as_event_time())),
+            recurrence_id: recurrence_id.as_ref().map(ToString::to_string),
             organizer: organizer.as_ref().map(OrganizerJson::from),
             attendees: attendees.iter().map(AttendeeJson::from).collect(),
             reminders: reminders.iter().map(ReminderJson::from).collect(),
@@ -397,7 +395,7 @@ mod tests {
                     ],
                     "rdates": ["2026-09-04T14:00:00Z"],
                 },
-                "recurrence_id": "2026-08-14T16:00:00+02:00",
+                "recurrence_id": "TZID=Europe/Stockholm:20260814T160000",
                 "organizer": {
                     "email": "host@example.com",
                     "name": "Host Person",
@@ -536,7 +534,7 @@ END:VCALENDAR\r\n";
 
         assert_eq!(
             serde_json::to_value(entry(event)).unwrap()["recurrence_id"],
-            "2026-08-14"
+            "20260814"
         );
     }
 

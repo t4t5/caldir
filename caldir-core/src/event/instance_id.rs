@@ -4,8 +4,6 @@ mod recurrence_id;
 pub use event_uid::EventUid;
 pub use recurrence_id::RecurrenceId;
 
-use crate::EventTime;
-use chrono::{NaiveDate, NaiveDateTime};
 use std::fmt;
 
 // UID + RecurrenceId = the actual unique ID per event
@@ -29,30 +27,19 @@ impl EventInstanceId {
 // Stable, round-trippable string form. Format:
 //   non-recurring:        {uid}
 //   recurring instance:   {uid}__{recurrence_id}
-// Recurrence id sub-formats:
-//   YYYYMMDD                       — all-day
-//   YYYYMMDDTHHMMSSZ               — UTC
-//   YYYYMMDDTHHMMSS                — floating
-//   TZID={tzid}:YYYYMMDDTHHMMSS    — zoned
+// The recurrence id is the RFC 5545 RECURRENCE-ID value (see `RecurrenceId`).
 //
 // Conversion from `&str` is infallible: UIDs may legitimately contain `__`
 // (RFC 5545 allows any text), so when the suffix after the last `__` isn't a
 // parseable recurrence id, the whole string is treated as the UID.
 const RID_SEPARATOR: &str = "__";
-const TZID_PREFIX: &str = "TZID=";
 
 impl fmt::Display for EventInstanceId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let uid_str = self.uid().as_str();
         match self.recurrence_id() {
-            Some(rid) => write!(
-                f,
-                "{}{}{}",
-                uid_str,
-                RID_SEPARATOR,
-                format_recurrence_id(rid.as_event_time())
-            ),
-            None => write!(f, "{}", uid_str),
+            Some(rid) => write!(f, "{uid_str}{RID_SEPARATOR}{rid}"),
+            None => write!(f, "{uid_str}"),
         }
     }
 }
@@ -60,12 +47,9 @@ impl fmt::Display for EventInstanceId {
 impl From<&str> for EventInstanceId {
     fn from(s: &str) -> Self {
         if let Some((uid_str, rid_str)) = s.rsplit_once(RID_SEPARATOR)
-            && let Some(event_time) = parse_recurrence_id(rid_str)
+            && let Ok(rid) = rid_str.parse::<RecurrenceId>()
         {
-            return EventInstanceId::new(
-                EventUid::new(uid_str),
-                Some(RecurrenceId::from_event_time(event_time)),
-            );
+            return EventInstanceId::new(EventUid::new(uid_str), Some(rid));
         }
 
         EventInstanceId::new(EventUid::new(s), None)
@@ -78,46 +62,11 @@ impl From<String> for EventInstanceId {
     }
 }
 
-fn format_recurrence_id(event_time: &EventTime) -> String {
-    match event_time {
-        EventTime::Date(date) => date.format("%Y%m%d").to_string(),
-        EventTime::DateTimeUtc(datetime) => datetime.format("%Y%m%dT%H%M%SZ").to_string(),
-        EventTime::DateTimeFloating(datetime) => datetime.format("%Y%m%dT%H%M%S").to_string(),
-        EventTime::DateTimeZoned { datetime, tzid } => {
-            format!("{TZID_PREFIX}{tzid}:{}", datetime.format("%Y%m%dT%H%M%S"))
-        }
-    }
-}
-
-fn parse_recurrence_id(s: &str) -> Option<EventTime> {
-    if let Some(rest) = s.strip_prefix(TZID_PREFIX) {
-        let (tzid, dt_str) = rest.split_once(':')?;
-        let datetime = NaiveDateTime::parse_from_str(dt_str, "%Y%m%dT%H%M%S").ok()?;
-
-        return Some(EventTime::DateTimeZoned {
-            datetime,
-            tzid: tzid.to_string(),
-        });
-    }
-
-    if s.ends_with('Z') {
-        let datetime = NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%SZ").ok()?;
-        return Some(EventTime::DateTimeUtc(datetime.and_utc()));
-    }
-
-    if !s.contains('T') {
-        let date = NaiveDate::parse_from_str(s, "%Y%m%d").ok()?;
-        return Some(EventTime::Date(date));
-    }
-
-    let datetime = NaiveDateTime::parse_from_str(s, "%Y%m%dT%H%M%S").ok()?;
-    Some(EventTime::DateTimeFloating(datetime))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::TimeZone;
+    use crate::EventTime;
+    use chrono::{NaiveDate, TimeZone};
     use pretty_assertions::assert_eq;
 
     fn uid() -> EventUid {

@@ -139,7 +139,7 @@ Returns:
     "availability": "busy",
     "visibility": "private",
     "recurrence": null,
-    "recurrence_id": "2026-08-14T16:00:00+02:00",
+    "recurrence_id": "TZID=Europe/Stockholm:20260814T160000",
     "organizer": {
       "email": "host@example.com",
       "name": "Host Person"
