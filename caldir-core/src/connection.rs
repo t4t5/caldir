@@ -1,6 +1,7 @@
 mod error;
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 
 use crate::calendar::{CalendarError, SyncBases};
 use crate::diff::EventChange;
@@ -201,12 +202,14 @@ fn pull_incoming_changes(
         match change {
             EventChange::Create(event) => {
                 // Another pull may have created this event since the diff was computed.
-                if events_by_instance_id.contains_key(&event.event_instance_id()) {
-                    continue;
+                match events_by_instance_id.entry(event.event_instance_id()) {
+                    Entry::Vacant(slot) => {
+                        slot.insert(local.create_event(event.clone())?);
+                    }
+                    Entry::Occupied(slot) if slot.get().event() != event => continue,
+                    Entry::Occupied(_) => {}
                 }
-                let cal_event = local.create_event(event.clone())?;
-                let id = cal_event.event().event_instance_id();
-                events_by_instance_id.insert(id, cal_event);
+                // Record the base only when the local file matches the incoming event.
                 sync_bases.push(event.clone());
             }
             EventChange::Update { to, .. } => {
@@ -453,6 +456,52 @@ mod tests {
             reloaded.state().sync_base(&event.event_instance_id()),
             Some(&event)
         );
+    }
+
+    #[tokio::test]
+    async fn overlapping_creates_do_not_push_older_event_over_newer_remote() {
+        let (_tmp, mock, mut connection) = writable_connection();
+        let mut older = test_event();
+        older.last_modified = Some("2026-09-14T08:00:00Z".parse().unwrap());
+        let mut newer = older.clone();
+        newer.summary = Some("Newer remote title".to_string());
+        newer.last_modified = Some("2026-09-14T09:00:00Z".parse().unwrap());
+
+        // Both pulls computed creates before either wrote the local file.
+        let older_diff = incoming_create_diff(older.clone());
+        let newer_diff = incoming_create_diff(newer.clone());
+        connection.apply_incoming_diff(&older_diff).unwrap();
+        connection.apply_incoming_diff(&newer_diff).unwrap();
+
+        mock.reply::<rpc::ListEvents>(vec![newer.clone()]);
+        let next_diff = connection.diff(&DateRange::default()).await.unwrap();
+        assert!(next_diff.outgoing().is_empty());
+        assert_eq!(
+            next_diff.incoming(),
+            &[EventChange::Update {
+                from: older,
+                to: newer
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_incoming_diff_records_base_for_existing_unsynced_file() {
+        let (_tmp, _mock, mut connection) = writable_connection();
+        let event = test_event();
+        let id = event.event_instance_id();
+
+        // File written by another pull that never recorded its base.
+        connection.local().create_event(event.clone()).unwrap();
+        assert_eq!(connection.local().state().sync_base(&id), None);
+
+        connection
+            .apply_incoming_diff(&incoming_create_diff(event.clone()))
+            .unwrap();
+
+        assert_eq!(connection.local().events().unwrap().len(), 1);
+        let reloaded = Calendar::load(connection.local().path()).unwrap();
+        assert_eq!(reloaded.state().sync_base(&id), Some(&event));
     }
 
     #[tokio::test]
