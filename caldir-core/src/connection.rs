@@ -200,6 +200,10 @@ fn pull_incoming_changes(
     for change in diff.incoming() {
         match change {
             EventChange::Create(event) => {
+                // Another pull may have created this event since the diff was computed.
+                if events_by_instance_id.contains_key(&event.event_instance_id()) {
+                    continue;
+                }
                 let cal_event = local.create_event(event.clone())?;
                 let id = cal_event.event().event_instance_id();
                 events_by_instance_id.insert(id, cal_event);
@@ -420,6 +424,35 @@ mod tests {
             .path()
             .join("2026-01-01T1200__test-event.ics");
         assert!(expected_path.is_file());
+    }
+
+    #[tokio::test]
+    async fn apply_incoming_diff_does_not_recreate_existing_event() {
+        let (_tmp, _mock, mut connection) = writable_connection();
+        let event = test_event();
+        let diff = incoming_create_diff(event.clone());
+
+        connection.apply_incoming_diff(&diff).unwrap();
+        connection.apply_incoming_diff(&diff).unwrap();
+        let events = connection.local().events().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event(), &event);
+
+        // A stale create must also preserve edits made since the first pull.
+        let mut edited = event.clone();
+        edited.summary = Some("Locally edited".to_string());
+        let mut cal_event = connection.local().events().unwrap().pop().unwrap();
+        cal_event.update(edited.clone()).unwrap();
+
+        connection.apply_incoming_diff(&diff).unwrap();
+        let events = connection.local().events().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].event(), &edited);
+        let reloaded = Calendar::load(connection.local().path()).unwrap();
+        assert_eq!(
+            reloaded.state().sync_base(&event.event_instance_id()),
+            Some(&event)
+        );
     }
 
     #[tokio::test]
