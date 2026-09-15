@@ -44,6 +44,16 @@ cargo install --path caldir-provider-webcal
 
 </details>
 
+<details>
+<summary>Install with Nix</summary>
+
+```bash
+nix run github:t4t5/caldir -- --help
+```
+
+Or add `github:t4t5/caldir` as a flake input and use `packages.${system}.default` (or `overlays.default`) in your NixOS or home-manager config. The package includes all provider binaries.
+</details>
+
 ## Connect a calendar
 
 Choose a provider where you have calendar data:

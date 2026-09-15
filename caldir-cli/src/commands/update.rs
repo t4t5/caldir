@@ -9,6 +9,10 @@ const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub async fn run() -> Result<()> {
     let install_dir = get_install_dir()?;
 
+    if install_dir.starts_with("/nix/store") {
+        bail!("caldir is managed by Nix. Update it by bumping the caldir flake input instead.");
+    }
+
     remove_stale_backups(&install_dir);
 
     let spinner = crate::utils::tui::create_spinner("Checking for updates...".to_string());
