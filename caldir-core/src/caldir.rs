@@ -26,8 +26,14 @@ impl Caldir {
         }
     }
 
+    /// Load from the system config path and scan `PATH` for providers.
     pub fn load() -> Result<Self, CaldirError> {
-        let config_path = CaldirConfig::default_system_config_path()?;
+        Self::load_from(CaldirConfig::default_system_config_path()?)
+    }
+
+    /// Like `load`, but reads the config from an explicit path.
+    pub fn load_from(config_path: impl Into<PathBuf>) -> Result<Self, CaldirError> {
+        let config_path = config_path.into();
         let config = CaldirConfig::load_or_default(&config_path)?;
         let providers = ProviderRegistry::from_system_path();
 
@@ -42,6 +48,11 @@ impl Caldir {
     pub fn with_bundled_providers(mut self, dir: impl AsRef<Path>) -> Self {
         self.providers.add_from_dir(dir);
         self
+    }
+
+    /// Replace the provider registry, e.g. after rescanning `PATH`.
+    pub fn set_providers(&mut self, providers: ProviderRegistry) {
+        self.providers = providers;
     }
 
     /// Override the RPC timeout for all providers.
@@ -145,6 +156,16 @@ impl Caldir {
         }
 
         self.config = new_config;
+
+        Ok(())
+    }
+
+    /// Re-read the config from disk, keeping the provider registry. On failure
+    /// the in-memory config is left untouched. No-op without a config path.
+    pub fn reload_config(&mut self) -> Result<(), CaldirError> {
+        if let Some(path) = &self.config_path {
+            self.config = CaldirConfig::load_or_default(path)?;
+        }
 
         Ok(())
     }
@@ -382,6 +403,129 @@ mod tests {
             caldir.default_calendar(),
             Err(CaldirError::NoDefaultCalendar)
         ));
+    }
+
+    fn write_config(path: &Path, data_dir: &str) {
+        std::fs::write(path, format!("calendar_dir = \"{data_dir}\"\n")).unwrap();
+    }
+
+    #[test]
+    fn load_from_reads_config_at_path() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        write_config(&path, "/tmp/from-disk");
+
+        let caldir = Caldir::load_from(&path).unwrap();
+
+        assert_eq!(caldir.data_dir(), PathBuf::from("/tmp/from-disk"));
+    }
+
+    #[test]
+    fn load_from_uses_defaults_when_file_is_missing() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("missing.toml");
+
+        let caldir = Caldir::load_from(&path).unwrap();
+
+        assert_eq!(caldir.config(), &CaldirConfig::default());
+    }
+
+    #[test]
+    fn load_from_errors_on_malformed_file() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(&path, "not a valid toml").unwrap();
+
+        assert!(matches!(
+            Caldir::load_from(&path),
+            Err(CaldirError::Config(_))
+        ));
+    }
+
+    #[test]
+    fn save_config_writes_to_the_loaded_path() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        let mut caldir = Caldir::load_from(&path).unwrap();
+
+        let mut config = caldir.config().clone();
+        config.set_data_dir(PathBuf::from("/tmp/saved"));
+        caldir.save_config(config.clone()).unwrap();
+
+        assert_eq!(CaldirConfig::load_or_default(&path).unwrap(), config);
+    }
+
+    #[test]
+    fn reload_config_picks_up_changes_on_disk() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        write_config(&path, "/tmp/before");
+        let mut caldir = Caldir::load_from(&path).unwrap();
+
+        write_config(&path, "/tmp/after");
+        caldir.reload_config().unwrap();
+
+        assert_eq!(caldir.data_dir(), PathBuf::from("/tmp/after"));
+    }
+
+    #[test]
+    fn reload_config_keeps_previous_config_on_error() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        write_config(&path, "/tmp/before");
+        let mut caldir = Caldir::load_from(&path).unwrap();
+
+        std::fs::write(&path, "not a valid toml").unwrap();
+
+        assert!(matches!(
+            caldir.reload_config(),
+            Err(CaldirError::Config(_))
+        ));
+        assert_eq!(caldir.data_dir(), PathBuf::from("/tmp/before"));
+    }
+
+    #[test]
+    fn reload_config_keeps_providers() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        let mut caldir = Caldir::load_from(&path).unwrap();
+
+        let (_tmp_bin, provider) = test_provider("hooli");
+        let mut registry = ProviderRegistry::new();
+        registry.add(provider);
+        caldir.set_providers(registry);
+
+        write_config(&path, "/tmp/after");
+        caldir.reload_config().unwrap();
+
+        assert!(caldir.provider(&ProviderSlug::from("hooli")).is_ok());
+    }
+
+    #[test]
+    fn reload_config_is_noop_without_config_path() {
+        let (_tmp, mut caldir) = test_caldir();
+        let before = caldir.config().clone();
+
+        caldir.reload_config().unwrap();
+
+        assert_eq!(caldir.config(), &before);
+    }
+
+    #[test]
+    fn set_providers_replaces_registry() {
+        let (_tmp_bin, hooli) = test_provider("hooli");
+        let mut registry = ProviderRegistry::new();
+        registry.add(hooli);
+        let (_tmp, config) = test_caldir_config();
+        let mut caldir = Caldir::new(config, registry);
+
+        let (_tmp_bin, aviato) = test_provider("aviato");
+        let mut registry = ProviderRegistry::new();
+        registry.add(aviato);
+        caldir.set_providers(registry);
+
+        assert!(caldir.provider(&ProviderSlug::from("hooli")).is_err());
+        assert!(caldir.provider(&ProviderSlug::from("aviato")).is_ok());
     }
 
     #[test]

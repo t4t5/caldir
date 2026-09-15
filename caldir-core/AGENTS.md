@@ -4,7 +4,7 @@ The library that holds all of caldir's logic — event types, calendar discovery
 
 ## Testability
 
-caldir-core is designed to be fully testable without global state: every component takes the resources it needs as arguments. Production calls `Caldir::load()` to read from disk; tests use the `test_utils` helpers (e.g. `test_caldir()`) to construct one with `Caldir::new(config, providers)` against in-memory state.
+caldir-core is designed to be fully testable without global state: every component takes the resources it needs as arguments. Production calls `Caldir::load()` (or `Caldir::load_from(path)` for an explicit config path) to read from disk; tests use the `test_utils` helpers (e.g. `test_caldir()`) to construct one with `Caldir::new(config, providers)` against in-memory state.
 
 ## Adding properties to `Event`
 
