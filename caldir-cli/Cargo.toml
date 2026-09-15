@@ -57,11 +57,15 @@ dialoguer = "0.12"
 
 # Self-update
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
-flate2 = "1"
-tar = "0.4"
 tempfile = "3"
 serde = { version = "1", features = ["derive"] }
-zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+flate2 = "1"
+
+[target.'cfg(unix)'.dependencies]
+tar = "0.4"
+
+[target.'cfg(windows)'.dependencies]
+zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2"] }
 
 [dev-dependencies]
 indoc = "2"

@@ -47,7 +47,7 @@ pub async fn run() -> Result<()> {
     spinner.finish_and_clear();
 
     let tmp_dir = tempfile::tempdir()?;
-    extract_archive(&archive_name, &bytes, tmp_dir.path())?;
+    extract_archive(&bytes, tmp_dir.path())?;
 
     // Discover binaries from the archive — the release is the source of truth
     // for what ships. Only update binaries that are also installed locally,
@@ -108,13 +108,16 @@ fn archive_name() -> Result<String> {
     Ok(format!("caldir-{}-{}.{}", std::env::consts::ARCH, os, ext))
 }
 
-fn extract_archive(name: &str, bytes: &[u8], dest: &Path) -> Result<()> {
-    if name.ends_with(".zip") {
-        zip::ZipArchive::new(std::io::Cursor::new(bytes))?.extract(dest)?;
-    } else {
-        let decoder = flate2::read::GzDecoder::new(bytes);
-        tar::Archive::new(decoder).unpack(dest)?;
-    }
+#[cfg(unix)]
+fn extract_archive(bytes: &[u8], dest: &Path) -> Result<()> {
+    let decoder = flate2::read::GzDecoder::new(bytes);
+    tar::Archive::new(decoder).unpack(dest)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn extract_archive(bytes: &[u8], dest: &Path) -> Result<()> {
+    zip::ZipArchive::new(std::io::Cursor::new(bytes))?.extract(dest)?;
     Ok(())
 }
 
