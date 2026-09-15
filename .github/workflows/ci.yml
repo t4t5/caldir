@@ -71,5 +71,8 @@ jobs:
 
       - uses: cachix/install-nix-action@v31
 
-      - name: Build via flake
-        run: nix build --print-build-logs
+      - name: Evaluate flake on all supported systems
+        run: nix flake check --all-systems --no-build
+
+      - name: Build and check flake
+        run: nix flake check --print-build-logs

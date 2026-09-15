@@ -9,7 +9,6 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
         "aarch64-darwin"
       ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
@@ -33,8 +32,22 @@
         };
       });
 
-      checks = forAllSystems (pkgs: {
+      checks = forAllSystems (pkgs: rec {
         caldir = self.packages.${pkgs.stdenv.hostPlatform.system}.caldir;
+        provider-discovery = pkgs.runCommand "caldir-provider-discovery" { } ''
+          # Missing arguments list providers without contacting remote services.
+          if PATH="" ${pkgs.lib.getExe caldir} connect > providers 2>&1; then
+            echo "Expected connect to require a provider argument"
+            exit 1
+          fi
+          cat providers
+          for binary in ${caldir}/bin/caldir-provider-*; do
+            test -x "$binary"
+            provider="''${binary##*/caldir-provider-}"
+            grep -Fx "  $provider" providers
+          done
+          touch "$out"
+        '';
       });
     };
 }
