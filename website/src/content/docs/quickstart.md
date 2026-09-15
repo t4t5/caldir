@@ -6,11 +6,20 @@ order: 1
 
 # Quickstart
 
+Linux or macOS:
+
 ```bash
 curl -sSf https://caldir.org/install.sh | sh
 ```
 
-This installs the `caldir` CLI and the default [provider plugins](/providers).
+Windows:
+
+```powershell
+powershell -c "irm https://caldir.org/install.ps1 | iex"
+```
+
+This installs the `caldir` CLI and the default [provider plugins](/providers). Prebuilt binaries are
+also available on the [releases page](https://github.com/t4t5/caldir/releases).
 
 <details>
 <summary>Or install from source</summary>

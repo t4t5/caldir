@@ -61,6 +61,7 @@ flate2 = "1"
 tar = "0.4"
 tempfile = "3"
 serde = { version = "1", features = ["derive"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 indoc = "2"

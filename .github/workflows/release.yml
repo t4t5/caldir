@@ -106,26 +106,6 @@ jobs:
             --title "$version" \
             --generate-notes
 
-  winget:
-    needs: [check-cli-version, release]
-    runs-on: windows-latest
-    env:
-      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
-    steps:
-      - name: Submit manifest to winget-pkgs
-        if: env.WINGET_TOKEN != ''
-        shell: pwsh
-        run: |
-          $version = "${{ needs.check-cli-version.outputs.version }}"
-          $url = "https://github.com/t4t5/caldir/releases/download/v$version/caldir-x86_64-pc-windows-msvc.zip"
-          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
-          .\wingetcreate.exe update t4t5.caldir --version $version --urls $url --submit --token $env:WINGET_TOKEN
-
-      - name: Await winget bootstrap
-        if: env.WINGET_TOKEN == ''
-        shell: pwsh
-        run: Write-Host "Skipping winget submission until the package is bootstrapped and WINGET_TOKEN is configured."
-
   publish:
     needs: [ci, release]
     if: ${{ !failure() && !cancelled() }}

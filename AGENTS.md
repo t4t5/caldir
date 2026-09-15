@@ -61,9 +61,8 @@ When shipping a new default provider with caldir, update:
 
 1. workspace `Cargo.toml` — add the crate to `members`
 2. `.github/workflows/release.yml` — single source of truth for what ships in tarballs (`install.sh` and `caldir update` discover from there)
-3. `website/src/content/docs/providers.md` and `getting-started.md`
+3. `website/src/content/docs/providers.md` and `quickstart.md`
 4. `.agents/skills/bump/SKILL.md`
-5. the `NestedInstallerFiles` list in the next `microsoft/winget-pkgs` manifest PR
 
 ## Specs
 
