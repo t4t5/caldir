@@ -63,3 +63,16 @@ jobs:
 
       - name: Run just test
         run: just test
+
+  nix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Evaluate flake on all supported systems
+        run: nix flake check --all-systems --no-build
+
+      - name: Build and check flake
+        run: nix flake check --print-build-logs

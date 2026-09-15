@@ -70,6 +70,16 @@ cargo install --path caldir-provider-icloud   # iCloud
 ```
 </details>
 
+<details>
+<summary>Install with Nix</summary>
+
+```bash
+nix run github:t4t5/caldir -- --help
+```
+
+Or add `github:t4t5/caldir` as a flake input and use `packages.${system}.default` (or `overlays.default`) in your NixOS or home-manager config. The package includes all provider binaries.
+</details>
+
 ## Providers
 
 Caldir syncs through **providers** — small plugin binaries that talk to calendar services. It
