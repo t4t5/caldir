@@ -43,8 +43,11 @@ mv ~/caldir/outlook/*.ics ~/caldir/google/
 ## Quick start
 
 ```bash
-# Install caldir
+# Install caldir (Linux / macOS)
 curl -sSf https://caldir.org/install.sh | sh
+
+# ...or on Windows:
+powershell -c "irm https://caldir.org/install.ps1 | iex"
 
 # Connect and follow the instructions in the CLI:
 caldir connect google    # or "caldir connect icloud", "caldir connect caldav"...

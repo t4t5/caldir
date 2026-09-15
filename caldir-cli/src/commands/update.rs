@@ -1,17 +1,15 @@
 use anyhow::{Result, bail};
 use owo_colors::OwoColorize;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const REPO: &str = "t4t5/caldir";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub async fn run() -> Result<()> {
-    if cfg!(windows) {
-        println!("caldir is installed through winget on Windows. To update, run:");
-        println!("  winget upgrade t4t5.caldir");
-        return Ok(());
-    }
+    let install_dir = get_install_dir()?;
+
+    remove_stale_backups(&install_dir);
 
     let spinner = crate::utils::tui::create_spinner("Checking for updates...".to_string());
 
@@ -28,17 +26,14 @@ pub async fn run() -> Result<()> {
         return Ok(());
     }
 
-    let install_dir = get_install_dir()?;
-
-    let target = detect_target()?;
-    let tarball_name = format!("caldir-{}.tar.gz", target);
+    let archive_name = archive_name()?;
 
     let download_url = latest
         .assets
         .iter()
-        .find(|a| a.name == tarball_name)
+        .find(|a| a.name == archive_name)
         .map(|a| &a.browser_download_url)
-        .ok_or_else(|| anyhow::anyhow!("No release found for platform: {}", target))?;
+        .ok_or_else(|| anyhow::anyhow!("No release found for platform: {}", archive_name))?;
 
     let spinner = crate::utils::tui::create_spinner("Downloading...".to_string());
 
@@ -51,13 +46,10 @@ pub async fn run() -> Result<()> {
 
     spinner.finish_and_clear();
 
-    // Extract tarball to a temp directory
     let tmp_dir = tempfile::tempdir()?;
-    let decoder = flate2::read::GzDecoder::new(&bytes[..]);
-    let mut archive = tar::Archive::new(decoder);
-    archive.unpack(tmp_dir.path())?;
+    extract_archive(&bytes, tmp_dir.path())?;
 
-    // Discover binaries from the tarball — the release is the source of truth
+    // Discover binaries from the archive — the release is the source of truth
     // for what ships. Only update binaries that are also installed locally,
     // so users keep whichever providers they originally installed.
     let mut to_update: Vec<String> = Vec::new();
@@ -79,7 +71,7 @@ pub async fn run() -> Result<()> {
         format!("v{}", latest_version).green(),
     );
     for bin in &to_update {
-        if bin != "caldir" {
+        if bin != "caldir" && bin != "caldir.exe" {
             println!(
                 "  {} {}",
                 bin.bold(),
@@ -90,24 +82,7 @@ pub async fn run() -> Result<()> {
     println!();
 
     for bin in &to_update {
-        let src = tmp_dir.path().join(bin);
-        let dst = install_dir.join(bin);
-
-        // Remove first to avoid ETXTBSY on Linux (can't write to a running executable,
-        // but unlinking is fine — the kernel keeps the old inode mapped until the process exits)
-        std::fs::remove_file(&dst).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to update {} (permission denied?). Try:\n  sudo caldir update\n\nError: {}",
-                dst.display(),
-                e
-            )
-        })?;
-        std::fs::copy(&src, &dst)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o755))?;
-        }
+        replace_binary(&tmp_dir.path().join(bin), &install_dir.join(bin))?;
     }
 
     println!("{}", format!("Updated to v{}!", latest_version).green());
@@ -123,17 +98,73 @@ fn get_install_dir() -> Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("Could not determine install directory"))
 }
 
-fn detect_target() -> Result<String> {
-    let arch = std::env::consts::ARCH;
-    let os = std::env::consts::OS;
-
-    let target_os = match os {
-        "macos" => "apple-darwin",
-        "linux" => "unknown-linux-musl",
-        _ => bail!("Unsupported OS: {}", os),
+fn archive_name() -> Result<String> {
+    let (os, ext) = match std::env::consts::OS {
+        "macos" => ("apple-darwin", "tar.gz"),
+        "linux" => ("unknown-linux-musl", "tar.gz"),
+        "windows" => ("pc-windows-msvc", "zip"),
+        os => bail!("Unsupported OS: {}", os),
     };
+    Ok(format!("caldir-{}-{}.{}", std::env::consts::ARCH, os, ext))
+}
 
-    Ok(format!("{}-{}", arch, target_os))
+#[cfg(unix)]
+fn extract_archive(bytes: &[u8], dest: &Path) -> Result<()> {
+    let decoder = flate2::read::GzDecoder::new(bytes);
+    tar::Archive::new(decoder).unpack(dest)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn extract_archive(bytes: &[u8], dest: &Path) -> Result<()> {
+    zip::ZipArchive::new(std::io::Cursor::new(bytes))?.extract(dest)?;
+    Ok(())
+}
+
+fn replace_binary(src: &Path, dst: &Path) -> Result<()> {
+    // Unlink first: Linux can't overwrite a running executable (ETXTBSY) but can
+    // unlink it; Windows can't delete one but can rename it aside.
+    if let Err(e) = std::fs::remove_file(dst) {
+        let mut backup = dst.as_os_str().to_owned();
+        backup.push(".old");
+        if !(cfg!(windows) && std::fs::rename(dst, &backup).is_ok()) {
+            let hint = if cfg!(windows) {
+                ""
+            } else {
+                " Try:\n  sudo caldir update\n"
+            };
+            bail!(
+                "Failed to update {} (permission denied?).{}\nError: {}",
+                dst.display(),
+                hint,
+                e
+            );
+        }
+    }
+    std::fs::copy(src, dst)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dst, std::fs::Permissions::from_mode(0o755))?;
+    }
+    Ok(())
+}
+
+// Delete `caldir*.old` backups left by a previous Windows update.
+fn remove_stale_backups(install_dir: &Path) {
+    if !cfg!(windows) {
+        return;
+    }
+    let Ok(entries) = std::fs::read_dir(install_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name.starts_with("caldir") && name.ends_with(".old") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
 }
 
 fn http_client() -> Result<reqwest::Client> {
