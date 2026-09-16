@@ -1,7 +1,10 @@
 mod error;
 mod time_format;
 
-use crate::{Reminder, utils::expand_tilde};
+use crate::{
+    Reminder,
+    utils::{atomic_write, expand_tilde},
+};
 pub(crate) use error::CaldirConfigError;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -103,12 +106,7 @@ impl CaldirConfig {
 
     pub fn write(&self, path: &Path) -> Result<(), CaldirConfigError> {
         let contents = self.to_toml().map_err(CaldirConfigError::InvalidConfig)?;
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        std::fs::write(path, contents)?;
+        atomic_write(path, contents.as_bytes())?;
 
         Ok(())
     }

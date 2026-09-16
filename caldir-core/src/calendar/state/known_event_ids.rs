@@ -13,6 +13,7 @@
 /// The `known_event_ids` file helps us see if it's a brand new event, or a previously known one.
 use super::CalendarStateError;
 use crate::event::EventInstanceId;
+use crate::utils::atomic_write;
 use std::{collections::HashSet, path::Path};
 
 pub(crate) const KNOWN_IDS_FILE_NAME: &str = "known_event_ids";
@@ -71,17 +72,7 @@ impl KnownEventIds {
 
         let contents = lines.join("\n");
 
-        let parent = path.parent().ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "known ids path has no parent directory",
-            )
-        })?;
-
-        std::fs::create_dir_all(parent)?;
-        let mut tmp = tempfile::NamedTempFile::new_in(parent)?;
-        std::io::Write::write_all(&mut tmp, contents.as_bytes())?;
-        tmp.persist(path).map_err(|e| e.error)?;
+        atomic_write(path, contents.as_bytes())?;
 
         Ok(())
     }

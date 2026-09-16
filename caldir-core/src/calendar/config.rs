@@ -1,6 +1,7 @@
 mod error;
 
 use crate::remote::RemoteConfig;
+use crate::utils::atomic_write;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -33,8 +34,7 @@ impl CalendarConfig {
 
     pub fn write(&self, path: &Path) -> Result<(), CalendarConfigError> {
         let contents = self.to_toml().map_err(CalendarConfigError::InvalidConfig)?;
-
-        std::fs::write(path, contents)?;
+        atomic_write(path, contents.as_bytes())?;
 
         Ok(())
     }
