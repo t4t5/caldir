@@ -222,16 +222,14 @@ async fn malformed_resources_and_missing_etags_prevent_writes() {
                 .await
                 .is_err()
         );
-        assert!(
-            update_event("f", "f", &server.url, event(None))
-                .await
-                .is_err()
-        );
-        assert!(
-            delete_event("f", "f", &server.url, &event(None).event_instance_id())
-                .await
-                .is_err()
-        );
+        let error = update_event("f", "f", &server.url, event(None))
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("/calendar/series.ics"));
+        let error = delete_event("f", "f", &server.url, &event(None).event_instance_id())
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("/calendar/series.ics"));
         assert!(
             server
                 .state

@@ -125,12 +125,15 @@ fn component_spans(data: &str) -> Result<(Vec<std::ops::Range<usize>>, usize)> {
     for range in lines {
         let line = unfold(&data[range.clone()]);
         let line = line.trim_end_matches(['\r', '\n']);
-        if let Some(name) = line.strip_prefix("BEGIN:") {
+        let Some((boundary, name)) = line.split_once(':') else {
+            continue;
+        };
+        if boundary.eq_ignore_ascii_case("BEGIN") {
             if stack.len() == 1 {
                 start = range.start;
             }
             stack.push(name.to_owned());
-        } else if let Some(name) = line.strip_prefix("END:") {
+        } else if boundary.eq_ignore_ascii_case("END") {
             ensure!(
                 stack.pop().as_deref() == Some(name),
                 "Mismatched component boundary"
@@ -159,6 +162,7 @@ fn merge(data: &str, event: &Event) -> Result<String> {
         spans.len() == document.root.components.len(),
         "Ambiguous component boundaries"
     );
+    // Only siblings retain their original bytes; the edited event uses core's serializer.
     let replacement = event.to_ics_string();
     let (replacement_spans, _) = component_spans(&replacement)?;
     ensure!(
@@ -181,6 +185,12 @@ pub(super) struct Resource {
     pub data: String,
 }
 
+pub(super) enum Removal {
+    Missing,
+    Replace(String),
+    Delete,
+}
+
 impl Resource {
     pub fn etag(&self) -> Result<&str> {
         let etag = self
@@ -194,7 +204,7 @@ impl Resource {
         Ok(etag)
     }
 
-    pub fn remove(&self, id: &EventInstanceId) -> Result<Option<String>> {
+    pub fn remove(&self, id: &EventInstanceId) -> Result<Removal> {
         let unfolded = unfold(&self.data);
         let document = Document::parse(&unfolded)?;
         ensure!(
@@ -202,7 +212,7 @@ impl Resource {
             "Resource UID does not match requested event"
         );
         let Some(index) = document.position(id) else {
-            return Ok(None);
+            return Ok(Removal::Missing);
         };
         let (spans, _) = component_spans(&self.data)?;
         ensure!(
@@ -210,12 +220,12 @@ impl Resource {
             "Ambiguous component boundaries"
         );
         if document.events.len() == 1 {
-            Ok(Some(String::new()))
+            Ok(Removal::Delete)
         } else {
             let mut remaining = self.data.clone();
             remaining.replace_range(spans[index].clone(), "");
             parse_events(&remaining)?;
-            Ok(Some(remaining))
+            Ok(Removal::Replace(remaining))
         }
     }
 }
@@ -265,7 +275,8 @@ pub(super) async fn find_resource(
     // text-match is a substring match; verify the complete UID before selecting.
     let mut found = None;
     for resource in resources.drain(..) {
-        let events = parse_events(&resource.data)?;
+        let events = parse_events(&resource.data)
+            .with_context(|| format!("Invalid CalDAV resource {}", resource.href))?;
         if events[0].uid.as_str() == uid {
             ensure!(found.is_none(), "Multiple CalDAV resources match UID");
             found = Some(resource);
@@ -400,7 +411,8 @@ pub(super) async fn write_event(
     let caldav = create_caldav_client(calendar_url, username, password)?;
     let resource = find_resource(&caldav, calendar_url, event.uid.as_str()).await?;
     let href = if let Some(resource) = resource {
-        let data = merge(&resource.data, &event)?;
+        let data = merge(&resource.data, &event)
+            .with_context(|| format!("Cannot modify CalDAV resource {}", resource.href))?;
         put(&caldav, &resource.href, Some(resource.etag()?), data).await?;
         resource.href
     } else {
@@ -433,24 +445,52 @@ mod tests {
     }
 
     #[test]
-    fn preserves_calendar_and_untouched_component_trees() {
+    fn preserves_calendar_and_untouched_component_bytes() {
         let master = event(
             "RRULE:FREQ=WEEKLY\r\nX-CUSTOM;X-PARAM=\"a:b\":long\r\n folded value\r\nATTACH;ENCODING=BASE64;VALUE=BINARY:YWJj\r\nBEGIN:VALARM\r\nACTION:AUDIO\r\nTRIGGER:-PT5M\r\nX-ALARM:keep\r\nEND:VALARM\r\n",
         );
         let override_ = event("RECURRENCE-ID:20260928T070000Z\r\n");
         let timezone = "BEGIN:VTIMEZONE\r\nTZID:Europe/London\r\nBEGIN:STANDARD\r\nDTSTART:19701025T020000\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0000\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n";
-        let data = calendar(&format!("X-CALENDAR:keep\r\n{timezone}{master}{override_}"));
         let mut replacement = parse_events(&calendar(&override_)).unwrap().remove(0);
         replacement.summary = Some("Moved".into());
-        let merged = merge(&data, &replacement).unwrap();
-        let before = unfold(&data);
-        let after = unfold(&merged);
-        let before = Document::parse(&before).unwrap();
-        let after = Document::parse(&after).unwrap();
-        assert_eq!(before.root.properties, after.root.properties);
-        assert_eq!(before.root.components[..2], after.root.components[..2]);
-        assert_eq!(after.events.len(), 2);
-        assert_eq!(after.events[1].1.summary.as_deref(), Some("Moved"));
+        for newline in ["\r\n", "\n"] {
+            for folding in [" ", "\t"] {
+                for lowercase_boundaries in [false, true] {
+                    let wire = |data: &str| {
+                        let data = data
+                            .replace("\r\n ", &format!("\r\n{folding}"))
+                            .replace("\r\n", newline);
+                        if lowercase_boundaries {
+                            data.replace("BEGIN:", "begin:").replace("END:", "end:")
+                        } else {
+                            data
+                        }
+                    };
+                    let prefix = wire(&format!(
+                        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nX-CALENDAR:keep\r\n{timezone}{master}"
+                    ));
+                    let suffix = wire("END:VCALENDAR\r\n");
+                    let data = format!("{prefix}{}{suffix}", wire(&override_));
+                    let merged = merge(&data, &replacement).unwrap();
+                    assert!(merged.starts_with(&prefix));
+                    assert!(merged.ends_with(&suffix));
+                    let events = parse_events(&merged).unwrap();
+                    assert_eq!(events.len(), 2);
+                    assert_eq!(events[1].summary.as_deref(), Some("Moved"));
+                    let resource = Resource {
+                        href: String::new(),
+                        etag: None,
+                        data: merged,
+                    };
+                    let Removal::Replace(remaining) =
+                        resource.remove(&replacement.event_instance_id()).unwrap()
+                    else {
+                        panic!("Expected surviving master");
+                    };
+                    assert_eq!(remaining, format!("{prefix}{suffix}"));
+                }
+            }
+        }
     }
 
     #[test]
@@ -479,17 +519,12 @@ mod tests {
                 etag: None,
                 data,
             };
-            assert_eq!(
-                parse_events(
-                    &resource
-                        .remove(&replacement.event_instance_id())
-                        .unwrap()
-                        .unwrap()
-                )
-                .unwrap()
-                .len(),
-                1
-            );
+            let Removal::Replace(remaining) =
+                resource.remove(&replacement.event_instance_id()).unwrap()
+            else {
+                panic!("Expected surviving master");
+            };
+            assert_eq!(parse_events(&remaining).unwrap().len(), 1);
         }
     }
 

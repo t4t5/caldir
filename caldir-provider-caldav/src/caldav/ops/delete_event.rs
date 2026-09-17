@@ -6,7 +6,7 @@ use http::{Method, Request, StatusCode};
 
 use crate::caldav::create_caldav_client;
 
-use super::resource::{check_write_status, find_resource, put};
+use super::resource::{Removal, check_write_status, find_resource, put};
 
 /// Remove only the matching component; delete the resource when it becomes empty.
 pub async fn delete_event(
@@ -19,11 +19,15 @@ pub async fn delete_event(
     let Some(resource) = find_resource(&caldav, calendar_url, id.uid().as_str()).await? else {
         return Ok(());
     };
-    let Some(data) = resource.remove(id)? else {
-        return Ok(());
-    };
-    if !data.is_empty() {
-        return put(&caldav, &resource.href, Some(resource.etag()?), data).await;
+    match resource
+        .remove(id)
+        .with_context(|| format!("Cannot modify CalDAV resource {}", resource.href))?
+    {
+        Removal::Missing => return Ok(()),
+        Removal::Replace(data) => {
+            return put(&caldav, &resource.href, Some(resource.etag()?), data).await;
+        }
+        Removal::Delete => {}
     }
     let request = Request::builder()
         .method(Method::DELETE)
