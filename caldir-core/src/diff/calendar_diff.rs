@@ -17,6 +17,7 @@ impl CalendarDiff {
         sync_bases: &SyncBases,
         range: &DateRange,
     ) -> Self {
+        let (from, to) = range.query_bounds();
         let local_event_ids: HashSet<_> = local_events
             .iter()
             .map(|e| e.event().event_instance_id())
@@ -115,9 +116,7 @@ impl CalendarDiff {
 
             // Out-of-window events aren't in the remote response, so we
             // can't tell if they're deleted or just out of range. Skip.
-            if let (Some(from), Some(to)) = (range.from, range.to)
-                && !event.has_occurrence_in_range(from, to)
-            {
+            if !event.has_occurrence_in_range(from, to) {
                 continue;
             }
 
@@ -207,11 +206,8 @@ fn is_orphaned_override(
         return true;
     };
 
-    if let (Some(from), Some(to)) = (range.from, range.to) {
-        master.has_occurrence_in_range(from, to)
-    } else {
-        true
-    }
+    let (from, to) = range.query_bounds();
+    master.has_occurrence_in_range(from, to)
 }
 
 #[cfg(test)]
@@ -1207,5 +1203,110 @@ mod tests {
 
         assert_eq!(diff.outgoing, vec![]);
         assert_eq!(diff.incoming, vec![EventChange::Delete(event)]);
+    }
+
+    #[test]
+    fn one_sided_window_leaves_out_of_range_local_events_untouched() {
+        let boundary = Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap();
+        for (year, range) in [
+            (
+                2028,
+                DateRange {
+                    from: None,
+                    to: Some(boundary),
+                },
+            ),
+            (
+                2026,
+                DateRange {
+                    from: Some(boundary),
+                    to: None,
+                },
+            ),
+        ] {
+            for synced in [false, true] {
+                for recurring in [false, true] {
+                    let (_tmp, calendar) = test_calendar();
+                    let mut event = test_event();
+                    event.start = EventTime::DateTimeUtc(
+                        Utc.with_ymd_and_hms(year, 2, 25, 15, 45, 0).unwrap(),
+                    );
+                    event.end = None;
+                    if recurring {
+                        event.recurrence = Some(Recurrence::new("FREQ=DAILY;COUNT=2"));
+                    }
+                    let local = calendar.create_event(event.clone()).unwrap();
+                    let mut bases = SyncBases::new();
+                    if synced {
+                        bases.insert_known_event_id(event.event_instance_id());
+                    }
+
+                    let diff = CalendarDiff::compute(vec![local], vec![], &bases, &range);
+                    assert!(
+                        diff.is_empty(),
+                        "year={year}, synced={synced}, recurring={recurring}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn one_sided_window_still_detects_remote_deletions_in_range() {
+        for range in [
+            DateRange {
+                from: None,
+                to: Some(Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap()),
+            },
+            DateRange {
+                from: Some(Utc.with_ymd_and_hms(2025, 1, 1, 0, 0, 0).unwrap()),
+                to: None,
+            },
+        ] {
+            let (_tmp, local) = test_calendar_event();
+            let event = local.event().clone();
+            let mut bases = SyncBases::new();
+            bases.insert_known_event_id(event.event_instance_id());
+
+            let diff = CalendarDiff::compute(vec![local], vec![], &bases, &range);
+            assert_eq!(diff.incoming, vec![EventChange::Delete(event)]);
+            assert!(diff.outgoing.is_empty());
+        }
+    }
+
+    #[test]
+    fn one_sided_window_does_not_treat_out_of_range_master_as_deleted() {
+        for (year, range) in [
+            (
+                2025,
+                DateRange {
+                    from: None,
+                    to: Some(Utc.with_ymd_and_hms(2025, 12, 31, 0, 0, 0).unwrap()),
+                },
+            ),
+            (
+                2027,
+                DateRange {
+                    from: Some(Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap()),
+                    to: None,
+                },
+            ),
+        ] {
+            let (_tmp, calendar) = test_calendar();
+            let (mut master, mut override_event) = recurring_series();
+            master.recurrence = Some(Recurrence::new("FREQ=DAILY;COUNT=2"));
+            override_event.start =
+                EventTime::DateTimeUtc(Utc.with_ymd_and_hms(year, 6, 1, 12, 0, 0).unwrap());
+            override_event.end = None;
+            let local_master = calendar.create_event(master.clone()).unwrap();
+            let local_override = calendar.create_event(override_event.clone()).unwrap();
+            let mut bases = SyncBases::new();
+            bases.insert_event_base(master.event_instance_id(), master);
+
+            let diff =
+                CalendarDiff::compute(vec![local_master, local_override], vec![], &bases, &range);
+            assert!(diff.incoming.is_empty());
+            assert_eq!(diff.outgoing, vec![EventChange::Create(override_event)]);
+        }
     }
 }
