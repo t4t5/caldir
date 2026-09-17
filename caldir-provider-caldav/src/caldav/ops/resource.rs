@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use anyhow::{Context, Result, bail, ensure};
 use caldir_core::{Event, EventInstanceId};
 use http::{Method, Request, StatusCode};
-use icalendar::parser::{Component, ParseString, read_components};
+use icalendar::parser::{Component, read_components};
 
 use crate::caldav::{CalDavClient_, create_caldav_client, event_url, url_to_href};
 
@@ -14,17 +14,45 @@ fn unfold(data: &str) -> String {
 fn parse_input(data: &str) -> String {
     unfold(data)
         .split_inclusive('\n')
-        .map(|line| {
-            // The parser matches BEGIN/END component names case-sensitively.
-            if let Some((boundary, _)) = line.split_once(':')
-                && (boundary.eq_ignore_ascii_case("BEGIN") || boundary.eq_ignore_ascii_case("END"))
-            {
-                line.to_ascii_uppercase()
-            } else {
-                line.to_owned()
-            }
-        })
+        .map(normalize_line)
         .collect()
+}
+
+// Normalize names before value decoding; keep the original resource untouched.
+fn normalize_line(line: &str) -> String {
+    if let Some((name, _)) = line.split_once(':')
+        && (name.eq_ignore_ascii_case("BEGIN") || name.eq_ignore_ascii_case("END"))
+    {
+        return line.to_ascii_uppercase();
+    }
+
+    let mut normalized = String::with_capacity(line.len());
+    let mut start = 0;
+    let mut quoted = false;
+    for (index, ch) in line.char_indices() {
+        if ch == '"' {
+            quoted = !quoted;
+        }
+        if quoted || !matches!(ch, ';' | ':') {
+            continue;
+        }
+        let part = &line[start..index];
+        match part.split_once('=') {
+            Some((key, value)) if !key.trim().eq_ignore_ascii_case("VALUE") => {
+                normalized.push_str(&key.to_ascii_uppercase());
+                normalized.push('=');
+                normalized.push_str(value);
+            }
+            _ => normalized.push_str(&part.to_ascii_uppercase()),
+        }
+        normalized.push(ch);
+        start = index + ch.len_utf8();
+        if ch == ':' {
+            break;
+        }
+    }
+    normalized.push_str(&line[start..]);
+    normalized
 }
 
 /// Validate the complete component tree before modifying any resource.
@@ -37,8 +65,7 @@ impl<'a> Document<'a> {
     fn parse(unfolded: &'a str) -> Result<Self> {
         let mut roots = read_components(unfolded).map_err(anyhow::Error::msg)?;
         ensure!(roots.len() == 1, "Expected one VCALENDAR");
-        let mut root = roots.remove(0);
-        normalize_names(&mut root);
+        let root = roots.remove(0);
         ensure!(root.name == "VCALENDAR", "Expected VCALENDAR");
         let mut events = Vec::new();
         let mut identities = HashSet::new();
@@ -94,21 +121,6 @@ impl<'a> Document<'a> {
             .iter()
             .find(|(_, e)| e.event_instance_id() == *id)
             .map(|(i, _)| *i)
-    }
-}
-
-/// Names are case-insensitive (RFC 5545 §3.1); uppercase the parsed tree so
-/// lookups match. Original resource bytes are never rewritten.
-fn normalize_names(component: &mut Component<'_>) {
-    component.name = ParseString::from(component.name.as_str().to_ascii_uppercase());
-    for property in &mut component.properties {
-        property.name = ParseString::from(property.name.as_str().to_ascii_uppercase());
-        for param in &mut property.params {
-            param.key = ParseString::from(param.key.as_str().to_ascii_uppercase());
-        }
-    }
-    for child in &mut component.components {
-        normalize_names(child);
     }
 }
 
@@ -558,7 +570,7 @@ mod tests {
         assert!(events[1].recurrence_id.is_some());
         assert_eq!(
             events[0].description.as_deref(),
-            Some("Keep this case\\nEND:vevent")
+            Some("Keep this case\nEND:vevent")
         );
         let mut replacement = events[1].clone();
         replacement.summary = Some("Moved".into());
@@ -581,6 +593,51 @@ mod tests {
         assert_eq!(
             remaining,
             format!("begin:vcalendar\r\nversion:2.0\r\n{master}end:VCALENDAR\r\n")
+        );
+    }
+
+    #[test]
+    fn mixed_case_text_decodes_and_survives_unrelated_edits() {
+        for name in ["SUMMARY", "summary", "SuMmArY"] {
+            for value in ["", ";value=text", ";VaLuE=\"TeXt\""] {
+                let data = calendar(&event(&format!(
+                    "{name}{value}:Water\\, plant\\nReminder\\; today\r\ndescription:Keep this\r\n  case\\nEND:vevent\r\n"
+                )))
+                .replace("UID:series", "uId:Case\\,Sensitive");
+                let mut replacement = parse_events(&data).unwrap().remove(0);
+                assert_eq!(replacement.uid.as_str(), "Case,Sensitive");
+                assert_eq!(
+                    replacement.summary.as_deref(),
+                    Some("Water, plant\nReminder; today")
+                );
+                assert_eq!(
+                    replacement.description.as_deref(),
+                    Some("Keep this case\nEND:vevent")
+                );
+                replacement.location = Some("Garden".into());
+                let merged = merge(&data, &replacement).unwrap();
+                assert_eq!(parse_events(&merged).unwrap(), vec![replacement]);
+            }
+        }
+    }
+
+    #[test]
+    fn normalizing_headers_preserves_quoted_parameters_and_nontext_values() {
+        let data = calendar(&event(
+            "sUmMaRy;altrep=\"https://Example.com/a;b:c\":Water\\, plant\r\nx-link;value=uri;x-label=\"Keep;This:Case\":https://Example.com/Keep\\,Case\r\n",
+        ));
+        let normalized = parse_input(&data);
+        assert!(
+            normalized.contains("SUMMARY;ALTREP=\"https://Example.com/a;b:c\":Water\\, plant\n")
+        );
+        assert!(normalized.contains(
+            "X-LINK;VALUE=URI;X-LABEL=\"Keep;This:Case\":https://Example.com/Keep\\,Case\n"
+        ));
+        let parsed = parse_events(&data).unwrap().remove(0);
+        assert_eq!(parsed.summary.as_deref(), Some("Water, plant"));
+        assert_eq!(
+            parsed.x_properties[0].value,
+            "https://Example.com/Keep\\,Case"
         );
     }
 
