@@ -365,10 +365,10 @@ pub(super) async fn query(
     if parts.status != StatusCode::MULTI_STATUS {
         return Err(QueryStatus(parts.status).into());
     }
-    parse_multistatus(std::str::from_utf8(&body)?)
+    parse_multistatus(std::str::from_utf8(&body)?, &url_to_href(calendar_url))
 }
 
-fn parse_multistatus(body: &str) -> Result<Vec<Resource>> {
+fn parse_multistatus(body: &str, calendar_href: &str) -> Result<Vec<Resource>> {
     let doc = roxmltree::Document::parse(body)?;
     ensure!(
         doc.root_element().has_tag_name(("DAV:", "multistatus")),
@@ -387,15 +387,26 @@ fn parse_multistatus(body: &str) -> Result<Vec<Resource>> {
             .context("Missing resource href")?;
         let mut etag = None;
         let mut data = None;
-        for status in response
+        let is_collection = url_to_href(href) == calendar_href;
+        let mut missing_collection_properties = false;
+        for status_node in response
             .descendants()
             .filter(|n| n.has_tag_name(("DAV:", "status")))
         {
-            let status = status.text().unwrap_or_default();
+            let status = status_node.text().unwrap_or_default();
             let code = status
                 .split_whitespace()
                 .nth(1)
                 .context("Missing DAV status code")?;
+            if is_collection
+                && code == "404"
+                && status_node
+                    .parent()
+                    .is_some_and(|n| n.has_tag_name(("DAV:", "propstat")))
+            {
+                missing_collection_properties = true;
+                continue;
+            }
             ensure!(code == "200", "CalDAV resource {href}: {status}");
         }
         for prop in response.descendants() {
@@ -405,6 +416,14 @@ fn parse_multistatus(body: &str) -> Result<Vec<Resource>> {
                 data = prop.text().map(str::to_owned);
             }
         }
+        // iCloud includes the collection itself, whose calendar-data property is absent.
+        if missing_collection_properties && data.is_none() {
+            continue;
+        }
+        ensure!(
+            !missing_collection_properties,
+            "CalDAV resource {href}: missing properties on calendar object"
+        );
         resources.push(Resource {
             href: href.to_owned(),
             etag,
@@ -689,13 +708,40 @@ mod tests {
     }
 
     #[test]
+    fn multistatus_skips_collection_metadata_but_keeps_events() {
+        for href in ["/calendar/", "https://example.com/calendar/"] {
+            let collection = format!(
+                r#"<response><href>{href}</href><propstat><prop><getetag>"collection"</getetag></prop><status>HTTP/1.1 200 OK</status></propstat><propstat><prop><C:calendar-data/></prop><status>HTTP/1.1 404 Not Found</status></propstat></response>"#
+            );
+            let body = format!(
+                r#"<multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">{collection}<response><href>/calendar/event.ics</href><propstat><prop><getetag>"event"</getetag><C:calendar-data>event data</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response></multistatus>"#
+            );
+            let resources = parse_multistatus(&body, "/calendar/").unwrap();
+            assert_eq!(resources.len(), 1);
+            assert_eq!(resources[0].href, "/calendar/event.ics");
+            assert_eq!(resources[0].etag.as_deref(), Some("\"event\""));
+            assert_eq!(resources[0].data, "event data");
+            assert!(parse_multistatus(&body, "/other-calendar/").is_err());
+            assert!(
+                parse_multistatus(
+                    &body.replace("404 Not Found", "403 Forbidden"),
+                    "/calendar/"
+                )
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
     fn multistatus_failures_are_not_empty_calendars() {
         for body in [
             "<error/>",
             r#"<multistatus xmlns="DAV:"><response><href>/a</href><status>HTTP/1.1 403 Forbidden</status></response></multistatus>"#,
             r#"<multistatus xmlns="DAV:"><response><href>/a</href><propstat><prop/><status>HTTP/1.1 200 OK</status></propstat></response></multistatus>"#,
+            r#"<multistatus xmlns="DAV:"><response><href>/calendar/</href><status>HTTP/1.1 404 Not Found</status></response></multistatus>"#,
+            r#"<multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><response><href>/calendar/event.ics</href><propstat><prop><C:calendar-data/></prop><status>HTTP/1.1 404 Not Found</status></propstat></response></multistatus>"#,
         ] {
-            assert!(parse_multistatus(body).is_err());
+            assert!(parse_multistatus(body, "/calendar/").is_err());
         }
     }
 }

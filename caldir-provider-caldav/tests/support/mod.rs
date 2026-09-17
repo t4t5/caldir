@@ -85,10 +85,17 @@ impl State {
             }
             "REPORT" => {
                 let response = self.data.as_ref().map(|data| format!(r#"<response><href>{}</href><propstat><prop><getetag>"{}"</getetag><C:calendar-data>{}</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response>"#, self.href, self.version, data.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;"))).unwrap_or_default();
+                let collection = if !request.body.contains("<C:prop-filter")
+                    && !request.body.contains("<C:time-range")
+                {
+                    r#"<response><href>/calendar/</href><propstat><prop><getetag>"collection"</getetag></prop><status>HTTP/1.1 200 OK</status></propstat><propstat><prop><C:calendar-data/></prop><status>HTTP/1.1 404 Not Found</status></propstat></response>"#
+                } else {
+                    ""
+                };
                 (
                     207,
                     format!(
-                        r#"<multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">{response}</multistatus>"#
+                        r#"<multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">{collection}{response}</multistatus>"#
                     ),
                 )
             }
