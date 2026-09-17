@@ -16,5 +16,12 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     let session = store.load(&config.icloud_account)?;
     let (username, password) = session.credentials();
 
-    ops::create_event(username, password, &config.icloud_calendar_url, cmd.event).await
+    ops::create_event(
+        username,
+        password,
+        &config.icloud_calendar_url,
+        super::normalize_event(cmd.event),
+    )
+    .await
+    .map(super::normalize_event)
 }

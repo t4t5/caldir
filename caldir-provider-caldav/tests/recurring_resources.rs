@@ -26,54 +26,23 @@ async fn lists_all_components_in_any_order() {
 }
 
 #[tokio::test]
-async fn query_window_markers_do_not_change_events() {
-    let original = calendar(&[component(None), component(Some(RID))])
-        .replace("END:VEVENT", "X-CUSTOM:keep\r\nEND:VEVENT");
-    let server = Server::new(Some(original.clone()), false).await;
-    let narrow = list(&server).await.unwrap();
-    server.state.lock().unwrap().report_data =
-        Some(original.replace("END:VEVENT", "X-RECURRENCE-EXCEPTION:True\r\nEND:VEVENT"));
-    let wide = fetch_events("fake", "fake", &server.url, "1970-01-01", "2027-01-01")
-        .await
-        .unwrap();
-    assert_eq!(wide, narrow);
-    assert_eq!(wide, server.events());
-    assert!(wide[1].recurrence_id.is_some());
-    assert_eq!(
-        wide[1].x_properties,
-        vec![caldir_core::XProperty::new("X-CUSTOM", "keep")]
-    );
-    let state = server.state.lock().unwrap();
-    assert!(state.requests.iter().all(|r| r.method == "REPORT"));
-    assert!(
-        state.requests[0]
-            .body
-            .contains("start=\"20260101T000000Z\"")
-    );
-    assert!(
-        state.requests[1]
-            .body
-            .contains("start=\"19700101T000000Z\"")
-    );
-}
-
-#[tokio::test]
-async fn writes_do_not_send_stale_query_markers() {
+async fn preserves_recurrence_exception_x_property() {
     let server = Server::new(Some(calendar(&[component(None)])), false).await;
-    let expected = event(Some(RID));
-    let mut marked = expected.clone();
+    let mut marked = event(Some(RID));
     marked.x_properties.push(caldir_core::XProperty::new(
         "X-RECURRENCE-EXCEPTION",
         "True",
     ));
-    let returned = create_event("fake", "fake", &server.url, marked)
+    let created = create_event("fake", "fake", &server.url, marked.clone())
         .await
         .unwrap();
-    assert_eq!(returned, expected);
-    assert_eq!(server.events(), vec![event(None), expected]);
-    let state = server.state.lock().unwrap();
-    let put = state.requests.iter().find(|r| r.method == "PUT").unwrap();
-    assert!(!put.body.contains("X-RECURRENCE-EXCEPTION"));
+    assert_eq!(created, marked);
+    let updated = update_event("fake", "fake", &server.url, marked.clone())
+        .await
+        .unwrap();
+    assert_eq!(updated, marked);
+    assert_eq!(server.events(), vec![event(None), marked.clone()]);
+    assert_eq!(list(&server).await.unwrap(), server.events());
 }
 
 #[tokio::test]
