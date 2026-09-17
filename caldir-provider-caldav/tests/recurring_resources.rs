@@ -78,6 +78,102 @@ async fn creates_and_updates_components_at_server_assigned_href() {
 }
 
 #[tokio::test]
+async fn rejected_uid_filter_falls_back_to_exact_local_matching() {
+    let original = calendar(&[component(None), component(Some(SECOND))]);
+    let server = Server::new(Some(original), true).await;
+    server.state.lock().unwrap().reject_uid_filter = true;
+    create_event("f", "f", &server.url, event(Some(RID)))
+        .await
+        .unwrap();
+    assert_eq!(server.events().len(), 3);
+    delete_event("f", "f", &server.url, &event(Some(RID)).event_instance_id())
+        .await
+        .unwrap();
+    assert_eq!(server.events().len(), 2);
+    {
+        let state = server.state.lock().unwrap();
+        let reports: Vec<_> = state
+            .requests
+            .iter()
+            .filter(|r| r.method == "REPORT")
+            .collect();
+        assert_eq!(reports.len(), 4);
+        for pair in reports.chunks(2) {
+            assert!(pair[0].body.contains("<C:prop-filter"));
+            assert!(!pair[1].body.contains("<C:prop-filter"));
+            assert!(!pair[1].body.contains("<C:time-range"));
+        }
+    }
+
+    // A substring match must not be mistaken for the requested UID.
+    let unrelated = calendar(&[component(None)]).replace("UID:series", "UID:series-other");
+    let server = Server::new(Some(unrelated.clone()), true).await;
+    server.state.lock().unwrap().reject_uid_filter = true;
+    delete_event("f", "f", &server.url, &event(None).event_instance_id())
+        .await
+        .unwrap();
+    let state = server.state.lock().unwrap();
+    assert_eq!(state.data.as_ref(), Some(&unrelated));
+    assert!(
+        state
+            .requests
+            .iter()
+            .all(|r| r.method != "PUT" && r.method != "DELETE")
+    );
+}
+
+#[tokio::test]
+async fn rejected_uid_filter_allows_creation_only_after_successful_empty_lookup() {
+    let server = Server::new(None, false).await;
+    server.state.lock().unwrap().reject_uid_filter = true;
+    create_event("f", "f", &server.url, event(None))
+        .await
+        .unwrap();
+    assert_eq!(server.events(), vec![event(None)]);
+    let state = server.state.lock().unwrap();
+    let put = state.requests.iter().find(|r| r.method == "PUT").unwrap();
+    assert_eq!(put.header("if-none-match"), Some("*"));
+}
+
+#[tokio::test]
+async fn failed_lookup_never_authorizes_a_write() {
+    for reject_uid_filter in [false, true] {
+        for status in [401, 403, 412, 500] {
+            let server = Server::new(None, false).await;
+            {
+                let mut state = server.state.lock().unwrap();
+                state.reject_uid_filter = reject_uid_filter;
+                state.report_status = Some(status);
+            }
+            let error = create_event("f", "f", &server.url, event(None))
+                .await
+                .unwrap_err();
+            assert!(error.to_string().contains(&status.to_string()));
+            let state = server.state.lock().unwrap();
+            assert!(
+                state
+                    .requests
+                    .iter()
+                    .all(|r| r.method != "PUT" && r.method != "DELETE")
+            );
+            let reports = state
+                .requests
+                .iter()
+                .filter(|r| r.method == "REPORT")
+                .count();
+            assert_eq!(
+                reports,
+                if reject_uid_filter || status == 412 {
+                    2
+                } else {
+                    1
+                }
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn creates_and_deletes_series_in_either_order() {
     for order in [[None, Some(RID)], [Some(RID), None]] {
         let server = Server::new(None, false).await;

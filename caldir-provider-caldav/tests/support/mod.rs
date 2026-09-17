@@ -51,6 +51,8 @@ pub struct State {
     pub version: usize,
     pub requests: Vec<Request>,
     pub read_status: Option<u16>,
+    pub report_status: Option<u16>,
+    pub reject_uid_filter: bool,
     pub write_status: Option<u16>,
     pub concurrent_data: Option<String>,
     pub omit_etag: bool,
@@ -71,6 +73,12 @@ impl State {
             }
             "GET" => (404, String::new()),
             "REPORT" if self.read_status.is_some() => (self.read_status.unwrap(), String::new()),
+            "REPORT" if self.reject_uid_filter && request.body.contains("<C:prop-filter") => {
+                (412, String::new())
+            }
+            "REPORT" if self.report_status.is_some() => {
+                (self.report_status.unwrap(), String::new())
+            }
             "REPORT" => {
                 let response = self.data.as_ref().map(|data| format!(r#"<response><href>{}</href><propstat><prop><getetag>"{}"</getetag><C:calendar-data>{}</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response>"#, self.href, self.version, data.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;"))).unwrap_or_default();
                 (
@@ -147,6 +155,8 @@ impl Server {
             version: 1,
             requests: Vec::new(),
             read_status: None,
+            report_status: None,
+            reject_uid_filter: false,
             write_status: None,
             concurrent_data: None,
             omit_etag: false,

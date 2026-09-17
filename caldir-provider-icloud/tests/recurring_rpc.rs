@@ -8,6 +8,7 @@ use tokio::{io::AsyncWriteExt, process::Command};
 #[tokio::test]
 async fn rpc_preserves_recurrence_identity_for_icloud_writes() {
     let server = Server::new(Some(calendar(&[component(None)])), true).await;
+    server.state.lock().unwrap().reject_uid_filter = true;
     let storage = tempfile::tempdir().unwrap();
     std::fs::create_dir(storage.path().join("session")).unwrap();
     std::fs::write(storage.path().join("session/fake_example_com.toml"), format!("apple_id = 'fake@example.com'\napp_password = 'fake'\nprincipal_url = {:?}\ncalendar_home_url = {:?}\n", server.url, server.url)).unwrap();

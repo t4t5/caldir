@@ -301,7 +301,16 @@ pub(super) async fn find_resource(
         r#"<C:prop-filter name="UID"><C:text-match collation="i;octet">{}</C:text-match></C:prop-filter>"#,
         xml_escape(uid)
     );
-    let mut resources = query(caldav, calendar_url, &filter).await?;
+    let mut resources = match query(caldav, calendar_url, &filter).await {
+        // iCloud rejects UID filters with 412; match against the full collection instead.
+        Err(error)
+            if error.downcast_ref::<QueryStatus>().map(|e| e.0)
+                == Some(StatusCode::PRECONDITION_FAILED) =>
+        {
+            query(caldav, calendar_url, "").await?
+        }
+        result => result?,
+    };
     // text-match is a substring match; verify the complete UID before selecting.
     let mut found = None;
     for resource in resources.drain(..) {
@@ -324,6 +333,17 @@ fn xml_escape(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+#[derive(Debug)]
+struct QueryStatus(StatusCode);
+
+impl std::fmt::Display for QueryStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Failed to query CalDAV resources: {}", self.0)
+    }
+}
+
+impl std::error::Error for QueryStatus {}
+
 pub(super) async fn query(
     caldav: &CalDavClient_,
     calendar_url: &str,
@@ -342,11 +362,9 @@ pub(super) async fn query(
         .request_raw(request)
         .await
         .context("Failed to query CalDAV resources")?;
-    ensure!(
-        parts.status == StatusCode::MULTI_STATUS,
-        "Failed to query CalDAV resources: {}",
-        parts.status
-    );
+    if parts.status != StatusCode::MULTI_STATUS {
+        return Err(QueryStatus(parts.status).into());
+    }
     parse_multistatus(std::str::from_utf8(&body)?)
 }
 
