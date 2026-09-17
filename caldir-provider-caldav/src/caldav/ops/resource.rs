@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use anyhow::{Context, Result, bail, ensure};
 use caldir_core::{Event, EventInstanceId};
 use http::{Method, Request, StatusCode};
-use icalendar::parser::{Component, read_components};
+use icalendar::parser::{Component, ParseString, read_components};
 
 use crate::caldav::{CalDavClient_, create_caldav_client, event_url, url_to_href};
 
@@ -21,26 +21,23 @@ impl<'a> Document<'a> {
     fn parse(unfolded: &'a str) -> Result<Self> {
         let mut roots = read_components(unfolded).map_err(anyhow::Error::msg)?;
         ensure!(roots.len() == 1, "Expected one VCALENDAR");
-        let root = roots.remove(0);
+        let mut root = roots.remove(0);
+        normalize_names(&mut root);
         ensure!(root.name == "VCALENDAR", "Expected VCALENDAR");
         let mut events = Vec::new();
         let mut identities = HashSet::new();
         for (index, component) in root.components.iter().enumerate() {
             validate_children(component)?;
-            ensure!(
-                !component.name.as_str().eq_ignore_ascii_case("VCALENDAR"),
-                "Nested VCALENDAR"
-            );
-            if !component.name.as_str().eq_ignore_ascii_case("VEVENT") {
+            ensure!(component.name != "VCALENDAR", "Nested VCALENDAR");
+            if component.name != "VEVENT" {
                 continue;
             }
-            ensure!(component.name == "VEVENT", "Unsupported VEVENT casing");
             for name in ["UID", "RECURRENCE-ID", "DTSTART"] {
                 ensure!(
                     component
                         .properties
                         .iter()
-                        .filter(|p| p.name.as_str().eq_ignore_ascii_case(name))
+                        .filter(|p| p.name == name)
                         .count()
                         <= 1,
                     "Ambiguous {name} in VEVENT"
@@ -55,7 +52,7 @@ impl<'a> Document<'a> {
                 !component
                     .properties
                     .iter()
-                    .any(|p| p.name.as_str().eq_ignore_ascii_case("RECURRENCE-ID"))
+                    .any(|p| p.name == "RECURRENCE-ID")
                     || event.recurrence_id.is_some(),
                 "Invalid RECURRENCE-ID"
             );
@@ -84,11 +81,25 @@ impl<'a> Document<'a> {
     }
 }
 
+/// Names are case-insensitive (RFC 5545 §3.1); uppercase the parsed tree so
+/// lookups match. Original resource bytes are never rewritten.
+fn normalize_names(component: &mut Component<'_>) {
+    component.name = ParseString::from(component.name.as_str().to_ascii_uppercase());
+    for property in &mut component.properties {
+        property.name = ParseString::from(property.name.as_str().to_ascii_uppercase());
+        for param in &mut property.params {
+            param.key = ParseString::from(param.key.as_str().to_ascii_uppercase());
+        }
+    }
+    for child in &mut component.components {
+        normalize_names(child);
+    }
+}
+
 fn validate_children(component: &Component<'_>) -> Result<()> {
     for child in &component.components {
         ensure!(
-            !child.name.as_str().eq_ignore_ascii_case("VEVENT")
-                && !child.name.as_str().eq_ignore_ascii_case("VCALENDAR"),
+            child.name != "VEVENT" && child.name != "VCALENDAR",
             "Unexpected nested calendar or event"
         );
         validate_children(child)?;
@@ -128,16 +139,14 @@ fn component_spans(data: &str) -> Result<(Vec<std::ops::Range<usize>>, usize)> {
         let Some((boundary, name)) = line.split_once(':') else {
             continue;
         };
+        let name = name.to_ascii_uppercase();
         if boundary.eq_ignore_ascii_case("BEGIN") {
             if stack.len() == 1 {
                 start = range.start;
             }
-            stack.push(name.to_owned());
+            stack.push(name);
         } else if boundary.eq_ignore_ascii_case("END") {
-            ensure!(
-                stack.pop().as_deref() == Some(name),
-                "Mismatched component boundary"
-            );
+            ensure!(stack.pop() == Some(name), "Mismatched component boundary");
             if stack.len() == 1 {
                 spans.push(start..range.end);
             }
@@ -522,13 +531,46 @@ mod tests {
     }
 
     #[test]
+    fn names_are_case_insensitive_and_bytes_are_preserved() {
+        let master = "begin:vevent\r\nuid:series\r\ndtstart;tzid=Europe/London:20260921T080000\r\nrrule:FREQ=WEEKLY\r\nend:vevent\r\n";
+        let override_ = "Begin:VEvent\r\nUid:series\r\nDtStart:20260928T070000Z\r\nRecurrence-Id:20260928T070000Z\r\nEnd:VEvent\r\n";
+        let data =
+            format!("begin:vcalendar\r\nversion:2.0\r\n{master}{override_}end:vcalendar\r\n");
+        let events = parse_events(&data).unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(events[0].recurrence_id.is_none());
+        assert!(events[1].recurrence_id.is_some());
+        let mut replacement = events[1].clone();
+        replacement.summary = Some("Moved".into());
+        let merged = merge(&data, &replacement).unwrap();
+        assert!(merged.starts_with(&format!("begin:vcalendar\r\nversion:2.0\r\n{master}")));
+        assert_eq!(
+            parse_events(&merged).unwrap()[1].summary.as_deref(),
+            Some("Moved")
+        );
+        let resource = Resource {
+            href: String::new(),
+            etag: None,
+            data,
+        };
+        let Removal::Replace(remaining) =
+            resource.remove(&replacement.event_instance_id()).unwrap()
+        else {
+            panic!("Expected surviving master");
+        };
+        assert_eq!(
+            remaining,
+            format!("begin:vcalendar\r\nversion:2.0\r\n{master}end:vcalendar\r\n")
+        );
+    }
+
+    #[test]
     fn refuses_malformed_or_ambiguous_resources() {
         for data in [
             "not ics".to_owned(),
             calendar(&event("")) + "garbage",
             calendar(&format!("{}{}", event(""), event(""))),
             calendar(&event("RECURRENCE-ID:invalid\r\n")),
-            calendar(&event("recurrence-id:20260928T070000Z\r\n")),
             calendar(&event(&event(""))),
             calendar(&event("UID:other\r\n")),
             calendar(&event(
