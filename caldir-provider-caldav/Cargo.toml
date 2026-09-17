@@ -44,6 +44,8 @@ toml = "1"
 # Error handling
 anyhow = "1"
 
+icalendar = "0.17.10"
+
 # XML parsing
 roxmltree = "0.21"
 
