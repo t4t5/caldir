@@ -11,6 +11,22 @@ fn unfold(data: &str) -> String {
     icalendar::parser::unfold(&data.replace("\r\n", "\n"))
 }
 
+fn parse_input(data: &str) -> String {
+    unfold(data)
+        .split_inclusive('\n')
+        .map(|line| {
+            // The parser matches BEGIN/END component names case-sensitively.
+            if let Some((boundary, _)) = line.split_once(':')
+                && (boundary.eq_ignore_ascii_case("BEGIN") || boundary.eq_ignore_ascii_case("END"))
+            {
+                line.to_ascii_uppercase()
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect()
+}
+
 /// Validate the complete component tree before modifying any resource.
 struct Document<'a> {
     root: Component<'a>,
@@ -108,7 +124,7 @@ fn validate_children(component: &Component<'_>) -> Result<()> {
 }
 
 pub(super) fn parse_events(data: &str) -> Result<Vec<Event>> {
-    Ok(Document::parse(&unfold(data))?
+    Ok(Document::parse(&parse_input(data))?
         .events
         .into_iter()
         .map(|(_, e)| e)
@@ -160,7 +176,7 @@ fn component_spans(data: &str) -> Result<(Vec<std::ops::Range<usize>>, usize)> {
 }
 
 fn merge(data: &str, event: &Event) -> Result<String> {
-    let unfolded = unfold(data);
+    let unfolded = parse_input(data);
     let document = Document::parse(&unfolded)?;
     ensure!(
         document.events[0].1.uid == event.uid,
@@ -207,7 +223,7 @@ impl Resource {
     }
 
     pub fn remove(&self, id: &EventInstanceId) -> Result<Removal> {
-        let unfolded = unfold(&self.data);
+        let unfolded = parse_input(&self.data);
         let document = Document::parse(&unfolded)?;
         ensure!(
             document.events[0].1.uid == *id.uid(),
@@ -532,14 +548,18 @@ mod tests {
 
     #[test]
     fn names_are_case_insensitive_and_bytes_are_preserved() {
-        let master = "begin:vevent\r\nuid:series\r\ndtstart;tzid=Europe/London:20260921T080000\r\nrrule:FREQ=WEEKLY\r\nend:vevent\r\n";
-        let override_ = "Begin:VEvent\r\nUid:series\r\nDtStart:20260928T070000Z\r\nRecurrence-Id:20260928T070000Z\r\nEnd:VEvent\r\n";
+        let master = "begin:vevent\r\nuid:series\r\ndtstart;tzid=Europe/London:20260921T080000\r\nrrule:FREQ=WEEKLY\r\ndescription:Keep this case\\nEND:vevent\r\nbegin:valarm\r\naction:DISPLAY\r\ntrigger:-PT5M\r\ndescription:Reminder\r\nEND:VALARM\r\nend:VEVENT\r\n";
+        let override_ = "Begin:VEv\r\n ent\r\nUid:series\r\nDtStart:20260928T070000Z\r\nRecurrence-Id:20260928T070000Z\r\nEnd:vevent\r\n";
         let data =
-            format!("begin:vcalendar\r\nversion:2.0\r\n{master}{override_}end:vcalendar\r\n");
+            format!("begin:vcalendar\r\nversion:2.0\r\n{master}{override_}end:VCALENDAR\r\n");
         let events = parse_events(&data).unwrap();
         assert_eq!(events.len(), 2);
         assert!(events[0].recurrence_id.is_none());
         assert!(events[1].recurrence_id.is_some());
+        assert_eq!(
+            events[0].description.as_deref(),
+            Some("Keep this case\\nEND:vevent")
+        );
         let mut replacement = events[1].clone();
         replacement.summary = Some("Moved".into());
         let merged = merge(&data, &replacement).unwrap();
@@ -560,7 +580,7 @@ mod tests {
         };
         assert_eq!(
             remaining,
-            format!("begin:vcalendar\r\nversion:2.0\r\n{master}end:vcalendar\r\n")
+            format!("begin:vcalendar\r\nversion:2.0\r\n{master}end:VCALENDAR\r\n")
         );
     }
 
