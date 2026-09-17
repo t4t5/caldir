@@ -1,9 +1,13 @@
-use std::sync::{Arc, Mutex};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
-    task::JoinHandle,
+use http_body_util::{BodyExt, Full};
+use hyper::{
+    Response,
+    body::{Bytes, Incoming},
+    server::conn::http1,
+    service::service_fn,
 };
+use hyper_util::rt::TokioIo;
+use std::sync::{Arc, Mutex};
+use tokio::{net::TcpListener, task::JoinHandle};
 
 pub fn component(rid: Option<&str>) -> String {
     let recurrence = match rid {
@@ -60,14 +64,14 @@ pub struct State {
     pub bump_sibling_timestamps: bool,
 }
 impl State {
-    fn respond(&mut self, request: Request) -> (u16, String, String) {
-        let mut etag = String::new();
+    fn respond(&mut self, request: Request) -> Response<Full<Bytes>> {
+        let mut response = Response::builder();
         let (status, body) = match request.method.as_str() {
             "GET" if self.read_status.is_some() => (self.read_status.unwrap(), String::new()),
             "GET" if self.fail_readback && self.version > 1 => (503, String::new()),
             "GET" if request.path == self.href && self.data.is_some() => {
                 if !self.omit_etag {
-                    etag = format!("ETag: \"{}\"\r\n", self.version);
+                    response = response.header("ETag", format!("\"{}\"", self.version));
                 }
                 (200, self.data.clone().unwrap())
             }
@@ -131,7 +135,10 @@ impl State {
             _ => (500, String::new()),
         };
         self.requests.push(request);
-        (status, body, etag)
+        response
+            .status(status)
+            .body(Full::new(body.into()))
+            .unwrap()
     }
 }
 
@@ -166,50 +173,26 @@ impl Server {
         let shared = state.clone();
         let task = tokio::spawn(async move {
             loop {
-                let (mut socket, _) = listener.accept().await.unwrap();
-                let mut bytes = Vec::new();
-                let header_end = loop {
-                    let mut chunk = [0; 4096];
-                    let n = socket.read(&mut chunk).await.unwrap();
-                    assert!(n > 0);
-                    bytes.extend_from_slice(&chunk[..n]);
-                    if let Some(end) = bytes.windows(4).position(|b| b == b"\r\n\r\n") {
-                        break end + 4;
-                    }
-                };
-                let header = String::from_utf8(bytes[..header_end].to_vec()).unwrap();
-                let mut lines = header.lines();
-                let mut first = lines.next().unwrap().split_whitespace();
-                let method = first.next().unwrap().to_owned();
-                let path = first.next().unwrap().to_owned();
-                let headers: Vec<_> = lines
-                    .filter_map(|line| line.split_once(':'))
-                    .map(|(n, v)| (n.to_lowercase(), v.trim().to_owned()))
-                    .collect();
-                let length: usize = headers
-                    .iter()
-                    .find(|(n, _)| n == "content-length")
-                    .map(|(_, v)| v.parse().unwrap())
-                    .unwrap_or(0);
-                while bytes.len() < header_end + length {
-                    let mut chunk = [0; 4096];
-                    let n = socket.read(&mut chunk).await.unwrap();
-                    assert!(n > 0);
-                    bytes.extend_from_slice(&chunk[..n]);
-                }
-                let request = Request {
-                    method,
-                    path,
-                    headers,
-                    body: String::from_utf8(bytes[header_end..header_end + length].to_vec())
-                        .unwrap(),
-                };
-                let (status, body, etag) = shared.lock().unwrap().respond(request);
-                let response = format!(
-                    "HTTP/1.1 {status} Mock\r\nConnection: close\r\nContent-Length: {}\r\n{etag}\r\n{body}",
-                    body.len()
-                );
-                socket.write_all(response.as_bytes()).await.unwrap();
+                let (socket, _) = listener.accept().await.unwrap();
+                let service = service_fn(|request: hyper::Request<Incoming>| async {
+                    let (parts, body) = request.into_parts();
+                    let request = Request {
+                        method: parts.method.to_string(),
+                        path: parts.uri.path().to_owned(),
+                        headers: parts
+                            .headers
+                            .iter()
+                            .map(|(n, v)| (n.to_string(), v.to_str().unwrap().to_owned()))
+                            .collect(),
+                        body: String::from_utf8(body.collect().await?.to_bytes().to_vec()).unwrap(),
+                    };
+                    Ok::<_, hyper::Error>(shared.lock().unwrap().respond(request))
+                });
+                http1::Builder::new()
+                    .keep_alive(false)
+                    .serve_connection(TokioIo::new(socket), service)
+                    .await
+                    .unwrap();
             }
         });
         Self { url, state, task }
