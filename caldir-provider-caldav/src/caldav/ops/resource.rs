@@ -18,7 +18,7 @@ fn parse_input(data: &str) -> String {
         .collect()
 }
 
-// Normalize names before value decoding; keep the original resource untouched.
+// Names are case-insensitive (RFC 5545 §3.1) but the parser is not; uppercase before decoding.
 fn normalize_line(line: &str) -> String {
     if let Some((name, _)) = line.split_once(':')
         && (name.eq_ignore_ascii_case("BEGIN") || name.eq_ignore_ascii_case("END"))
