@@ -1,48 +1,45 @@
-//! Delete an event from a CalDAV calendar.
+//! Delete one logical event from a CalDAV resource.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use caldir_core::EventInstanceId;
+use http::{Method, Request, StatusCode};
 
-use crate::caldav::{create_caldav_client, url_to_href};
+use crate::caldav::create_caldav_client;
 
-use super::find_event_location;
+use super::resource::{Removal, check_write_status, find_resource, put};
 
-/// Delete an event from a CalDAV calendar.
-///
-/// Tries the standard `{uid}.ics` URL first, falls back to UID-based REPORT query.
-/// Treats "not found" (event already deleted) as success.
+/// Remove only the matching component; delete the resource when it becomes empty.
 pub async fn delete_event(
     username: &str,
     password: &str,
     calendar_url: &str,
-    event_id: &str,
+    id: &EventInstanceId,
 ) -> Result<()> {
     let caldav = create_caldav_client(calendar_url, username, password)?;
-    let calendar_href = url_to_href(calendar_url);
-
-    // Find the event's actual href (try {uid}.ics first, then UID-based REPORT)
-    let location = find_event_location(&caldav, &calendar_href, calendar_url, event_id).await;
-
-    let href = match location {
-        Ok(loc) => loc.href,
-        Err(_) => {
-            // Event not found on server — treat as already deleted
-            return Ok(());
-        }
+    let Some(resource) = find_resource(&caldav, calendar_url, id.uid().as_str()).await? else {
+        return Ok(());
     };
-
-    let result = caldav
-        .request(libdav::dav::Delete::new(&href).force())
-        .await;
-
-    match result {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            let error_string = format!("{:?}", e);
-            if error_string.contains("404") || error_string.contains("NOT_FOUND") {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("Failed to delete event: {}", e))
-            }
+    match resource
+        .remove(id)
+        .with_context(|| format!("Cannot modify CalDAV resource {}", resource.href))?
+    {
+        Removal::Missing => return Ok(()),
+        Removal::Replace(data) => {
+            return put(&caldav, &resource.href, Some(resource.etag()?), data).await;
         }
+        Removal::Delete => {}
     }
+    let request = Request::builder()
+        .method(Method::DELETE)
+        .uri(caldav.relative_uri(&resource.href)?)
+        .header("If-Match", resource.etag()?)
+        .body(String::new())?;
+    let (parts, _) = caldav
+        .request_raw(request)
+        .await
+        .context("Failed to delete CalDAV resource")?;
+    if parts.status == StatusCode::NOT_FOUND {
+        return Ok(());
+    }
+    check_write_status(parts.status)
 }

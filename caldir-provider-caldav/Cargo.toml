@@ -44,6 +44,8 @@ toml = "1"
 # Error handling
 anyhow = "1"
 
+icalendar = "0.17.10"
+
 # XML parsing
 roxmltree = "0.21"
 
@@ -55,4 +57,6 @@ chrono = { version = "0.4", features = ["serde"] }
 url = "2"
 
 [dev-dependencies]
+http-body-util = "0.1"
+hyper = { version = "1", features = ["server"] }
 tempfile = "3"

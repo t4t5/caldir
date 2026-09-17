@@ -19,7 +19,7 @@ pub async fn handle(cmd: DeleteEvent) -> Result<()> {
         username,
         password,
         &config.caldav_calendar_url,
-        cmd.event.uid.as_str(),
+        &cmd.event.event_instance_id(),
     )
     .await
 }

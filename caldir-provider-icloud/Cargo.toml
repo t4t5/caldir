@@ -33,4 +33,7 @@ toml = "1"
 anyhow = "1"
 
 [dev-dependencies]
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
 tempfile = "3"

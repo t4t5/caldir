@@ -2,6 +2,7 @@
   lib,
   rustPlatform,
   makeWrapper,
+  cacert,
 }:
 
 let
@@ -27,6 +28,10 @@ rustPlatform.buildRustPackage {
   cargoLock.lockFile = ./Cargo.lock;
 
   nativeBuildInputs = [ makeWrapper ];
+
+  preCheck = ''
+    export SSL_CERT_FILE="${cacert}/etc/ssl/certs/ca-bundle.crt"
+  '';
 
   postFixup = ''
     wrapProgram "$out/bin/caldir" --prefix PATH : "$out/bin"
