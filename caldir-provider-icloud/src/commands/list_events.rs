@@ -24,4 +24,5 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
         &cmd.to,
     )
     .await
+    .map(|events| events.into_iter().map(super::normalize_event).collect())
 }

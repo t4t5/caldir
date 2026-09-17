@@ -56,6 +56,7 @@ pub struct State {
     pub requests: Vec<Request>,
     pub read_status: Option<u16>,
     pub report_status: Option<u16>,
+    pub report_data: Option<String>,
     pub reject_uid_filter: bool,
     pub write_status: Option<u16>,
     pub concurrent_data: Option<String>,
@@ -84,7 +85,7 @@ impl State {
                 (self.report_status.unwrap(), String::new())
             }
             "REPORT" => {
-                let response = self.data.as_ref().map(|data| format!(r#"<response><href>{}</href><propstat><prop><getetag>"{}"</getetag><C:calendar-data>{}</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response>"#, self.href, self.version, data.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;"))).unwrap_or_default();
+                let response = self.report_data.as_ref().or(self.data.as_ref()).map(|data| format!(r#"<response><href>{}</href><propstat><prop><getetag>"{}"</getetag><C:calendar-data>{}</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response>"#, self.href, self.version, data.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;"))).unwrap_or_default();
                 let collection = if !request.body.contains("<C:prop-filter")
                     && !request.body.contains("<C:time-range")
                 {
@@ -170,6 +171,7 @@ impl Server {
             requests: Vec::new(),
             read_status: None,
             report_status: None,
+            report_data: None,
             reject_uid_filter: false,
             write_status: None,
             concurrent_data: None,

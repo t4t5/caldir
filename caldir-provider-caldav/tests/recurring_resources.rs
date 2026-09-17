@@ -26,6 +26,26 @@ async fn lists_all_components_in_any_order() {
 }
 
 #[tokio::test]
+async fn preserves_recurrence_exception_x_property() {
+    let server = Server::new(Some(calendar(&[component(None)])), false).await;
+    let mut marked = event(Some(RID));
+    marked.x_properties.push(caldir_core::XProperty::new(
+        "X-RECURRENCE-EXCEPTION",
+        "True",
+    ));
+    let created = create_event("fake", "fake", &server.url, marked.clone())
+        .await
+        .unwrap();
+    assert_eq!(created, marked);
+    let updated = update_event("fake", "fake", &server.url, marked.clone())
+        .await
+        .unwrap();
+    assert_eq!(updated, marked);
+    assert_eq!(server.events(), vec![event(None), marked.clone()]);
+    assert_eq!(list(&server).await.unwrap(), server.events());
+}
+
+#[tokio::test]
 async fn creates_and_updates_components_at_server_assigned_href() {
     let master = component(None);
     let sibling = component(Some(SECOND));
