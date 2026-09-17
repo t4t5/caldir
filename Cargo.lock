@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-cli"
-version = "0.14.1"
+version = "0.14.2"
 dependencies = [
  "anyhow",
  "caldir-core",
@@ -204,7 +204,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-core"
-version = "0.15.1"
+version = "0.15.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-provider-caldav"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -279,7 +279,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-provider-icloud"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "async-trait",
