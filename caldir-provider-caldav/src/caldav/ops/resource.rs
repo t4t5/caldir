@@ -192,16 +192,9 @@ pub(super) enum Removal {
 }
 
 impl Resource {
+    /// Passed through verbatim; the server decides whether a weak ETag matches.
     pub fn etag(&self) -> Result<&str> {
-        let etag = self
-            .etag
-            .as_deref()
-            .context("CalDAV resource has no ETag")?;
-        ensure!(
-            etag.starts_with('"') && etag.ends_with('"'),
-            "CalDAV resource has no strong ETag"
-        );
-        Ok(etag)
+        self.etag.as_deref().context("CalDAV resource has no ETag")
     }
 
     pub fn remove(&self, id: &EventInstanceId) -> Result<Removal> {
