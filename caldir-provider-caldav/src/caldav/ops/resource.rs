@@ -139,8 +139,16 @@ pub(super) fn parse_events(data: &str) -> Result<Vec<Event>> {
     Ok(Document::parse(&parse_input(data))?
         .events
         .into_iter()
-        .map(|(_, e)| e)
+        .map(|(_, e)| normalize_event(e))
         .collect())
+}
+
+fn normalize_event(mut event: Event) -> Event {
+    // iCloud adds this query-window-dependent marker; RECURRENCE-ID carries identity.
+    event
+        .x_properties
+        .retain(|p| !p.name.eq_ignore_ascii_case("X-RECURRENCE-EXCEPTION"));
+    event
 }
 
 /// Locate direct children using unfolded content lines and a component stack.
@@ -475,6 +483,7 @@ pub(super) async fn write_event(
     event: Event,
     create: bool,
 ) -> Result<Event> {
+    let event = normalize_event(event);
     let caldav = create_caldav_client(calendar_url, username, password)?;
     let resource = find_resource(&caldav, calendar_url, event.uid.as_str()).await?;
     let href = if let Some(resource) = resource {
