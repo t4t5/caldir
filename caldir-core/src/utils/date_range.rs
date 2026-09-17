@@ -34,14 +34,18 @@ impl DateRange {
 
     /// RFC3339 `(from, to)`, substituting sentinel deep-past/deep-future timestamps when unbounded.
     pub fn to_rfc3339(&self) -> (String, String) {
-        let from = match self.from {
-            Some(dt) => dt.to_rfc3339(),
-            None => UNBOUNDED_PAST.to_string(),
-        };
-        let to = match self.to {
-            Some(dt) => dt.to_rfc3339(),
-            None => UNBOUNDED_FUTURE.to_string(),
-        };
+        let (from, to) = self.query_bounds();
+        (from.to_rfc3339(), to.to_rfc3339())
+    }
+
+    /// Concrete bounds shared by provider queries and deletion detection.
+    pub(crate) fn query_bounds(&self) -> (DateTime<Utc>, DateTime<Utc>) {
+        let from = self
+            .from
+            .unwrap_or_else(|| UNBOUNDED_PAST.parse().expect("valid past sentinel"));
+        let to = self
+            .to
+            .unwrap_or_else(|| UNBOUNDED_FUTURE.parse().expect("valid future sentinel"));
         (from, to)
     }
 }
