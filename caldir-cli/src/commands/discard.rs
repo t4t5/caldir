@@ -4,6 +4,7 @@ use dialoguer::Confirm;
 use owo_colors::OwoColorize;
 
 use crate::output::diff::{CalendarDiffRender, Render};
+use crate::output::format_error;
 use crate::utils::{resolve_sync_range, tui};
 
 pub async fn run(
@@ -45,10 +46,10 @@ pub async fn run(
                             pending.push((connection, diff));
                         }
                     }
-                    Err(e) => println!("   {}", e.to_string().red()),
+                    Err(e) => println!("   {}", format_error(e).red()),
                 }
             }
-            Err(e) => println!("   {}", e.to_string().red()),
+            Err(e) => println!("   {}", format_error(e).red()),
         }
 
         if i < total - 1 {

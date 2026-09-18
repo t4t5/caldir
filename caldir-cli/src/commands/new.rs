@@ -1,3 +1,4 @@
+use crate::output::format_error;
 use anyhow::{Context, Result};
 use caldir_core::{Caldir, Calendar, Event, EventTime, Reminder};
 use chrono::Duration;
@@ -121,7 +122,7 @@ where
         match parse(&input) {
             Ok(result) => return Ok(result),
             Err(e) => {
-                eprintln!("  {}", e.to_string().red());
+                eprintln!("  {}", format_error(e).red());
             }
         }
     }
@@ -301,7 +302,7 @@ fn apply_duration(start: &EventTime, dur_input: &str) -> Result<EventTime> {
 }
 
 fn try_apply_duration(start: &EventTime, dur_input: &str) -> Result<EventTime> {
-    let std_dur = humantime::parse_duration(dur_input).map_err(|e| anyhow::anyhow!("{}", e))?;
+    let std_dur = humantime::parse_duration(dur_input)?;
     let chrono_dur = Duration::from_std(std_dur).context("Duration too large")?;
 
     match start {
@@ -330,7 +331,7 @@ fn default_end(start: &EventTime) -> EventTime {
 
 /// Parse a reminder string like "10m", "1h", "2 days" into a Reminder.
 fn parse_reminder(input: &str) -> Result<Reminder> {
-    Reminder::from_human(input).map_err(|e| anyhow::anyhow!("{}", e))
+    Reminder::from_human(input).map_err(Into::into)
 }
 
 /// Resolve which calendar to use.

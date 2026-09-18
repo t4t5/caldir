@@ -5,13 +5,19 @@ use crate::event::EventError;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum CalendarEventError {
-    #[error("invalid event in ICS file {0}: {1}")]
-    InvalidEvent(PathBuf, EventError),
+    #[error("failed to read event file {0}")]
+    Read(PathBuf, #[source] std::io::Error),
+
+    #[error("failed to delete event file {0}")]
+    Delete(PathBuf, #[source] std::io::Error),
+
+    #[error("invalid event in ICS file {0}")]
+    InvalidEvent(PathBuf, #[source] EventError),
 
     #[error("expected exactly one event in {path}, found {found}")]
     ExpectedSingleEvent { path: PathBuf, found: usize },
 
-    #[error("io error: {0}")]
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 
     #[error("event file not found: {0}")]

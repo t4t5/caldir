@@ -34,7 +34,8 @@ impl CalendarConfig {
 
     pub fn write(&self, path: &Path) -> Result<(), CalendarConfigError> {
         let contents = self.to_toml().map_err(CalendarConfigError::InvalidConfig)?;
-        atomic_write(path, contents.as_bytes())?;
+        atomic_write(path, contents.as_bytes())
+            .map_err(|err| CalendarConfigError::Write(path.into(), err))?;
 
         Ok(())
     }
@@ -49,7 +50,8 @@ impl CalendarConfig {
     }
 
     pub(crate) fn load(path: &Path) -> Result<Self, CalendarConfigError> {
-        let contents = std::fs::read_to_string(path)?;
+        let contents = std::fs::read_to_string(path)
+            .map_err(|err| CalendarConfigError::Read(path.into(), err))?;
 
         let config = Self::from_toml(&contents)
             .map_err(|e| CalendarConfigError::InvalidConfigFile(path.into(), e))?;

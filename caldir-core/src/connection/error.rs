@@ -4,9 +4,9 @@ use crate::remote::RemoteError;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ConnectionError {
-    #[error("Remote error: {0}")]
+    #[error(transparent)]
     Remote(#[from] RemoteError),
 
-    #[error("Local calendar error: {0}")]
+    #[error(transparent)]
     Calendar(#[from] CalendarError),
 }

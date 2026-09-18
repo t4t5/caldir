@@ -79,7 +79,7 @@ pub async fn process_request<H: Handler>(handler: &H, line: &str) -> String {
 
     match dispatch(handler, request).await {
         Ok(data) => Response::success(data),
-        Err(e) => Response::error(&format!("Error handling request: {}", format_chain(&*e))),
+        Err(e) => Response::error(&format_chain(&*e)),
     }
 }
 
@@ -244,7 +244,61 @@ mod tests {
 
         let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
         assert_eq!(parsed["status"], "error");
-        assert_eq!(parsed["error"], "Error handling request: outer: inner");
+        assert_eq!(parsed["error"], "outer: inner");
+    }
+
+    #[tokio::test]
+    async fn error_response_formats_caldir_context_and_cause_once() {
+        struct CaldirErrorHandler;
+        #[async_trait]
+        impl Handler for CaldirErrorHandler {
+            async fn connect(&self, _cmd: Connect) -> Result<ConnectResponse> {
+                Err(crate::ConnectionError::from(crate::RemoteError::from(
+                    crate::ProviderError::from(crate::ProviderTransportError::Spawn(
+                        io::Error::new(io::ErrorKind::PermissionDenied, "permission denied"),
+                    )),
+                ))
+                .into())
+            }
+        }
+
+        let response = process_request(
+            &CaldirErrorHandler,
+            r#"{"command":"connect","params":{"options":{},"data":{}}}"#,
+        )
+        .await;
+
+        let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(
+            parsed,
+            serde_json::json!({
+                "status": "error",
+                "error": "failed to spawn provider: permission denied",
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn error_response_preserves_boxed_anyhow_context() {
+        struct AnyhowHandler;
+        #[async_trait]
+        impl Handler for AnyhowHandler {
+            async fn connect(&self, _cmd: Connect) -> Result<ConnectResponse> {
+                Err(anyhow::anyhow!("inner").context("outer").into())
+            }
+        }
+
+        let response = process_request(
+            &AnyhowHandler,
+            r#"{"command":"connect","params":{"options":{},"data":{}}}"#,
+        )
+        .await;
+
+        let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
+        assert_eq!(
+            parsed,
+            serde_json::json!({"status": "error", "error": "outer: inner"})
+        );
     }
 
     #[tokio::test]

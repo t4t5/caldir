@@ -1,6 +1,6 @@
 //! iCloud-specific remote configuration.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use caldir_core::RemoteConfigParams;
 use serde::{Deserialize, Serialize};
 
@@ -39,14 +39,16 @@ impl TryFrom<&RemoteConfigParams> for ICloudRemoteConfig {
     fn try_from(params: &RemoteConfigParams) -> Result<Self> {
         let icloud_account = params
             .get("icloud_account")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required field: icloud_account"))?
+            .context("iCloud remote configuration is missing required field `icloud_account`")?
+            .as_str()
+            .context("iCloud remote configuration field `icloud_account` must be a string")?
             .to_string();
 
         let icloud_calendar_url = params
             .get("icloud_calendar_url")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required field: icloud_calendar_url"))?
+            .context("iCloud remote configuration is missing required field `icloud_calendar_url`")?
+            .as_str()
+            .context("iCloud remote configuration field `icloud_calendar_url` must be a string")?
             .to_string();
 
         Ok(Self {

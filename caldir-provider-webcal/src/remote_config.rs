@@ -1,6 +1,6 @@
 //! Webcal-specific remote configuration.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use caldir_core::RemoteConfigParams;
 use serde::{Deserialize, Serialize};
 
@@ -33,8 +33,9 @@ impl TryFrom<&RemoteConfigParams> for WebcalRemoteConfig {
     fn try_from(params: &RemoteConfigParams) -> Result<Self> {
         let webcal_url = params
             .get("webcal_url")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required field: webcal_url"))?
+            .context("Webcal remote configuration is missing required field `webcal_url`")?
+            .as_str()
+            .context("Webcal remote configuration field `webcal_url` must be a string")?
             .to_string();
 
         Ok(Self { webcal_url })

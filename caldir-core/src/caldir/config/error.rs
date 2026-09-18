@@ -3,15 +3,21 @@ use std::path::PathBuf;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum CaldirConfigError {
-    #[error("invalid config in TOML file {0}: {1}")]
-    InvalidConfigFile(PathBuf, toml::de::Error),
+    #[error("failed to read caldir config {0}")]
+    Read(PathBuf, #[source] std::io::Error),
 
-    #[error("invalid calendar config: {0}")]
-    InvalidConfig(toml::ser::Error),
+    #[error("failed to write caldir config {0}")]
+    Write(PathBuf, #[source] std::io::Error),
+
+    #[error("invalid config in TOML file {0}")]
+    InvalidConfigFile(PathBuf, #[source] toml::de::Error),
+
+    #[error("failed to serialize caldir config")]
+    InvalidConfig(#[source] toml::ser::Error),
 
     #[error("could not determine config directory")]
     UnknownConfigDirectory,
 
-    #[error("io error: {0}")]
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 }

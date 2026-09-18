@@ -56,13 +56,13 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
             .data
             .get("client_id")
             .and_then(|v| v.as_str())
-            .context("Missing client_id")?
+            .context("Google OAuth setup field `client_id` must be a string")?
             .to_string();
         let client_secret = cmd
             .data
             .get("client_secret")
             .and_then(|v| v.as_str())
-            .context("Missing client_secret")?
+            .context("Google OAuth setup field `client_secret` must be a string")?
             .to_string();
 
         let app_config = AppConfig {

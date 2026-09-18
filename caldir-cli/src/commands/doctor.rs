@@ -1,6 +1,7 @@
 mod warning;
 
 use crate::output::diff::Render;
+use crate::output::format_error;
 use crate::utils::require_calendars;
 use anyhow::Result;
 use caldir_core::{Caldir, Calendar};
@@ -54,7 +55,7 @@ fn calendar_reports(caldir: &Caldir) -> Vec<CalendarReport> {
 fn calendar_report(calendar: Calendar) -> CalendarReport {
     let warnings = match calendar.events() {
         Ok(events) => event_warnings(&events),
-        Err(err) => vec![DoctorWarning::UnreadableEvents(err.to_string())],
+        Err(err) => vec![DoctorWarning::UnreadableEvents(format_error(err))],
     };
 
     CalendarReport { calendar, warnings }
@@ -88,5 +89,29 @@ mod tests {
             report.warnings[0],
             DoctorWarning::UnreadableEvents(_)
         ));
+    }
+
+    #[test]
+    fn unreadable_event_warning_retains_path_and_cause() {
+        let (_tmp, calendar) = test_calendar();
+        let path = calendar.path().join("missing-uid.ics");
+        std::fs::write(
+            &path,
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nDTSTART:20260101T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        ).unwrap();
+
+        let report = calendar_report(calendar);
+
+        assert_eq!(report.warnings.len(), 1);
+        let DoctorWarning::UnreadableEvents(message) = &report.warnings[0] else {
+            panic!("expected unreadable events warning");
+        };
+        assert_eq!(
+            message,
+            &format!(
+                "invalid event in ICS file {}: event is missing a UID",
+                path.display()
+            )
+        );
     }
 }

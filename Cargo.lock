@@ -206,6 +206,7 @@ dependencies = [
 name = "caldir-core"
 version = "0.15.2"
 dependencies = [
+ "anyhow",
  "async-trait",
  "chrono",
  "chrono-tz",

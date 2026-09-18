@@ -6,9 +6,12 @@ mod agenda_text;
 pub mod calendars;
 pub mod config;
 pub mod diff;
+mod error;
 pub mod event;
 pub mod invites;
 pub mod time;
+
+pub(crate) use error::format_error;
 
 /// Human text rendering for a command's result.
 pub trait TextRender {

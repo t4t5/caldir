@@ -1,10 +1,14 @@
 use std::path::PathBuf;
 
+use super::ProviderSlug;
 use super::transport::ProviderTransportError;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ProviderError {
+    #[error("provider {0}")]
+    TransportFor(ProviderSlug, #[source] ProviderTransportError),
+
     #[error("Provider file is not executable: {0}")]
     NotExecutable(PathBuf),
 
@@ -14,15 +18,15 @@ pub enum ProviderError {
     #[error("Provider {0} not found")]
     ProviderNotFound(String),
 
-    #[error("Provider transport error: {0}")]
+    #[error(transparent)]
     Transport(#[from] ProviderTransportError),
 
-    #[error("Failed to serialize provider request: {0}")]
-    Serialize(serde_json::Error),
+    #[error("failed to serialize provider request")]
+    Serialize(#[source] serde_json::Error),
 
-    #[error("Failed to deserialize provider response: {0}")]
-    Deserialize(serde_json::Error),
+    #[error("failed to deserialize provider response")]
+    Deserialize(#[source] serde_json::Error),
 
-    #[error("Provider returned error: {0}")]
+    #[error("{0}")]
     Provider(String),
 }
