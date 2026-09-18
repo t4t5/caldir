@@ -85,7 +85,11 @@ impl Provider {
 
         // Make call:
         let timeout = self.timeout.unwrap_or(C::TIMEOUT);
-        let response_json = self.transport.exchange(&request_json, timeout).await?;
+        let response_json = self
+            .transport
+            .exchange(&request_json, timeout)
+            .await
+            .map_err(|err| ProviderError::TransportFor(self.slug.clone(), err))?;
 
         let response: rpc::Response<rpc::Wire<C::Response>> =
             serde_json::from_str(&response_json).map_err(ProviderError::Deserialize)?;
@@ -320,7 +324,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn call_propagates_transport_error() {
+    async fn call_identifies_provider_in_transport_error() {
         let mock = Arc::new(MockTransport::with_error(ProviderTransportError::Timeout(
             Duration::from_secs(1),
         )));
@@ -332,8 +336,13 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(
-            err,
-            ProviderError::Transport(ProviderTransportError::Timeout(_))
+            &err,
+            ProviderError::TransportFor(provider, ProviderTransportError::Timeout(_))
+                if provider.as_str() == "test"
         ));
+        assert_eq!(
+            format!("{:#}", anyhow::Error::new(err)),
+            "provider test: Provider timed out after 1s"
+        );
     }
 }

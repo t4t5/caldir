@@ -170,6 +170,89 @@ fn event_read_error_preserves_path_and_io_cause() {
 }
 
 #[test]
+fn config_io_failures_identify_operation_and_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("config.toml");
+    std::fs::write(&path, [0xff]).unwrap();
+
+    for (kind, error) in [
+        (
+            "caldir",
+            anyhow::Error::new(CaldirConfig::load_or_default(&path).unwrap_err()),
+        ),
+        (
+            "calendar",
+            anyhow::Error::new(CalendarConfig::load_optional(&path).unwrap_err()),
+        ),
+    ] {
+        assert_eq!(
+            error.to_string(),
+            format!("failed to read {kind} config {}", path.display())
+        );
+        assert_eq!(error.chain().count(), 2);
+        assert_eq!(
+            error
+                .root_cause()
+                .downcast_ref::<io::Error>()
+                .unwrap()
+                .kind(),
+            ErrorKind::InvalidData
+        );
+    }
+
+    for (kind, error) in [
+        (
+            "caldir",
+            anyhow::Error::new(CaldirConfig::default().write(tmp.path()).unwrap_err()),
+        ),
+        (
+            "calendar",
+            anyhow::Error::new(CalendarConfig::default().write(tmp.path()).unwrap_err()),
+        ),
+    ] {
+        assert_eq!(
+            error.to_string(),
+            format!("failed to write {kind} config {}", tmp.path().display())
+        );
+        assert_eq!(error.chain().count(), 2);
+        assert!(error.root_cause().is::<io::Error>());
+    }
+}
+
+#[test]
+fn event_file_failures_identify_operation_and_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("meeting.ics");
+    std::fs::write(&path, [0xff]).unwrap();
+    let error = anyhow::Error::new(CalendarEvent::load(&path).unwrap_err());
+    assert_eq!(
+        error.to_string(),
+        format!("failed to read event file {}", path.display())
+    );
+    assert_eq!(
+        error
+            .root_cause()
+            .downcast_ref::<io::Error>()
+            .unwrap()
+            .kind(),
+        ErrorKind::InvalidData
+    );
+
+    std::fs::write(&path, "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:meeting\r\nDTSTART:20260101T090000Z\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n").unwrap();
+    let event = CalendarEvent::load(&path).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    let error = anyhow::Error::new(ConnectionError::from(CalendarError::from(
+        event.delete().unwrap_err(),
+    )));
+    let context = format!("failed to delete event file {}", path.display());
+    assert_eq!(error.to_string(), context);
+    assert_eq!(error.chain().count(), 2);
+    let cause = error.root_cause().downcast_ref::<io::Error>().unwrap();
+    assert_eq!(cause.kind(), ErrorKind::NotFound);
+    assert_eq!(format!("{error:#}"), format!("{context}: {cause}"));
+}
+
+#[test]
 fn serialization_errors_expose_concrete_causes() {
     let json_cause = <serde_json::Error as serde::ser::Error>::custom("unsupported request");
     let json_error = ProviderError::Serialize(json_cause);

@@ -1,8 +1,11 @@
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ProviderTransportError {
+    #[error("failed to spawn provider executable {0}")]
+    SpawnBinary(PathBuf, #[source] std::io::Error),
+
     #[error("failed to spawn provider")]
     Spawn(#[source] std::io::Error),
 

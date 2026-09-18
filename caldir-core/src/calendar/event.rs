@@ -32,7 +32,8 @@ impl CalendarEvent {
             return Err(CalendarEventError::NotFound(path));
         }
 
-        let contents = std::fs::read_to_string(&path)?;
+        let contents = std::fs::read_to_string(&path)
+            .map_err(|err| CalendarEventError::Read(path.clone(), err))?;
 
         let events = Event::from_ics_str(&contents)
             .map_err(|err| CalendarEventError::InvalidEvent(path.clone(), err))?;
@@ -78,7 +79,7 @@ impl CalendarEvent {
     }
 
     pub fn delete(self) -> Result<(), CalendarEventError> {
-        std::fs::remove_file(self.path).map_err(Into::into)
+        std::fs::remove_file(&self.path).map_err(|err| CalendarEventError::Delete(self.path, err))
     }
 
     pub fn event(&self) -> &Event {

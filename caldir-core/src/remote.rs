@@ -60,36 +60,42 @@ impl Remote {
     }
 
     async fn create_event(&self, event: Event) -> Result<RemoteEvent, RemoteError> {
+        let id = event.event_instance_id().to_string();
         let event = self
             .provider
             .call(rpc::CreateEvent {
                 remote: self.params.clone(),
                 event,
             })
-            .await?;
+            .await
+            .map_err(|err| RemoteError::CreateEvent(id, err))?;
 
         Ok(RemoteEvent::new(event))
     }
 
     async fn delete_event(&self, event: Event) -> Result<(), RemoteError> {
+        let id = event.event_instance_id().to_string();
         self.provider
             .call(rpc::DeleteEvent {
                 remote: self.params.clone(),
                 event,
             })
-            .await?;
+            .await
+            .map_err(|err| RemoteError::DeleteEvent(id, err))?;
 
         Ok(())
     }
 
     async fn update_event(&self, event: Event) -> Result<RemoteEvent, RemoteError> {
+        let id = event.event_instance_id().to_string();
         let event = self
             .provider
             .call(rpc::UpdateEvent {
                 remote: self.params.clone(),
                 event,
             })
-            .await?;
+            .await
+            .map_err(|err| RemoteError::UpdateEvent(id, err))?;
 
         Ok(RemoteEvent::new(event))
     }
@@ -100,6 +106,51 @@ mod tests {
     use super::*;
     use crate::test_utils::{test_event, test_remote};
     use pretty_assertions::assert_eq;
+
+    #[tokio::test]
+    async fn failed_changes_identify_the_occurrence_and_preserve_provider_cause() {
+        use crate::provider::transport::mock_transport::MockTransport;
+        use std::sync::Arc;
+
+        let mut event = test_event();
+        event.recurrence_id = Some("20260108T120000Z".parse().unwrap());
+        let id = event.event_instance_id().to_string();
+        let message = "  API rejected request: original detail\n";
+        for (operation, change) in [
+            ("create", EventChange::Create(event.clone())),
+            (
+                "update",
+                EventChange::Update {
+                    from: event.clone(),
+                    to: event.clone(),
+                },
+            ),
+            ("delete", EventChange::Delete(event.clone())),
+        ] {
+            let transport = Arc::new(MockTransport::with_response(rpc::Response::error(message)));
+            let provider = Provider::with_transport("test".into(), transport);
+            let remote = Remote::new(provider, RemoteConfigParams::new());
+            let error = remote
+                .apply_change(&change)
+                .await
+                .err()
+                .expect("provider failure");
+            let reported_id = match &error {
+                RemoteError::CreateEvent(id, _)
+                | RemoteError::UpdateEvent(id, _)
+                | RemoteError::DeleteEvent(id, _) => id,
+                other => panic!("unexpected error: {other:?}"),
+            };
+            assert_eq!(reported_id, &id);
+            let error = anyhow::Error::new(error);
+            assert!(matches!(error.root_cause().downcast_ref::<ProviderError>(),
+                Some(ProviderError::Provider(text)) if text == message));
+            assert_eq!(
+                format!("{error:#}"),
+                format!("failed to {operation} remote event {id}: {message}")
+            );
+        }
+    }
 
     #[tokio::test]
     async fn apply_change_sends_create_event_for_outgoing_create() {

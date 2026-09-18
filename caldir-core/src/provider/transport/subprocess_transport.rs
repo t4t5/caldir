@@ -36,7 +36,7 @@ impl ProviderTransport for SubprocessTransport {
                 .stderr(Stdio::inherit())
                 .kill_on_drop(true)
                 .spawn()
-                .map_err(ProviderTransportError::Spawn)?;
+                .map_err(|err| ProviderTransportError::SpawnBinary(self.bin_path.clone(), err))?;
 
             let mut stdin = child.stdin.take().expect("stdin was piped above");
 
@@ -95,6 +95,30 @@ mod tests {
         std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
         make_executable(&path);
         path
+    }
+
+    #[tokio::test]
+    async fn spawn_failure_preserves_executable_path_and_io_cause() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let bin = tmp.path().join("caldir-provider-missing");
+        let transport = SubprocessTransport::new(bin.clone());
+        let err = transport
+            .exchange("req", Duration::from_secs(5))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(
+            &err,
+            ProviderTransportError::SpawnBinary(path, source)
+                if path == &bin && source.kind() == std::io::ErrorKind::NotFound
+        ));
+        let error = anyhow::Error::new(err);
+        assert_eq!(error.chain().count(), 2);
+        assert!(error.root_cause().is::<std::io::Error>());
+        assert!(format!("{error:#}").starts_with(&format!(
+            "failed to spawn provider executable {}: ",
+            bin.display()
+        )));
     }
 
     #[serial_test::serial]

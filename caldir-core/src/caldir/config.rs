@@ -106,7 +106,8 @@ impl CaldirConfig {
 
     pub fn write(&self, path: &Path) -> Result<(), CaldirConfigError> {
         let contents = self.to_toml().map_err(CaldirConfigError::InvalidConfig)?;
-        atomic_write(path, contents.as_bytes())?;
+        atomic_write(path, contents.as_bytes())
+            .map_err(|err| CaldirConfigError::Write(path.into(), err))?;
 
         Ok(())
     }
@@ -122,7 +123,8 @@ impl CaldirConfig {
     }
 
     fn load(path: &Path) -> Result<Self, CaldirConfigError> {
-        let contents = std::fs::read_to_string(path)?;
+        let contents = std::fs::read_to_string(path)
+            .map_err(|err| CaldirConfigError::Read(path.into(), err))?;
 
         let config = Self::from_toml(&contents)
             .map_err(|e| CaldirConfigError::InvalidConfigFile(path.into(), e))?;
