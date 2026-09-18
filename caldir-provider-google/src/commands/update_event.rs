@@ -5,7 +5,7 @@ use caldir_core::rpc::UpdateEvent;
 use serde_json::Value;
 
 use crate::app_config::AppConfigStore;
-use crate::commands::invite::patch_invite_status;
+use crate::commands::invite::patch_invite_personal_fields;
 use crate::constants::{GOOGLE_EVENT_ID_PROPERTY, GOOGLE_EVENT_TYPE_PROPERTY, PROVIDER_NAME};
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
@@ -33,8 +33,8 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
         .ok_or_else(|| anyhow!("Cannot update event without {GOOGLE_EVENT_ID_PROPERTY}"))?;
 
     if cmd.event.is_invite_for(account_email) {
-        // Only update our own attendee status:
-        let google_event = patch_invite_status(
+        // Update our response and personal reminders.
+        let google_event = patch_invite_personal_fields(
             &session,
             calendar_id,
             google_event_id,
