@@ -3,6 +3,7 @@ use caldir_core::{Caldir, Connection, DateRange};
 use owo_colors::OwoColorize;
 
 use crate::output::diff::{CalendarDiffRender, Render};
+use crate::output::format_error;
 use crate::utils::{allow_mass_delete, connections, count_changes, resolve_sync_range, tui};
 
 type Counts = (usize, usize, usize);
@@ -36,7 +37,7 @@ pub async fn run(
                 )
                 .await;
             }
-            Err(e) => println!("   {}", e.to_string().red()),
+            Err(e) => println!("   {}", format_error(e).red()),
         }
 
         if i < total - 1 {
@@ -85,7 +86,7 @@ async fn sync_connection(
     let diff = match result {
         Ok(diff) => diff,
         Err(e) => {
-            println!("   {}", e.to_string().red());
+            println!("   {}", format_error(e).red());
             return;
         }
     };
@@ -94,7 +95,7 @@ async fn sync_connection(
 
     match connection.apply_incoming_diff(&diff) {
         Ok(()) => add_counts(pulled, count_changes(diff.incoming())),
-        Err(e) => println!("   {}", e.to_string().red()),
+        Err(e) => println!("   {}", format_error(e).red()),
     }
 
     if !allow_mass_delete(&diff, force) {
@@ -103,7 +104,7 @@ async fn sync_connection(
 
     match connection.apply_outgoing_diff(&diff).await {
         Ok(()) => add_counts(pushed, count_changes(diff.outgoing())),
-        Err(e) => println!("   {}", e.to_string().red()),
+        Err(e) => println!("   {}", format_error(e).red()),
     }
 }
 

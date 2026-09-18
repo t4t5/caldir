@@ -44,7 +44,7 @@ pub(crate) async fn patch_invite_status(
 
     if !response.status().is_success() {
         let error_text = response.text().await.unwrap_or_default();
-        anyhow::bail!("Error handling request: {}", error_text);
+        anyhow::bail!("failed to respond to invitation: {}", error_text);
     }
 
     Ok(response.json().await?)

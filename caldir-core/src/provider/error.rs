@@ -14,15 +14,15 @@ pub enum ProviderError {
     #[error("Provider {0} not found")]
     ProviderNotFound(String),
 
-    #[error("Provider transport error: {0}")]
+    #[error(transparent)]
     Transport(#[from] ProviderTransportError),
 
-    #[error("Failed to serialize provider request: {0}")]
-    Serialize(serde_json::Error),
+    #[error("failed to serialize provider request")]
+    Serialize(#[source] serde_json::Error),
 
-    #[error("Failed to deserialize provider response: {0}")]
-    Deserialize(serde_json::Error),
+    #[error("failed to deserialize provider response")]
+    Deserialize(#[source] serde_json::Error),
 
-    #[error("Provider returned error: {0}")]
+    #[error("{0}")]
     Provider(String),
 }

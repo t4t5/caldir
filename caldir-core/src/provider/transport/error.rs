@@ -3,11 +3,11 @@ use std::time::Duration;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum ProviderTransportError {
-    #[error("Failed to spawn provider: {0}")]
-    Spawn(std::io::Error),
+    #[error("failed to spawn provider")]
+    Spawn(#[source] std::io::Error),
 
-    #[error("I/O error during provider exchange: {0}")]
-    Io(std::io::Error),
+    #[error("failed to exchange with provider")]
+    Io(#[source] std::io::Error),
 
     #[error("Provider response was not valid UTF-8")]
     BadUtf8,

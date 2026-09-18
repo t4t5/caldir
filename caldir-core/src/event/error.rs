@@ -3,7 +3,7 @@ use std::path::PathBuf;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum EventError {
-    #[error("failed to read event from {0}: {1}")]
+    #[error("failed to read event from {0}")]
     Io(PathBuf, #[source] std::io::Error),
 
     #[error("failed to parse ICS {0}: {1}")]

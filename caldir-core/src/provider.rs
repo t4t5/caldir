@@ -281,17 +281,24 @@ mod tests {
 
     #[tokio::test]
     async fn call_returns_provider_error_on_error_response() {
-        let mock = Arc::new(MockTransport::with_response(
-            r#"{"status":"error","error":"oh no"}"#,
-        ));
-        let provider = provider_with_transport(mock);
+        for message in [
+            "oh no",
+            "  Déjà vu?! [code: 42]\n  原因: a:b; a:b.\r\n\t ",
+            "Error handling request: outer: inner",
+            "",
+        ] {
+            let response = serde_json::json!({"status": "error", "error": message}).to_string();
+            let mock = Arc::new(MockTransport::with_response(response));
+            let provider = provider_with_transport(mock);
 
-        let err = provider
-            .call(EchoCommand { value: "x".into() })
-            .await
-            .unwrap_err();
+            let err = provider
+                .call(EchoCommand { value: "x".into() })
+                .await
+                .unwrap_err();
 
-        assert!(matches!(err, ProviderError::Provider(msg) if msg == "oh no"));
+            assert_eq!(err.to_string(), message);
+            assert!(matches!(err, ProviderError::Provider(msg) if msg == message));
+        }
     }
 
     #[tokio::test]
@@ -304,7 +311,12 @@ mod tests {
             .await
             .unwrap_err();
 
+        assert_eq!(err.to_string(), "failed to deserialize provider response");
+        let source = std::error::Error::source(&err).unwrap();
+        assert!(source.is::<serde_json::Error>());
+        let expected = format!("failed to deserialize provider response: {source}");
         assert!(matches!(err, ProviderError::Deserialize(_)));
+        assert_eq!(format!("{:#}", anyhow::Error::new(err)), expected);
     }
 
     #[tokio::test]

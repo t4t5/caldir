@@ -8,10 +8,10 @@ pub enum CaldirError {
     #[error(transparent)]
     Calendar(#[from] CalendarError),
 
-    #[error("provider error: {0}")]
+    #[error(transparent)]
     Provider(#[from] ProviderError),
 
-    #[error("config error: {0}")]
+    #[error(transparent)]
     Config(#[from] CaldirConfigError),
 
     #[error("no default calendar configured")]

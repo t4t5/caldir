@@ -3,6 +3,7 @@ use caldir_core::{Caldir, CaldirError, Connection, DateRange};
 use owo_colors::OwoColorize;
 
 use crate::output::diff::{CalendarDiffRender, Render};
+use crate::output::format_error;
 use crate::utils::tui;
 use crate::utils::{require_calendars, resolve_sync_range};
 
@@ -55,11 +56,11 @@ async fn run_parsed(
 
                 match result {
                     Ok(diff) => println!("{}", diff.render(verbose, caldir)),
-                    Err(e) => println!("   {}", e.to_string().red()),
+                    Err(e) => println!("   {}", format_error(e).red()),
                 }
             }
             Err(e) => {
-                println!("   {}", e.to_string().red());
+                println!("   {}", format_error(e).red());
             }
         }
 

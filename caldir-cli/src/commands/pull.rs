@@ -3,6 +3,7 @@ use caldir_core::{Caldir, CalendarDiff, Connection, DateRange};
 use owo_colors::OwoColorize;
 
 use crate::output::diff::{CalendarDiffRender, Render};
+use crate::output::format_error;
 use crate::utils::{connections, count_changes, resolve_sync_range, tui};
 
 pub async fn run(
@@ -22,7 +23,7 @@ pub async fn run(
             Ok(mut connection) => {
                 pull_connection(caldir, &mut connection, &range, verbose, &mut applied).await;
             }
-            Err(e) => println!("   {}", e.to_string().red()),
+            Err(e) => println!("   {}", format_error(e).red()),
         }
 
         if i < total - 1 {
@@ -59,7 +60,7 @@ async fn pull_connection(
     let diff = match result {
         Ok(diff) => diff,
         Err(e) => {
-            println!("   {}", e.to_string().red());
+            println!("   {}", format_error(e).red());
             return;
         }
     };
@@ -68,6 +69,6 @@ async fn pull_connection(
 
     match connection.apply_incoming_diff(&diff) {
         Ok(()) => applied.push(diff),
-        Err(e) => println!("   {}", e.to_string().red()),
+        Err(e) => println!("   {}", format_error(e).red()),
     }
 }

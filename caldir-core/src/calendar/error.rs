@@ -13,16 +13,16 @@ pub enum CalendarError {
     #[error("calendar not found at: {0}")]
     NotFound(PathBuf),
 
-    #[error("io error: {0}")]
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 
-    #[error("calendar config error: {0}")]
+    #[error(transparent)]
     Config(#[from] CalendarConfigError),
 
-    #[error("calendar state error: {0}")]
+    #[error(transparent)]
     State(#[from] CalendarStateError),
 
-    #[error("calendar event error: {0}")]
+    #[error(transparent)]
     Event(#[from] CalendarEventError),
 
     #[error("master event not found: {0}")]
