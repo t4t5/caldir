@@ -5,7 +5,7 @@ use caldir_core::{Event, EventTime};
 use google_calendar::types::SendUpdates;
 
 use crate::app_config::AppConfigStore;
-use crate::commands::invite::patch_invite_status;
+use crate::commands::invite::patch_invite_personal_fields;
 use crate::commands::update_event::patch_event_without_attendees;
 use crate::constants::{GOOGLE_EVENT_ID_PROPERTY, PROVIDER_NAME};
 use crate::google_event::{FromGoogle, ToGoogle};
@@ -29,13 +29,13 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
     // Recurring instance override:
     // Shares the master's iCalUID, so creating via events().insert() trips Google's "duplicate identifier" check.
     // Google's data model treats an override as a modification of an existing auto-expanded instance.
-    // PUT the synthetic instance id `{master_id}_{rid}` instead.
+    // PATCH the synthetic instance id `{master_id}_{rid}` instead.
     if let Some(rid) = cmd.event.recurrence_id.as_ref() {
         let instance_id = override_instance_id(&cmd.event, rid.as_event_time())?;
 
-        // If it's just an RSVP status update, use PATCH instead of PUT:
+        // Invitations only update our response and personal reminders.
         if cmd.event.is_invite_for(account_email) {
-            let google_event = patch_invite_status(
+            let google_event = patch_invite_personal_fields(
                 &session,
                 calendar_id,
                 &instance_id,
@@ -218,7 +218,7 @@ mod tests {
         );
 
         // If sync state is lost, the local file is mistaken for a new event
-        // and pushed through create_event (rencal#99). The PUT must target
+        // and pushed through create_event (rencal#99). The PATCH must target
         // the id Google already knows — a doubled suffix 404s:
         let rid = event.recurrence_id.clone().unwrap();
         assert_eq!(
