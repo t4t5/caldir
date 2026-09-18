@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use super::transport::ProviderTransportError;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ProviderError {
     #[error("Provider file is not executable: {0}")]
     NotExecutable(PathBuf),

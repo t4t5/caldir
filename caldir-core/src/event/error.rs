@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum EventError {
     #[error("failed to read event from {0}: {1}")]
     Io(PathBuf, #[source] std::io::Error),

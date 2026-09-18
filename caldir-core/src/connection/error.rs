@@ -2,6 +2,7 @@ use crate::calendar::CalendarError;
 use crate::remote::RemoteError;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ConnectionError {
     #[error("Remote error: {0}")]
     Remote(#[from] RemoteError),

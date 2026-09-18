@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum StorageError {
     #[error("could not determine the system config directory")]
     UnknownStorageDirectory,

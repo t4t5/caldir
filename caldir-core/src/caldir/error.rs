@@ -3,6 +3,7 @@ use crate::calendar::CalendarError;
 use crate::provider::ProviderError;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum CaldirError {
     #[error(transparent)]
     Calendar(#[from] CalendarError),

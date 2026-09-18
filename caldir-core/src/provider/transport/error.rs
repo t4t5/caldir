@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ProviderTransportError {
     #[error("Failed to spawn provider: {0}")]
     Spawn(std::io::Error),
