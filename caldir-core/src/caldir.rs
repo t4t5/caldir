@@ -6,8 +6,8 @@ use crate::{
 };
 use std::path::{Path, PathBuf};
 
-pub use config::CaldirConfig;
 pub use config::TimeFormat;
+pub use config::{CaldirConfig, CaldirConfigError};
 pub use error::CaldirError;
 
 pub struct Caldir {

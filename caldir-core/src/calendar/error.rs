@@ -5,6 +5,7 @@ use super::state::CalendarStateError;
 use crate::calendar::CalendarEventError;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum CalendarError {
     #[error("calendar already exists at: {0}")]
     AlreadyExists(PathBuf),

@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::event::EventError;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum CalendarEventError {
     #[error("invalid event in ICS file {0}: {1}")]
     InvalidEvent(PathBuf, EventError),

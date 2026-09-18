@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum CalendarConfigError {
     #[error("invalid config in TOML file {0}: {1}")]
     InvalidConfigFile(PathBuf, toml::de::Error),

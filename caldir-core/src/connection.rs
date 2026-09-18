@@ -7,7 +7,7 @@ use crate::calendar::{CalendarError, SyncBases};
 use crate::diff::EventChange;
 use crate::event::EventInstanceId;
 use crate::{Calendar, CalendarDiff, CalendarEvent, DateRange, Event, Remote, RemoteEvent};
-use error::ConnectionError;
+pub use error::ConnectionError;
 
 /// A connection is a [local calendar] + [remote calendar] pair
 pub struct Connection {
