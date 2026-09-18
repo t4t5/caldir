@@ -5,7 +5,7 @@ use crate::utils::atomic_write;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-pub(crate) use error::CalendarConfigError;
+pub use error::CalendarConfigError;
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct CalendarConfig {

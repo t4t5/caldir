@@ -9,12 +9,12 @@ use crate::{Event, RemoteConfig};
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
-pub use config::CalendarConfig;
+pub use config::{CalendarConfig, CalendarConfigError};
 pub use error::CalendarError;
 pub use event::CalendarEvent;
-pub(crate) use event::CalendarEventError;
-pub use state::CalendarState;
+pub use event::CalendarEventError;
 pub(crate) use state::SyncBases;
+pub use state::{CalendarState, CalendarStateError};
 
 const DOTDIR_NAME: &str = ".caldir";
 

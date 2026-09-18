@@ -7,7 +7,7 @@ use crate::provider::ProviderError;
 use crate::{DateRange, Event, Provider, rpc};
 
 pub use config::{RemoteConfig, RemoteConfigParams};
-pub(crate) use error::RemoteError;
+pub use error::RemoteError;
 pub use event::RemoteEvent;
 
 /// provider with config should resolve to a unique remote

@@ -5,7 +5,7 @@ use crate::{
     Reminder,
     utils::{atomic_write, expand_tilde},
 };
-pub(crate) use error::CaldirConfigError;
+pub use error::CaldirConfigError;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
