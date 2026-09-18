@@ -3,7 +3,7 @@
 //! This provides type safety for Google Calendar remote config while
 //! caldir-core remains provider-agnostic with its generic RemoteConfigParams.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use caldir_core::RemoteConfigParams;
 use serde::{Deserialize, Serialize};
 
@@ -42,14 +42,16 @@ impl TryFrom<&RemoteConfigParams> for GoogleRemoteConfig {
     fn try_from(params: &RemoteConfigParams) -> Result<Self> {
         let google_account = params
             .get("google_account")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required field: google_account"))?
+            .context("Google remote configuration is missing required field `google_account`")?
+            .as_str()
+            .context("Google remote configuration field `google_account` must be a string")?
             .to_string();
 
         let google_calendar_id = params
             .get("google_calendar_id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required field: google_calendar_id"))?
+            .context("Google remote configuration is missing required field `google_calendar_id`")?
+            .as_str()
+            .context("Google remote configuration field `google_calendar_id` must be a string")?
             .to_string();
 
         Ok(Self {

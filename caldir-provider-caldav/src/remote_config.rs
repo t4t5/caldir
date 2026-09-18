@@ -1,6 +1,6 @@
 //! CalDAV-specific remote configuration.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use caldir_core::RemoteConfigParams;
 use serde::{Deserialize, Serialize};
 
@@ -39,14 +39,16 @@ impl TryFrom<&RemoteConfigParams> for CaldavRemoteConfig {
     fn try_from(params: &RemoteConfigParams) -> Result<Self> {
         let caldav_account = params
             .get("caldav_account")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required field: caldav_account"))?
+            .context("CalDAV remote configuration is missing required field `caldav_account`")?
+            .as_str()
+            .context("CalDAV remote configuration field `caldav_account` must be a string")?
             .to_string();
 
         let caldav_calendar_url = params
             .get("caldav_calendar_url")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required field: caldav_calendar_url"))?
+            .context("CalDAV remote configuration is missing required field `caldav_calendar_url`")?
+            .as_str()
+            .context("CalDAV remote configuration field `caldav_calendar_url` must be a string")?
             .to_string();
 
         Ok(Self {

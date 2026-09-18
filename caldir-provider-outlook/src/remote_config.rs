@@ -3,7 +3,7 @@
 //! This provides type safety for Outlook Calendar remote config while
 //! caldir-core remains provider-agnostic with its generic RemoteConfigParams.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use caldir_core::RemoteConfigParams;
 use serde::{Deserialize, Serialize};
 
@@ -42,14 +42,18 @@ impl TryFrom<&RemoteConfigParams> for OutlookRemoteConfig {
     fn try_from(params: &RemoteConfigParams) -> Result<Self> {
         let outlook_account = params
             .get("outlook_account")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required field: outlook_account"))?
+            .context("Outlook remote configuration is missing required field `outlook_account`")?
+            .as_str()
+            .context("Outlook remote configuration field `outlook_account` must be a string")?
             .to_string();
 
         let outlook_calendar_id = params
             .get("outlook_calendar_id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing required field: outlook_calendar_id"))?
+            .context(
+                "Outlook remote configuration is missing required field `outlook_calendar_id`",
+            )?
+            .as_str()
+            .context("Outlook remote configuration field `outlook_calendar_id` must be a string")?
             .to_string();
 
         Ok(Self {
