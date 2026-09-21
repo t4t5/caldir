@@ -38,11 +38,9 @@ impl CalendarConfig {
         write_toml(path, self).map_err(|err| match err {
             TomlFileError::Read(err) => CalendarConfigError::Read(path.into(), err),
             TomlFileError::Write(err) => CalendarConfigError::Write(path.into(), err),
-            TomlFileError::Deserialize(err) => {
-                CalendarConfigError::InvalidConfigFile(path.into(), err)
-            }
-            TomlFileError::Serialize(err) => CalendarConfigError::InvalidConfig(err),
-            TomlFileError::Parse(err) => CalendarConfigError::InvalidConfigSyntax(path.into(), err),
+            TomlFileError::Deserialize(err) => CalendarConfigError::Deserialize(path.into(), err),
+            TomlFileError::Serialize(err) => CalendarConfigError::Serialize(err),
+            TomlFileError::Parse(err) => CalendarConfigError::Parse(path.into(), err),
         })
     }
 
@@ -60,7 +58,7 @@ impl CalendarConfig {
             .map_err(|err| CalendarConfigError::Read(path.into(), err))?;
 
         let config = Self::from_toml(&contents)
-            .map_err(|e| CalendarConfigError::InvalidConfigFile(path.into(), e))?;
+            .map_err(|e| CalendarConfigError::Deserialize(path.into(), e))?;
 
         Ok(config)
     }
@@ -255,7 +253,7 @@ hooli_account = "user@hmail.com"
 
         assert!(matches!(
             result,
-            Err(CalendarConfigError::InvalidConfigFile(p, _)) if p == path
+            Err(CalendarConfigError::Deserialize(p, _)) if p == path
         ));
     }
 

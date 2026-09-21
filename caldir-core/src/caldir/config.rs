@@ -110,11 +110,9 @@ impl CaldirConfig {
         write_toml(path, self).map_err(|err| match err {
             TomlFileError::Read(err) => CaldirConfigError::Read(path.into(), err),
             TomlFileError::Write(err) => CaldirConfigError::Write(path.into(), err),
-            TomlFileError::Deserialize(err) => {
-                CaldirConfigError::InvalidConfigFile(path.into(), err)
-            }
-            TomlFileError::Serialize(err) => CaldirConfigError::InvalidConfig(err),
-            TomlFileError::Parse(err) => CaldirConfigError::InvalidConfigSyntax(path.into(), err),
+            TomlFileError::Deserialize(err) => CaldirConfigError::Deserialize(path.into(), err),
+            TomlFileError::Serialize(err) => CaldirConfigError::Serialize(err),
+            TomlFileError::Parse(err) => CaldirConfigError::Parse(path.into(), err),
         })
     }
 
@@ -133,7 +131,7 @@ impl CaldirConfig {
             .map_err(|err| CaldirConfigError::Read(path.into(), err))?;
 
         let config = Self::from_toml(&contents)
-            .map_err(|e| CaldirConfigError::InvalidConfigFile(path.into(), e))?;
+            .map_err(|e| CaldirConfigError::Deserialize(path.into(), e))?;
 
         Ok(config)
     }
@@ -241,7 +239,7 @@ mod tests {
 
         assert!(matches!(
             result.unwrap_err(),
-            CaldirConfigError::InvalidConfigFile(_, _)
+            CaldirConfigError::Deserialize(_, _)
         ));
     }
 

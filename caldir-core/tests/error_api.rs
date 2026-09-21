@@ -265,11 +265,11 @@ fn serialization_errors_expose_concrete_causes() {
     let cause = || <toml::ser::Error as serde::ser::Error>::custom("unsupported config");
     let errors = [
         (
-            anyhow::Error::new(CalendarConfigError::InvalidConfig(cause())),
+            anyhow::Error::new(CalendarConfigError::Serialize(cause())),
             "calendar",
         ),
         (
-            anyhow::Error::new(CaldirConfigError::InvalidConfig(cause())),
+            anyhow::Error::new(CaldirConfigError::Serialize(cause())),
             "caldir",
         ),
     ];
