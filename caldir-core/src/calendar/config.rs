@@ -1,7 +1,7 @@
 mod error;
 
 use crate::remote::RemoteConfig;
-use crate::utils::atomic_write;
+use crate::utils::{TomlFileError, write_toml};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -32,12 +32,18 @@ impl CalendarConfig {
         }
     }
 
+    /// Writes the config while preserving comments and unrelated formatting in
+    /// an existing file.
     pub fn write(&self, path: &Path) -> Result<(), CalendarConfigError> {
-        let contents = self.to_toml().map_err(CalendarConfigError::InvalidConfig)?;
-        atomic_write(path, contents.as_bytes())
-            .map_err(|err| CalendarConfigError::Write(path.into(), err))?;
-
-        Ok(())
+        write_toml(path, self).map_err(|err| match err {
+            TomlFileError::Read(err) => CalendarConfigError::Read(path.into(), err),
+            TomlFileError::Write(err) => CalendarConfigError::Write(path.into(), err),
+            TomlFileError::Deserialize(err) => {
+                CalendarConfigError::InvalidConfigFile(path.into(), err)
+            }
+            TomlFileError::Serialize(err) => CalendarConfigError::InvalidConfig(err),
+            TomlFileError::Parse(err) => CalendarConfigError::InvalidConfigSyntax(path.into(), err),
+        })
     }
 
     pub fn load_optional(path: &Path) -> Result<Option<Self>, CalendarConfigError> {
@@ -83,6 +89,7 @@ impl CalendarConfig {
         toml::from_str(s)
     }
 
+    #[cfg(test)]
     fn to_toml(&self) -> Result<String, toml::ser::Error> {
         toml::to_string(self)
     }
@@ -128,6 +135,65 @@ mod tests {
 
         let loaded = CalendarConfig::load(&path).unwrap();
         assert_eq!(loaded, config);
+    }
+
+    #[test]
+    fn write_preserves_remote_table_when_renaming_calendar() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        let before = "# calendar\nname   =   'Old' # display name\n\n[remote] # connection\nprovider = 'hooli'\nhooli_account = \"user@example.com\"\n";
+        std::fs::write(&path, before).unwrap();
+        let mut config = CalendarConfig::load_optional(&path).unwrap().unwrap();
+        config.set_name(Some("New".to_string()));
+
+        config.write(&path).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(path).unwrap(),
+            "# calendar\nname   =   \"New\" # display name\n\n[remote] # connection\nprovider = 'hooli'\nhooli_account = \"user@example.com\"\n"
+        );
+    }
+
+    #[test]
+    fn write_replaces_remote_and_removes_stale_parameters() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "[remote]\nprovider = 'old' # provider\nold_account = 'remove'\nold_calendar_id = 'remove'\n",
+        )
+        .unwrap();
+        let mut config = CalendarConfig::load_optional(&path).unwrap().unwrap();
+        let mut params = RemoteConfigParams::new();
+        params.insert(
+            "new_account".to_string(),
+            toml::Value::String("keep".to_string()),
+        );
+        config.set_remote(RemoteConfig::new(ProviderSlug::from("new"), params));
+
+        config.write(&path).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(path).unwrap(),
+            "[remote]\nprovider = \"new\" # provider\nnew_account = \"keep\"\n"
+        );
+    }
+
+    #[test]
+    fn write_clears_remote_table() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "name = \"kept\"\n\n[remote]\nprovider = \"old\"\nold_account = \"remove\"\n",
+        )
+        .unwrap();
+        let mut config = CalendarConfig::load_optional(&path).unwrap().unwrap();
+        config.remote_config = None;
+
+        config.write(&path).unwrap();
+
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "name = \"kept\"\n");
     }
 
     #[test]

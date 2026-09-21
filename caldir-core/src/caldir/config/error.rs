@@ -12,6 +12,9 @@ pub enum CaldirConfigError {
     #[error("invalid config in TOML file {0}")]
     InvalidConfigFile(PathBuf, #[source] toml::de::Error),
 
+    #[error("invalid TOML syntax in config file {0}")]
+    InvalidConfigSyntax(PathBuf, #[source] toml_edit::TomlError),
+
     #[error("failed to serialize caldir config")]
     InvalidConfig(#[source] toml::ser::Error),
 

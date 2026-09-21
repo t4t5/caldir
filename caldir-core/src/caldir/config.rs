@@ -3,7 +3,7 @@ mod time_format;
 
 use crate::{
     Reminder,
-    utils::{atomic_write, expand_tilde},
+    utils::{TomlFileError, expand_tilde, write_toml},
 };
 pub use error::CaldirConfigError;
 use serde::{Deserialize, Serialize};
@@ -104,12 +104,18 @@ impl CaldirConfig {
         self.default_reminders = reminders;
     }
 
+    /// Writes the config while preserving comments and unrelated formatting in
+    /// an existing file.
     pub fn write(&self, path: &Path) -> Result<(), CaldirConfigError> {
-        let contents = self.to_toml().map_err(CaldirConfigError::InvalidConfig)?;
-        atomic_write(path, contents.as_bytes())
-            .map_err(|err| CaldirConfigError::Write(path.into(), err))?;
-
-        Ok(())
+        write_toml(path, self).map_err(|err| match err {
+            TomlFileError::Read(err) => CaldirConfigError::Read(path.into(), err),
+            TomlFileError::Write(err) => CaldirConfigError::Write(path.into(), err),
+            TomlFileError::Deserialize(err) => {
+                CaldirConfigError::InvalidConfigFile(path.into(), err)
+            }
+            TomlFileError::Serialize(err) => CaldirConfigError::InvalidConfig(err),
+            TomlFileError::Parse(err) => CaldirConfigError::InvalidConfigSyntax(path.into(), err),
+        })
     }
 
     /// Caldir config directory:
@@ -292,6 +298,23 @@ mod tests {
 
         let reloaded = CaldirConfig::load_or_default(&path).unwrap();
         assert_eq!(reloaded, config);
+    }
+
+    #[test]
+    fn write_preserves_existing_formatting_and_sparse_defaults() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        let before = "# caldir settings\ncalendar_dir   =   '/tmp/old' # local path\ndefault_reminders = [ \"60m\" ] # spelling\nunknown = 'kept'\n";
+        std::fs::write(&path, before).unwrap();
+        let mut config = CaldirConfig::load_or_default(&path).unwrap();
+        config.set_data_dir(PathBuf::from("/tmp/new"));
+
+        config.write(&path).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(path).unwrap(),
+            "# caldir settings\ncalendar_dir   =   \"/tmp/new\" # local path\ndefault_reminders = [ \"60m\" ] # spelling\nunknown = 'kept'\n"
+        );
     }
 
     #[test]

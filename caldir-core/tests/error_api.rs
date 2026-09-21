@@ -212,7 +212,7 @@ fn config_io_failures_identify_operation_and_path() {
     ] {
         assert_eq!(
             error.to_string(),
-            format!("failed to write {kind} config {}", tmp.path().display())
+            format!("failed to read {kind} config {}", tmp.path().display())
         );
         assert_eq!(error.chain().count(), 2);
         assert!(error.root_cause().is::<io::Error>());
