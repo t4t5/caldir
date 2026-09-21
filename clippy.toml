@@ -1,0 +1,3 @@
+# Config errors carry the path plus the parser's typed error inline so callers
+# can downcast; that is ~136 bytes on Windows, over clippy's 128 default.
+large-error-threshold = 256

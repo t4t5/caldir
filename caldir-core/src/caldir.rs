@@ -456,6 +456,24 @@ mod tests {
     }
 
     #[test]
+    fn save_config_keeps_memory_unchanged_when_disk_config_is_invalid() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("config.toml");
+        write_config(&path, "/tmp/before");
+        let mut caldir = Caldir::load_from(&path).unwrap();
+        let before = caldir.config().clone();
+        let mut replacement = before.clone();
+        replacement.set_data_dir(PathBuf::from("/tmp/after"));
+        std::fs::write(&path, "calendar_dir = [").unwrap();
+
+        assert!(matches!(
+            caldir.save_config(replacement),
+            Err(CaldirError::Config(_))
+        ));
+        assert_eq!(caldir.config(), &before);
+    }
+
+    #[test]
     fn reload_config_picks_up_changes_on_disk() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("config.toml");

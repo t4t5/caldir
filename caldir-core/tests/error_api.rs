@@ -212,7 +212,7 @@ fn config_io_failures_identify_operation_and_path() {
     ] {
         assert_eq!(
             error.to_string(),
-            format!("failed to write {kind} config {}", tmp.path().display())
+            format!("failed to read {kind} config {}", tmp.path().display())
         );
         assert_eq!(error.chain().count(), 2);
         assert!(error.root_cause().is::<io::Error>());
@@ -265,11 +265,11 @@ fn serialization_errors_expose_concrete_causes() {
     let cause = || <toml::ser::Error as serde::ser::Error>::custom("unsupported config");
     let errors = [
         (
-            anyhow::Error::new(CalendarConfigError::InvalidConfig(cause())),
+            anyhow::Error::new(CalendarConfigError::Serialize(cause())),
             "calendar",
         ),
         (
-            anyhow::Error::new(CaldirConfigError::InvalidConfig(cause())),
+            anyhow::Error::new(CaldirConfigError::Serialize(cause())),
             "caldir",
         ),
     ];

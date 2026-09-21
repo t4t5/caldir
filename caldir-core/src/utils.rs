@@ -4,9 +4,11 @@ mod date_range;
 pub(crate) mod paths;
 mod slugify;
 mod tilde_expansion;
+mod toml_file;
 
 pub(crate) use atomic_write::atomic_write;
 pub use date_bounds::DateBounds;
 pub use date_range::DateRange;
 pub(crate) use slugify::slugify;
 pub(crate) use tilde_expansion::expand_tilde;
+pub(crate) use toml_file::{TomlFileError, write_toml};
