@@ -28,7 +28,7 @@ struct Server {
     task: JoinHandle<()>,
 }
 impl Server {
-    async fn new(well_known: bool) -> Self {
+    async fn new(well_known: bool, reject_context: bool) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}/", listener.local_addr().unwrap());
         let task = tokio::spawn(async move {
@@ -42,6 +42,9 @@ impl Server {
                         ("GET", "/.well-known/caldav") if well_known => {
                             response = response.header("Location", CONTEXT);
                             (301, String::new())
+                        }
+                        (_, path) if reject_context && path.starts_with("/dav/") => {
+                            (401, String::new())
                         }
                         ("PROPFIND", CONTEXT) => {
                             (207, multistatus("current-user-principal", PRINCIPAL))
@@ -75,7 +78,7 @@ impl Drop for Server {
 
 #[tokio::test]
 async fn discovers_endpoints_through_the_well_known_uri() {
-    let server = Server::new(true).await;
+    let server = Server::new(true, false).await;
     let endpoints = discover_endpoints(&server.url, "jane", "pw").await.unwrap();
     let base = server.url.trim_end_matches('/');
     assert_eq!(endpoints.principal_url, format!("{base}{PRINCIPAL}"));
@@ -84,7 +87,7 @@ async fn discovers_endpoints_through_the_well_known_uri() {
 
 #[tokio::test]
 async fn reports_the_original_failure_when_there_is_no_well_known_uri() {
-    let server = Server::new(false).await;
+    let server = Server::new(false, false).await;
     let error = match discover_endpoints(&server.url, "jane", "pw").await {
         Ok(_) => panic!("expected discovery to fail"),
         Err(error) => error,
@@ -95,4 +98,16 @@ async fn reports_the_original_failure_when_there_is_no_well_known_uri() {
             .contains("Failed to find current user principal"),
         "unexpected error: {error}"
     );
+}
+
+#[tokio::test]
+async fn reports_the_context_failure_after_well_known_discovery() {
+    let server = Server::new(true, true).await;
+    let error = match discover_endpoints(&server.url, "jane", "wrong-password").await {
+        Ok(_) => panic!("expected discovery to fail"),
+        Err(error) => error,
+    };
+    let error = format!("{error:#}");
+    assert!(error.contains("401"), "unexpected error: {error}");
+    assert!(!error.contains("404"), "unexpected error: {error}");
 }

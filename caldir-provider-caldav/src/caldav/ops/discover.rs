@@ -31,12 +31,8 @@ pub async fn discover_endpoints(
         && let Ok(Some(context_url)) =
             find_well_known_context_url(base_url, username, password).await
     {
-        let bootstrapped = create_caldav_client(&context_url, username, password)?;
-        let found = find_principal(&bootstrapped).await;
-        if matches!(found, Ok(Some(_))) {
-            caldav = bootstrapped;
-            principal = found;
-        }
+        caldav = create_caldav_client(&context_url, username, password)?;
+        principal = find_principal(&caldav).await;
     }
 
     let principal = principal?.ok_or_else(|| {
