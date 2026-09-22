@@ -7,19 +7,21 @@ use http::Uri;
 use hyper_rustls::HttpsConnectorBuilder;
 use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use libdav::CalDavClient;
+use libdav::caldav::service_for_url;
 use libdav::dav::WebDavClient;
 use tower::ServiceBuilder;
 use tower_http::{auth::AddAuthorization, follow_redirect::FollowRedirect};
 
-/// Type alias for the HTTP client with auth and redirect following.
-type HttpClient = FollowRedirect<
-    AddAuthorization<
-        Client<
-            hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
-            String,
-        >,
+/// Type alias for the authenticated HTTP client, without redirect following.
+type AuthClient = AddAuthorization<
+    Client<
+        hyper_rustls::HttpsConnector<hyper_util::client::legacy::connect::HttpConnector>,
+        String,
     >,
 >;
+
+/// Type alias for the HTTP client with auth and redirect following.
+type HttpClient = FollowRedirect<AuthClient>;
 
 /// Type alias for our CalDAV client.
 pub type CalDavClient_ = CalDavClient<HttpClient>;
@@ -30,10 +32,52 @@ pub fn create_caldav_client(
     username: &str,
     password: &str,
 ) -> Result<CalDavClient_> {
-    let uri: Uri = base_url
-        .parse()
-        .with_context(|| format!("Invalid base URL: {}", base_url))?;
+    let uri = parse_base_url(base_url)?;
 
+    // Add redirect following (some servers redirect to user-specific hosts)
+    let client = ServiceBuilder::new()
+        .layer(tower_http::follow_redirect::FollowRedirectLayer::new())
+        .service(create_auth_client(username, password)?);
+
+    let webdav = WebDavClient::new(uri, client);
+    Ok(CalDavClient::new(webdav))
+}
+
+/// Resolve a server's CalDAV context path via its well-known URI (RFC 6764).
+///
+/// Returns `None` when `/.well-known/caldav` does not redirect anywhere.
+pub async fn find_well_known_context_url(
+    base_url: &str,
+    username: &str,
+    password: &str,
+) -> Result<Option<String>> {
+    let uri = parse_base_url(base_url)?;
+    let service =
+        service_for_url(&uri).with_context(|| format!("Invalid base URL: {}", base_url))?;
+    let host = uri
+        .host()
+        .with_context(|| format!("Base URL has no host: {}", base_url))?
+        .to_owned();
+    let port = uri.port_u16().unwrap_or(service.default_port());
+
+    // Deliberately not the redirect-following client: the redirect target is the answer.
+    let webdav = WebDavClient::new(uri, create_auth_client(username, password)?);
+
+    let context_url = webdav
+        .find_context_path(service, &host, port)
+        .await
+        .context("Failed to resolve the well-known CalDAV URL")?;
+
+    Ok(context_url.map(|uri| uri.to_string()))
+}
+
+fn parse_base_url(base_url: &str) -> Result<Uri> {
+    base_url
+        .parse()
+        .with_context(|| format!("Invalid base URL: {}", base_url))
+}
+
+fn create_auth_client(username: &str, password: &str) -> Result<AuthClient> {
     let https_connector = HttpsConnectorBuilder::new()
         .with_native_roots()
         .context("Failed to load native TLS roots")?
@@ -43,16 +87,7 @@ pub fn create_caldav_client(
 
     let http_client = Client::builder(TokioExecutor::new()).build(https_connector);
 
-    // Add basic auth
-    let auth_client = AddAuthorization::basic(http_client, username, password);
-
-    // Add redirect following (some servers redirect to user-specific hosts)
-    let client = ServiceBuilder::new()
-        .layer(tower_http::follow_redirect::FollowRedirectLayer::new())
-        .service(auth_client);
-
-    let webdav = WebDavClient::new(uri, client);
-    Ok(CalDavClient::new(webdav))
+    Ok(AddAuthorization::basic(http_client, username, password))
 }
 
 /// Build an absolute URL from a client's base URL and a relative path.

@@ -1,9 +1,12 @@
 //! CalDAV endpoint discovery (principal + calendar home).
 
 use anyhow::{Context, Result};
+use http::Uri;
 use libdav::caldav::FindCalendarHomeSet;
 
-use crate::caldav::{absolute_url, create_caldav_client};
+use crate::caldav::{
+    CalDavClient_, absolute_url, create_caldav_client, find_well_known_context_url,
+};
 
 /// Discovered CalDAV endpoints from the connect flow.
 pub struct DiscoveredEndpoints {
@@ -19,15 +22,26 @@ pub async fn discover_endpoints(
     username: &str,
     password: &str,
 ) -> Result<DiscoveredEndpoints> {
-    let caldav = create_caldav_client(base_url, username, password)?;
+    let mut caldav = create_caldav_client(base_url, username, password)?;
+    let mut principal = find_principal(&caldav).await;
 
-    let principal = caldav
-        .find_current_user_principal()
-        .await
-        .context("Failed to find current user principal")?
-        .ok_or_else(|| {
-            anyhow::anyhow!("Authentication failed. Check your username and password.")
-        })?;
+    // Servers like Fastmail serve nothing at the URL they hand users, nor at the root,
+    // and only advertise their context path through the well-known URI (RFC 6764).
+    if !matches!(principal, Ok(Some(_)))
+        && let Ok(Some(context_url)) =
+            find_well_known_context_url(base_url, username, password).await
+    {
+        let bootstrapped = create_caldav_client(&context_url, username, password)?;
+        let found = find_principal(&bootstrapped).await;
+        if matches!(found, Ok(Some(_))) {
+            caldav = bootstrapped;
+            principal = found;
+        }
+    }
+
+    let principal = principal?.ok_or_else(|| {
+        anyhow::anyhow!("Authentication failed. Check your username and password.")
+    })?;
 
     let principal_url = absolute_url(&caldav, principal.path());
 
@@ -48,4 +62,11 @@ pub async fn discover_endpoints(
         principal_url,
         calendar_home_url,
     })
+}
+
+async fn find_principal(caldav: &CalDavClient_) -> Result<Option<Uri>> {
+    caldav
+        .find_current_user_principal()
+        .await
+        .context("Failed to find current user principal")
 }
