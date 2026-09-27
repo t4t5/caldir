@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-cli"
-version = "0.14.3"
+version = "0.14.4"
 dependencies = [
  "anyhow",
  "caldir-core",
@@ -204,7 +204,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-core"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -235,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-provider-caldav"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -261,7 +261,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-provider-google"
-version = "0.10.2"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-trait",
