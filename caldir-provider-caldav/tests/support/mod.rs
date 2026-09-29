@@ -57,6 +57,7 @@ pub struct State {
     pub read_status: Option<u16>,
     pub report_status: Option<u16>,
     pub report_data: Option<String>,
+    pub extra_resources: Vec<(String, String)>,
     pub reject_uid_filter: bool,
     pub write_status: Option<u16>,
     pub concurrent_data: Option<String>,
@@ -85,7 +86,24 @@ impl State {
                 (self.report_status.unwrap(), String::new())
             }
             "REPORT" => {
-                let response = self.report_data.as_ref().or(self.data.as_ref()).map(|data| format!(r#"<response><href>{}</href><propstat><prop><getetag>"{}"</getetag><C:calendar-data>{}</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response>"#, self.href, self.version, data.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;"))).unwrap_or_default();
+                let resource = |href: &str, data: &str| {
+                    format!(
+                        r#"<response><href>{href}</href><propstat><prop><getetag>"{}"</getetag><C:calendar-data>{}</C:calendar-data></prop><status>HTTP/1.1 200 OK</status></propstat></response>"#,
+                        self.version,
+                        data.replace('&', "&amp;")
+                            .replace('<', "&lt;")
+                            .replace('>', "&gt;")
+                    )
+                };
+                let mut response = self
+                    .report_data
+                    .as_ref()
+                    .or(self.data.as_ref())
+                    .map(|data| resource(&self.href, data))
+                    .unwrap_or_default();
+                for (href, data) in &self.extra_resources {
+                    response += &resource(href, data);
+                }
                 let collection = if !request.body.contains("<C:prop-filter")
                     && !request.body.contains("<C:time-range")
                 {
@@ -172,6 +190,7 @@ impl Server {
             read_status: None,
             report_status: None,
             report_data: None,
+            extra_resources: Vec::new(),
             reject_uid_filter: false,
             write_status: None,
             concurrent_data: None,

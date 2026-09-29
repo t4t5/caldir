@@ -582,3 +582,23 @@ async fn rejected_component_deletes_are_errors_and_preserve_siblings() {
         assert!(!state.requests.iter().any(|r| r.method == "DELETE"));
     }
 }
+
+// https://github.com/t4t5/caldir/issues/78
+#[tokio::test]
+async fn resource_with_multiple_uids_does_not_block_other_events() {
+    let server = Server::new(Some(calendar(&[component(None)])), false).await;
+    let leg = |uid: &str, start: &str| {
+        format!(
+            "BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:{start}\r\nDTEND:{start}\r\nSUMMARY:Train\r\nEND:VEVENT\r\n"
+        )
+    };
+    server.state.lock().unwrap().extra_resources.push((
+        "/calendar/booking@trainline.eu.ics".into(),
+        calendar(&[
+            leg("outbound@trainline.eu", "20261001T080000Z"),
+            leg("return@trainline.eu", "20261003T170000Z"),
+        ]),
+    ));
+    let events = list(&server).await.unwrap();
+    assert!(events.contains(&event(None)));
+}
