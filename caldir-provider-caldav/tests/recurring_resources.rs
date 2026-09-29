@@ -601,4 +601,9 @@ async fn resource_with_multiple_uids_does_not_block_other_events() {
     ));
     let events = list(&server).await.unwrap();
     assert!(events.contains(&event(None)));
+    let uids: Vec<_> = events.iter().map(|e| e.uid.as_str()).collect();
+    assert_eq!(
+        uids,
+        ["series", "outbound@trainline.eu", "return@trainline.eu"]
+    );
 }

@@ -103,17 +103,20 @@ impl<'a> Document<'a> {
                 identities.insert(event.event_instance_id()),
                 "Duplicate event identity"
             );
-            if let Some((_, first)) = events.first() {
-                let first: &Event = first;
-                ensure!(
-                    event.uid == first.uid,
-                    "Multiple UIDs in one CalDAV resource"
-                );
-            }
             events.push((index, event));
         }
         ensure!(!events.is_empty(), "CalDAV resource contains no VEVENTs");
         Ok(Self { root, events })
+    }
+
+    fn parse_single_uid(unfolded: &'a str) -> Result<Self> {
+        let document = Self::parse(unfolded)?;
+        let uid = &document.events[0].1.uid;
+        ensure!(
+            document.events.iter().all(|(_, e)| e.uid == *uid),
+            "Multiple UIDs in one CalDAV resource"
+        );
+        Ok(document)
     }
 
     fn position(&self, id: &EventInstanceId) -> Option<usize> {
@@ -136,6 +139,15 @@ fn validate_children(component: &Component<'_>) -> Result<()> {
 }
 
 pub(super) fn parse_events(data: &str) -> Result<Vec<Event>> {
+    Ok(Document::parse_single_uid(&parse_input(data))?
+        .events
+        .into_iter()
+        .map(|(_, e)| e)
+        .collect())
+}
+
+/// Like `parse_events`, but tolerates non-compliant resources holding several UIDs (RFC 4791 §4.1).
+pub(super) fn parse_listed_events(data: &str) -> Result<Vec<Event>> {
     Ok(Document::parse(&parse_input(data))?
         .events
         .into_iter()
@@ -189,7 +201,7 @@ fn component_spans(data: &str) -> Result<(Vec<std::ops::Range<usize>>, usize)> {
 
 fn merge(data: &str, event: &Event) -> Result<String> {
     let unfolded = parse_input(data);
-    let document = Document::parse(&unfolded)?;
+    let document = Document::parse_single_uid(&unfolded)?;
     ensure!(
         document.events[0].1.uid == event.uid,
         "Resource UID does not match requested event"
@@ -236,7 +248,7 @@ impl Resource {
 
     pub fn remove(&self, id: &EventInstanceId) -> Result<Removal> {
         let unfolded = parse_input(&self.data);
-        let document = Document::parse(&unfolded)?;
+        let document = Document::parse_single_uid(&unfolded)?;
         ensure!(
             document.events[0].1.uid == *id.uid(),
             "Resource UID does not match requested event"
