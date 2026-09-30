@@ -178,11 +178,7 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
 
     Ok(Event {
         uid: EventUid::new(event.i_cal_uid),
-        summary: if event.subject.is_empty() {
-            None
-        } else {
-            Some(event.subject)
-        },
+        summary: event.subject.filter(|s| !s.is_empty()),
         description,
         location,
         start,
@@ -456,7 +452,7 @@ mod tests {
         GraphEvent {
             id: "test-id".to_string(),
             i_cal_uid: "test-uid".to_string(),
-            subject: "Test Event".to_string(),
+            subject: Some("Test Event".to_string()),
             body: None,
             start: Some(DateTimeTimeZone {
                 date_time: "2025-03-20T15:00:00.0000000".to_string(),

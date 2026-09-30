@@ -62,8 +62,8 @@ pub struct GraphEvent {
     pub id: String,
     #[serde(default, rename = "iCalUId", skip_serializing_if = "String::is_empty")]
     pub i_cal_uid: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub subject: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body: Option<GraphBody>,
     #[serde(skip_serializing_if = "Option::is_none")]
