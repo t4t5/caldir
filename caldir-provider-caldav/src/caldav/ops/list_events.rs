@@ -5,7 +5,7 @@ use caldir_core::Event;
 
 use crate::caldav::{create_caldav_client, format_caldav_datetime};
 
-use super::resource::{parse_events, query};
+use super::resource::{parse_listed_events, query};
 
 /// Fetch masters and overrides without discarding recurrence components.
 pub async fn fetch_events(
@@ -24,7 +24,7 @@ pub async fn fetch_events(
     let mut events = Vec::new();
     for resource in query(&caldav, calendar_url, &filter).await? {
         events.extend(
-            parse_events(&resource.data)
+            parse_listed_events(&resource.data)
                 .with_context(|| format!("Invalid CalDAV resource {}", resource.href))?,
         );
     }

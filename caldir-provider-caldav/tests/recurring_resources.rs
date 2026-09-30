@@ -582,3 +582,63 @@ async fn rejected_component_deletes_are_errors_and_preserve_siblings() {
         assert!(!state.requests.iter().any(|r| r.method == "DELETE"));
     }
 }
+
+// https://github.com/t4t5/caldir/issues/78
+#[tokio::test]
+async fn resource_with_multiple_uids_does_not_block_other_events() {
+    let leg = |uid: &str, start: &str| {
+        format!(
+            "BEGIN:VEVENT\r\nUID:{uid}\r\nDTSTART:{start}\r\nDTEND:{start}\r\nSUMMARY:Train\r\nEND:VEVENT\r\n"
+        )
+    };
+    let booking = calendar(&[
+        leg("outbound@trainline.eu", "20261001T080000Z"),
+        leg("return@trainline.eu", "20261003T170000Z"),
+    ]);
+    for reject_uid_filter in [false, true] {
+        let server = Server::new(Some(calendar(&[component(None)])), true).await;
+        {
+            let mut state = server.state.lock().unwrap();
+            state.reject_uid_filter = reject_uid_filter;
+            state
+                .extra_resources
+                .push(("/calendar/booking@trainline.eu.ics".into(), booking.clone()));
+        }
+        let events = list(&server).await.unwrap();
+        assert!(events.contains(&event(None)));
+        let uids: Vec<_> = events.iter().map(|e| e.uid.as_str()).collect();
+        assert_eq!(
+            uids,
+            ["series", "outbound@trainline.eu", "return@trainline.eu"]
+        );
+
+        let mut master = event(None);
+        master.summary = Some("Changed".into());
+        update_event("f", "f", &server.url, master.clone())
+            .await
+            .unwrap();
+        assert_eq!(server.events(), vec![master]);
+
+        // The non-compliant resource itself is never rewritten.
+        let outbound = events[1].clone();
+        let error = update_event("f", "f", &server.url, outbound.clone())
+            .await
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("Multiple UIDs"));
+        assert!(
+            delete_event("f", "f", &server.url, &outbound.event_instance_id())
+                .await
+                .is_err()
+        );
+        assert!(
+            server
+                .state
+                .lock()
+                .unwrap()
+                .requests
+                .iter()
+                .filter(|r| r.method == "PUT" || r.method == "DELETE")
+                .all(|r| r.path == "/calendar/server-assigned.ics")
+        );
+    }
+}
