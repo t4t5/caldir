@@ -326,9 +326,9 @@ pub(super) async fn find_resource(
     // text-match is a substring match; verify the complete UID before selecting.
     let mut found = None;
     for resource in resources.drain(..) {
-        let events = parse_events(&resource.data)
+        let events = parse_listed_events(&resource.data)
             .with_context(|| format!("Invalid CalDAV resource {}", resource.href))?;
-        if events[0].uid.as_str() == uid {
+        if events.iter().any(|e| e.uid.as_str() == uid) {
             ensure!(found.is_none(), "Multiple CalDAV resources match UID");
             found = Some(resource);
         }
