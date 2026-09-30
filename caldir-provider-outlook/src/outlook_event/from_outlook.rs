@@ -517,6 +517,26 @@ mod tests {
         );
     }
 
+    // Graph sends an explicit `null` for untitled events (#80).
+    const UNTITLED_EVENT_JSON: &str = r#"{
+        "id": "AAMkAD-untitled-id",
+        "iCalUId": "040000008200E00074C5B7101A82E00800000000untitled@outlook.com",
+        "subject": null,
+        "start": {"dateTime": "2026-05-01T16:00:00.0000000", "timeZone": "UTC"},
+        "end":   {"dateTime": "2026-05-01T16:30:00.0000000", "timeZone": "UTC"},
+        "isAllDay": false,
+        "showAs": "busy",
+        "type": "singleInstance"
+    }"#;
+
+    #[test]
+    fn null_subject_maps_to_no_summary() {
+        let parsed: GraphEvent =
+            serde_json::from_str(UNTITLED_EVENT_JSON).expect("event with null subject must parse");
+        let event = from_outlook(parsed, "me@example.com").unwrap();
+        assert_eq!(event.summary, None);
+    }
+
     // Microsoft Graph leaves `reminderMinutesBeforeStart` at its last value
     // (often the mailbox default of 15) when the user disables the reminder,
     // so gating on the number alone would create phantom reminders for events
