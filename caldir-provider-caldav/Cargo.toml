@@ -1,6 +1,6 @@
 [package]
 name = "caldir-provider-caldav"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2024"
 description = "Generic CalDAV provider for caldir-cli"
 license.workspace = true
