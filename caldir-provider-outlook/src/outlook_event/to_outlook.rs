@@ -64,7 +64,7 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
     GraphEvent {
         id: String::new(),
         i_cal_uid: String::new(),
-        subject: event.summary.clone().unwrap_or_default(),
+        subject: event.summary.clone(),
         body,
         start: Some(event_time_to_graph(&event.start)),
         end: event.end.as_ref().map(event_time_to_graph),

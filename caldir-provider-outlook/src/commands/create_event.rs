@@ -177,7 +177,7 @@ mod tests {
         GraphEvent {
             id: id.to_string(),
             i_cal_uid: String::new(),
-            subject: String::new(),
+            subject: None,
             body: None,
             start: None,
             end: None,

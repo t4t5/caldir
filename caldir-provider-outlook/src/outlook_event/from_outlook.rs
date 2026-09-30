@@ -178,11 +178,7 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
 
     Ok(Event {
         uid: EventUid::new(event.i_cal_uid),
-        summary: if event.subject.is_empty() {
-            None
-        } else {
-            Some(event.subject)
-        },
+        summary: event.subject.filter(|s| !s.is_empty()),
         description,
         location,
         start,
@@ -456,7 +452,7 @@ mod tests {
         GraphEvent {
             id: "test-id".to_string(),
             i_cal_uid: "test-uid".to_string(),
-            subject: "Test Event".to_string(),
+            subject: Some("Test Event".to_string()),
             body: None,
             start: Some(DateTimeTimeZone {
                 date_time: "2025-03-20T15:00:00.0000000".to_string(),
@@ -515,6 +511,26 @@ mod tests {
             parsed.original_start.as_deref(),
             Some("2026-05-01T16:00:00Z")
         );
+    }
+
+    // Graph sends an explicit `null` for untitled events (#80).
+    const UNTITLED_EVENT_JSON: &str = r#"{
+        "id": "AAMkAD-untitled-id",
+        "iCalUId": "040000008200E00074C5B7101A82E00800000000untitled@outlook.com",
+        "subject": null,
+        "start": {"dateTime": "2026-05-01T16:00:00.0000000", "timeZone": "UTC"},
+        "end":   {"dateTime": "2026-05-01T16:30:00.0000000", "timeZone": "UTC"},
+        "isAllDay": false,
+        "showAs": "busy",
+        "type": "singleInstance"
+    }"#;
+
+    #[test]
+    fn null_subject_maps_to_no_summary() {
+        let parsed: GraphEvent =
+            serde_json::from_str(UNTITLED_EVENT_JSON).expect("event with null subject must parse");
+        let event = from_outlook(parsed, "me@example.com").unwrap();
+        assert_eq!(event.summary, None);
     }
 
     // Microsoft Graph leaves `reminderMinutesBeforeStart` at its last value
