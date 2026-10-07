@@ -14,6 +14,7 @@ mod time;
 mod to_icalendar;
 pub mod tz_normalize;
 mod visibility;
+mod vtimezone;
 mod x_property;
 
 pub use attachment::Attachment;
@@ -130,7 +131,8 @@ impl Event {
             .done()
             .to_string();
 
-        self.splice_valarms_into_vevent(ics)
+        let ics = self.splice_valarms_into_vevent(ics);
+        self.splice_vtimezones(ics)
     }
 
     pub fn occurs_in_range(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> bool {
@@ -247,6 +249,19 @@ impl Event {
         let valarms: String = self.reminders.iter().map(Reminder::ics_block).collect();
 
         ics.replacen("END:VEVENT\r\n", &format!("{valarms}END:VEVENT\r\n"), 1)
+    }
+
+    fn splice_vtimezones(&self, ics: String) -> String {
+        let vtimezones = vtimezone::ics_blocks(self);
+        if vtimezones.is_empty() {
+            return ics;
+        }
+
+        ics.replacen(
+            "BEGIN:VEVENT\r\n",
+            &format!("{vtimezones}BEGIN:VEVENT\r\n"),
+            1,
+        )
     }
 
     pub fn event_instance_id(&self) -> EventInstanceId {
@@ -446,6 +461,23 @@ END:VCALENDAR
         let original_ics = r"BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:CALDIR
+BEGIN:VTIMEZONE
+TZID:Europe/Oslo
+BEGIN:DAYLIGHT
+DTSTART:20250330T020000
+TZOFFSETFROM:+0100
+TZOFFSETTO:+0200
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU
+TZNAME:CEST
+END:DAYLIGHT
+BEGIN:STANDARD
+DTSTART:20251026T030000
+TZOFFSETFROM:+0200
+TZOFFSETTO:+0100
+RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU
+TZNAME:CET
+END:STANDARD
+END:VTIMEZONE
 BEGIN:VEVENT
 CLASS:CONFIDENTIAL
 DTSTAMP:20260502T173914Z

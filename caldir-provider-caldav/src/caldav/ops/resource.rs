@@ -214,8 +214,11 @@ fn merge(data: &str, event: &Event) -> Result<String> {
     // Only siblings retain their original bytes; the edited event uses core's serializer.
     let replacement = event.to_ics_string();
     let (replacement_spans, _) = component_spans(&replacement)?;
+    let (vevent, vtimezones) = replacement_spans
+        .split_last()
+        .context("Expected one replacement VEVENT")?;
     ensure!(
-        replacement_spans.len() == 1,
+        replacement[vevent.clone()].starts_with("BEGIN:VEVENT"),
         "Expected one replacement VEVENT"
     );
     let range = document
@@ -223,7 +226,29 @@ fn merge(data: &str, event: &Event) -> Result<String> {
         .map(|i| spans[i].clone())
         .unwrap_or(end..end);
     let mut merged = data.to_owned();
-    merged.replace_range(range, &replacement[replacement_spans[0].clone()]);
+    merged.replace_range(range, &replacement[vevent.clone()]);
+
+    // Core emits a VTIMEZONE per referenced TZID; add only those the resource lacks.
+    let existing: HashSet<&str> = document
+        .root
+        .components
+        .iter()
+        .filter(|c| c.name == "VTIMEZONE")
+        .filter_map(|c| c.properties.iter().find(|p| p.name == "TZID"))
+        .map(|p| p.val.as_str())
+        .collect();
+    let missing: String = vtimezones
+        .iter()
+        .map(|span| &replacement[span.clone()])
+        .filter(|block| {
+            block
+                .lines()
+                .find_map(|line| line.strip_prefix("TZID:"))
+                .is_some_and(|tzid| !existing.contains(tzid))
+        })
+        .collect();
+    merged.insert_str(spans[0].start, &missing);
+
     parse_events(&merged)?;
     Ok(merged)
 }
@@ -570,6 +595,37 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn adds_only_missing_vtimezones() {
+        let london = "BEGIN:VTIMEZONE\r\nTZID:Europe/London\r\nBEGIN:STANDARD\r\nDTSTART:19701025T020000\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0000\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n";
+        let master = event("RRULE:FREQ=WEEKLY\r\n");
+        let data = calendar(&format!("{london}{master}"));
+        let mut replacement = parse_events(&data).unwrap().remove(0);
+        replacement.start = caldir_core::EventTime::DateTimeZoned {
+            datetime: chrono::NaiveDate::from_ymd_opt(2026, 9, 21)
+                .unwrap()
+                .and_hms_opt(8, 0, 0)
+                .unwrap(),
+            tzid: "Europe/London".into(),
+        };
+        replacement.end = Some(caldir_core::EventTime::DateTimeZoned {
+            datetime: chrono::NaiveDate::from_ymd_opt(2026, 9, 21)
+                .unwrap()
+                .and_hms_opt(9, 0, 0)
+                .unwrap(),
+            tzid: "Europe/Stockholm".into(),
+        });
+
+        let merged = merge(&data, &replacement).unwrap();
+
+        assert!(merged.starts_with(&format!(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VTIMEZONE\r\nTZID:Europe/Stockholm\r\n"
+        )));
+        assert!(merged.contains(london));
+        assert_eq!(merged.matches("BEGIN:VTIMEZONE").count(), 2);
+        assert_eq!(parse_events(&merged).unwrap(), vec![replacement]);
     }
 
     #[test]

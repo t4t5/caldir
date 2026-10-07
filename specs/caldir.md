@@ -45,7 +45,7 @@ Reference: [RFC 5545](https://datatracker.ietf.org/doc/html/rfc5545)
 
 **Timezone handling:** We preserve the original timezone format from ICS files for round-tripping. Events from Google come as UTC. Locally-created events use floating time (no timezone suffix). Events with TZID keep their zone and wall clock, but the name is normalized to IANA at parse; offsets with no IANA equivalent (e.g. `GMT+0530`) convert to UTC.
 
-**Note:** We don't generate VTIMEZONE components—we rely on the TZID parameter referencing standard timezone names (IANA timezone database). Most modern calendar apps resolve these without needing embedded VTIMEZONE definitions.
+**VTIMEZONE:** RFC 5545 requires a `VTIMEZONE` for every TZID, so we write one per referenced zone before the VEVENT, generated from the bundled tzdb. It's derived data: regenerated on every write and ignored on parse, so the IANA TZID stays the source of truth. Regular DST zones get yearly `RRULE` observances; irregular history is listed as explicit transitions.
 
 #### `DTEND`
 **What:** When the event ends.
@@ -222,7 +222,6 @@ These are valid iCalendar fields we intentionally don't use:
 | `RDATE` | Extra recurrence dates—RRULE+EXDATE covers 99% of cases |
 | `CONTACT` | Contact info—ORGANIZER is sufficient |
 | `COMMENT` | Extra comments—rarely used |
-| `VTIMEZONE` | Timezone definitions—we use TZID parameter with IANA names instead |
 
 ---
 
