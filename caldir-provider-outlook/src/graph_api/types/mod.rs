@@ -124,6 +124,10 @@ pub struct GraphEvent {
     /// dropped).
     #[serde(default, rename = "type", skip_serializing_if = "String::is_empty")]
     pub event_type: String,
+    /// `OID.{seriesMasterId}.{YYYY-MM-DD}` per occurrence deleted from the
+    /// series. Only returned on a GET of a series master by id.
+    #[serde(default, skip_serializing)]
+    pub cancelled_occurrences: Vec<String>,
 }
 
 /// Event body (content + type).

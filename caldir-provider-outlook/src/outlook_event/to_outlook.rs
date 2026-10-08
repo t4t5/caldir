@@ -85,6 +85,7 @@ pub fn to_outlook(event: &Event) -> GraphEvent {
         original_start: None,
         response_status: None,
         event_type: String::new(),
+        cancelled_occurrences: Vec::new(),
     }
 }
 

@@ -119,7 +119,7 @@ pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
     Ok(all_events)
 }
 
-const EVENT_SELECT: &str = "id,iCalUId,subject,body,start,end,originalStartTimeZone,originalEndTimeZone,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,isReminderOn,showAs,sensitivity,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus,type";
+const EVENT_SELECT: &str = "id,iCalUId,subject,body,start,end,originalStartTimeZone,originalEndTimeZone,location,isAllDay,isCancelled,recurrence,attendees,organizer,reminderMinutesBeforeStart,isReminderOn,showAs,sensitivity,lastModifiedDateTime,onlineMeeting,originalStart,responseStatus,type,cancelledOccurrences";
 
 #[derive(Debug, PartialEq, Eq)]
 struct WindowDiscovery {
@@ -218,7 +218,7 @@ fn merge_event_ids(window_ids: &[String], master_ids: &[String]) -> Vec<String> 
     ids
 }
 
-async fn fetch_event(graph: &GraphClient, event_id: &str) -> Result<GraphEvent> {
+pub(crate) async fn fetch_event(graph: &GraphClient, event_id: &str) -> Result<GraphEvent> {
     let path = format!("/me/events/{event_id}?$select={EVENT_SELECT}");
     graph
         .get(&path)

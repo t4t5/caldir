@@ -42,7 +42,13 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
             })?;
 
         let rid_time = rid.as_event_time();
-        let instance_id = find_instance_id(&graph, master_id, rid_time).await?;
+        let instance_id = find_instance_id(&graph, master_id, rid_time)
+            .await?
+            .ok_or_else(|| {
+                anyhow!(
+                    "No Outlook instance found for recurrence_id={rid_time:?} on master={master_id}"
+                )
+            })?;
 
         let body = to_outlook(&cmd.event);
         let path = format!("/me/events/{}", instance_id);
@@ -90,11 +96,11 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
 /// Find the Outlook instance id whose `originalStart` matches the override's
 /// `recurrence_id`. We query a ±1 day window around the recurrence_id so
 /// timezone skew doesn't push the instance out of range.
-async fn find_instance_id(
+pub(crate) async fn find_instance_id(
     graph: &GraphClient,
     master_id: &str,
     recurrence_id: &EventTime,
-) -> Result<String> {
+) -> Result<Option<String>> {
     let rid_utc = recurrence_id.to_utc();
 
     let start = (rid_utc - Duration::days(1)).format("%Y-%m-%dT%H:%M:%SZ");
@@ -114,14 +120,7 @@ async fn find_instance_id(
         .await
         .context("Failed to parse instances response")?;
 
-    match find_matching_instance(&body.value, recurrence_id) {
-        Some(instance) => Ok(instance.id.clone()),
-        None => Err(anyhow!(
-            "No Outlook instance found for recurrence_id={:?} on master={}",
-            recurrence_id,
-            master_id
-        )),
-    }
+    Ok(find_matching_instance(&body.value, recurrence_id).map(|instance| instance.id.clone()))
 }
 
 /// Pick the instance whose scheduled start lines up with `recurrence_id`.
@@ -198,6 +197,7 @@ mod tests {
             original_start: original_start.map(|s| s.to_string()),
             response_status: None,
             event_type: String::new(),
+            cancelled_occurrences: Vec::new(),
         }
     }
 

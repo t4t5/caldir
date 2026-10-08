@@ -53,7 +53,15 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
         .recurrence
         .as_ref()
         .map(recurrence_from_outlook)
-        .transpose()?;
+        .transpose()?
+        .map(|mut rec| {
+            rec.exdates = event
+                .cancelled_occurrences
+                .iter()
+                .filter_map(|id| cancelled_occurrence_exdate(id, &start))
+                .collect();
+            rec
+        });
 
     // For exception instances, original_start serves as recurrence_id.
     // Microsoft Graph returns this as a UTC RFC3339 timestamp.
@@ -199,6 +207,23 @@ pub fn from_outlook(event: GraphEvent, account_email: &str) -> Result<Event> {
     })
 }
 
+/// Map a `cancelledOccurrences` entry (`OID.{masterId}.YYYY-MM-DD`) to an
+/// EXDATE. The date is local to the series, so reuse the master's start time.
+fn cancelled_occurrence_exdate(occurrence_id: &str, start: &EventTime) -> Option<EventTime> {
+    let (_, date) = occurrence_id.rsplit_once('.')?;
+    let date = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
+
+    Some(match start {
+        EventTime::Date(_) => EventTime::Date(date),
+        EventTime::DateTimeUtc(dt) => EventTime::DateTimeUtc(date.and_time(dt.time()).and_utc()),
+        EventTime::DateTimeFloating(dt) => EventTime::DateTimeFloating(date.and_time(dt.time())),
+        EventTime::DateTimeZoned { datetime, tzid } => EventTime::DateTimeZoned {
+            datetime: date.and_time(datetime.time()),
+            tzid: tzid.clone(),
+        },
+    })
+}
+
 fn parse_original_start(s: &str, is_all_day: bool) -> Result<EventTime> {
     if is_all_day {
         let date = NaiveDate::parse_from_str(&s[..s.len().min(10)], "%Y-%m-%d")
@@ -293,7 +318,7 @@ fn outlook_to_participation_status(status: &str) -> Option<ParticipationStatus> 
     }
 }
 
-/// Convert Graph PatternedRecurrence to an RRULE string + exdates.
+/// Convert Graph PatternedRecurrence to an RRULE string.
 fn recurrence_from_outlook(rec: &PatternedRecurrence) -> Result<Recurrence> {
     let mut parts = Vec::new();
 
@@ -479,6 +504,7 @@ mod tests {
             original_start: None,
             response_status: None,
             event_type: String::new(),
+            cancelled_occurrences: Vec::new(),
         }
     }
 
@@ -701,6 +727,62 @@ mod tests {
             .recurrence
             .expect("series master must carry recurrence");
         assert_eq!(rec.rrule, "FREQ=DAILY;UNTIL=20260801");
+    }
+
+    // Graph omits deleted occurrences from `/instances`; only the master's
+    // `cancelledOccurrences` records them (#82).
+    #[test]
+    fn cancelled_occurrences_become_exdates_in_series_timezone() {
+        let mut parsed: GraphEvent = serde_json::from_str(SERIES_MASTER_JSON).unwrap();
+        parsed.original_start_time_zone = Some("GMT Standard Time".to_string());
+        parsed.cancelled_occurrences = vec![
+            "OID.AAMkAD-master-id.2026-05-02".to_string(),
+            "OID.AAMkAD-master-id.2026-11-05".to_string(),
+            "garbage".to_string(),
+        ];
+
+        let event = from_outlook(parsed, "me@example.com").unwrap();
+        let exdates = event.recurrence.unwrap().exdates;
+
+        let zoned = |s: &str| EventTime::DateTimeZoned {
+            datetime: NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S").unwrap(),
+            tzid: "Europe/London".to_string(),
+        };
+        // 16:00Z is 17:00 BST; the November EXDATE keeps 17:00 local (GMT).
+        assert_eq!(
+            exdates,
+            vec![zoned("2026-05-02T17:00:00"), zoned("2026-11-05T17:00:00")]
+        );
+    }
+
+    #[test]
+    fn cancelled_all_day_occurrence_becomes_date_exdate() {
+        let mut parsed: GraphEvent = serde_json::from_str(SERIES_MASTER_JSON).unwrap();
+        parsed.is_all_day = true;
+        parsed.cancelled_occurrences = vec!["OID.AAMkAD-master-id.2026-05-03".to_string()];
+
+        let event = from_outlook(parsed, "me@example.com").unwrap();
+
+        assert_eq!(
+            event.recurrence.unwrap().exdates,
+            vec![EventTime::Date(
+                NaiveDate::from_ymd_opt(2026, 5, 3).unwrap()
+            )]
+        );
+    }
+
+    #[test]
+    fn cancelled_occurrences_deserialize_from_series_master() {
+        let json = SERIES_MASTER_JSON.replacen(
+            r#""type": "seriesMaster","#,
+            r#""type": "seriesMaster", "cancelledOccurrences": ["OID.AAMkAD-master-id.2026-05-02"],"#,
+            1,
+        );
+        let parsed: GraphEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed.cancelled_occurrences,
+            vec!["OID.AAMkAD-master-id.2026-05-02"]
+        );
     }
 
     #[test]
