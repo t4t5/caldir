@@ -20,17 +20,24 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
 
     let account_id = Session::account_identifier(&session.username, &session.server_url);
 
+    // Best effort: without it, invites can't be matched but sync still works.
+    let email = ops::find_user_email(username, password, &session.principal_url)
+        .await
+        .ok()
+        .flatten();
+
     Ok(raw_calendars
         .into_iter()
-        .map(|cal| raw_to_config(&account_id, cal))
+        .map(|cal| raw_to_config(&account_id, email.as_deref(), cal))
         .collect())
 }
 
 /// Build a caldir CalendarConfig from a raw CalDAV calendar entry.
 ///
 /// Pure transformation — no IO — so it can be unit-tested without a server.
-fn raw_to_config(account_id: &str, cal: RawCalendar) -> CalendarConfig {
-    let params = CaldavRemoteConfig::new(account_id, &cal.url).into_remote_config_params();
+fn raw_to_config(account_id: &str, email: Option<&str>, cal: RawCalendar) -> CalendarConfig {
+    let params = CaldavRemoteConfig::new(account_id, &cal.url, email.map(str::to_string))
+        .into_remote_config_params();
     let remote_config = RemoteConfig::new(ProviderSlug::from(PROVIDER_NAME), params);
 
     CalendarConfig::new(
@@ -59,6 +66,7 @@ mod tests {
     fn carries_name_and_read_only() {
         let cfg = raw_to_config(
             "me@fastmail.com",
+            None,
             raw(
                 "Personal",
                 "https://server/cal/1/",
@@ -75,6 +83,7 @@ mod tests {
     fn remote_config_carries_account_url_and_provider_slug() {
         let cfg = raw_to_config(
             "me@fastmail.com",
+            None,
             raw("Personal", "https://server/cal/1/", None, None),
         );
 
@@ -94,9 +103,23 @@ mod tests {
     fn read_only_unknown_passes_through_as_none() {
         let cfg = raw_to_config(
             "me@fastmail.com",
+            None,
             raw("Personal", "https://server/cal/1/", None, None),
         );
 
         assert_eq!(cfg.read_only(), None);
+    }
+
+    // Regression: logins like Infomaniak's "AB12345" aren't the invitee address (rencal#157).
+    #[test]
+    fn account_email_uses_discovered_address_over_login() {
+        let cfg = raw_to_config(
+            "AB12345@sync.infomaniak.com",
+            Some("alice@example.com"),
+            raw("Personal", "https://server/cal/1/", None, None),
+        );
+
+        let remote = cfg.remote_config().unwrap();
+        assert_eq!(remote.account_email(), Some("alice@example.com"));
     }
 }
