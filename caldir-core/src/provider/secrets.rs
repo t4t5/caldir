@@ -5,7 +5,6 @@
 
 use serde::{Serialize, de::DeserializeOwned};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -49,26 +48,18 @@ pub enum SecretError {
     },
 }
 
-trait SecretBackend: std::fmt::Debug + Send + Sync {
-    fn read(&self, key: &str) -> std::io::Result<Option<String>>;
-    fn write(&self, key: &str, value: &str) -> std::io::Result<()>;
-    fn delete(&self, key: &str) -> std::io::Result<()>;
-}
-
-/// Typed access to a provider's secrets.
+/// Typed access to a provider's secrets, stored as owner-only TOML files at
+/// `{root}/{key}.toml`.
 ///
 /// Keys are `/`-separated names such as `session/alice@example.com`.
-/// Values are serialized as TOML.
 #[derive(Debug, Clone)]
 pub struct SecretStore {
-    backend: Arc<dyn SecretBackend>,
+    root: PathBuf,
 }
 
 impl SecretStore {
-    pub(super) fn files(root: impl Into<PathBuf>) -> Self {
-        Self {
-            backend: Arc::new(FileBackend { root: root.into() }),
-        }
+    pub(super) fn new(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
     }
 
     pub fn load<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>, SecretError> {
@@ -83,18 +74,17 @@ impl SecretStore {
             })
     }
 
+    // `atomic_write` stages in a `NamedTempFile`, which is created 0600 on Unix.
     pub fn save<T: Serialize>(&self, key: &str, value: &T) -> Result<(), SecretError> {
-        validate_key(key)?;
+        let path = self.path(key)?;
         let contents = toml::to_string_pretty(value).map_err(|source| SecretError::Serialize {
             key: key.to_string(),
             source,
         })?;
-        self.backend
-            .write(key, &contents)
-            .map_err(|source| SecretError::Write {
-                key: key.to_string(),
-                source,
-            })
+        crate::utils::atomic_write(&path, contents.as_bytes()).map_err(|err| SecretError::Write {
+            key: key.to_string(),
+            source: with_path(err, &path),
+        })
     }
 
     pub fn exists(&self, key: &str) -> Result<bool, SecretError> {
@@ -103,21 +93,31 @@ impl SecretStore {
 
     /// Deleting a missing secret is not an error.
     pub fn delete(&self, key: &str) -> Result<(), SecretError> {
-        validate_key(key)?;
-        self.backend
-            .delete(key)
-            .map_err(|source| SecretError::Delete {
+        let path = self.path(key)?;
+        match std::fs::remove_file(&path) {
+            Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(SecretError::Delete {
                 key: key.to_string(),
-                source,
-            })
+                source: with_path(err, &path),
+            }),
+            _ => Ok(()),
+        }
     }
 
     fn read(&self, key: &str) -> Result<Option<String>, SecretError> {
+        let path = self.path(key)?;
+        match std::fs::read_to_string(&path) {
+            Ok(contents) => Ok(Some(contents)),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(err) => Err(SecretError::Read {
+                key: key.to_string(),
+                source: with_path(err, &path),
+            }),
+        }
+    }
+
+    fn path(&self, key: &str) -> Result<PathBuf, SecretError> {
         validate_key(key)?;
-        self.backend.read(key).map_err(|source| SecretError::Read {
-            key: key.to_string(),
-            source,
-        })
+        Ok(self.root.join(format!("{key}.toml")))
     }
 }
 
@@ -129,43 +129,6 @@ fn validate_key(key: &str) -> Result<(), SecretError> {
         Ok(())
     } else {
         Err(SecretError::InvalidKey(key.to_string()))
-    }
-}
-
-/// Owner-only TOML files at `{root}/{key}.toml`.
-#[derive(Debug)]
-struct FileBackend {
-    root: PathBuf,
-}
-
-impl FileBackend {
-    fn path(&self, key: &str) -> PathBuf {
-        self.root.join(format!("{key}.toml"))
-    }
-}
-
-impl SecretBackend for FileBackend {
-    fn read(&self, key: &str) -> std::io::Result<Option<String>> {
-        let path = self.path(key);
-        match std::fs::read_to_string(&path) {
-            Ok(contents) => Ok(Some(contents)),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(err) => Err(with_path(err, &path)),
-        }
-    }
-
-    // `atomic_write` stages in a `NamedTempFile`, which is created 0600 on Unix.
-    fn write(&self, key: &str, value: &str) -> std::io::Result<()> {
-        let path = self.path(key);
-        crate::utils::atomic_write(&path, value.as_bytes()).map_err(|err| with_path(err, &path))
-    }
-
-    fn delete(&self, key: &str) -> std::io::Result<()> {
-        let path = self.path(key);
-        match std::fs::remove_file(&path) {
-            Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(with_path(err, &path)),
-            _ => Ok(()),
-        }
     }
 }
 
@@ -185,7 +148,7 @@ mod tests {
 
     fn store() -> (tempfile::TempDir, SecretStore) {
         let tmp = tempfile::tempdir().unwrap();
-        let store = SecretStore::files(tmp.path());
+        let store = SecretStore::new(tmp.path());
         (tmp, store)
     }
 

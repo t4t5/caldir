@@ -22,7 +22,7 @@ impl ProviderStorage {
     // For tests:
     pub fn new(root: impl Into<PathBuf>) -> Self {
         let root = root.into();
-        let secrets = SecretStore::files(&root);
+        let secrets = SecretStore::new(&root);
         Self { root, secrets }
     }
 
