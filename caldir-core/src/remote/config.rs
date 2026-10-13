@@ -47,6 +47,16 @@ impl RemoteConfig {
         self.params().get(&key).and_then(|v| v.as_str())
     }
 
+    /// The account's email: `{provider}_email` if set, else an email-shaped account identifier.
+    pub fn account_email(&self) -> Option<&str> {
+        let key = format!("{}_email", self.provider_slug());
+        self.params()
+            .get(&key)
+            .and_then(|v| v.as_str())
+            .or_else(|| self.account_identifier())
+            .filter(|email| email.contains('@'))
+    }
+
     #[cfg(test)]
     fn from_toml(s: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(s)
@@ -130,6 +140,43 @@ hooli_account = "user@hmail.com"
         let remote_config = RemoteConfig::from_toml(r#"provider = "hooli""#).unwrap();
 
         assert_eq!(remote_config.account_identifier(), None);
+    }
+
+    #[test]
+    fn account_email_prefers_provider_email_field() {
+        let toml_str = r#"
+provider = "caldav"
+caldav_account = "AB12345@sync.infomaniak.com"
+caldav_email = "alice@example.com"
+"#;
+
+        let remote_config = RemoteConfig::from_toml(toml_str).unwrap();
+
+        assert_eq!(remote_config.account_email(), Some("alice@example.com"));
+    }
+
+    #[test]
+    fn account_email_falls_back_to_account_identifier() {
+        let toml_str = r#"
+provider = "hooli"
+hooli_account = "user@hmail.com"
+"#;
+
+        let remote_config = RemoteConfig::from_toml(toml_str).unwrap();
+
+        assert_eq!(remote_config.account_email(), Some("user@hmail.com"));
+    }
+
+    #[test]
+    fn account_email_ignores_non_email_identifier() {
+        let toml_str = r#"
+provider = "hooli"
+hooli_account = "12345"
+"#;
+
+        let remote_config = RemoteConfig::from_toml(toml_str).unwrap();
+
+        assert_eq!(remote_config.account_email(), None);
     }
 
     #[test]

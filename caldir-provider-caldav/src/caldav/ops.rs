@@ -11,6 +11,7 @@ pub mod discover;
 pub mod list_calendars;
 pub mod list_events;
 pub mod update_event;
+pub mod user_email;
 
 pub use create_event::create_event;
 pub use delete_event::delete_event;
@@ -18,3 +19,4 @@ pub use discover::{DiscoveredEndpoints, discover_endpoints};
 pub use list_calendars::{RawCalendar, list_calendars_raw};
 pub use list_events::fetch_events;
 pub use update_event::update_event;
+pub use user_email::find_user_email;

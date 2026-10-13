@@ -9,13 +9,19 @@ use serde::{Deserialize, Serialize};
 pub struct CaldavRemoteConfig {
     pub caldav_account: String,
     pub caldav_calendar_url: String,
+    pub caldav_email: Option<String>,
 }
 
 impl CaldavRemoteConfig {
-    pub fn new(account: impl Into<String>, calendar_url: impl Into<String>) -> Self {
+    pub fn new(
+        account: impl Into<String>,
+        calendar_url: impl Into<String>,
+        email: Option<String>,
+    ) -> Self {
         Self {
             caldav_account: account.into(),
             caldav_calendar_url: calendar_url.into(),
+            caldav_email: email,
         }
     }
 
@@ -29,6 +35,9 @@ impl CaldavRemoteConfig {
             "caldav_calendar_url".to_string(),
             toml::Value::String(self.caldav_calendar_url),
         );
+        if let Some(email) = self.caldav_email {
+            params.insert("caldav_email".to_string(), toml::Value::String(email));
+        }
         params
     }
 }
@@ -51,9 +60,15 @@ impl TryFrom<&RemoteConfigParams> for CaldavRemoteConfig {
             .context("CalDAV remote configuration field `caldav_calendar_url` must be a string")?
             .to_string();
 
+        let caldav_email = params
+            .get("caldav_email")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+
         Ok(Self {
             caldav_account,
             caldav_calendar_url,
+            caldav_email,
         })
     }
 }
@@ -64,14 +79,18 @@ mod tests {
 
     #[test]
     fn into_remote_config_params_round_trips() {
-        let original =
-            CaldavRemoteConfig::new("me@fastmail.com", "https://caldav.fastmail.com/dav/cal/1/");
+        let original = CaldavRemoteConfig::new(
+            "me@fastmail.com",
+            "https://caldav.fastmail.com/dav/cal/1/",
+            Some("me@example.com".to_string()),
+        );
         let params = original.clone().into_remote_config_params();
 
         let restored = CaldavRemoteConfig::try_from(&params).unwrap();
 
         assert_eq!(restored.caldav_account, original.caldav_account);
         assert_eq!(restored.caldav_calendar_url, original.caldav_calendar_url);
+        assert_eq!(restored.caldav_email, original.caldav_email);
     }
 
     #[test]

@@ -361,8 +361,7 @@ impl Calendar {
 
     pub fn remote_email(&self) -> Option<&str> {
         self.remote_config()
-            .and_then(|remote_config| remote_config.account_identifier())
-            .filter(|id| id.contains('@'))
+            .and_then(|remote_config| remote_config.account_email())
     }
 
     pub(crate) fn record_sync_bases(
