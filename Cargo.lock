@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-cli"
-version = "0.14.6"
+version = "0.14.7"
 dependencies = [
  "anyhow",
  "caldir-core",
@@ -204,7 +204,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-core"
-version = "0.17.1"
+version = "0.17.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -235,7 +235,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-provider-caldav"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -261,7 +261,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-provider-google"
-version = "0.11.0"
+version = "0.11.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -281,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-provider-icloud"
-version = "0.3.4"
+version = "0.3.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -299,7 +299,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-provider-outlook"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "anyhow",
  "async-trait",
