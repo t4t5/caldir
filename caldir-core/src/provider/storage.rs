@@ -1,6 +1,9 @@
 //! Provider on-disk storage root.
-//! For providers that need to persist session files, OAuth tokens etc.
+//! Credentials go through [`ProviderStorage::secrets`]; `root` is for
+//! non-sensitive state such as caches.
 use std::path::{Path, PathBuf};
+
+use super::SecretStore;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -12,12 +15,15 @@ pub enum StorageError {
 #[derive(Debug, Clone)]
 pub struct ProviderStorage {
     root: PathBuf,
+    secrets: SecretStore,
 }
 
 impl ProviderStorage {
     // For tests:
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        let root = root.into();
+        let secrets = SecretStore::files(&root);
+        Self { root, secrets }
     }
 
     /// Resolve the storage root for a provider.
@@ -31,6 +37,10 @@ impl ProviderStorage {
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    pub fn secrets(&self) -> &SecretStore {
+        &self.secrets
     }
 }
 

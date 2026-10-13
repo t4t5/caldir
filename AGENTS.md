@@ -55,6 +55,8 @@ A provider (`caldir-provider-xxx`) is a binary that speaks caldir's JSON RPC ove
 
 Providers that need on-disk state (OAuth tokens, app passwords, sync cursors) write to the path in `CALDIR_PROVIDER_STORAGE_DIR`, falling back to `~/.config/caldir/providers/{name}/` on Linux and macOS or `%APPDATA%\caldir\providers\{name}\` on Windows if unset.
 
+Credentials (tokens, passwords, key material) must go through `ProviderStorage::secrets()`, never raw files under `root()`, so the backend can move to an OS keyring without provider changes.
+
 ### Adding a default provider
 
 When shipping a new default provider with caldir, update:

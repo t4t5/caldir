@@ -1,16 +1,12 @@
-//! Filesystem-backed storage for [`Session`] credentials.
+//! Secret-backed storage for [`Session`] credentials.
 
 use anyhow::{Context, Result};
 use caldir_core::provider::ProviderStorage;
-use std::path::PathBuf;
 
 use super::Session;
 
-/// Reads and writes [`Session`] files under a provider's storage root.
-///
-/// Layout: `{storage.root()}/session/{slug}.toml`, with the slug derived
-/// from the Apple ID (the account identifier). Session files contain
-/// plaintext credentials; on Unix they're chmod'd to `0600`.
+/// Reads and writes [`Session`]s as secrets keyed `session/{slug}`, the slug
+/// derived from the Apple ID (the account identifier).
 pub struct SessionStore {
     storage: ProviderStorage,
 }
@@ -21,57 +17,22 @@ impl SessionStore {
     }
 
     pub fn save(&self, session: &Session) -> Result<()> {
-        let path = self.path_for(&session.apple_id);
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).with_context(|| {
-                format!("Failed to create session directory: {}", parent.display())
-            })?;
-        }
-
-        let contents = toml::to_string_pretty(session).context("Failed to serialize session")?;
-
-        std::fs::write(&path, contents)
-            .with_context(|| format!("Failed to write session to {}", path.display()))?;
-
-        // Plaintext credentials — owner-only.
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-                .with_context(|| format!("Failed to set permissions on {}", path.display()))?;
-        }
-
+        self.storage
+            .secrets()
+            .save(&Self::key(&session.apple_id), session)?;
         Ok(())
     }
 
     /// Load a session by its `account_identifier` (= Apple ID).
-    ///
-    /// The slug is forward-deterministic from the Apple ID, so we compute
-    /// the path directly rather than scanning the directory.
     pub fn load(&self, account_identifier: &str) -> Result<Session> {
-        let path = self.path_for(account_identifier);
-
-        if !path.exists() {
-            anyhow::bail!("iCloud session for {} not found!", account_identifier);
-        }
-
-        let contents = std::fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read iCloud session from {}", path.display()))?;
-
-        let session: Session = toml::from_str(&contents)
-            .with_context(|| format!("Failed to parse iCloud session from {}", path.display()))?;
-
-        Ok(session)
+        self.storage
+            .secrets()
+            .load(&Self::key(account_identifier))?
+            .with_context(|| format!("iCloud session for {account_identifier} not found!"))
     }
 
-    fn session_dir(&self) -> PathBuf {
-        self.storage.root().join("session")
-    }
-
-    fn path_for(&self, apple_id: &str) -> PathBuf {
-        self.session_dir()
-            .join(format!("{}.toml", Session::slug(apple_id)))
+    fn key(apple_id: &str) -> String {
+        format!("session/{}", Session::slug(apple_id))
     }
 }
 

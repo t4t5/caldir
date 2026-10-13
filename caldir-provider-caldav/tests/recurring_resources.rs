@@ -443,7 +443,7 @@ async fn core_push_pull_converges_for_moves_and_cancellations() {
     let tmp = tempfile::tempdir().unwrap();
     let storage = tmp.path().join("storage");
     std::fs::create_dir_all(storage.join("session")).unwrap();
-    std::fs::write(storage.join("session/fake.toml"), format!("server_url = {:?}\nusername = 'fake'\npassword = 'fake'\nprincipal_url = {:?}\ncalendar_home_url = {:?}\n", server.url, server.url, server.url)).unwrap();
+    std::fs::write(storage.join("session/fake_127_0_0_1.toml"), format!("server_url = {:?}\nusername = 'fake'\npassword = 'fake'\nprincipal_url = {:?}\ncalendar_home_url = {:?}\n", server.url, server.url, server.url)).unwrap();
     let bin_dir = tmp.path().join("bin");
     std::fs::create_dir(&bin_dir).unwrap();
     let wrapper = bin_dir.join("caldir-provider-caldav");

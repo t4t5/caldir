@@ -31,14 +31,9 @@ impl Session {
         }
     }
 
-    /// Derive a slug from username and server host for use as a filename.
-    pub(super) fn slug(username: &str, server_url: &str) -> String {
-        let host = url::Url::parse(server_url)
-            .ok()
-            .and_then(|u| u.host_str().map(|h| h.to_string()))
-            .unwrap_or_else(|| "unknown".to_string());
-        let raw = format!("{}@{}", username, host);
-        raw.replace(['/', '\\', ':', '@', '.'], "_")
+    /// Filesystem-safe slug of an account identifier.
+    pub(super) fn slug(account_identifier: &str) -> String {
+        account_identifier.replace(['/', '\\', ':', '@', '.'], "_")
     }
 
     /// Build an account identifier like "user@host".
@@ -62,7 +57,10 @@ mod tests {
 
     #[test]
     fn slug_is_filesystem_safe() {
-        let slug = Session::slug("alice@example.com", "https://caldav.fastmail.com/");
+        let slug = Session::slug(&Session::account_identifier(
+            "alice@example.com",
+            "https://caldav.fastmail.com/",
+        ));
         assert!(!slug.contains(['/', '\\', ':', '@', '.']));
         assert!(slug.contains("alice"));
         assert!(slug.contains("fastmail"));

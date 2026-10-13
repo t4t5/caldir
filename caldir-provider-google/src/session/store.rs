@@ -1,11 +1,10 @@
-//! Filesystem-backed storage for [`Session`] credentials + OAuth refresh.
+//! Secret-backed storage for [`Session`] credentials + OAuth refresh.
 
 use anyhow::{Context, Result};
 use caldir_core::provider::ProviderStorage;
 use chrono::{Duration, Utc};
 use google_calendar::Client;
 use serde::Deserialize;
-use std::path::PathBuf;
 
 use crate::app_config::AppConfigStore;
 
@@ -13,11 +12,8 @@ use super::types::{AuthMode, Session, SessionData};
 
 const HOSTED_REFRESH_URL: &str = "https://caldir.org/auth/google/refresh";
 
-/// Reads and writes [`Session`] files under a provider's storage root.
-///
-/// Layout: `{storage.root()}/session/{slug}.toml`, slug forward-deterministic
-/// from the account email. Files contain OAuth tokens; on Unix they're
-/// chmod'd to `0600`.
+/// Reads and writes [`Session`]s as secrets keyed `session/{slug}`, the slug
+/// forward-deterministic from the account email.
 pub struct SessionStore {
     storage: ProviderStorage,
 }
@@ -28,55 +24,18 @@ impl SessionStore {
     }
 
     pub fn save(&self, session: &Session) -> Result<()> {
-        let path = self.path_for(&session.account_email);
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).with_context(|| {
-                format!("Failed to create session directory: {}", parent.display())
-            })?;
-        }
-
-        let contents =
-            toml::to_string_pretty(&session.data).context("Failed to serialize session")?;
-
-        std::fs::write(&path, contents)
-            .with_context(|| format!("Failed to write session to {}", path.display()))?;
-
-        // Plaintext OAuth tokens — owner-only.
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-                .with_context(|| format!("Failed to set permissions on {}", path.display()))?;
-        }
-
+        self.storage
+            .secrets()
+            .save(&Self::key(&session.account_email), &session.data)?;
         Ok(())
     }
 
-    /// Load a session by its account email.
-    ///
-    /// The slug is forward-deterministic from the email, so we compute the
-    /// path directly rather than scanning the directory.
     pub fn load(&self, account_email: &str) -> Result<Session> {
-        let path = self.path_for(account_email);
-
-        if !path.exists() {
-            anyhow::bail!("Google OAuth session for {} not found!", account_email);
-        }
-
-        let contents = std::fs::read_to_string(&path).with_context(|| {
-            format!(
-                "Failed to read Google OAuth session from {}",
-                path.display()
-            )
-        })?;
-
-        let data: SessionData = toml::from_str(&contents).with_context(|| {
-            format!(
-                "Failed to parse Google OAuth session from {}",
-                path.display()
-            )
-        })?;
+        let data: SessionData = self
+            .storage
+            .secrets()
+            .load(&Self::key(account_email))?
+            .with_context(|| format!("Google OAuth session for {account_email} not found!"))?;
 
         Ok(Session {
             account_email: account_email.to_string(),
@@ -203,13 +162,8 @@ impl SessionStore {
         Ok(())
     }
 
-    fn session_dir(&self) -> PathBuf {
-        self.storage.root().join("session")
-    }
-
-    fn path_for(&self, account_email: &str) -> PathBuf {
-        self.session_dir()
-            .join(format!("{}.toml", Session::slug(account_email)))
+    fn key(account_email: &str) -> String {
+        format!("session/{}", Session::slug(account_email))
     }
 }
 

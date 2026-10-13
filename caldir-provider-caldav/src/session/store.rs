@@ -1,16 +1,12 @@
-//! Filesystem-backed storage for [`Session`] credentials.
+//! Secret-backed storage for [`Session`] credentials.
 
 use anyhow::{Context, Result};
 use caldir_core::provider::ProviderStorage;
-use std::path::PathBuf;
 
 use super::Session;
 
-/// Reads and writes [`Session`] files under a provider's storage root.
-///
-/// Layout: `{storage.root()}/session/{slug}.toml`, with the slug derived from
-/// the session's username + server host. Session files contain plaintext
-/// credentials; on Unix they're chmod'd to `0600`.
+/// Reads and writes [`Session`]s as secrets keyed `session/{slug}`, the slug
+/// derived from the account identifier ("user@host").
 pub struct SessionStore {
     storage: ProviderStorage,
 }
@@ -21,64 +17,29 @@ impl SessionStore {
     }
 
     pub fn save(&self, session: &Session) -> Result<()> {
-        let path = self.path_for(&session.username, &session.server_url);
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).with_context(|| {
-                format!("Failed to create session directory: {}", parent.display())
-            })?;
-        }
-
-        let contents = toml::to_string_pretty(session).context("Failed to serialize session")?;
-
-        std::fs::write(&path, contents)
-            .with_context(|| format!("Failed to write session to {}", path.display()))?;
-
-        // Plaintext credentials — owner-only.
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-                .with_context(|| format!("Failed to set permissions on {}", path.display()))?;
-        }
-
+        let account_identifier =
+            Session::account_identifier(&session.username, &session.server_url);
+        self.storage
+            .secrets()
+            .save(&Self::key(&account_identifier), session)?;
         Ok(())
     }
 
     /// Find a session by its `account_identifier()` form ("user@host").
-    ///
-    /// Scans the session directory rather than computing the filename
-    /// directly, since the on-disk slug encoding (`.` → `_`) is one-way.
     pub fn load(&self, account_identifier: &str) -> Result<Session> {
-        let session_dir = self.session_dir();
-        if !session_dir.exists() {
-            anyhow::bail!("CalDAV session for {} not found!", account_identifier);
-        }
-
-        for entry in std::fs::read_dir(&session_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("toml") {
-                let contents = std::fs::read_to_string(&path)?;
-                if let Ok(session) = toml::from_str::<Session>(&contents) {
-                    let id = Session::account_identifier(&session.username, &session.server_url);
-                    if id == account_identifier {
-                        return Ok(session);
-                    }
-                }
-            }
-        }
-
-        anyhow::bail!("CalDAV session for {} not found!", account_identifier);
+        self.storage
+            .secrets()
+            .load::<Session>(&Self::key(account_identifier))?
+            // Distinct identifiers can share a slug; don't hand back the other account.
+            .filter(|session| {
+                Session::account_identifier(&session.username, &session.server_url)
+                    == account_identifier
+            })
+            .with_context(|| format!("CalDAV session for {account_identifier} not found!"))
     }
 
-    fn session_dir(&self) -> PathBuf {
-        self.storage.root().join("session")
-    }
-
-    fn path_for(&self, username: &str, server_url: &str) -> PathBuf {
-        self.session_dir()
-            .join(format!("{}.toml", Session::slug(username, server_url)))
+    fn key(account_identifier: &str) -> String {
+        format!("session/{}", Session::slug(account_identifier))
     }
 }
 
@@ -112,7 +73,10 @@ mod tests {
 
         let expected = tmp.path().join("session").join(format!(
             "{}.toml",
-            Session::slug(&session.username, &session.server_url)
+            Session::slug(&Session::account_identifier(
+                &session.username,
+                &session.server_url
+            ))
         ));
         assert!(
             expected.is_file(),
@@ -157,6 +121,18 @@ mod tests {
         assert!(err.to_string().contains("ghost@example.com@nowhere"));
     }
 
+    #[test]
+    fn load_rejects_other_account_sharing_the_slug() {
+        let (_tmp, store) = store();
+        store.save(&sample_session()).unwrap();
+
+        // "alice_example_com@..." slugs the same as "alice@example.com@...".
+        let err = store
+            .load("alice_example_com@caldav.fastmail.com")
+            .unwrap_err();
+        assert!(err.to_string().contains("not found"));
+    }
+
     #[cfg(unix)]
     #[test]
     fn save_chmods_session_file_to_0600() {
@@ -168,7 +144,10 @@ mod tests {
 
         let path = tmp.path().join("session").join(format!(
             "{}.toml",
-            Session::slug(&session.username, &session.server_url)
+            Session::slug(&Session::account_identifier(
+                &session.username,
+                &session.server_url
+            ))
         ));
         let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
