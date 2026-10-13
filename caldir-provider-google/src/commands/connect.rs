@@ -87,7 +87,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
     }
 
     // Init step: determine what auth method to use
-    if !app_config_store.exists() {
+    if !app_config_store.exists()? {
         if hosted {
             let port = Url::parse(&redirect_uri)?
                 .port()

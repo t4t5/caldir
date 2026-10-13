@@ -81,7 +81,7 @@ pub async fn handle(cmd: Connect) -> Result<ConnectResponse> {
     }
 
     // Initial step: check if app config exists
-    if !app_config_store.exists() {
+    if !app_config_store.exists()? {
         if hosted {
             let port = Url::parse(&redirect_uri)?
                 .port()

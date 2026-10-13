@@ -1,12 +1,13 @@
 //! App-level configuration for the Google provider.
 //!
-//! User-provided OAuth credentials stored at `{storage.root()}/app_config.toml`.
+//! User-provided OAuth credentials stored as the `app_config` secret.
 //! Only present when the user opts into self-hosted OAuth (`--hosted=false`).
 
 use anyhow::{Context, Result};
 use caldir_core::provider::ProviderStorage;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+
+const KEY: &str = "app_config";
 
 /// Google OAuth client credentials (user-provided).
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,10 +16,7 @@ pub struct AppConfig {
     pub client_secret: String,
 }
 
-/// Filesystem-backed storage for [`AppConfig`].
-///
-/// Layout: `{storage.root()}/app_config.toml`. Contains a client secret, so
-/// chmod'd to `0600` on Unix.
+/// Secret-backed storage for [`AppConfig`], which contains a client secret.
 pub struct AppConfigStore {
     storage: ProviderStorage,
 }
@@ -28,56 +26,20 @@ impl AppConfigStore {
         Self { storage }
     }
 
-    pub fn exists(&self) -> bool {
-        self.path().exists()
+    pub fn exists(&self) -> Result<bool> {
+        Ok(self.storage.secrets().exists(KEY)?)
     }
 
     pub fn load(&self) -> Result<AppConfig> {
-        let path = self.path();
-
-        if !path.exists() {
-            anyhow::bail!(
-                "Google app config not found at {}. Run `caldir connect google` to set up.",
-                path.display()
-            );
-        }
-
-        let contents = std::fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read app_config from {}", path.display()))?;
-
-        let app_config: AppConfig = toml::from_str(&contents)
-            .with_context(|| format!("Failed to parse app_config from {}", path.display()))?;
-
-        Ok(app_config)
+        self.storage
+            .secrets()
+            .load(KEY)?
+            .context("Google app config not found. Run `caldir connect google` to set up.")
     }
 
     pub fn save(&self, app_config: &AppConfig) -> Result<()> {
-        let path = self.path();
-
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create directory {}", parent.display()))?;
-        }
-
-        let contents =
-            toml::to_string_pretty(app_config).context("Failed to serialize app config")?;
-
-        std::fs::write(&path, contents)
-            .with_context(|| format!("Failed to write app_config to {}", path.display()))?;
-
-        // Plaintext client secret — owner-only.
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
-                .with_context(|| format!("Failed to set permissions on {}", path.display()))?;
-        }
-
+        self.storage.secrets().save(KEY, app_config)?;
         Ok(())
-    }
-
-    fn path(&self) -> PathBuf {
-        self.storage.root().join("app_config.toml")
     }
 }
 
@@ -127,9 +89,9 @@ mod tests {
     #[test]
     fn exists_reports_presence() {
         let (_tmp, store) = store();
-        assert!(!store.exists());
+        assert!(!store.exists().unwrap());
         store.save(&sample()).unwrap();
-        assert!(store.exists());
+        assert!(store.exists().unwrap());
     }
 
     #[cfg(unix)]
