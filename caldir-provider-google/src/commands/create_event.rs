@@ -139,7 +139,29 @@ fn override_instance_id(event: &Event, rid: &EventTime) -> Result<String> {
         return Ok(provider_id.to_string());
     }
 
-    Ok(format!("{provider_id}_{suffix}"))
+    Ok(format!(
+        "{}_{suffix}",
+        strip_split_series_suffix(provider_id)
+    ))
+}
+
+/// Editing "this and following events" splits a Google series: the new master
+/// gets the id `{original_id}_R{YYYYMMDDTHHMMSS}`. Its instances drop the `_R…`
+/// part (`{original_id}_{instance suffix}`), so PATCHing `{master_id}_{suffix}` 404s.
+fn strip_split_series_suffix(provider_id: &str) -> &str {
+    match provider_id.rsplit_once("_R") {
+        Some((base, split))
+            if split.len() == 15
+                && split.as_bytes()[8] == b'T'
+                && split
+                    .bytes()
+                    .enumerate()
+                    .all(|(i, b)| i == 8 || b.is_ascii_digit()) =>
+        {
+            base
+        }
+        _ => provider_id,
+    }
 }
 
 /// Format a `recurrence_id` as the suffix Google appends to a recurring
@@ -190,6 +212,32 @@ mod tests {
             override_instance_id(&event, &rid).unwrap(),
             "master123_20260814T170000Z"
         );
+    }
+
+    #[test]
+    fn override_of_a_split_series_targets_the_original_series_instance_id() {
+        // After "this and following" edits, the new master's id carries an
+        // `_R{split start}` suffix, but Google's instance ids do not:
+        // instances of "master123_R20260904T140000" are "master123_{suffix}".
+        let rid = EventTime::DateTimeUtc(Utc.with_ymd_and_hms(2026, 10, 23, 14, 0, 0).unwrap());
+        let mut event = Event::new("Friday retro", rid.clone());
+        event.recurrence_id = Some(RecurrenceId::from_event_time(rid.clone()));
+        event.x_properties.push(XProperty::new(
+            GOOGLE_EVENT_ID_PROPERTY,
+            "master123_R20260904T140000",
+        ));
+
+        assert_eq!(
+            override_instance_id(&event, &rid).unwrap(),
+            "master123_20261023T140000Z"
+        );
+    }
+
+    #[test]
+    fn ids_that_merely_contain_r_are_not_treated_as_split_series() {
+        assert_eq!(strip_split_series_suffix("abc_Rdef"), "abc_Rdef");
+        assert_eq!(strip_split_series_suffix("abc_R2026"), "abc_R2026");
+        assert_eq!(strip_split_series_suffix("master123"), "master123");
     }
 
     #[test]

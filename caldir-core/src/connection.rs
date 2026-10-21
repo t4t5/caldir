@@ -235,8 +235,19 @@ async fn push_outgoing_changes(
     events_by_instance_id: &mut HashMap<EventInstanceId, CalendarEvent>,
     sync_bases: &mut Vec<Event>,
 ) -> Result<(), ConnectionError> {
+    // One rejected change must not block the rest of the push.
+    let mut failures = Vec::new();
+
     for change in diff.outgoing() {
-        if let Some(remote_event) = remote.apply_change(change).await? {
+        let remote_event = match remote.apply_change(change).await {
+            Ok(remote_event) => remote_event,
+            Err(error) => {
+                failures.push(error);
+                continue;
+            }
+        };
+
+        if let Some(remote_event) = remote_event {
             let returned_event = remote_event.event();
 
             // Sometimes provider overwrite the event's UID:
@@ -256,7 +267,11 @@ async fn push_outgoing_changes(
         }
     }
 
-    Ok(())
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(ConnectionError::PushFailures(failures))
+    }
 }
 
 #[cfg(test)]
@@ -743,6 +758,47 @@ mod tests {
             reloaded.state().sync_base(&id_a),
             Some(&event_a),
             "event A's base should survive a later push failure",
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_outgoing_diff_keeps_pushing_after_a_failed_change() {
+        use crate::provider::transport::ProviderTransportError;
+        use std::time::Duration;
+
+        let (_tmp, mock, mut connection) = writable_connection();
+
+        let event_a = test_event();
+        let event_b = test_event();
+        let id_b = event_b.event_instance_id();
+        connection.local().create_event(event_a.clone()).unwrap();
+        connection.local().create_event(event_b.clone()).unwrap();
+
+        // First Create fails, second still goes through:
+        mock.reply_error(ProviderTransportError::Timeout(Duration::from_secs(1)));
+        mock.reply::<rpc::CreateEvent>(event_b.clone());
+
+        let diff = CalendarDiff::from_changes(
+            vec![
+                EventChange::Create(event_a),
+                EventChange::Create(event_b.clone()),
+            ],
+            vec![],
+        );
+
+        let result = connection.apply_outgoing_diff(&diff).await;
+
+        assert!(
+            matches!(result, Err(ConnectionError::PushFailures(ref errors)) if errors.len() == 1),
+            "expected exactly one push failure, got {result:?}",
+        );
+
+        let reloaded = Calendar::load(connection.local().path()).unwrap();
+
+        assert_eq!(
+            reloaded.state().sync_base(&id_b),
+            Some(&event_b),
+            "event B should be pushed despite event A failing",
         );
     }
 
