@@ -3,6 +3,7 @@
 mod app_config;
 mod commands;
 mod constants;
+mod event_id;
 mod google_event;
 mod remote_config;
 mod session;

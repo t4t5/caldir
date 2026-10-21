@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow, bail};
+use anyhow::{Context, Result, bail};
 use caldir_core::Event;
 use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::UpdateEvent;
@@ -6,7 +6,8 @@ use serde_json::Value;
 
 use crate::app_config::AppConfigStore;
 use crate::commands::invite::patch_invite_personal_fields;
-use crate::constants::{GOOGLE_EVENT_ID_PROPERTY, GOOGLE_EVENT_TYPE_PROPERTY, PROVIDER_NAME};
+use crate::constants::{GOOGLE_EVENT_TYPE_PROPERTY, PROVIDER_NAME};
+use crate::event_id::google_api_id;
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::SessionStore;
@@ -26,11 +27,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
         .load_valid(account_email, &app_config_store)
         .await?;
 
-    // Get Google's event ID from custom properties
-    let google_event_id = cmd
-        .event
-        .x_property(GOOGLE_EVENT_ID_PROPERTY)
-        .ok_or_else(|| anyhow!("Cannot update event without {GOOGLE_EVENT_ID_PROPERTY}"))?;
+    let google_event_id = &google_api_id(&cmd.event).context("Cannot update event")?;
 
     if cmd.event.is_invite_for(account_email) {
         // Update our response and personal reminders.
