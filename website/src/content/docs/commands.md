@@ -6,6 +6,8 @@ order: 3
 
 # Commands
 
+Commands that take `--calendar` (`-c`) accept several calendar slugs, comma-separated (`--calendar home,work`) or repeated (`-c home -c work`).
+
 ## `caldir connect`
 
 Connect to a [calendar provider](/providers) and fetch its calendars.
@@ -106,8 +108,8 @@ caldir today               # Today's events
 caldir week                # This week (through Sunday)
 caldir events --from 2025-03-01 --to 2025-03-31  # Custom range
 
-# Events from one calendar
-caldir events --calendar work
+# Events from specific calendars
+caldir events --calendar work,personal
 ```
 
 <details>
@@ -193,8 +195,8 @@ caldir invites
 # Include already-responded invites (not just pending)
 caldir invites --all
 
-# Filter to one calendar
-caldir invites --calendar work
+# Filter to specific calendars
+caldir invites --calendar work,personal
 ```
 
 <details>

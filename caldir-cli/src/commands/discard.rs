@@ -5,25 +5,17 @@ use owo_colors::OwoColorize;
 
 use crate::output::diff::{CalendarDiffRender, Render};
 use crate::output::format_error;
-use crate::utils::{resolve_sync_range, tui};
+use crate::utils::{connections, resolve_sync_range, tui};
 
 pub async fn run(
     caldir: &Caldir,
-    calendar: Option<String>,
+    calendar_slugs: Vec<String>,
     from: Option<String>,
     to: Option<String>,
     verbose: bool,
     force: bool,
 ) -> Result<()> {
-    let all_connections = caldir.connections();
-
-    let connections = match calendar {
-        Some(cal) => all_connections
-            .into_iter()
-            .filter(|conn| conn.as_ref().ok().and_then(|c| c.local().slug()) == Some(cal.as_str()))
-            .collect(),
-        None => all_connections,
-    };
+    let connections = connections(caldir, &calendar_slugs);
 
     let range = resolve_sync_range(from, to)?;
     let mut pending: Vec<(Connection, CalendarDiff)> = Vec::new();

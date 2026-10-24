@@ -37,9 +37,9 @@ enum Commands {
     },
     #[command(about = "Check if any events have changed (local and remote)")]
     Status {
-        /// Only operate on this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
+        /// Only operate on these calendars (by slug, comma-separated)
+        #[arg(short, long, value_delimiter = ',')]
+        calendar: Vec<String>,
 
         /// Show events from this date (YYYY-MM-DD, or "start" for all past events)
         #[arg(long)]
@@ -55,9 +55,9 @@ enum Commands {
     },
     #[command(about = "Pull changes from remote calendars into local caldir")]
     Pull {
-        /// Only operate on this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
+        /// Only operate on these calendars (by slug, comma-separated)
+        #[arg(short, long, value_delimiter = ',')]
+        calendar: Vec<String>,
 
         /// Pull events from this date (YYYY-MM-DD, or "start" for all past events)
         #[arg(long)]
@@ -73,9 +73,9 @@ enum Commands {
     },
     #[command(about = "Push changes from local caldir to remote calendars")]
     Push {
-        /// Only operate on this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
+        /// Only operate on these calendars (by slug, comma-separated)
+        #[arg(short, long, value_delimiter = ',')]
+        calendar: Vec<String>,
 
         /// Push events from this date (YYYY-MM-DD, or "start" for all past events)
         #[arg(long)]
@@ -95,9 +95,9 @@ enum Commands {
     },
     #[command(about = "Sync changes between caldir and remote calendars (push + pull)")]
     Sync {
-        /// Only operate on this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
+        /// Only operate on these calendars (by slug, comma-separated)
+        #[arg(short, long, value_delimiter = ',')]
+        calendar: Vec<String>,
 
         /// Sync events from this date (YYYY-MM-DD, or "start" for all past events)
         #[arg(long)]
@@ -117,9 +117,9 @@ enum Commands {
     },
     #[command(about = "List upcoming events across all calendars")]
     Events {
-        /// Only show events from this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
+        /// Only show events from these calendars (by slug, comma-separated)
+        #[arg(short, long, value_delimiter = ',')]
+        calendar: Vec<String>,
 
         /// Show events from this date (YYYY-MM-DD)
         #[arg(long)]
@@ -131,15 +131,15 @@ enum Commands {
     },
     #[command(about = "Show today's events")]
     Today {
-        /// Only show events from this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
+        /// Only show events from these calendars (by slug, comma-separated)
+        #[arg(short, long, value_delimiter = ',')]
+        calendar: Vec<String>,
     },
     #[command(about = "Show this week's events (through Sunday)")]
     Week {
-        /// Only show events from this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
+        /// Only show events from these calendars (by slug, comma-separated)
+        #[arg(short, long, value_delimiter = ',')]
+        calendar: Vec<String>,
     },
     #[command(about = "Create a new event in caldir")]
     New {
@@ -176,9 +176,9 @@ enum Commands {
     },
     #[command(about = "Discard unpushed local changes (restore to remote state)")]
     Discard {
-        /// Only operate on this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
+        /// Only operate on these calendars (by slug, comma-separated)
+        #[arg(short, long, value_delimiter = ',')]
+        calendar: Vec<String>,
 
         /// Discard events from this date (YYYY-MM-DD, or "start" for all past events)
         #[arg(long)]
@@ -198,9 +198,9 @@ enum Commands {
     },
     #[command(about = "List pending invites across calendars")]
     Invites {
-        /// Only show invites from this calendar (by slug)
-        #[arg(short, long)]
-        calendar: Option<String>,
+        /// Only show invites from these calendars (by slug, comma-separated)
+        #[arg(short, long, value_delimiter = ',')]
+        calendar: Vec<String>,
 
         /// Include already-responded invites (not just pending)
         #[arg(short, long)]
@@ -278,7 +278,7 @@ async fn main() -> Result<()> {
             from,
             to,
             verbose,
-        } => commands::pull::run(&caldir, calendar.into_iter().collect(), from, to, verbose).await,
+        } => commands::pull::run(&caldir, calendar, from, to, verbose).await,
         Commands::Push {
             calendar,
             from,
@@ -401,23 +401,53 @@ mod tests {
         assert_eq!(cli.timeout, None);
     }
 
+    fn parse_events_calendars(args: &[&str]) -> Vec<String> {
+        match Cli::parse_from(args).command {
+            Commands::Events { calendar, .. } => calendar,
+            _ => panic!("expected events command"),
+        }
+    }
+
+    #[test]
+    fn calendar_flag_accepts_comma_separated_and_repeated_slugs() {
+        assert_eq!(
+            parse_events_calendars(&["caldir", "events", "--calendar", "home,work"]),
+            vec!["home", "work"]
+        );
+        assert_eq!(
+            parse_events_calendars(&["caldir", "events", "-c", "home", "-c", "work"]),
+            vec!["home", "work"]
+        );
+        assert!(parse_events_calendars(&["caldir", "events"]).is_empty());
+    }
+
     #[test]
     fn views_support_json() {
         assert!(Commands::Calendars.supports_json());
         assert!(Commands::Config.supports_json());
         assert!(
             Commands::Events {
-                calendar: None,
+                calendar: Vec::new(),
                 from: None,
                 to: None,
             }
             .supports_json()
         );
-        assert!(Commands::Today { calendar: None }.supports_json());
-        assert!(Commands::Week { calendar: None }.supports_json());
+        assert!(
+            Commands::Today {
+                calendar: Vec::new()
+            }
+            .supports_json()
+        );
+        assert!(
+            Commands::Week {
+                calendar: Vec::new()
+            }
+            .supports_json()
+        );
         assert!(
             Commands::Invites {
-                calendar: None,
+                calendar: Vec::new(),
                 all: false,
             }
             .supports_json()

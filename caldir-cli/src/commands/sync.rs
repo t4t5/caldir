@@ -10,13 +10,12 @@ type Counts = (usize, usize, usize);
 
 pub async fn run(
     caldir: &Caldir,
-    calendar: Option<String>,
+    calendar_slugs: Vec<String>,
     from: Option<String>,
     to: Option<String>,
     verbose: bool,
     force: bool,
 ) -> Result<()> {
-    let calendar_slugs: Vec<String> = calendar.into_iter().collect();
     let connections = connections(caldir, &calendar_slugs);
     let range = resolve_sync_range(from, to)?;
     let mut pulled: Counts = (0, 0, 0);

@@ -6,10 +6,10 @@ use chrono::{DateTime, Datelike, Duration, TimeZone, Utc};
 use crate::output::agenda::AgendaView;
 use crate::utils::{require_calendars, resolve_calendars};
 
-pub fn run(caldir: &Caldir, calendar: Option<String>) -> Result<AgendaView> {
+pub fn run(caldir: &Caldir, calendar_slugs: Vec<String>) -> Result<AgendaView> {
     require_calendars(caldir)?;
 
-    let calendars = resolve_calendars(caldir, calendar.as_deref())?;
+    let calendars = resolve_calendars(caldir, &calendar_slugs)?;
 
     let tz: chrono_tz::Tz = iana_time_zone::get_timezone()?.parse()?;
     let (from, to) = week_range(Utc::now().with_timezone(&tz));

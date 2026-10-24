@@ -8,13 +8,12 @@ use crate::utils::{allow_mass_delete, connections, count_changes, resolve_sync_r
 
 pub async fn run(
     caldir: &Caldir,
-    calendar: Option<String>,
+    calendar_slugs: Vec<String>,
     from: Option<String>,
     to: Option<String>,
     verbose: bool,
     force: bool,
 ) -> Result<()> {
-    let calendar_slugs: Vec<String> = calendar.into_iter().collect();
     let connections = connections(caldir, &calendar_slugs);
     let range = resolve_sync_range(from, to)?;
     let mut applied: Vec<CalendarDiff> = Vec::new();
