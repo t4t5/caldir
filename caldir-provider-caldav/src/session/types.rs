@@ -45,6 +45,13 @@ impl Session {
         format!("{}@{}", username, host)
     }
 
+    /// Inverse of [`Session::account_identifier`]: the username before the last `@`.
+    pub fn username_from_account_identifier(account_identifier: &str) -> &str {
+        account_identifier
+            .rsplit_once('@')
+            .map_or(account_identifier, |(username, _)| username)
+    }
+
     /// Get credentials as `(username, password)` for HTTP basic auth.
     pub fn credentials(&self) -> (&str, &str) {
         (&self.username, &self.password)
@@ -71,6 +78,16 @@ mod tests {
         let id =
             Session::account_identifier("alice@example.com", "https://caldav.fastmail.com/dav/");
         assert_eq!(id, "alice@example.com@caldav.fastmail.com");
+    }
+
+    #[test]
+    fn username_from_account_identifier_keeps_at_in_username() {
+        let id =
+            Session::account_identifier("alice@example.com", "https://caldav.fastmail.com/dav/");
+        assert_eq!(
+            Session::username_from_account_identifier(&id),
+            "alice@example.com"
+        );
     }
 
     #[test]

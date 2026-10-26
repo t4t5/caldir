@@ -84,6 +84,31 @@ caldir connect caldav
 
 You'll be prompted for a server URL, username, and password.
 
+## Password commands
+
+Instead of storing a password via `caldir connect`, a provider can let you supply it through a command that runs whenever it syncs. This is set per account in the provider's own config file, `~/.config/caldir/providers/{name}/config.toml` (`%APPDATA%\caldir\providers\{name}\config.toml` on Windows). Each provider declares its own key, if it supports one:
+
+| Provider | Key |
+|---|---|
+| iCloud | `app_password_command` |
+| Generic CalDAV | `password_command` |
+
+For example, for iCloud:
+
+```toml
+# ~/.config/caldir/providers/icloud/config.toml
+[accounts."me@icloud.com"]
+app_password_command = ["pass", "show", "icloud/caldir"]
+```
+
+The account name matches the calendar's `icloud_account` or `caldav_account`. For CalDAV, that takes the form `username@host`, e.g. `alice@example.com@caldav.fastmail.com`.
+
+The command is a list of arguments, run without a shell (use `["sh", "-c", "..."]` if you need one). Its output, minus one trailing newline, is the password. It runs on every provider request, so secret managers that prompt should cache via their agent.
+
+With a password command set, no stored session is needed, so this file and the calendars' `.caldir/config.toml` can be written by hand or generated declaratively (e.g. Nix with sops-nix: `["cat", "/run/secrets/icloud"]`) without running `caldir connect`.
+
+Other providers, including [your own](#plugin-architecture), can declare a password command key of their own in the same file.
+
 ## Webcal (public ICS feeds)
 
 Subscribe to any public ICS calendar feed (`webcal://` or `https://` URLs).
