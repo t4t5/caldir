@@ -1,6 +1,8 @@
 mod account;
+mod account_config;
 mod error;
 mod handler;
+mod password_command;
 mod registry;
 mod secrets;
 mod slug;
@@ -17,8 +19,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use transport::{ProviderTransport, SubprocessTransport};
 
+pub use account_config::AccountConfigError;
 pub use error::ProviderError;
 pub use handler::{Error, Handler, Result, process_request, run_provider};
+pub use password_command::{PasswordCommand, PasswordCommandError};
 pub use registry::ProviderRegistry;
 pub use secrets::{SecretError, SecretStore};
 pub use slug::{ProviderSlug, provider_slug_from_filename};

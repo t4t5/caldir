@@ -6,9 +6,7 @@ pub mod list_events;
 pub mod update_event;
 
 use anyhow::Result;
-use caldir_core::provider::ProviderStorage;
-use caldir_provider_caldav::account_config::load_account_config;
-use caldir_provider_caldav::password_command::PasswordCommand;
+use caldir_core::provider::{PasswordCommand, ProviderStorage};
 use serde::Deserialize;
 
 use crate::constants::PROVIDER_NAME;
@@ -27,7 +25,7 @@ async fn credentials(account: &str) -> Result<(String, String)> {
 
 /// `(username, password)` from the account's `password_command`, else the stored session.
 async fn resolve_credentials(storage: &ProviderStorage, account: &str) -> Result<(String, String)> {
-    let config = load_account_config::<AccountConfig>(storage, account)?;
+    let config = storage.account_config::<AccountConfig>(account)?;
     if let Some(command) = config.and_then(|c| c.password_command) {
         let username = Session::username_from_account_identifier(account);
         return Ok((username.to_string(), command.run().await?));

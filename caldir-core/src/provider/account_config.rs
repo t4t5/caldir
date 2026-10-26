@@ -1,21 +1,32 @@
-//! Per-account settings from the provider's `config.toml`, e.g.
-//!
-//! ```toml
-//! [accounts."me@icloud.com"]
-//! app_password_command = ["cat", "/run/secrets/icloud"]
-//! ```
-//!
-//! Plain config, not secrets, so it can be written by hand or generated.
+//! Per-account settings in the provider's `config.toml`, under
+//! `[accounts."{account}"]`. Plain config, not secrets.
 
 use std::collections::HashMap;
 use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
-use caldir_core::provider::ProviderStorage;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-const CONFIG_FILE: &str = "config.toml";
+pub(super) const CONFIG_FILE: &str = "config.toml";
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum AccountConfigError {
+    #[error("failed to read {}", path.display())]
+    Read {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("invalid {}", path.display())]
+    Parse {
+        path: PathBuf,
+        #[source]
+        source: toml::de::Error,
+    },
+}
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -25,25 +36,26 @@ struct ProviderConfig<T> {
 }
 
 /// Settings for `account`, or `None` if the file or the account entry is absent.
-pub fn load_account_config<T: DeserializeOwned>(
-    storage: &ProviderStorage,
+pub(super) fn load<T: DeserializeOwned>(
+    root: &Path,
     account: &str,
-) -> Result<Option<T>> {
-    let path = storage.root().join(CONFIG_FILE);
+) -> Result<Option<T>, AccountConfigError> {
+    let path = root.join(CONFIG_FILE);
     let contents = match std::fs::read_to_string(&path) {
         Ok(contents) => contents,
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(e).with_context(|| format!("Failed to read {}", path.display())),
+        Err(source) => return Err(AccountConfigError::Read { path, source }),
     };
 
     let mut config: ProviderConfig<T> =
-        toml::from_str(&contents).with_context(|| format!("Invalid {}", path.display()))?;
+        toml::from_str(&contents).map_err(|source| AccountConfigError::Parse { path, source })?;
     Ok(config.accounts.remove(account))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::ProviderStorage;
     use tempfile::TempDir;
 
     #[derive(Debug, Deserialize, PartialEq)]
@@ -64,21 +76,21 @@ mod tests {
     #[test]
     fn missing_file_is_none() {
         let (_tmp, storage) = storage_with(None);
-        let account = load_account_config::<Account>(&storage, "me@example.com").unwrap();
+        let account = storage.account_config::<Account>("me@example.com").unwrap();
         assert_eq!(account, None);
     }
 
     #[test]
     fn missing_account_is_none() {
         let (_tmp, storage) = storage_with(Some("[accounts.\"other@example.com\"]\ntoken = \"x\""));
-        let account = load_account_config::<Account>(&storage, "me@example.com").unwrap();
+        let account = storage.account_config::<Account>("me@example.com").unwrap();
         assert_eq!(account, None);
     }
 
     #[test]
     fn loads_account_by_identifier() {
         let (_tmp, storage) = storage_with(Some("[accounts.\"me@example.com\"]\ntoken = \"x\""));
-        let account = load_account_config::<Account>(&storage, "me@example.com").unwrap();
+        let account = storage.account_config::<Account>("me@example.com").unwrap();
         assert_eq!(
             account,
             Some(Account {
@@ -90,7 +102,10 @@ mod tests {
     #[test]
     fn unknown_account_key_errors() {
         let (_tmp, storage) = storage_with(Some("[accounts.\"me@example.com\"]\ntokn = \"x\""));
-        let err = load_account_config::<Account>(&storage, "me@example.com").unwrap_err();
+        let err = storage
+            .account_config::<Account>("me@example.com")
+            .unwrap_err();
+        assert!(matches!(err, AccountConfigError::Parse { .. }));
         assert!(err.to_string().contains(CONFIG_FILE));
     }
 }

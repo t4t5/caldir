@@ -1,10 +1,29 @@
 //! Password read from an external command.
 
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 
-use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use tokio::process::Command;
+
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum PasswordCommandError {
+    #[error("failed to run password command `{program}`")]
+    Spawn {
+        program: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("password command `{program}` failed ({status})")]
+    Failed { program: String, status: ExitStatus },
+
+    #[error("password command `{program}` output is not UTF-8")]
+    NotUtf8 { program: String },
+
+    #[error("password command `{program}` printed nothing")]
+    Empty { program: String },
+}
 
 /// Argv of a command whose stdout is the password, e.g. `["pass", "show", "caldav"]`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -24,8 +43,9 @@ impl TryFrom<Vec<String>> for PasswordCommand {
 
 impl PasswordCommand {
     /// Run the command and return its stdout minus one trailing newline.
-    pub async fn run(&self) -> Result<String> {
+    pub async fn run(&self) -> Result<String, PasswordCommandError> {
         let (program, args) = self.0.split_first().expect("argv is non-empty");
+        let program_name = || program.clone();
 
         let output = Command::new(program)
             .args(args)
@@ -33,17 +53,27 @@ impl PasswordCommand {
             .stderr(Stdio::inherit())
             .output()
             .await
-            .with_context(|| format!("Failed to run password command `{program}`"))?;
+            .map_err(|source| PasswordCommandError::Spawn {
+                program: program_name(),
+                source,
+            })?;
 
         if !output.status.success() {
-            bail!("Password command `{program}` failed ({})", output.status);
+            return Err(PasswordCommandError::Failed {
+                program: program_name(),
+                status: output.status,
+            });
         }
 
         let stdout =
-            String::from_utf8(output.stdout).context("Password command output is not UTF-8")?;
+            String::from_utf8(output.stdout).map_err(|_| PasswordCommandError::NotUtf8 {
+                program: program_name(),
+            })?;
         let password = trim_newline(&stdout);
         if password.is_empty() {
-            bail!("Password command `{program}` printed nothing");
+            return Err(PasswordCommandError::Empty {
+                program: program_name(),
+            });
         }
 
         Ok(password.to_string())
@@ -104,14 +134,14 @@ mod tests {
     #[tokio::test]
     async fn run_errors_on_nonzero_exit() {
         let err = command(&["false"]).run().await.unwrap_err();
-        assert!(err.to_string().contains("failed"));
+        assert!(matches!(err, PasswordCommandError::Failed { .. }));
     }
 
     #[cfg(unix)]
     #[tokio::test]
     async fn run_errors_on_empty_output() {
         let err = command(&["true"]).run().await.unwrap_err();
-        assert!(err.to_string().contains("printed nothing"));
+        assert!(matches!(err, PasswordCommandError::Empty { .. }));
     }
 
     #[tokio::test]
@@ -120,6 +150,7 @@ mod tests {
             .run()
             .await
             .unwrap_err();
+        assert!(matches!(err, PasswordCommandError::Spawn { .. }));
         assert!(err.to_string().contains("caldir-no-such-program"));
     }
 }

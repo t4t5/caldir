@@ -6,9 +6,7 @@ pub mod list_events;
 pub mod update_event;
 
 use anyhow::Result;
-use caldir_core::provider::ProviderStorage;
-use caldir_provider_caldav::account_config::load_account_config;
-use caldir_provider_caldav::password_command::PasswordCommand;
+use caldir_core::provider::{PasswordCommand, ProviderStorage};
 use serde::Deserialize;
 
 use crate::constants::PROVIDER_NAME;
@@ -30,7 +28,7 @@ async fn resolve_credentials(
     storage: &ProviderStorage,
     apple_id: &str,
 ) -> Result<(String, String)> {
-    let config = load_account_config::<AccountConfig>(storage, apple_id)?;
+    let config = storage.account_config::<AccountConfig>(apple_id)?;
     if let Some(command) = config.and_then(|c| c.app_password_command) {
         return Ok((apple_id.to_string(), command.run().await?));
     }
