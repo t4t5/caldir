@@ -3,6 +3,7 @@ mod response;
 
 use crate::rpc::{Method, Rpc};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 pub use request::{
     CredentialField, CredentialsData, FieldType, HostedOAuthData, OAuthData, SetupData,
@@ -20,6 +21,9 @@ pub struct Connect {
 impl Rpc for Connect {
     const METHOD: Method = Method::Connect;
     type Response = ConnectResponse;
+    // A connect step can wait on the user: Proton's human verification window
+    // stays open for up to five minutes.
+    const TIMEOUT: Duration = Duration::from_secs(6 * 60);
 }
 
 #[cfg(test)]
