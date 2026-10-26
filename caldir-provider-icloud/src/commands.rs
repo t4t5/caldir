@@ -16,20 +16,20 @@ use crate::session::SessionStore;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AccountConfig {
-    app_password_command: Option<PasswordCommand>,
+    password_command: Option<PasswordCommand>,
 }
 
 async fn credentials(apple_id: &str) -> Result<(String, String)> {
     resolve_credentials(&ProviderStorage::for_provider(PROVIDER_NAME)?, apple_id).await
 }
 
-/// `(username, password)` from the account's `app_password_command`, else the stored session.
+/// `(username, password)` from the account's `password_command`, else the stored session.
 async fn resolve_credentials(
     storage: &ProviderStorage,
     apple_id: &str,
 ) -> Result<(String, String)> {
     let config = storage.account_config::<AccountConfig>(apple_id)?;
-    if let Some(command) = config.and_then(|c| c.app_password_command) {
+    if let Some(command) = config.and_then(|c| c.password_command) {
         return Ok((apple_id.to_string(), command.run().await?));
     }
 
@@ -68,7 +68,7 @@ mod tests {
 
     const COMMAND_CONFIG: &str = r#"
 [accounts."me@icloud.com"]
-app_password_command = ["printf", "from-command"]
+password_command = ["printf", "from-command"]
 "#;
 
     #[cfg(unix)]
@@ -96,7 +96,7 @@ app_password_command = ["printf", "from-command"]
 
     #[tokio::test]
     async fn rejects_unknown_account_key() {
-        let config = "[accounts.\"me@icloud.com\"]\npassword_command = [\"cat\"]";
+        let config = "[accounts.\"me@icloud.com\"]\napp_password_command = [\"cat\"]";
         let (_tmp, storage) = storage(Some(config), true);
         assert!(resolve_credentials(&storage, APPLE_ID).await.is_err());
     }
