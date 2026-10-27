@@ -45,7 +45,7 @@ Calendars without a `.caldir/config.toml` or without a `[remote]` value are trea
 
 ## Declarative setup
 
-Instead of running `caldir connect`, you can write the config files yourself (or generate them, e.g. with Nix). For iCloud and CalDAV, add a password command to the calendar's `[remote]` section. caldir runs it on every sync and never stores the password.
+If you manage your dotfiles with Nix or similar, you can write the config yourself instead of running `caldir connect`. For iCloud and CalDAV, set a password command to read the password from your secret manager instead of caldir's storage:
 
 ```toml
 # ~/caldir/personal/.caldir/config.toml
@@ -55,26 +55,12 @@ name = "Personal"
 provider = "icloud"
 icloud_account = "me@icloud.com"
 icloud_calendar_url = "https://caldav.icloud.com/123456789/calendars/home/"
-icloud_password_command = ["op", "read", "op://Personal/iCloud/app-password"]
+icloud_password_command = ["pass", "show", "icloud"]
 ```
 
-For iCloud, the command should print an [app-specific password](https://support.apple.com/en-us/102654). For CalDAV, set the login alongside it:
+For CalDAV, use `caldav_username` and `caldav_password_command`. To find the calendar URL, run `caldir connect` once and copy it from the generated config.
 
-```toml
-[remote]
-provider = "caldav"
-caldav_calendar_url = "https://caldav.fastmail.com/dav/calendars/user/alice@example.com/abc123/"
-caldav_username = "alice@example.com"
-caldav_password_command = ["pass", "show", "fastmail"]
-```
-
-The command is a list of arguments, run without a shell (use `["sh", "-c", "..."]` if you need one). Its output, minus one trailing newline, is the password. Secret managers that prompt should cache via their agent.
-
-To find the calendar URL, run `caldir connect` once on any machine and copy it from the generated config.
-
-### With Nix
-
-The same setup with [Home Manager](https://github.com/nix-community/home-manager):
+With [Home Manager](https://github.com/nix-community/home-manager) and [sops-nix](https://github.com/Mic92/sops-nix):
 
 ```nix
 home.file."caldir/personal/.caldir/config.toml".source =
@@ -84,8 +70,7 @@ home.file."caldir/personal/.caldir/config.toml".source =
       provider = "icloud";
       icloud_account = "me@icloud.com";
       icloud_calendar_url = "https://caldav.icloud.com/123456789/calendars/home/";
-      icloud_password_command = [ "op" "read" "op://Personal/iCloud/app-password" ];
-      # or with sops-nix: [ "cat" config.sops.secrets.icloud.path ]
+      icloud_password_command = [ "cat" config.sops.secrets.icloud.path ];
     };
   };
 ```
