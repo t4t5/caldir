@@ -1,6 +1,7 @@
 mod account;
 mod error;
 mod handler;
+mod password_command;
 mod registry;
 mod secrets;
 mod slug;
@@ -19,6 +20,7 @@ use transport::{ProviderTransport, SubprocessTransport};
 
 pub use error::ProviderError;
 pub use handler::{Error, Handler, Result, process_request, run_provider};
+pub use password_command::{PasswordCommand, PasswordCommandError};
 pub use registry::ProviderRegistry;
 pub use secrets::{SecretError, SecretStore};
 pub use slug::{ProviderSlug, provider_slug_from_filename};
