@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde::de::DeserializeOwned;
 
-use super::{AccountConfigError, SecretStore, account_config};
+use crate::provider::{AccountConfigError, SecretStore, account_config};
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

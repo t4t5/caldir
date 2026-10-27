@@ -29,7 +29,6 @@ pub enum AccountConfigError {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct ProviderConfig<T> {
     #[serde(default = "HashMap::new")]
     accounts: HashMap<String, T>,
@@ -97,6 +96,15 @@ mod tests {
                 token: "x".to_string()
             })
         );
+    }
+
+    #[test]
+    fn ignores_unknown_top_level_keys() {
+        let (_tmp, storage) = storage_with(Some(
+            "other = 1\n[accounts.\"me@example.com\"]\ntoken = \"x\"",
+        ));
+        let account = storage.account_config::<Account>("me@example.com").unwrap();
+        assert!(account.is_some());
     }
 
     #[test]

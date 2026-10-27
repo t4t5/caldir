@@ -98,7 +98,7 @@ The account name matches the calendar's `icloud_account` or `caldav_account`. Fo
 
 The command is a list of arguments, run without a shell (use `["sh", "-c", "..."]` if you need one). Its output, minus one trailing newline, is the password. It runs on every provider request, so secret managers that prompt should cache via their agent.
 
-With a password command set, no stored session is needed, so this file and the calendars' `.caldir/config.toml` can be written by hand or generated declaratively (e.g. Nix with sops-nix: `["cat", "/run/secrets/icloud"]`) without running `caldir connect`.
+With a password command set, no stored session is needed, so this file and the calendars' `.caldir/config.toml` can be written by hand or generated declaratively (e.g. Nix with sops-nix: `["cat", "/run/secrets/icloud"]`) without running `caldir connect`. `caldir connect` itself still asks for the password and stores it, since it needs it to discover calendars.
 
 Other providers, including [your own](#plugin-architecture), can support `password_command` in the same file via `ProviderStorage::account_config` and `PasswordCommand` from `caldir_core::provider`.
 
