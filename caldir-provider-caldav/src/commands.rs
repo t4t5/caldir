@@ -22,17 +22,15 @@ async fn resolve_credentials(
     config: &CaldavRemoteConfig,
 ) -> Result<(String, String)> {
     if let Some(command) = &config.caldav_password_command {
-        let username = config
-            .caldav_username
-            .clone()
-            .context("`caldav_password_command` requires `caldav_username`")?;
-        return Ok((username, command.run().await?));
+        // Hosts can't contain `@`, so the last one splits `user@host`.
+        let (username, _host) = config
+            .caldav_account
+            .rsplit_once('@')
+            .context("`caldav_account` must be in the form `user@host`")?;
+        return Ok((username.to_string(), command.run().await?));
     }
 
-    let account = config.caldav_account.as_deref().context(
-        "CalDAV remote configuration needs `caldav_account` or `caldav_password_command`",
-    )?;
-    let session = SessionStore::new(storage.clone()).load(account)?;
+    let session = SessionStore::new(storage.clone()).load(&config.caldav_account)?;
     Ok((session.username, session.password))
 }
 
@@ -64,10 +62,7 @@ mod tests {
     }
 
     const ACCOUNT: &str = r#"caldav_account = "alice@example.com@caldav.fastmail.com""#;
-    const COMMAND: &str = r#"
-caldav_username = "alice@example.com"
-caldav_password_command = ["printf", "from-command"]
-"#;
+    const COMMAND: &str = r#"caldav_password_command = ["printf", "from-command"]"#;
 
     #[cfg(unix)]
     #[tokio::test]
@@ -83,21 +78,23 @@ caldav_password_command = ["printf", "from-command"]
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn password_command_works_without_account_or_session() {
+    async fn password_command_works_without_session() {
         let tmp = TempDir::new().unwrap();
         let storage = ProviderStorage::new(tmp.path());
-        let creds = resolve_credentials(&storage, &config(COMMAND))
-            .await
-            .unwrap();
-        assert_eq!(creds.1, "from-command");
+        let config = config(&format!("{ACCOUNT}\n{COMMAND}"));
+        let creds = resolve_credentials(&storage, &config).await.unwrap();
+        assert_eq!(
+            creds,
+            ("alice@example.com".to_string(), "from-command".to_string())
+        );
     }
 
     #[tokio::test]
-    async fn password_command_requires_username() {
+    async fn password_command_requires_user_at_host_account() {
         let (_tmp, storage) = storage_with_session();
-        let config = config(r#"caldav_password_command = ["printf", "x"]"#);
+        let config = config(&format!("caldav_account = \"alice\"\n{COMMAND}"));
         let err = resolve_credentials(&storage, &config).await.unwrap_err();
-        assert!(err.to_string().contains("caldav_username"));
+        assert!(err.to_string().contains("user@host"));
     }
 
     #[tokio::test]
@@ -110,14 +107,5 @@ caldav_password_command = ["printf", "from-command"]
             creds,
             ("alice@example.com".to_string(), "stored".to_string())
         );
-    }
-
-    #[tokio::test]
-    async fn errors_without_account_or_command() {
-        let (_tmp, storage) = storage_with_session();
-        let err = resolve_credentials(&storage, &config(""))
-            .await
-            .unwrap_err();
-        assert!(err.to_string().contains("caldav_account"));
     }
 }

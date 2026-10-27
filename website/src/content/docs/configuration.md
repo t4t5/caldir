@@ -58,7 +58,7 @@ icloud_calendar_url = "https://caldav.icloud.com/123456789/calendars/home/"
 icloud_password_command = ["pass", "show", "icloud"]
 ```
 
-For CalDAV, use `caldav_username` and `caldav_password_command`. To find the calendar URL, run `caldir connect` once and copy it from the generated config.
+For CalDAV, use `caldav_password_command`, with `caldav_account` set to `user@host` (e.g. `me@fastmail.com@caldav.fastmail.com`). To find the calendar URL, run `caldir connect` once and copy it from the generated config.
 
 With [Home Manager](https://github.com/nix-community/home-manager) and [sops-nix](https://github.com/Mic92/sops-nix):
 
