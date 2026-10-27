@@ -9,7 +9,7 @@ use crate::remote_config::ICloudRemoteConfig;
 
 pub async fn handle(cmd: ListEvents) -> Result<Vec<Event>> {
     let config = ICloudRemoteConfig::try_from(&cmd.remote)?;
-    let (username, password) = crate::commands::credentials(&config.icloud_account).await?;
+    let (username, password) = crate::commands::credentials(&config).await?;
 
     ops::fetch_events(
         &username,

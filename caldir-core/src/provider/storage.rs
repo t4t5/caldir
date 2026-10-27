@@ -3,9 +3,7 @@
 //! non-sensitive state such as caches.
 use std::path::{Path, PathBuf};
 
-use serde::de::DeserializeOwned;
-
-use crate::provider::{AccountConfigError, SecretStore, account_config};
+use super::SecretStore;
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -43,14 +41,6 @@ impl ProviderStorage {
 
     pub fn secrets(&self) -> &SecretStore {
         &self.secrets
-    }
-
-    /// `[accounts."{account}"]` from `config.toml`, if present.
-    pub fn account_config<T: DeserializeOwned>(
-        &self,
-        account: &str,
-    ) -> Result<Option<T>, AccountConfigError> {
-        account_config::load(&self.root, account)
     }
 }
 

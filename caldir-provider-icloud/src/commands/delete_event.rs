@@ -8,7 +8,7 @@ use crate::remote_config::ICloudRemoteConfig;
 
 pub async fn handle(cmd: DeleteEvent) -> Result<()> {
     let config = ICloudRemoteConfig::try_from(&cmd.remote)?;
-    let (username, password) = crate::commands::credentials(&config.icloud_account).await?;
+    let (username, password) = crate::commands::credentials(&config).await?;
 
     ops::delete_event(
         &username,

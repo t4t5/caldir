@@ -6,34 +6,26 @@ pub mod list_events;
 pub mod update_event;
 
 use anyhow::Result;
-use caldir_core::provider::{PasswordCommand, ProviderStorage};
-use serde::Deserialize;
+use caldir_core::provider::ProviderStorage;
 
 use crate::constants::PROVIDER_NAME;
+use crate::remote_config::ICloudRemoteConfig;
 use crate::session::SessionStore;
 
-/// `[accounts."{apple_id}"]` in the provider's `config.toml`.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AccountConfig {
-    password_command: Option<PasswordCommand>,
+async fn credentials(config: &ICloudRemoteConfig) -> Result<(String, String)> {
+    resolve_credentials(&ProviderStorage::for_provider(PROVIDER_NAME)?, config).await
 }
 
-async fn credentials(apple_id: &str) -> Result<(String, String)> {
-    resolve_credentials(&ProviderStorage::for_provider(PROVIDER_NAME)?, apple_id).await
-}
-
-/// `(username, password)` from the account's `password_command`, else the stored session.
+/// `(apple_id, password)` from `icloud_password_command`, else the stored session.
 async fn resolve_credentials(
     storage: &ProviderStorage,
-    apple_id: &str,
+    config: &ICloudRemoteConfig,
 ) -> Result<(String, String)> {
-    let config = storage.account_config::<AccountConfig>(apple_id)?;
-    if let Some(command) = config.and_then(|c| c.password_command) {
-        return Ok((apple_id.to_string(), command.run().await?));
+    if let Some(command) = &config.icloud_password_command {
+        return Ok((config.icloud_account.clone(), command.run().await?));
     }
 
-    let session = SessionStore::new(storage.clone()).load(apple_id)?;
+    let session = SessionStore::new(storage.clone()).load(&config.icloud_account)?;
     Ok((session.apple_id, session.app_password))
 }
 
@@ -49,55 +41,50 @@ fn normalize_event(mut event: caldir_core::Event) -> caldir_core::Event {
 mod tests {
     use super::*;
     use crate::session::Session;
+    use caldir_core::RemoteConfigParams;
     use tempfile::TempDir;
 
     const APPLE_ID: &str = "me@icloud.com";
 
-    fn storage(config: Option<&str>, session: bool) -> (TempDir, ProviderStorage) {
+    fn storage_with_session() -> (TempDir, ProviderStorage) {
         let tmp = TempDir::new().unwrap();
         let storage = ProviderStorage::new(tmp.path());
-        if let Some(config) = config {
-            std::fs::write(tmp.path().join("config.toml"), config).unwrap();
-        }
-        if session {
-            let session = Session::new(APPLE_ID, "stored", "https://p/", "https://h/");
-            SessionStore::new(storage.clone()).save(&session).unwrap();
-        }
+        let session = Session::new(APPLE_ID, "stored", "https://p/", "https://h/");
+        SessionStore::new(storage.clone()).save(&session).unwrap();
         (tmp, storage)
     }
 
-    const COMMAND_CONFIG: &str = r#"
-[accounts."me@icloud.com"]
-password_command = ["printf", "from-command"]
-"#;
+    fn config(extra: &str) -> ICloudRemoteConfig {
+        let params: RemoteConfigParams = toml::from_str(&format!(
+            "icloud_account = \"{APPLE_ID}\"\nicloud_calendar_url = \"https://cal/\"\n{extra}"
+        ))
+        .unwrap();
+        ICloudRemoteConfig::try_from(&params).unwrap()
+    }
 
     #[cfg(unix)]
     #[tokio::test]
     async fn password_command_wins_over_session() {
-        let (_tmp, storage) = storage(Some(COMMAND_CONFIG), true);
-        let creds = resolve_credentials(&storage, APPLE_ID).await.unwrap();
+        let (_tmp, storage) = storage_with_session();
+        let config = config(r#"icloud_password_command = ["printf", "from-command"]"#);
+        let creds = resolve_credentials(&storage, &config).await.unwrap();
         assert_eq!(creds, (APPLE_ID.to_string(), "from-command".to_string()));
     }
 
     #[cfg(unix)]
     #[tokio::test]
     async fn password_command_works_without_session() {
-        let (_tmp, storage) = storage(Some(COMMAND_CONFIG), false);
-        let creds = resolve_credentials(&storage, APPLE_ID).await.unwrap();
+        let tmp = TempDir::new().unwrap();
+        let storage = ProviderStorage::new(tmp.path());
+        let config = config(r#"icloud_password_command = ["printf", "from-command"]"#);
+        let creds = resolve_credentials(&storage, &config).await.unwrap();
         assert_eq!(creds.1, "from-command");
     }
 
     #[tokio::test]
     async fn falls_back_to_session() {
-        let (_tmp, storage) = storage(None, true);
-        let creds = resolve_credentials(&storage, APPLE_ID).await.unwrap();
+        let (_tmp, storage) = storage_with_session();
+        let creds = resolve_credentials(&storage, &config("")).await.unwrap();
         assert_eq!(creds, (APPLE_ID.to_string(), "stored".to_string()));
-    }
-
-    #[tokio::test]
-    async fn rejects_unknown_account_key() {
-        let config = "[accounts.\"me@icloud.com\"]\napp_password_command = [\"cat\"]";
-        let (_tmp, storage) = storage(Some(config), true);
-        assert!(resolve_credentials(&storage, APPLE_ID).await.is_err());
     }
 }

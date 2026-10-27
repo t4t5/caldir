@@ -8,7 +8,7 @@ use crate::remote_config::CaldavRemoteConfig;
 
 pub async fn handle(cmd: DeleteEvent) -> Result<()> {
     let config = CaldavRemoteConfig::try_from(&cmd.remote)?;
-    let (username, password) = crate::commands::credentials(&config.caldav_account).await?;
+    let (username, password) = crate::commands::credentials(&config).await?;
 
     ops::delete_event(
         &username,

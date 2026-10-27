@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use caldir_core::RemoteConfigParams;
+use caldir_core::provider::PasswordCommand;
 use serde::{Deserialize, Serialize};
 
 /// Strongly-typed remote configuration for iCloud Calendar.
@@ -9,6 +10,8 @@ use serde::{Deserialize, Serialize};
 pub struct ICloudRemoteConfig {
     pub icloud_account: String,
     pub icloud_calendar_url: String,
+    /// Prints the app-specific password; replaces the stored session.
+    pub icloud_password_command: Option<PasswordCommand>,
 }
 
 impl ICloudRemoteConfig {
@@ -16,6 +19,7 @@ impl ICloudRemoteConfig {
         Self {
             icloud_account: account.into(),
             icloud_calendar_url: calendar_url.into(),
+            icloud_password_command: None,
         }
     }
 
@@ -51,9 +55,16 @@ impl TryFrom<&RemoteConfigParams> for ICloudRemoteConfig {
             .context("iCloud remote configuration field `icloud_calendar_url` must be a string")?
             .to_string();
 
+        let icloud_password_command = params
+            .get("icloud_password_command")
+            .map(|v| v.clone().try_into())
+            .transpose()
+            .context("iCloud remote configuration field `icloud_password_command` must be a non-empty list of strings")?;
+
         Ok(Self {
             icloud_account,
             icloud_calendar_url,
+            icloud_password_command,
         })
     }
 }
@@ -98,5 +109,35 @@ mod tests {
 
         let err = ICloudRemoteConfig::try_from(&params).unwrap_err();
         assert!(err.to_string().contains("icloud_calendar_url"));
+    }
+
+    #[test]
+    fn try_from_reads_password_command() {
+        let params: RemoteConfigParams = toml::from_str(
+            r#"
+icloud_account = "me@icloud.com"
+icloud_calendar_url = "https://example/cal/"
+icloud_password_command = ["pass", "show", "icloud"]
+"#,
+        )
+        .unwrap();
+
+        let config = ICloudRemoteConfig::try_from(&params).unwrap();
+        assert!(config.icloud_password_command.is_some());
+    }
+
+    #[test]
+    fn try_from_rejects_string_password_command() {
+        let params: RemoteConfigParams = toml::from_str(
+            r#"
+icloud_account = "me@icloud.com"
+icloud_calendar_url = "https://example/cal/"
+icloud_password_command = "pass show icloud"
+"#,
+        )
+        .unwrap();
+
+        let err = ICloudRemoteConfig::try_from(&params).unwrap_err();
+        assert!(err.to_string().contains("icloud_password_command"));
     }
 }

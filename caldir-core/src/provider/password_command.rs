@@ -2,7 +2,7 @@
 
 use std::process::{ExitStatus, Stdio};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
 #[derive(Debug, thiserror::Error)]
@@ -26,7 +26,7 @@ pub enum PasswordCommandError {
 }
 
 /// Argv of a command whose stdout is the password, e.g. `["pass", "show", "caldav"]`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(try_from = "Vec<String>")]
 pub struct PasswordCommand(Vec<String>);
 

@@ -2,14 +2,20 @@
 
 use anyhow::{Context, Result};
 use caldir_core::RemoteConfigParams;
+use caldir_core::provider::PasswordCommand;
 use serde::{Deserialize, Serialize};
 
 /// Strongly-typed remote configuration for generic CalDAV.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CaldavRemoteConfig {
-    pub caldav_account: String,
+    /// `user@host`; keys the stored session. Optional with `caldav_password_command`.
+    pub caldav_account: Option<String>,
     pub caldav_calendar_url: String,
     pub caldav_email: Option<String>,
+    /// Login for `caldav_password_command`.
+    pub caldav_username: Option<String>,
+    /// Prints the password; replaces the stored session.
+    pub caldav_password_command: Option<PasswordCommand>,
 }
 
 impl CaldavRemoteConfig {
@@ -19,18 +25,19 @@ impl CaldavRemoteConfig {
         email: Option<String>,
     ) -> Self {
         Self {
-            caldav_account: account.into(),
+            caldav_account: Some(account.into()),
             caldav_calendar_url: calendar_url.into(),
             caldav_email: email,
+            caldav_username: None,
+            caldav_password_command: None,
         }
     }
 
     pub fn into_remote_config_params(self) -> RemoteConfigParams {
         let mut params = RemoteConfigParams::new();
-        params.insert(
-            "caldav_account".to_string(),
-            toml::Value::String(self.caldav_account),
-        );
+        if let Some(account) = self.caldav_account {
+            params.insert("caldav_account".to_string(), toml::Value::String(account));
+        }
         params.insert(
             "caldav_calendar_url".to_string(),
             toml::Value::String(self.caldav_calendar_url),
@@ -46,12 +53,7 @@ impl TryFrom<&RemoteConfigParams> for CaldavRemoteConfig {
     type Error = anyhow::Error;
 
     fn try_from(params: &RemoteConfigParams) -> Result<Self> {
-        let caldav_account = params
-            .get("caldav_account")
-            .context("CalDAV remote configuration is missing required field `caldav_account`")?
-            .as_str()
-            .context("CalDAV remote configuration field `caldav_account` must be a string")?
-            .to_string();
+        let caldav_account = optional_str(params, "caldav_account")?;
 
         let caldav_calendar_url = params
             .get("caldav_calendar_url")
@@ -65,12 +67,33 @@ impl TryFrom<&RemoteConfigParams> for CaldavRemoteConfig {
             .and_then(|v| v.as_str())
             .map(str::to_string);
 
+        let caldav_username = optional_str(params, "caldav_username")?;
+
+        let caldav_password_command = params
+            .get("caldav_password_command")
+            .map(|v| v.clone().try_into())
+            .transpose()
+            .context("CalDAV remote configuration field `caldav_password_command` must be a non-empty list of strings")?;
+
         Ok(Self {
             caldav_account,
             caldav_calendar_url,
             caldav_email,
+            caldav_username,
+            caldav_password_command,
         })
     }
+}
+
+fn optional_str(params: &RemoteConfigParams, key: &str) -> Result<Option<String>> {
+    params
+        .get(key)
+        .map(|v| {
+            v.as_str().map(str::to_string).with_context(|| {
+                format!("CalDAV remote configuration field `{key}` must be a string")
+            })
+        })
+        .transpose()
 }
 
 #[cfg(test)]
@@ -94,15 +117,34 @@ mod tests {
     }
 
     #[test]
-    fn try_from_missing_account_errors() {
-        let mut params = RemoteConfigParams::new();
-        params.insert(
-            "caldav_calendar_url".to_string(),
-            toml::Value::String("https://example/cal/".to_string()),
-        );
+    fn try_from_reads_username_and_password_command() {
+        let params: RemoteConfigParams = toml::from_str(
+            r#"
+caldav_calendar_url = "https://example/cal/"
+caldav_username = "alice@example.com"
+caldav_password_command = ["pass", "show", "caldav"]
+"#,
+        )
+        .unwrap();
+
+        let config = CaldavRemoteConfig::try_from(&params).unwrap();
+        assert_eq!(config.caldav_account, None);
+        assert_eq!(config.caldav_username.as_deref(), Some("alice@example.com"));
+        assert!(config.caldav_password_command.is_some());
+    }
+
+    #[test]
+    fn try_from_rejects_string_password_command() {
+        let params: RemoteConfigParams = toml::from_str(
+            r#"
+caldav_calendar_url = "https://example/cal/"
+caldav_password_command = "pass show caldav"
+"#,
+        )
+        .unwrap();
 
         let err = CaldavRemoteConfig::try_from(&params).unwrap_err();
-        assert!(err.to_string().contains("caldav_account"));
+        assert!(err.to_string().contains("caldav_password_command"));
     }
 
     #[test]
