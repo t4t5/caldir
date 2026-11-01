@@ -14,6 +14,10 @@ Caldir is deliberately modular. Apps can build on its core library, integrations
 
 A free, open-source desktop calendar built on caldir. It provides a keyboard-first GUI for viewing and editing your events, with support for Linux and macOS.
 
+### [TermCal](https://github.com/deighne/termcal)
+
+A fast, keyboard-driven terminal calendar (TUI) built on caldir. It provides an instant terminal UI for navigating days, weeks, and full months, creating and editing events in an interactive modal, and background sync. Available via Homebrew and pipx.
+
 ## Widgets and integrations
 
 ### [Caldir widget for Omarchy](https://github.com/t4t5/omarchy-caldir-widget)
