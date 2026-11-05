@@ -6,3 +6,8 @@ resolver = "3"
 license = "MIT"
 repository = "https://github.com/t4t5/caldir"
 homepage = "https://caldir.org"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
