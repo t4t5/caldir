@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
-use caldir_core::Event;
 use caldir_core::provider::ProviderStorage;
 use caldir_core::rpc::UpdateEvent;
+use caldir_core::{Event, ParticipationStatus};
 use serde_json::Value;
 
 use crate::app_config::AppConfigStore;
@@ -10,7 +10,7 @@ use crate::constants::{GOOGLE_EVENT_TYPE_PROPERTY, PROVIDER_NAME};
 use crate::event_id::google_api_id;
 use crate::google_event::{FromGoogle, ToGoogle};
 use crate::remote_config::GoogleRemoteConfig;
-use crate::session::SessionStore;
+use crate::session::{Session, SessionStore};
 
 const BIRTHDAY_PATCH_FIELDS: &[&str] = &["summary", "colorId", "reminders"];
 
@@ -42,19 +42,54 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
 
         Ok(Event::from_google(google_event)?)
     } else {
-        // Organizer or own event: PATCH event fields, but never send attendees.
-        // A single EXDATE edit is a master update; sending a full attendee list
-        // here can rewrite invite state across the whole series.
-        let google_event = patch_event_without_attendees(
-            session.access_token(),
+        // Organizer or own event: PATCH event fields, but never send the full
+        // attendee list. A single EXDATE edit is a master update; sending a full
+        // attendee list here can rewrite invite state across the whole series.
+        // The organizer's own response (e.g. declining one's own meeting) is
+        // pushed separately via `patch_organizer_event`.
+        let google_event = patch_organizer_event(
+            &session,
             calendar_id,
             google_event_id,
             &cmd.event,
+            account_email,
         )
         .await?;
 
         Ok(Event::from_google(google_event)?)
     }
+}
+
+/// Patch an event the account organizes, including the organizer's own response.
+///
+/// Google adds the organizer to the attendee list once a meeting has other
+/// guests, and lets them set their own `responseStatus` (e.g. decline a single
+/// occurrence). `patch_event_without_attendees` never sends attendees, so a
+/// changed organizer `PARTSTAT` would otherwise be dropped on push and then
+/// overwritten on the next pull. When the response Google returns differs from
+/// the local one, patch just our own `responseStatus` (the same single-attendee
+/// patch used for invitations).
+pub(crate) async fn patch_organizer_event(
+    session: &Session,
+    calendar_id: &str,
+    event_id: &str,
+    event: &Event,
+    account_email: &str,
+) -> Result<google_calendar::types::Event> {
+    let patched =
+        patch_event_without_attendees(session.access_token(), calendar_id, event_id, event).await?;
+
+    let wanted = match event.attendee_status(account_email) {
+        Some(status) if status != ParticipationStatus::NeedsAction => status,
+        _ => return Ok(patched),
+    };
+
+    let remote = Event::from_google(patched.clone())?;
+    if remote.attendee_status(account_email) == Some(wanted) {
+        return Ok(patched);
+    }
+
+    patch_invite_personal_fields(session, calendar_id, event_id, event, account_email).await
 }
 
 pub(crate) async fn patch_event_without_attendees(

@@ -6,7 +6,7 @@ use google_calendar::types::SendUpdates;
 
 use crate::app_config::AppConfigStore;
 use crate::commands::invite::patch_invite_personal_fields;
-use crate::commands::update_event::patch_event_without_attendees;
+use crate::commands::update_event::patch_organizer_event;
 use crate::constants::PROVIDER_NAME;
 use crate::event_id::override_instance_id;
 use crate::google_event::{FromGoogle, ToGoogle};
@@ -47,11 +47,12 @@ pub async fn handle(cmd: CreateEvent) -> Result<Event> {
 
             return Event::from_google(google_event);
         } else {
-            let google_event = patch_event_without_attendees(
-                session.access_token(),
+            let google_event = patch_organizer_event(
+                &session,
                 calendar_id,
                 &instance_id,
                 &cmd.event,
+                account_email,
             )
             .await
             .with_context(|| {
