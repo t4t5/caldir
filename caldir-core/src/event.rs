@@ -154,6 +154,17 @@ impl Event {
         }
     }
 
+    /// True if email appears on the attendee list, regardless of organizer role.
+    ///
+    /// Unlike [`is_invite_for`], this is true even when the email is also the
+    /// organizer. Google (and iCloud) add the organizer to the attendee list
+    /// when a meeting has other guests, and let that organizer set their own
+    /// `PARTSTAT` (e.g. decline a single occurrence). Responding to one's own
+    /// event is an attendee action on that attendee entry, not an invite reply.
+    pub fn is_attendee(&self, email: &str) -> bool {
+        self.find_attendee(email).is_some()
+    }
+
     /// True if email is an attendee but NOT the organizer
     pub fn is_invite_for(&self, email: &str) -> bool {
         let is_attendee = self.find_attendee(email).is_some();
@@ -728,6 +739,35 @@ END:VCALENDAR
         event.attendees = vec![Attendee::new("alice@example.com")];
 
         assert!(!event.is_invite_for("ALICE@example.com"));
+    }
+
+    #[test]
+    fn is_attendee_is_true_for_organizer_listed_as_attendee() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![
+            Attendee::new("Alice@Example.com"),
+            Attendee::new("bob@example.com"),
+        ];
+
+        assert!(event.is_attendee("alice@example.com"));
+        assert!(event.is_attendee("bob@example.com"));
+        assert!(!event.is_invite_for("alice@example.com"));
+    }
+
+    #[test]
+    fn is_attendee_is_false_for_organizer_not_on_attendee_list() {
+        let mut event = Event::new(
+            "Test",
+            EventTime::Date(chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap()),
+        );
+        event.organizer = Some(Organizer::new("alice@example.com"));
+        event.attendees = vec![Attendee::new("bob@example.com")];
+
+        assert!(!event.is_attendee("alice@example.com"));
     }
 
     #[test]
