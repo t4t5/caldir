@@ -88,6 +88,9 @@ caldir new "Team standup" --start 2025-03-20T09:00 --duration 30m
 # With a location
 caldir new "Lunch" --start 2025-03-20T12:00 --location "Café Central"
 
+# With a description
+caldir new "Dentist" --start 2025-03-21T08:30 --description "Bring insurance card"
+
 # With a reminder
 caldir new "Sprint planning" --start 2025-03-22T10:00 --reminder 10m
 

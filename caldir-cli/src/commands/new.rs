@@ -15,6 +15,7 @@ pub fn run(
     end: Option<String>,
     duration: Option<String>,
     location: Option<String>,
+    description: Option<String>,
     calendar_slug: Option<String>,
     reminder_args: Vec<String>,
     no_reminders: bool,
@@ -94,6 +95,7 @@ pub fn run(
     if let Some(loc) = location {
         event.location = Some(loc);
     }
+    event.description = description.filter(|d| !d.is_empty());
     if !reminders.is_empty() {
         event.reminders = reminders;
     }

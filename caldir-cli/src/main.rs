@@ -162,6 +162,10 @@ enum Commands {
         #[arg(short, long)]
         location: Option<String>,
 
+        /// Description (notes shown in the event body)
+        #[arg(long)]
+        description: Option<String>,
+
         /// Calendar slug (defaults to default_calendar from config)
         #[arg(short = 'C', long)]
         calendar: Option<String>,
@@ -314,6 +318,7 @@ async fn main() -> Result<()> {
             end,
             duration,
             location,
+            description,
             calendar,
             reminder,
             no_reminders,
@@ -324,6 +329,7 @@ async fn main() -> Result<()> {
             end,
             duration,
             location,
+            description,
             calendar,
             reminder,
             no_reminders,
