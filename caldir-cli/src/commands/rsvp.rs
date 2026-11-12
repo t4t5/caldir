@@ -46,7 +46,7 @@ fn run_direct(caldir: &Caldir, path_str: &str, response_str: &str) -> Result<()>
     let mut cal_event = CalendarEvent::load(&path).context("Failed to load event")?;
     let event = cal_event.event();
 
-    if !event.is_invite_for(email) {
+    if !event.is_attendee(email) {
         anyhow::bail!("This event is not an invite for {}", email);
     }
 
