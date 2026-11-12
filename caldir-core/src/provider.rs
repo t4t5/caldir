@@ -272,6 +272,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn connect_waits_long_enough_for_the_user() {
+        let mock = Arc::new(MockTransport::with_response(
+            r#"{"status":"success","data":{"type":"done"}}"#,
+        ));
+        let provider = provider_with_transport(mock.clone());
+
+        let _ = provider
+            .connect(Default::default(), Default::default())
+            .await;
+
+        assert_eq!(mock.captured_timeout(), Some(Duration::from_secs(6 * 60)));
+    }
+
+    #[tokio::test]
     async fn call_prefers_configured_timeout_over_per_command_timeout() {
         let mock = Arc::new(MockTransport::with_response(
             r#"{"status":"success","data":{"value":"x"}}"#,
