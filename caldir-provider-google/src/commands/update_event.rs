@@ -45,8 +45,6 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
         // Organizer or own event: PATCH event fields, but never send the full
         // attendee list. A single EXDATE edit is a master update; sending a full
         // attendee list here can rewrite invite state across the whole series.
-        // The organizer's own response (e.g. declining one's own meeting) is
-        // pushed separately via `patch_organizer_event`.
         let google_event = patch_organizer_event(
             &session,
             calendar_id,
@@ -60,15 +58,7 @@ pub async fn handle(cmd: UpdateEvent) -> Result<Event> {
     }
 }
 
-/// Patch an event the account organizes, including the organizer's own response.
-///
-/// Google adds the organizer to the attendee list once a meeting has other
-/// guests, and lets them set their own `responseStatus` (e.g. decline a single
-/// occurrence). `patch_event_without_attendees` never sends attendees, so a
-/// changed organizer `PARTSTAT` would otherwise be dropped on push and then
-/// overwritten on the next pull. When the response Google returns differs from
-/// the local one, patch just our own `responseStatus` (the same single-attendee
-/// patch used for invitations).
+/// Patch an organized event, then push our own response if it didn't stick.
 pub(crate) async fn patch_organizer_event(
     session: &Session,
     calendar_id: &str,

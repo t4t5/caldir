@@ -46,8 +46,6 @@ fn run_direct(caldir: &Caldir, path_str: &str, response_str: &str) -> Result<()>
     let mut cal_event = CalendarEvent::load(&path).context("Failed to load event")?;
     let event = cal_event.event();
 
-    // Organizers who are also on the attendee list (Google adds them once a
-    // meeting has other guests) may respond to their own event too.
     if !event.is_attendee(email) {
         anyhow::bail!("This event is not an invite for {}", email);
     }

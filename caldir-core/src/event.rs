@@ -154,13 +154,7 @@ impl Event {
         }
     }
 
-    /// True if email appears on the attendee list, regardless of organizer role.
-    ///
-    /// Unlike [`is_invite_for`], this is true even when the email is also the
-    /// organizer. Google (and iCloud) add the organizer to the attendee list
-    /// when a meeting has other guests, and let that organizer set their own
-    /// `PARTSTAT` (e.g. decline a single occurrence). Responding to one's own
-    /// event is an attendee action on that attendee entry, not an invite reply.
+    /// True if email is an attendee, including when it's also the organizer
     pub fn is_attendee(&self, email: &str) -> bool {
         self.find_attendee(email).is_some()
     }
