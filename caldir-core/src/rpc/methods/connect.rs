@@ -21,8 +21,7 @@ pub struct Connect {
 impl Rpc for Connect {
     const METHOD: Method = Method::Connect;
     type Response = ConnectResponse;
-    // A connect step can wait on the user: Proton's human verification window
-    // stays open for up to five minutes.
+    // Connect may wait on the user (e.g. CAPTCHA).
     const TIMEOUT: Duration = Duration::from_secs(6 * 60);
 }
 
