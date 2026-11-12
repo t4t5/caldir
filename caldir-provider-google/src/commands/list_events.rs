@@ -67,7 +67,15 @@ fn process_google_events(google_events: Vec<google_calendar::types::Event>) -> R
     let mut cancellations: Vec<google_calendar::types::Event> = Vec::new();
     let mut events: Vec<Event> = Vec::with_capacity(google_events.len());
 
-    for ge in google_events {
+    let master_tz_by_google_id: HashMap<String, String> = google_events
+        .iter()
+        .filter(|ge| !ge.recurrence.is_empty())
+        .filter_map(|ge| Some((ge.id.clone(), ge.start.as_ref()?.time_zone.clone())))
+        .collect();
+
+    for mut ge in google_events {
+        restore_instance_origin(&mut ge, &master_tz_by_google_id);
+
         let has_start = ge
             .start
             .as_ref()
@@ -94,6 +102,41 @@ fn process_google_events(google_events: Vec<google_calendar::types::Event>) -> R
     }
 
     Ok(events)
+}
+
+/// Google sometimes omits recurringEventId/originalStartTime on cancelled
+/// instances. Without them the instance collides with its master's identity
+/// and overwrites it, so recover both from the `{master_id}_{suffix}` id.
+fn restore_instance_origin(
+    ge: &mut google_calendar::types::Event,
+    master_tz_by_google_id: &HashMap<String, String>,
+) {
+    if !ge.recurring_event_id.is_empty() || ge.original_start_time.is_some() {
+        return;
+    }
+    let Some((master_id, suffix)) = ge.id.rsplit_once('_') else {
+        return;
+    };
+
+    let mut original_start: google_calendar::types::EventDateTime =
+        serde_json::from_value(serde_json::json!({})).unwrap();
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(suffix, "%Y%m%dT%H%M%SZ") {
+        original_start.date_time = Some(dt.and_utc());
+    } else if suffix.len() == 8
+        && let Ok(d) = chrono::NaiveDate::parse_from_str(suffix, "%Y%m%d")
+    {
+        original_start.date = Some(d);
+    } else {
+        return;
+    }
+
+    original_start.time_zone = master_tz_by_google_id
+        .get(master_id)
+        .cloned()
+        .or_else(|| ge.start.as_ref().map(|s| s.time_zone.clone()))
+        .unwrap_or_default();
+    ge.recurring_event_id = master_id.to_string();
+    ge.original_start_time = Some(original_start);
 }
 
 fn cancellation_to_event(
@@ -260,6 +303,64 @@ mod tests {
 
         let result = process_google_events(vec![bad]).unwrap();
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn cancelled_instance_without_origin_fields_does_not_replace_master() {
+        // Seen in the wild: a full-data cancelled instance with no
+        // recurringEventId/originalStartTime, sharing the master's iCalUID.
+        let mut instance = master("master_id", "uid@google.com", "Weekly retro");
+        instance.id = "master_id_20260213T150000Z".into();
+        instance.status = "cancelled".into();
+        instance.recurrence = Vec::new();
+        instance.start.as_mut().unwrap().date_time = Some("2026-02-13T15:00:00Z".parse().unwrap());
+        instance.end.as_mut().unwrap().date_time = Some("2026-02-13T15:45:00Z".parse().unwrap());
+
+        let result = process_google_events(vec![
+            instance,
+            master("master_id", "uid@google.com", "Weekly retro"),
+        ])
+        .unwrap();
+
+        assert_eq!(result.len(), 2);
+        let master = result.iter().find(|e| e.recurrence_id.is_none()).unwrap();
+        assert!(master.recurrence.is_some());
+        let cancellation = result.iter().find(|e| e.recurrence_id.is_some()).unwrap();
+        assert_eq!(cancellation.uid.as_str(), "uid@google.com");
+        assert_eq!(cancellation.status, Status::Cancelled);
+        assert_eq!(
+            cancellation.recurrence_id.as_ref().unwrap().as_event_time(),
+            &EventTime::DateTimeZoned {
+                datetime: "2026-02-13T16:00:00".parse().unwrap(),
+                tzid: "Europe/Oslo".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn all_day_instance_suffix_is_restored_as_date() {
+        let mut ge = empty_event();
+        ge.id = "series_20260213".into();
+        ge.status = "cancelled".into();
+
+        restore_instance_origin(&mut ge, &HashMap::new());
+
+        assert_eq!(ge.recurring_event_id, "series");
+        assert_eq!(
+            ge.original_start_time.unwrap().date,
+            Some("2026-02-13".parse().unwrap())
+        );
+    }
+
+    #[test]
+    fn ids_without_instance_suffix_are_left_alone() {
+        for id in ["plain", "split_R20260904T140000", "a_b"] {
+            let mut ge = empty_event();
+            ge.id = id.into();
+            restore_instance_origin(&mut ge, &HashMap::new());
+            assert!(ge.recurring_event_id.is_empty(), "{id}");
+            assert!(ge.original_start_time.is_none(), "{id}");
+        }
     }
 
     #[test]
