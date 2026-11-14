@@ -22,6 +22,15 @@ This installs the `caldir` CLI and the default [provider plugins](/providers). P
 also available on the [releases page](https://github.com/t4t5/caldir/releases).
 
 <details>
+<summary>Install with Scoop (Windows)</summary>
+
+```powershell
+scoop bucket add extras # Ensure bucket is added first
+scoop install caldir
+```
+</details>
+
+<details>
 <summary>Or install from source</summary>
 
 Make sure you have [Rust and Cargo](https://rust-lang.org/learn/get-started/) installed.
