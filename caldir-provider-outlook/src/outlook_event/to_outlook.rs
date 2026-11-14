@@ -306,7 +306,7 @@ fn until_local(until: &str, start: &EventTime) -> Option<NaiveDateTime> {
     let utc = Utc.from_utc_datetime(&naive);
     let local = match start {
         EventTime::DateTimeZoned { tzid, .. } => {
-            let tz: chrono_tz::Tz = tzid.parse().ok()?;
+            let tz: caldir_core::Tz = tzid.parse().ok()?;
             utc.with_timezone(&tz).naive_local()
         }
         _ => utc.naive_utc(),

@@ -11,7 +11,7 @@ pub fn run(caldir: &Caldir, calendar_slugs: Vec<String>) -> Result<AgendaView> {
 
     let calendars = resolve_calendars(caldir, &calendar_slugs)?;
 
-    let tz: chrono_tz::Tz = iana_time_zone::get_timezone()?.parse()?;
+    let tz: caldir_core::Tz = iana_time_zone::get_timezone()?.parse()?;
     let (from, to) = week_range(Utc::now().with_timezone(&tz));
 
     AgendaView::collect(caldir, calendars, from, to)
@@ -50,16 +50,20 @@ fn week_range<Tz: TimeZone>(now: DateTime<Tz>) -> (DateTime<Utc>, DateTime<Utc>)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caldir_core::Tz;
     use chrono::NaiveDate;
-    use chrono_tz::Europe::Stockholm;
+
+    fn stockholm() -> Tz {
+        Tz::get("Europe/Stockholm").unwrap()
+    }
 
     fn stockholm_date(d: DateTime<Utc>) -> NaiveDate {
-        d.with_timezone(&Stockholm).date_naive()
+        d.with_timezone(&stockholm()).date_naive()
     }
 
     #[test]
     fn tuesday_shows_tuesday_through_sunday() {
-        let now = Stockholm.with_ymd_and_hms(2026, 5, 12, 12, 0, 0).unwrap();
+        let now = stockholm().with_ymd_and_hms(2026, 5, 12, 12, 0, 0).unwrap();
         let (from, to) = week_range(now);
 
         assert_eq!(
@@ -73,7 +77,7 @@ mod tests {
             "end should be Sunday May 17 in local time",
         );
         assert_eq!(
-            from.with_timezone(&Stockholm).time(),
+            from.with_timezone(&stockholm()).time(),
             chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             "start should be midnight local time",
         );
@@ -81,7 +85,7 @@ mod tests {
 
     #[test]
     fn sunday_shows_following_monday_through_sunday() {
-        let now = Stockholm.with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap();
+        let now = stockholm().with_ymd_and_hms(2026, 5, 17, 12, 0, 0).unwrap();
         let (from, to) = week_range(now);
 
         assert_eq!(
@@ -95,7 +99,7 @@ mod tests {
             "end should be the following Sunday May 24",
         );
         assert_eq!(
-            from.with_timezone(&Stockholm).time(),
+            from.with_timezone(&stockholm()).time(),
             chrono::NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
             "start should be midnight local time",
         );

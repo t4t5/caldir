@@ -1,9 +1,9 @@
 //! VTIMEZONE blocks derived from TZIDs on write (RFC 5545 §3.6.5).
 //! Ignored on parse: the IANA TZID is the source of truth.
 
+use crate::Tz;
 use crate::event::{Event, EventTime};
-use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Offset, TimeZone, Weekday};
-use chrono_tz::{OffsetComponents, OffsetName, Tz};
+use chrono::{Datelike, Duration, NaiveDate, NaiveDateTime, NaiveTime, Weekday};
 use std::collections::BTreeMap;
 
 /// Years past the last referenced date covered for open-ended recurrences.
@@ -19,10 +19,10 @@ pub(crate) fn ics_blocks(event: &Event) -> String {
     zoned_times(event)
         .into_iter()
         .filter_map(|(tzid, times)| {
-            let tz: Tz = tzid.parse().ok()?;
+            let tz = Tz::get(tzid)?;
             let first_year = times.iter().min()?.year() - 1;
             let last_year = times.iter().max()?.year() + horizon;
-            Some(vtimezone(tzid, tz, first_year, last_year))
+            Some(vtimezone(tzid, &tz, first_year, last_year))
         })
         .collect()
 }
@@ -51,13 +51,17 @@ fn zoned_times(event: &Event) -> BTreeMap<&str, Vec<NaiveDateTime>> {
     zones
 }
 
-fn vtimezone(tzid: &str, tz: Tz, first_year: i32, last_year: i32) -> String {
+fn vtimezone(tzid: &str, tz: &Tz, first_year: i32, last_year: i32) -> String {
     let start = year_start(first_year);
     let transitions = transitions(tz, start, year_start(last_year + 1));
 
-    let negative_dst = std::iter::once(Observance::at(tz, start))
-        .chain(transitions.iter().map(|t| t.to.clone()))
-        .any(|o| o.dst < 0);
+    let initial = Observance::at(tz, start);
+    let observances: Vec<&Observance> = std::iter::once(&initial)
+        .chain(transitions.iter().map(|t| &t.to))
+        .collect();
+    let negative_dst = observances
+        .windows(2)
+        .any(|pair| pair[0].is_negative_dst_change(pair[1]));
     let block = |onset, from, to: &Observance, rrule: Option<&str>| {
         observance_block(onset, from, to, to.is_daylight(negative_dst), rrule)
     };
@@ -101,23 +105,31 @@ fn year_start(year: i32) -> NaiveDateTime {
 #[derive(Debug, Clone, PartialEq)]
 struct Observance {
     offset: i32,
-    dst: i64,
+    dst: bool,
     name: Option<String>,
 }
 
 impl Observance {
-    fn at(tz: Tz, utc: NaiveDateTime) -> Self {
-        let offset = tz.offset_from_utc_datetime(&utc);
+    fn at(tz: &Tz, utc: NaiveDateTime) -> Self {
+        let (offset, dst, abbreviation) = tz.info_at(&utc);
         Observance {
-            offset: offset.fix().local_minus_utc(),
-            dst: offset.dst_offset().num_seconds(),
-            name: offset.abbreviation().map(str::to_string),
+            offset,
+            dst,
+            // Numeric abbreviations like `-03` aren't names
+            name: (!abbreviation.starts_with(['+', '-'])).then_some(abbreviation),
         }
+    }
+
+    /// Entering DST turns clocks back (or leaving it turns them forward).
+    fn is_negative_dst_change(&self, next: &Observance) -> bool {
+        self.dst != next.dst
+            && self.offset != next.offset
+            && next.dst == (next.offset < self.offset)
     }
 
     /// With negative DST (e.g. Europe/Dublin), the non-DST observance is the summer one.
     fn is_daylight(&self, negative_dst: bool) -> bool {
-        self.dst > 0 || (negative_dst && self.dst == 0)
+        self.dst != negative_dst
     }
 }
 
@@ -135,7 +147,7 @@ impl Transition {
     }
 }
 
-fn transitions(tz: Tz, from: NaiveDateTime, to: NaiveDateTime) -> Vec<Transition> {
+fn transitions(tz: &Tz, from: NaiveDateTime, to: NaiveDateTime) -> Vec<Transition> {
     let mut found = Vec::new();
     let mut lo = from;
     let mut current = Observance::at(tz, lo);
@@ -267,7 +279,7 @@ fn yearly_rules(
         .collect()
 }
 
-fn initial_observance(tz: Tz, utc: NaiveDateTime, negative_dst: bool) -> String {
+fn initial_observance(tz: &Tz, utc: NaiveDateTime, negative_dst: bool) -> String {
     let observance = Observance::at(tz, utc);
     let local = utc + Duration::seconds(observance.offset.into());
     let daylight = observance.is_daylight(negative_dst);
@@ -400,6 +412,18 @@ mod tests {
 
         assert!(blocks.contains("BEGIN:DAYLIGHT\r\nDTSTART:20250330T010000\r\nTZOFFSETFROM:+0000\r\nTZOFFSETTO:+0100\r\n"));
         assert!(blocks.contains("BEGIN:STANDARD\r\nDTSTART:20251026T020000\r\nTZOFFSETFROM:+0100\r\nTZOFFSETTO:+0000\r\n"));
+    }
+
+    #[test]
+    fn ends_on_permanent_offset_when_dst_becomes_permanent() {
+        // BC stays on UTC-7 from 2026-11-01 (tzdata 2026c+)
+        let event = Event::new("Meeting", zoned("America/Vancouver", 2026, 12, 1, 18));
+        let blocks = ics_blocks(&event);
+
+        assert!(!blocks.contains("RRULE"));
+        assert!(blocks.ends_with(
+            "DTSTART:20261101T020000\r\nTZOFFSETFROM:-0700\r\nTZOFFSETTO:-0700\r\nTZNAME:MST\r\nEND:STANDARD\r\nEND:VTIMEZONE\r\n"
+        ));
     }
 
     #[test]

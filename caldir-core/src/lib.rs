@@ -6,6 +6,7 @@ mod event;
 pub mod provider;
 mod remote;
 pub mod rpc;
+mod tz;
 mod utils;
 
 #[cfg(test)]
@@ -28,4 +29,5 @@ pub use provider::{
     Provider, ProviderError, ProviderRegistry, ProviderSlug, ProviderTransportError,
 };
 pub use remote::{Remote, RemoteConfig, RemoteConfigParams, RemoteError, RemoteEvent};
+pub use tz::{Tz, TzOffset, UnknownTz};
 pub use utils::{DateBounds, DateRange};

@@ -11,7 +11,7 @@ pub fn run(caldir: &Caldir, calendar_slugs: Vec<String>) -> Result<AgendaView> {
 
     let calendars = resolve_calendars(caldir, &calendar_slugs)?;
 
-    let tz: chrono_tz::Tz = iana_time_zone::get_timezone()?.parse()?;
+    let tz: caldir_core::Tz = iana_time_zone::get_timezone()?.parse()?;
 
     let (from, to) = day_range(Utc::now().with_timezone(&tz));
 

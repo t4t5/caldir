@@ -1,4 +1,5 @@
 use super::tz_normalize::{self, Tzid};
+use crate::Tz;
 use chrono::{DateTime, FixedOffset, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use icalendar::{CalendarDateTime, DatePerhapsTime};
 
@@ -63,14 +64,12 @@ impl EventTime {
     }
 }
 
-fn parse_tzid(tzid: &str) -> Option<chrono_tz::Tz> {
-    match tzid.parse() {
-        Ok(tz) => Some(tz),
-        Err(_) => {
-            tz_normalize::warn_unknown(tzid);
-            None
-        }
+pub(crate) fn parse_tzid(tzid: &str) -> Option<Tz> {
+    let tz = Tz::get(tzid);
+    if tz.is_none() {
+        tz_normalize::warn_unknown(tzid);
     }
+    tz
 }
 
 /// Convert a naive (non-zoned) datetime into a zoned datetime.
@@ -151,6 +150,10 @@ impl From<DatePerhapsTime> for EventTime {
 mod tests {
     use super::*;
 
+    fn stockholm() -> Tz {
+        Tz::get("Europe/Stockholm").unwrap()
+    }
+
     #[test]
     fn to_local_converts_utc_event_to_target_timezone() {
         // 2024-01-01 12:00:00 UTC
@@ -159,7 +162,7 @@ mod tests {
         let event_time = &EventTime::DateTimeUtc(utc);
 
         // User is in Stockholm:
-        let local = event_time.to_local_tz(&chrono_tz::Europe::Stockholm);
+        let local = event_time.to_local_tz(&stockholm());
 
         // Local time should be CET (UTC+1) in January = 13:00
         assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-01-01T1300");
@@ -179,7 +182,7 @@ mod tests {
         };
 
         // User is in Stockholm:
-        let local = event_time.to_local_tz(&chrono_tz::Europe::Stockholm);
+        let local = event_time.to_local_tz(&stockholm());
 
         // 12:00 in NY (EST, UTC-5)
         // = 18:00 in Stockholm (CET, UTC+1) in January
@@ -197,7 +200,7 @@ mod tests {
             tzid: "Bogus/Zone".to_string(),
         };
 
-        let local = event_time.to_local_tz(&chrono_tz::Europe::Stockholm);
+        let local = event_time.to_local_tz(&stockholm());
 
         assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-01-01T1200");
     }
@@ -215,8 +218,8 @@ mod tests {
         let floating = EventTime::DateTimeFloating(datetime);
 
         assert_eq!(
-            zoned.to_local_tz(&chrono_tz::Europe::Stockholm),
-            floating.to_local_tz(&chrono_tz::Europe::Stockholm)
+            zoned.to_local_tz(&stockholm()),
+            floating.to_local_tz(&stockholm())
         );
         assert_eq!(zoned.to_utc(), floating.to_utc());
         assert_eq!(zoned.normalized(), NormalizedEventTime::Floating(datetime));
@@ -233,7 +236,7 @@ mod tests {
 
         let event_time = EventTime::DateTimeFloating(naive);
 
-        let local = event_time.to_local_tz(&chrono_tz::Europe::Stockholm);
+        let local = event_time.to_local_tz(&stockholm());
 
         // Fallback skips forward past the jump, landing at 03:30 CEST.
         assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-03-31T0330");
@@ -250,7 +253,7 @@ mod tests {
 
         let event_time = EventTime::DateTimeFloating(naive);
 
-        let local = event_time.to_local_tz(&chrono_tz::Europe::Stockholm);
+        let local = event_time.to_local_tz(&stockholm());
 
         assert_eq!(local.format("%Y-%m-%dT%H%M").to_string(), "2024-10-27T0230");
     }
@@ -396,5 +399,22 @@ mod tests {
                 .unwrap()
             );
         }
+    }
+
+    #[test]
+    fn zoned_time_uses_current_tz_rules() {
+        let event_time = EventTime::DateTimeZoned {
+            datetime: NaiveDate::from_ymd_opt(2026, 12, 1)
+                .unwrap()
+                .and_hms_opt(18, 0, 0)
+                .unwrap(),
+            tzid: "America/Vancouver".to_string(),
+        };
+
+        // BC stays on UTC-7 from 2026-11-01
+        assert_eq!(
+            event_time.to_utc(),
+            Utc.with_ymd_and_hms(2026, 12, 2, 1, 0, 0).unwrap()
+        );
     }
 }

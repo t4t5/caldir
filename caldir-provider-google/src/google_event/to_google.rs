@@ -216,7 +216,7 @@ fn event_time_to_google(time: &EventTime) -> google_calendar::types::EventDateTi
         },
         EventTime::DateTimeZoned { datetime, tzid } => {
             // Convert wall clock time in the given timezone to actual UTC instant
-            let utc_dt = if let Ok(tz) = tzid.parse::<chrono_tz::Tz>() {
+            let utc_dt = if let Ok(tz) = tzid.parse::<caldir_core::Tz>() {
                 datetime
                     .and_local_timezone(tz)
                     .single()

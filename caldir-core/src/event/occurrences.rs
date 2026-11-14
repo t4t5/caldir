@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, Local, NaiveDateTime, Utc};
 use rrule::{RRuleSet, Tz as RTz};
 
 use crate::Event;
+use crate::event::time::parse_tzid;
 use crate::event::{EventTime, Recurrence, RecurrenceId, Status};
 
 /// Expand a set of events into all occurrences overlapping `[from, to)`.
@@ -72,10 +73,24 @@ pub(crate) fn expand_master(
         };
     };
 
+    let wall_clock = is_wall_clock(&master.start);
+    let (after, before) = if wall_clock {
+        // Pad for the zone's offset, then filter exactly below
+        let pad = Duration::days(1);
+        let pseudo = |utc: DateTime<Utc>| {
+            wall_clock_of(&master.start, &EventTime::DateTimeUtc(utc)).and_utc()
+        };
+        (pseudo(from) - pad, pseudo(to) + pad)
+    } else {
+        (from, to)
+    };
+
     let tz: RTz = Utc.into();
-    let after = from.with_timezone(&tz);
-    let before = to.with_timezone(&tz);
-    let dates = rrule_set.after(after).before(before).all(366).dates;
+    let dates = rrule_set
+        .after(after.with_timezone(&tz))
+        .before(before.with_timezone(&tz))
+        .all(366)
+        .dates;
 
     let duration = master_duration(master);
 
@@ -86,6 +101,10 @@ pub(crate) fn expand_master(
             let rid = RecurrenceId::from_event_time(occ_time.clone());
 
             if overrides.contains_key(&rid) {
+                return None;
+            }
+
+            if wall_clock && !(from..=to).contains(&occ_time.to_utc()) {
                 return None;
             }
 
@@ -162,12 +181,43 @@ fn occurrence_to_event_time(occ: &DateTime<RTz>, master_start: &EventTime) -> Ev
     match master_start {
         EventTime::Date(_) => EventTime::Date(occ.date_naive()),
         EventTime::DateTimeUtc(_) => EventTime::DateTimeUtc(occ.with_timezone(&Utc)),
-        EventTime::DateTimeFloating(_) => EventTime::DateTimeFloating(occ.naive_local()),
+        EventTime::DateTimeFloating(_) => EventTime::DateTimeFloating(occ.naive_utc()),
         EventTime::DateTimeZoned { tzid, .. } => EventTime::DateTimeZoned {
-            datetime: occ.naive_local(),
+            datetime: occ.naive_utc(),
             tzid: tzid.clone(),
         },
     }
+}
+
+/// Floating and zoned series expand over bare wall-clock times written as
+/// UTC (no DST gaps), since rrule would otherwise resolve TZIDs with its own
+/// bundled tz data. The zone is reattached per occurrence.
+fn is_wall_clock(start: &EventTime) -> bool {
+    matches!(
+        start,
+        EventTime::DateTimeFloating(_) | EventTime::DateTimeZoned { .. }
+    )
+}
+
+/// `time` as a wall-clock reading in the zone of a floating or zoned `start`.
+fn wall_clock_of(start: &EventTime, time: &EventTime) -> NaiveDateTime {
+    match (start, time) {
+        (EventTime::DateTimeZoned { tzid, .. }, EventTime::DateTimeZoned { datetime, tzid: t })
+            if tzid == t =>
+        {
+            *datetime
+        }
+        (EventTime::DateTimeZoned { tzid, .. }, _) => match parse_tzid(tzid) {
+            Some(tz) => time.to_local_tz(&tz).naive_local(),
+            None => time.to_local_tz(&Local).naive_local(),
+        },
+        (_, EventTime::DateTimeFloating(datetime)) => *datetime,
+        _ => time.to_local_tz(&Local).naive_local(),
+    }
+}
+
+fn format_wall_clock(datetime: &NaiveDateTime) -> String {
+    datetime.format("%Y%m%dT%H%M%SZ").to_string()
 }
 
 fn build_rrule_set_string(start: &EventTime, recurrence: &Recurrence) -> String {
@@ -190,9 +240,8 @@ fn format_dtstart(start: &EventTime) -> String {
     match start {
         EventTime::Date(d) => format!("DTSTART;VALUE=DATE:{}", d.format("%Y%m%d")),
         EventTime::DateTimeUtc(dt) => format!("DTSTART:{}", dt.format("%Y%m%dT%H%M%SZ")),
-        EventTime::DateTimeFloating(dt) => format!("DTSTART:{}", dt.format("%Y%m%dT%H%M%S")),
-        EventTime::DateTimeZoned { datetime, tzid } => {
-            format!("DTSTART;TZID={}:{}", tzid, datetime.format("%Y%m%dT%H%M%S"))
+        EventTime::DateTimeFloating(datetime) | EventTime::DateTimeZoned { datetime, .. } => {
+            format!("DTSTART:{}", format_wall_clock(datetime))
         }
     }
 }
@@ -203,27 +252,20 @@ fn format_exdate_or_rdate(name: &str, time: &EventTime, start: &EventTime) -> St
         (EventTime::Date(_), _) => {
             format!("{};VALUE=DATE:{}", name, time.to_utc().format("%Y%m%d"))
         }
-        (_, EventTime::DateTimeUtc(dt)) => {
-            format!("{}:{}", name, dt.format("%Y%m%dT%H%M%SZ"))
+        (EventTime::DateTimeUtc(_), _) => {
+            format!("{}:{}", name, time.to_utc().format("%Y%m%dT%H%M%SZ"))
         }
-        (_, EventTime::DateTimeFloating(dt)) => {
-            format!("{}:{}", name, dt.format("%Y%m%dT%H%M%S"))
-        }
-        (_, EventTime::DateTimeZoned { datetime, tzid }) => {
-            format!(
-                "{};TZID={}:{}",
-                name,
-                tzid,
-                datetime.format("%Y%m%dT%H%M%S")
-            )
-        }
+        _ => format!(
+            "{}:{}",
+            name,
+            format_wall_clock(&wall_clock_of(start, time))
+        ),
     }
 }
 
 /// The `rrule` crate requires UNTIL to share DTSTART's timezone convention:
-/// UTC/zoned DTSTART → UNTIL must end with `Z`; floating/date DTSTART → no `Z`.
-/// RFC 5545 actually mandates UNTIL in UTC when DTSTART is zoned, so we add a
-/// `Z` for zoned starts too (the rrule crate accepts that form).
+/// UTC and wall-clock DTSTART → UNTIL must end with `Z`; date DTSTART → no `Z`.
+/// A UTC UNTIL on a wall-clock series is converted to that series' wall clock.
 fn normalize_until(rrule: &str, start: &EventTime) -> String {
     rrule
         .split(';')
@@ -233,7 +275,20 @@ fn normalize_until(rrule: &str, start: &EventTime) -> String {
             };
 
             match start {
-                EventTime::DateTimeUtc(_) | EventTime::DateTimeZoned { .. } => {
+                EventTime::DateTimeFloating(_) | EventTime::DateTimeZoned { .. } => {
+                    if let Some(utc) = value
+                        .strip_suffix('Z')
+                        .and_then(|v| NaiveDateTime::parse_from_str(v, "%Y%m%dT%H%M%S").ok())
+                    {
+                        let wall = wall_clock_of(start, &EventTime::DateTimeUtc(utc.and_utc()));
+                        format!("UNTIL={}", format_wall_clock(&wall))
+                    } else if value.ends_with('Z') || !value.contains('T') {
+                        format!("UNTIL={}T235959Z", &value[..value.len().min(8)])
+                    } else {
+                        format!("UNTIL={value}Z")
+                    }
+                }
+                EventTime::DateTimeUtc(_) => {
                     if value.ends_with('Z') {
                         part.to_string()
                     } else if value.contains('T') {
@@ -242,7 +297,7 @@ fn normalize_until(rrule: &str, start: &EventTime) -> String {
                         format!("UNTIL={value}T235959Z")
                     }
                 }
-                EventTime::Date(_) | EventTime::DateTimeFloating(_) => {
+                EventTime::Date(_) => {
                     if let Some(stripped) = value.strip_suffix('Z') {
                         format!("UNTIL={stripped}")
                     } else {
@@ -788,5 +843,96 @@ mod tests {
                 utc(2026, 6, 3, 12, 0),
             ]
         );
+    }
+
+    fn zoned_at(tzid: &str, y: i32, m: u32, d: u32, h: u32) -> EventTime {
+        EventTime::DateTimeZoned {
+            datetime: NaiveDate::from_ymd_opt(y, m, d)
+                .unwrap()
+                .and_hms_opt(h, 0, 0)
+                .unwrap(),
+            tzid: tzid.to_string(),
+        }
+    }
+
+    #[test]
+    fn zoned_recurrence_keeps_wall_clock_across_dst() {
+        let mut master = Event::new("Standup", zoned_at("Europe/Stockholm", 2026, 3, 28, 9));
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY;COUNT=2"));
+
+        let result = expand_in_range(vec![master], utc(2026, 3, 1, 0, 0), utc(2026, 4, 1, 0, 0));
+
+        let starts: Vec<_> = result.iter().map(starts_at).collect();
+        assert_eq!(starts, vec![utc(2026, 3, 28, 8, 0), utc(2026, 3, 29, 7, 0)]);
+    }
+
+    #[test]
+    fn zoned_recurrence_uses_current_tz_rules() {
+        // BC stays on UTC-7 from 2026-11-01 (tzdata 2026c+)
+        let mut master = Event::new("Dinner", zoned_at("America/Vancouver", 2026, 10, 25, 18));
+        master.recurrence = Some(Recurrence::new("FREQ=WEEKLY;COUNT=2"));
+
+        let result = expand_in_range(vec![master], utc(2026, 10, 1, 0, 0), utc(2026, 12, 1, 0, 0));
+
+        let starts: Vec<_> = result.iter().map(starts_at).collect();
+        assert_eq!(
+            starts,
+            vec![utc(2026, 10, 26, 1, 0), utc(2026, 11, 2, 1, 0)]
+        );
+    }
+
+    #[test]
+    fn zoned_recurrence_filters_to_exact_range() {
+        let mut master = Event::new("Standup", zoned_at("Asia/Tokyo", 2026, 1, 1, 9));
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY;COUNT=10"));
+
+        // 09:00 JST = 00:00 UTC, both bounds inclusive
+        let result = expand_in_range(vec![master], utc(2026, 1, 3, 0, 0), utc(2026, 1, 5, 0, 0));
+
+        let starts: Vec<_> = result.iter().map(starts_at).collect();
+        assert_eq!(
+            starts,
+            vec![
+                utc(2026, 1, 3, 0, 0),
+                utc(2026, 1, 4, 0, 0),
+                utc(2026, 1, 5, 0, 0)
+            ]
+        );
+    }
+
+    #[test]
+    fn zoned_recurrence_converts_utc_until_to_wall_clock() {
+        let mut master = Event::new("Standup", zoned_at("Europe/Stockholm", 2026, 1, 5, 9));
+        master.recurrence = Some(Recurrence::new("FREQ=DAILY;UNTIL=20260107T080000Z"));
+
+        let result = expand_in_range(vec![master], utc(2026, 1, 1, 0, 0), utc(2026, 2, 1, 0, 0));
+
+        let starts: Vec<_> = result.iter().map(starts_at).collect();
+        assert_eq!(
+            starts,
+            vec![
+                utc(2026, 1, 5, 8, 0),
+                utc(2026, 1, 6, 8, 0),
+                utc(2026, 1, 7, 8, 0)
+            ]
+        );
+    }
+
+    #[test]
+    fn zoned_recurrence_honours_exdates_in_other_zones() {
+        let mut master = Event::new("Standup", zoned_at("Europe/Stockholm", 2026, 1, 5, 9));
+        master.recurrence = Some(Recurrence {
+            rrule: "FREQ=DAILY;COUNT=4".to_string(),
+            exdates: vec![
+                EventTime::DateTimeUtc(utc(2026, 1, 6, 8, 0)),
+                zoned_at("Europe/London", 2026, 1, 7, 8),
+            ],
+            rdates: vec![],
+        });
+
+        let result = expand_in_range(vec![master], utc(2026, 1, 1, 0, 0), utc(2026, 2, 1, 0, 0));
+
+        let starts: Vec<_> = result.iter().map(starts_at).collect();
+        assert_eq!(starts, vec![utc(2026, 1, 5, 8, 0), utc(2026, 1, 8, 8, 0)]);
     }
 }

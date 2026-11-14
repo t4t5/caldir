@@ -70,7 +70,7 @@ fn google_instance_suffix(rid: &EventTime) -> String {
         EventTime::DateTimeUtc(dt) => dt.format("%Y%m%dT%H%M%SZ").to_string(),
         EventTime::DateTimeFloating(dt) => dt.format("%Y%m%dT%H%M%SZ").to_string(),
         EventTime::DateTimeZoned { datetime, tzid } => {
-            let utc = if let Ok(tz) = tzid.parse::<chrono_tz::Tz>() {
+            let utc = if let Ok(tz) = tzid.parse::<caldir_core::Tz>() {
                 datetime
                     .and_local_timezone(tz)
                     .single()

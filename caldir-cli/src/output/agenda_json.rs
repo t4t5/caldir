@@ -242,7 +242,7 @@ fn serialize_time(time: &EventTime) -> String {
             .to_local_tz(&chrono::Local)
             .to_rfc3339_opts(SecondsFormat::AutoSi, false),
         EventTime::DateTimeZoned { tzid, .. } => tzid
-            .parse::<chrono_tz::Tz>()
+            .parse::<caldir_core::Tz>()
             .map(|tz| {
                 time.to_local_tz(&tz)
                     .to_rfc3339_opts(SecondsFormat::AutoSi, false)

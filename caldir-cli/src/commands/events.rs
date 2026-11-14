@@ -17,7 +17,7 @@ pub fn run(
 
     let calendars = resolve_calendars(caldir, &calendar_slugs)?;
 
-    let tz: chrono_tz::Tz = iana_time_zone::get_timezone()?.parse()?;
+    let tz: caldir_core::Tz = iana_time_zone::get_timezone()?.parse()?;
 
     let (from, to) = resolve_range(
         Utc::now().with_timezone(&tz),
@@ -66,20 +66,24 @@ fn resolve_range<Tz: TimeZone>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caldir_core::Tz;
     use chrono::NaiveDate;
-    use chrono_tz::Europe::Stockholm;
+
+    fn stockholm() -> Tz {
+        Tz::get("Europe/Stockholm").unwrap()
+    }
 
     fn stockholm_date(d: DateTime<Utc>) -> NaiveDate {
-        d.with_timezone(&Stockholm).date_naive()
+        d.with_timezone(&stockholm()).date_naive()
     }
 
     fn stockholm_time(d: DateTime<Utc>) -> chrono::NaiveTime {
-        d.with_timezone(&Stockholm).time()
+        d.with_timezone(&stockholm()).time()
     }
 
     #[test]
     fn defaults_to_three_day_window_starting_today() {
-        let now = Stockholm.with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
+        let now = stockholm().with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
         let (from, to) = resolve_range(now, None, None).unwrap();
 
         assert_eq!(
@@ -102,7 +106,7 @@ mod tests {
 
     #[test]
     fn uses_provided_from_and_to() {
-        let now = Stockholm.with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
+        let now = stockholm().with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
         let (from, to) = resolve_range(now, Some("2026-06-01"), Some("2026-06-10")).unwrap();
 
         assert_eq!(
@@ -117,7 +121,7 @@ mod tests {
 
     #[test]
     fn provided_from_with_default_to() {
-        let now = Stockholm.with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
+        let now = stockholm().with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
         let (from, to) = resolve_range(now, Some("2026-04-01"), None).unwrap();
 
         assert_eq!(
@@ -133,7 +137,7 @@ mod tests {
 
     #[test]
     fn default_from_with_provided_to() {
-        let now = Stockholm.with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
+        let now = stockholm().with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
         let (from, to) = resolve_range(now, None, Some("2026-07-01")).unwrap();
 
         assert_eq!(
@@ -149,14 +153,14 @@ mod tests {
 
     #[test]
     fn invalid_from_returns_error() {
-        let now = Stockholm.with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
+        let now = stockholm().with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
         let err = resolve_range(now, Some("not-a-date"), None).unwrap_err();
         assert!(err.to_string().contains("--from"));
     }
 
     #[test]
     fn invalid_to_returns_error() {
-        let now = Stockholm.with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
+        let now = stockholm().with_ymd_and_hms(2026, 5, 13, 12, 0, 0).unwrap();
         let err = resolve_range(now, None, Some("2026/07/01")).unwrap_err();
         assert!(err.to_string().contains("--to"));
     }

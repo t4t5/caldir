@@ -63,15 +63,19 @@ fn end_of_day_utc<Tz: TimeZone>(tz: &Tz, date: NaiveDate) -> Result<DateTime<chr
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caldir_core::Tz;
     use chrono::NaiveTime;
-    use chrono_tz::Europe::Stockholm;
+
+    fn stockholm() -> Tz {
+        Tz::get("Europe/Stockholm").unwrap()
+    }
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
     }
 
     fn range_in(
-        tz: chrono_tz::Tz,
+        tz: caldir_core::Tz,
         range: &DateRange,
     ) -> (Option<(NaiveDate, NaiveTime)>, (NaiveDate, NaiveTime)) {
         let from = range.from.map(|dt| {
@@ -85,9 +89,9 @@ mod tests {
     #[test]
     fn defaults_to_plus_minus_365_days_from_today() {
         let today = date(2026, 5, 14);
-        let range = resolve_sync_range_at(None, None, today, Stockholm).unwrap();
+        let range = resolve_sync_range_at(None, None, today, stockholm()).unwrap();
 
-        let (from, to) = range_in(Stockholm, &range);
+        let (from, to) = range_in(stockholm(), &range);
         assert_eq!(
             from,
             Some((date(2025, 5, 14), NaiveTime::from_hms_opt(0, 0, 0).unwrap())),
@@ -106,7 +110,7 @@ mod tests {
     #[test]
     fn from_start_means_unbounded_past() {
         let today = date(2026, 5, 14);
-        let range = resolve_sync_range_at(Some("start".into()), None, today, Stockholm).unwrap();
+        let range = resolve_sync_range_at(Some("start".into()), None, today, stockholm()).unwrap();
 
         assert!(
             range.from.is_none(),
@@ -122,11 +126,11 @@ mod tests {
             Some("2026-01-01".into()),
             Some("2026-01-31".into()),
             today,
-            Stockholm,
+            stockholm(),
         )
         .unwrap();
 
-        let (from, to) = range_in(Stockholm, &range);
+        let (from, to) = range_in(stockholm(), &range);
         assert_eq!(
             from,
             Some((date(2026, 1, 1), NaiveTime::from_hms_opt(0, 0, 0).unwrap())),
@@ -144,9 +148,9 @@ mod tests {
     fn mixing_explicit_from_with_default_to_keeps_default_future() {
         let today = date(2026, 5, 14);
         let range =
-            resolve_sync_range_at(Some("2024-06-01".into()), None, today, Stockholm).unwrap();
+            resolve_sync_range_at(Some("2024-06-01".into()), None, today, stockholm()).unwrap();
 
-        let (from, to) = range_in(Stockholm, &range);
+        let (from, to) = range_in(stockholm(), &range);
         assert_eq!(from.unwrap().0, date(2024, 6, 1));
         assert_eq!(
             to.0,
@@ -161,7 +165,7 @@ mod tests {
             Some("not-a-date".into()),
             None,
             date(2026, 5, 14),
-            Stockholm,
+            stockholm(),
         )
         .unwrap_err();
         assert!(err.to_string().contains("invalid --from date"));
@@ -173,7 +177,7 @@ mod tests {
             None,
             Some("not-a-date".into()),
             date(2026, 5, 14),
-            Stockholm,
+            stockholm(),
         )
         .unwrap_err();
         assert!(err.to_string().contains("invalid --to date"));
