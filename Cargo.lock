@@ -177,7 +177,6 @@ dependencies = [
  "anyhow",
  "caldir-core",
  "chrono",
- "chrono-tz",
  "clap",
  "dialoguer",
  "flate2",
@@ -216,6 +215,7 @@ dependencies = [
  "home",
  "humantime",
  "icalendar",
+ "jiff",
  "pretty_assertions",
  "rrule",
  "serde",
@@ -267,7 +267,6 @@ dependencies = [
  "async-trait",
  "caldir-core",
  "chrono",
- "chrono-tz",
  "google-calendar",
  "open",
  "reqwest",
@@ -305,7 +304,6 @@ dependencies = [
  "async-trait",
  "caldir-core",
  "chrono",
- "chrono-tz",
  "futures",
  "html2text",
  "reqwest",
@@ -1436,26 +1434,55 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
 name = "jiff"
-version = "0.2.24"
+version = "0.2.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f00b5dbd620d61dfdcb6007c9c1f6054ebd75319f163d886a9055cec1155073d"
+checksum = "26699905cc795a23e3949585cc7ba3ee8ade090872a27e4316304a777297894a"
 dependencies = [
+ "jiff-core",
  "jiff-static",
+ "jiff-tzdb",
+ "jiff-tzdb-platform",
  "log",
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
+ "windows-link",
+]
+
+[[package]]
+name = "jiff-core"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ffe6854081f5ac0a3046a9b223729ccd7a20b1e0e8277e44dc0660eedf67dfe2"
+dependencies = [
+ "log",
 ]
 
 [[package]]
 name = "jiff-static"
-version = "0.2.24"
+version = "0.2.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e000de030ff8022ea1da3f466fbb0f3a809f5e51ed31f6dd931c35181ad8e6d7"
+checksum = "4b4ff49b2887190c760b86207b55cdcaabbdecaf7a0660d68aa2ed6f652abf0a"
 dependencies = [
+ "jiff-core",
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "jiff-tzdb"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa8377070c6bae868759445e5a77f66d84f0b72f3a054bfb00e6d038b8282da7"
+
+[[package]]
+name = "jiff-tzdb-platform"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "875a5a69ac2bab1a891711cf5eccbec1ce0341ea805560dcd90b7a2e925132e8"
+dependencies = [
+ "jiff-tzdb",
 ]
 
 [[package]]

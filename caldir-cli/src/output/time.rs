@@ -56,7 +56,7 @@ pub fn format_datetime(time: &EventTime, time_format: TimeFormat) -> String {
 /// Convert a zoned datetime to the system's local NaiveDateTime.
 /// Falls back to the original datetime if the timezone can't be parsed.
 fn zoned_to_local(datetime: &NaiveDateTime, tzid: &str) -> NaiveDateTime {
-    if let Ok(tz) = tzid.parse::<chrono_tz::Tz>()
+    if let Ok(tz) = tzid.parse::<caldir_core::Tz>()
         && let Some(zoned) = datetime.and_local_timezone(tz).single()
     {
         return zoned.with_timezone(&chrono::Local).naive_local();

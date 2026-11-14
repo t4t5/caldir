@@ -7,7 +7,7 @@
 //! - `(UTC+01:00) Amsterdam, Berlin, …` → `Europe/Berlin`
 //! - `Bogus/Zone` → passed through, treated as floating local time (warns once)
 
-use chrono_tz::Tz;
+use crate::Tz;
 use std::{
     collections::HashSet,
     sync::{Mutex, OnceLock},
@@ -22,12 +22,12 @@ pub(crate) enum Tzid {
 }
 
 pub(crate) fn classify(tzid: &str) -> Tzid {
-    if tzid.parse::<Tz>().is_ok() {
-        return Tzid::Iana(tzid.to_string());
+    if let Some(tz) = Tz::get(tzid) {
+        return Tzid::Iana(tz.name().to_string());
     }
 
     if let Some(windows_timezone) = windows_timezone(tzid) {
-        return Tzid::Iana(Tz::from(windows_timezone).name().to_string());
+        return Tzid::Iana(windows_timezone.tzdb_id().to_string());
     }
 
     if let Some(seconds) = parse_fixed_offset(tzid) {
@@ -67,7 +67,7 @@ fn offset_tzid(seconds: i32) -> Tzid {
         };
         // Etc/GMT±N only exists for -12..=+14; anything else falls
         // through to the fixed-offset path.
-        if iana.parse::<Tz>().is_ok() {
+        if Tz::get(&iana).is_some() {
             return Tzid::Iana(iana);
         }
     }
@@ -147,8 +147,9 @@ pub(crate) fn warn_unknown(tzid: &str) {
 
 /// Map an IANA zone name to its canonical Windows equivalent. `None` for
 /// non-IANA inputs or IANA zones with no Windows counterpart.
+/// chrono-tz is only used here as the zone-name table windows-timezones maps from.
 pub fn from_iana(iana: &str) -> Option<&'static str> {
-    let tz: Tz = iana.parse().ok()?;
+    let tz: chrono_tz::Tz = iana.parse().ok()?;
     let windows_timezone = WindowsTimezone::try_from(tz).ok()?;
     Some(windows_timezone.name())
 }
@@ -168,6 +169,7 @@ mod tests {
             ("CET", "CET"),
             ("EST", "EST"),
             ("US/Pacific", "US/Pacific"),
+            ("europe/stockholm", "Europe/Stockholm"),
             // Windows names map to IANA
             ("W. Europe Standard Time", "Europe/Berlin"),
             // whole-hour offsets map to Etc/GMT zones (inverted sign!)

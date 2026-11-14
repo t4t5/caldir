@@ -75,8 +75,8 @@ fn end_of_day_utc<Tz: TimeZone>(tz: &Tz, date: NaiveDate) -> DateTime<Utc> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Tz;
     use chrono::{NaiveDate, NaiveTime, TimeZone};
-    use chrono_tz::Europe::Stockholm;
 
     fn utc(y: i32, m: u32, d: u32) -> DateTime<Utc> {
         Utc.with_ymd_and_hms(y, m, d, 0, 0, 0).unwrap()
@@ -87,7 +87,7 @@ mod tests {
     }
 
     fn range_in(
-        tz: chrono_tz::Tz,
+        tz: Tz,
         range: &DateRange,
     ) -> (Option<(NaiveDate, NaiveTime)>, (NaiveDate, NaiveTime)) {
         let from = range.from.map(|dt| {
@@ -132,9 +132,10 @@ mod tests {
 
     #[test]
     fn default_sync_window_is_one_year_back_and_forward_in_local_days() {
-        let range = DateRange::sync_window_at(date(2026, 5, 14), Stockholm);
+        let stockholm = Tz::get("Europe/Stockholm").unwrap();
+        let range = DateRange::sync_window_at(date(2026, 5, 14), stockholm.clone());
 
-        let (from, to) = range_in(Stockholm, &range);
+        let (from, to) = range_in(stockholm, &range);
         assert_eq!(
             from,
             Some((date(2025, 5, 14), NaiveTime::from_hms_opt(0, 0, 0).unwrap())),

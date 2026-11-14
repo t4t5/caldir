@@ -1,12 +1,12 @@
 //! Convert Microsoft Graph event types to caldir Event.
 
 use anyhow::Result;
+use caldir_core::Tz;
 use caldir_core::{
     Attendee, Availability, Event, EventTime, EventUid, Organizer, ParticipationStatus, Recurrence,
     RecurrenceId, Reminder, Status, Visibility, XProperty, tz_normalize,
 };
 use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
-use chrono_tz::Tz;
 
 use crate::constants::{
     HTML_DESC_PROPERTY, OUTLOOK_CONFERENCE_PROPERTY, OUTLOOK_EVENT_ID_PROPERTY,

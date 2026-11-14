@@ -47,6 +47,8 @@ Across every provider, an event is `(uid, recurrence_id)` per RFC 5545. Provider
 
 Timezone is data, not just display. Events created locally use the system IANA zone (so filenames show local time). All inbound TZIDs are normalized to IANA at the parse boundary — Microsoft providers convert back to Windows names only at the outbound edge.
 
+Resolve zones with `caldir_core::Tz`, which reads the system tz database through jiff (bundled copy as fallback), so rule changes ship with OS tzdata. Don't use chrono-tz for offsets: its compiled-in data goes stale.
+
 ## Providers
 
 A provider (`caldir-provider-xxx`) is a binary that speaks caldir's JSON RPC over stdin/stdout. Implement [`ProviderHandler`](caldir-core/src/rpc/handler.rs) and let `run_provider` handle the protocol.

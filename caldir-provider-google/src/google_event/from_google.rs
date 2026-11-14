@@ -238,7 +238,7 @@ pub fn google_dt_to_event_time(
 /// Falls back to DateTimeUtc if no timezone is provided or the timezone is invalid.
 fn utc_to_zoned(dt: chrono::DateTime<chrono::Utc>, time_zone: &str) -> EventTime {
     if !time_zone.is_empty()
-        && let Ok(tz) = time_zone.parse::<chrono_tz::Tz>()
+        && let Ok(tz) = time_zone.parse::<caldir_core::Tz>()
     {
         let zoned = dt.with_timezone(&tz);
         return EventTime::DateTimeZoned {

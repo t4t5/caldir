@@ -63,11 +63,11 @@ fn run_direct(caldir: &Caldir, path_str: &str, response_str: &str) -> Result<()>
 }
 
 fn run_interactive(caldir: &Caldir) -> Result<()> {
-    let tz: chrono_tz::Tz = iana_time_zone::get_timezone()?.parse()?;
+    let tz: caldir_core::Tz = iana_time_zone::get_timezone()?.parse()?;
     let today = Utc::now().with_timezone(&tz).date_naive();
     let from = today
         .start_of_date()
-        .and_local_timezone(tz)
+        .and_local_timezone(tz.clone())
         .earliest()
         .unwrap()
         .with_timezone(&Utc);
