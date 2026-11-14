@@ -1,0 +1,25 @@
+name: Nix
+
+# Full flake build, kept out of the release gate: tarballs and crates.io don't depend on it.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "flake.nix"
+      - "flake.lock"
+      - "package.nix"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "caldir-*/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cachix/install-nix-action@v31
+
+      - name: Build and check flake
+        run: nix flake check --print-build-logs

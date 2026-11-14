@@ -73,7 +73,3 @@ jobs:
 
       - name: Evaluate flake on all supported systems
         run: nix flake check --all-systems --no-build
-
-      - name: Build and check flake
-        if: github.event_name != 'pull_request'
-        run: nix flake check --print-build-logs
