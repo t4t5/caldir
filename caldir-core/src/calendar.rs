@@ -301,8 +301,13 @@ impl Calendar {
                 let mut event = ce.event().clone();
                 apply(&mut event);
 
+                // Never fall behind the master (see the new-override case).
+                let master_sequence = self
+                    .master_event_for(id.uid().as_str())?
+                    .map_or(0, |master| master.sequence);
+
                 event.last_modified = Some(Utc::now());
-                event.sequence += 1;
+                event.sequence = event.sequence.max(master_sequence) + 1;
                 ce.update(event)?;
 
                 Ok(ce)
@@ -315,7 +320,9 @@ impl Calendar {
 
                 let mut event = master.occurrence_at(recurrence_id.as_event_time().clone());
 
-                event.sequence = 0;
+                // Continue from the master's SEQUENCE rather than restarting:
+                // Google rejects an instance whose sequence is below its series'.
+                event.sequence = master.sequence + 1;
                 event.last_modified = Some(Utc::now());
                 apply(&mut event);
 
@@ -1122,6 +1129,43 @@ mod tests {
         .unwrap();
 
         assert_eq!(loaded_overrides(&cal, uid)[0].sequence, 3);
+    }
+
+    #[test]
+    fn update_recurring_instance_starts_new_override_after_master_sequence() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        let mut master = make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY");
+        master.sequence = 4;
+        cal.create_event(master).unwrap();
+
+        cal.update_recurring_instance(
+            &instance_id(uid, EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0))),
+            |event| event.summary = Some("edit".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(loaded_overrides(&cal, uid)[0].sequence, 5);
+    }
+
+    #[test]
+    fn update_recurring_instance_lifts_override_below_master_sequence() {
+        let (_tmp, cal) = test_calendar();
+        let uid = "series@caldir";
+        let mut master = make_master(uid, t(2026, 4, 1, 10, 0), "FREQ=DAILY");
+        master.sequence = 4;
+        cal.create_event(master).unwrap();
+        // An override written before new overrides continued from the master.
+        cal.create_event(make_override(uid, t(2026, 4, 3, 10, 0), "edit"))
+            .unwrap();
+
+        cal.update_recurring_instance(
+            &instance_id(uid, EventTime::DateTimeUtc(t(2026, 4, 3, 10, 0))),
+            |event| event.summary = Some("re-edit".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(loaded_overrides(&cal, uid)[0].sequence, 5);
     }
 
     #[test]
