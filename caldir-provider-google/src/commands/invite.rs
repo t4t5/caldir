@@ -49,11 +49,17 @@ async fn patch_personal_fields_at_url(
             response.text().await.unwrap_or_default()
         );
     }
-    let remote: google_calendar::types::Event = response
+    let remote_json: Value = response
         .json()
         .await
         .context("failed to decode invitation before updating personal fields")?;
-    let body = invite_patch_body(event, account_email, remote.reminders.as_ref())?;
+    let remote: google_calendar::types::Event = serde_json::from_value(remote_json.clone())
+        .context("failed to decode invitation before updating personal fields")?;
+    let mut body = invite_patch_body(event, account_email, remote.reminders.as_ref())?;
+    if let Some(attendees) = attendees_with_our_response(&remote_json, &body) {
+        body["attendees"] = attendees;
+        body.as_object_mut().unwrap().remove("attendeesOmitted");
+    }
 
     let response = client
         .patch(url)
@@ -97,6 +103,32 @@ fn invite_patch_body(
         body["reminders"] = reminders;
     }
     Ok(body)
+}
+
+/// The remote attendee list with our response applied, for a copy of the event
+/// that isn't ours.
+///
+/// `attendeesOmitted` may only name the attendee the calendar belongs to
+/// (Google's `self`). On a shared calendar that is someone else, e.g. a family
+/// calendar that organizes the event: Google rejects naming us there with
+/// `omittedAttendeesSpecified`, so the whole list is sent back instead.
+/// Returns `None` when the copy is ours or we can't tell.
+fn attendees_with_our_response(remote: &Value, patch: &Value) -> Option<Value> {
+    let ours = &patch["attendees"][0];
+    let email = ours["email"].as_str()?;
+
+    let mut attendees = remote.get("attendees")?.as_array()?.clone();
+    let remote_ours = attendees.iter_mut().find(|attendee| {
+        attendee["email"]
+            .as_str()
+            .is_some_and(|remote_email| remote_email.eq_ignore_ascii_case(email))
+    })?;
+    if remote_ours["self"].as_bool() == Some(true) {
+        return None;
+    }
+    remote_ours["responseStatus"] = ours["responseStatus"].clone();
+
+    Some(Value::Array(attendees))
 }
 
 fn changed_reminders(event: &Event, remote: Option<&Reminders>) -> Result<Option<Value>> {
