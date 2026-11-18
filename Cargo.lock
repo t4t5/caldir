@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-cli"
-version = "0.14.11"
+version = "0.14.12"
 dependencies = [
  "anyhow",
  "caldir-core",
@@ -203,7 +203,7 @@ dependencies = [
 
 [[package]]
 name = "caldir-core"
-version = "0.17.6"
+version = "0.17.7"
 dependencies = [
  "anyhow",
  "async-trait",
