@@ -59,15 +59,6 @@ caldir sync
 ```
 
 <details>
-<summary>Install with Scoop (Windows)</summary>
-
-```powershell
-scoop bucket add extras # Ensure bucket is added first
-scoop install caldir
-```
-</details>
-
-<details>
 <summary>Install from source</summary>
 
 Make sure you have [Rust and Cargo](https://rust-lang.org/learn/get-started/) installed.
@@ -87,6 +78,15 @@ nix run github:t4t5/caldir -- --help
 ```
 
 Or add `github:t4t5/caldir` as a flake input and use `packages.${system}.default` (or `overlays.default`) in your NixOS or home-manager config. The package includes all provider binaries.
+</details>
+
+<details>
+<summary>Install with Scoop (Windows)</summary>
+
+```powershell
+scoop bucket add extras # Ensure bucket is added first
+scoop install caldir
+```
 </details>
 
 ## Providers
