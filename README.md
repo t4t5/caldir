@@ -59,6 +59,15 @@ caldir sync
 ```
 
 <details>
+<summary>Install with Scoop (Windows)</summary>
+
+```powershell
+scoop bucket add extras # Ensure bucket is added first
+scoop install caldir
+```
+</details>
+
+<details>
 <summary>Install from source</summary>
 
 Make sure you have [Rust and Cargo](https://rust-lang.org/learn/get-started/) installed.
