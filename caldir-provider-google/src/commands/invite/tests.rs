@@ -302,6 +302,37 @@ async fn get_and_patch_use_exact_standalone_or_recurring_instance_id() {
 }
 
 #[tokio::test]
+async fn shared_calendar_copy_sends_the_whole_attendee_list() {
+    // The event as it sits on the shared calendar that organizes it: the
+    // calendar is `self`, we are just another guest.
+    let mut remote = google_invite(Value::Null);
+    remote["attendees"] = json!([
+        {"email": "family@group.calendar.google.com", "responseStatus": "accepted", "self": true},
+        {"email": "Me@Example.com", "responseStatus": "needsAction", "displayName": "Me"},
+        {"email": "other@example.com", "responseStatus": "tentative"},
+    ]);
+    let mut event = local_invite(&google_invite(Value::Null));
+    event.reminders.clear();
+
+    let mut server = TestServer::new("invite", 200, remote.to_string()).await;
+    patch_personal_fields_at_url("test-token", server.url.clone(), &event, "me@example.com")
+        .await
+        .unwrap();
+
+    let requests = server.take_requests();
+    assert_eq!(
+        requests[1].1,
+        json!({
+            "attendees": [
+                {"email": "family@group.calendar.google.com", "responseStatus": "accepted", "self": true},
+                {"email": "Me@Example.com", "responseStatus": "accepted", "displayName": "Me"},
+                {"email": "other@example.com", "responseStatus": "tentative"},
+            ],
+        })
+    );
+}
+
+#[tokio::test]
 async fn failed_lookup_or_decode_prevents_patch() {
     let remote = google_invite(overrides(&[(30, "email")]));
     let event = local_invite(&remote);
