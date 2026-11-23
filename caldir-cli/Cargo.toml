@@ -59,6 +59,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 tempfile = "3"
 serde = { version = "1", features = ["derive"] }
 flate2 = "1"
+clap_complete = "4.6"
 
 [target.'cfg(unix)'.dependencies]
 tar = "0.4"

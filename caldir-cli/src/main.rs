@@ -4,8 +4,10 @@ mod utils;
 
 use anyhow::{Result, bail};
 use caldir_core::Caldir;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use output::OutputFormat;
+
+use std::io;
 
 #[derive(Parser)]
 #[command(name = "caldir-cli")]
@@ -22,6 +24,14 @@ struct Cli {
     /// Provider response timeout (e.g. "30s", "2m")
     #[arg(long, global = true, value_parser = humantime::parse_duration)]
     timeout: Option<std::time::Duration>,
+}
+
+impl Cli {
+    fn generate_completion(shell: clap_complete::Shell) -> Result<()> {
+        let mut cmd = Cli::command();
+        clap_complete::generate(shell, &mut cmd, "caldir", &mut io::stdout());
+        Ok(())
+    }
 }
 
 #[derive(Subcommand)]
@@ -226,6 +236,12 @@ enum Commands {
     Doctor,
     #[command(about = "Update caldir and installed providers to the latest version")]
     Update,
+    #[command(about = "Generate shell completions")]
+    GenerateCompletion {
+        /// Shell Type
+        #[arg(value_enum)]
+        shell: clap_complete::Shell,
+    },
 }
 
 impl Commands {
@@ -359,6 +375,7 @@ async fn main() -> Result<()> {
         }
         Commands::Doctor => commands::doctor::run(&caldir),
         Commands::Update => unreachable!("handled above"),
+        Commands::GenerateCompletion { shell } => Cli::generate_completion(shell),
     }
 }
 
