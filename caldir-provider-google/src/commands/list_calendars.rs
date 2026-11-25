@@ -7,7 +7,7 @@ use caldir_core::{CalendarConfig, ProviderSlug, RemoteConfig};
 use google_calendar::types::MinAccessRole;
 
 use crate::app_config::AppConfigStore;
-use crate::constants::PROVIDER_NAME;
+use crate::constants::{DEFAULT_REMINDERS_PARAM, PROVIDER_NAME};
 use crate::remote_config::GoogleRemoteConfig;
 use crate::session::SessionStore;
 
@@ -33,8 +33,14 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
     let calendar_configs = google_calendars
         .iter()
         .map(|cal| {
-            let params =
+            let mut params =
                 GoogleRemoteConfig::new(account_email, &cal.id).into_remote_config_params();
+            // The calendar's own reminders, for events marked
+            // X-GOOGLE-DEFAULT-REMINDERS (which carry no VALARMs of their own).
+            params.insert(
+                DEFAULT_REMINDERS_PARAM.to_string(),
+                default_reminders_value(&cal.default_reminders),
+            );
             let remote_config = RemoteConfig::new(ProviderSlug::from(PROVIDER_NAME), params);
             let read_only = !matches!(cal.access_role.as_str(), "writer" | "owner");
 
@@ -48,4 +54,40 @@ pub async fn handle(cmd: ListCalendars) -> Result<Vec<CalendarConfig>> {
         .collect();
 
     Ok(calendar_configs)
+}
+
+/// Popup default reminders as minutes before start. Email ones are Google's to send.
+fn default_reminders_value(reminders: &[google_calendar::types::EventReminder]) -> toml::Value {
+    toml::Value::Array(
+        reminders
+            .iter()
+            .filter(|r| r.method != "email")
+            .map(|r| toml::Value::Integer(r.minutes))
+            .collect(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use google_calendar::types::EventReminder;
+
+    #[test]
+    fn default_reminders_keep_popups_only() {
+        let value = default_reminders_value(&[
+            EventReminder {
+                method: "popup".into(),
+                minutes: 10,
+            },
+            EventReminder {
+                method: "email".into(),
+                minutes: 30,
+            },
+            EventReminder {
+                method: "popup".into(),
+                minutes: 0,
+            },
+        ]);
+        assert_eq!(value, toml::Value::Array(vec![10.into(), 0.into()]));
+    }
 }
