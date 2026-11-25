@@ -124,8 +124,18 @@ fn parse_trigger_minutes_before_start(prop: &Property) -> Result<i64, ()> {
         Some(_) => return Err(()),
     }
 
-    let raw = prop.value().strip_prefix('-').ok_or(())?;
+    // `format_trigger_minutes_before_start(0)` writes an unsigned `PT0S`, so a
+    // zero offset must parse without the minus sign or every "at start"
+    // reminder is dropped on the next read.
+    let value = prop.value();
+    let (before_start, raw) = match value.strip_prefix('-') {
+        Some(raw) => (true, raw),
+        None => (false, value.strip_prefix('+').unwrap_or(value)),
+    };
     let minutes = parse_duration_minutes(raw)?;
+    if !before_start && minutes != 0 {
+        return Err(());
+    }
     i64::try_from(minutes).map_err(|_| ())
 }
 
@@ -286,6 +296,21 @@ mod tests {
         let reminder = parse_reminder("BEGIN:VALARM\r\nTRIGGER:-PT0S\r\nEND:VALARM");
 
         assert_eq!(reminder, Reminder::from_minutes(0));
+    }
+
+    #[test]
+    fn parses_unsigned_zero_duration_as_written() {
+        let reminder = parse_reminder("BEGIN:VALARM\r\nTRIGGER;RELATED=START:PT0S\r\nEND:VALARM");
+
+        assert_eq!(reminder, Reminder::from_minutes(0));
+    }
+
+    #[test]
+    fn zero_minute_reminder_round_trips() {
+        let reminder = Reminder::from_minutes(0);
+        let props = reminder.properties();
+        let trigger = props.iter().find(|p| p.key() == "TRIGGER").unwrap();
+        assert_eq!(parse_trigger_minutes_before_start(trigger), Ok(0));
     }
 
     #[test]
